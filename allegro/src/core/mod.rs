@@ -1,17 +1,29 @@
-mod lexing;
-mod processing;
-mod tokens;
-mod ast;
+mod passes;
+mod resource;
+mod errors;
+
+use passes::analyze;
+use passes::lexing;
+use passes::parsing;
 
 pub fn start(filename: &String) {
     let contents = &std::fs::read_to_string(filename).unwrap();
     let mut lxr = lexing::Lexer::new(contents.to_string());
     lxr.lex();
     let cstvec = lxr.supply();
-    println!("[i] Lexing: OK");
     println!("{:?}", cstvec);
-    let mut proc = processing::Processor::new(cstvec.clone());
-    proc.process();
-    let ast = proc.supply();
-    println!("{:?}", ast);
+    println!("[i] Lexing: OK");
+    
+    let mut proc = analyze::Analyzer::new(cstvec.clone());
+    proc.analyze();
+    let processed = proc.supply();
+    println!("{:?}", processed);
+    println!("[i] Processing: OK");
+
+    let mut parser = parsing::Parser::new(processed);
+    parser.parse();
+    println!("{:?}", processed);
+    println!("[i] Parsing: OK");
+
+
 }

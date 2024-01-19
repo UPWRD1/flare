@@ -1,0 +1,51 @@
+use super::{ast::SymbolKind, lexemes::LexemeKind};
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TokenKind {
+    TkKWOp,
+    TkKWVal,
+    TkSymbol(String),
+    TkLiteral(String),
+    TkNumeric(i32),
+    TkTyInt,
+    TkTyFlt,
+    TkTyStr,
+    TkTrue,
+    TkFalse,
+    TkTyMute,
+    TkPlus,
+    TkMinus,
+    TkStar,
+    TkSlash,
+    TkLparen,
+    TkRparen,
+    TkSmallArr,
+    TkBigArr,
+    TkPipe,
+    TkPercent,
+    TkDoubleDot,
+    TkLBrace,
+    TkRBrace,
+    TkStatementEnd,
+    TkEqual,
+    TkCEQ,
+    TkCNE,
+    TkCLT,
+    TkCLE,
+    TkCGT,
+    TkCGE,
+    TkAnd,
+    TkOr,
+    TkComma,
+    TkColon,
+    TkDot,
+    TEof,
+}
+
+#[derive(Clone, Debug)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub lexeme: String,
+    pub literal: LexemeKind,
+    pub location: usize,
+}

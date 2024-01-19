@@ -1,3 +1,3 @@
-val x: % = 1
-val y: % = 2
-x
+-- comment?
+val x: Str = "asdf"
+val y: Int = 1 + 2
