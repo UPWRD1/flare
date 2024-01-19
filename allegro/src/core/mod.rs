@@ -21,8 +21,9 @@ pub fn start(filename: &String) {
     println!("[i] Processing: OK");
 
     let mut parser = parsing::Parser::new(processed);
-    parser.parse();
-    println!("{:?}", processed);
+    
+    let parsed = parser.parse();
+    println!("{:?}", parsed);
     println!("[i] Parsing: OK");
 
 

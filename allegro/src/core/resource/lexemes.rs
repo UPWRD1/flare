@@ -1,9 +1,11 @@
+use crate::core::resource::ast::SymbolKind;
+
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LexemeKind {
-    LxSymbol(String),
-    LxLiteral(String),
-    LxNumeric(i32),
+    LxSymbol,
+    LxLiteral,
+    LxNumeric,
     LxPlus,
     LxMinus,
     LxStar,
@@ -38,5 +40,6 @@ pub enum LexemeKind {
 pub struct Lexeme {
     pub kind: LexemeKind,
     pub character: char,
+    pub literal: SymbolKind,
     pub location: usize,
 }

@@ -1,7 +1,9 @@
 use crate::core::resource::{
+    ast::SymbolKind,
+    ast::SymbolKind::Nothing,
     lexemes::Lexeme,
-    lexemes::LexemeKind::{*, self},
-    tokens::{TokenKind, Token},
+    lexemes::LexemeKind::*,
+    tokens::{Token, TokenKind},
 };
 
 pub struct Analyzer {
@@ -16,7 +18,7 @@ macro_rules! ctk {
             kind: $kind,
             lexeme: $lexeme,
             literal: $literal,
-            location: $location
+            location: $location,
         }
     };
 }
@@ -30,8 +32,8 @@ impl Analyzer {
         }
     }
 
-    fn add(&mut self, t: TokenKind, el: LexemeKind) {
-        self.tkvec.push(ctk!(t, self.lexvec[self.loc].character.to_string(), el, self.loc));
+    fn add(&mut self, t: Token) {
+        self.tkvec.push(t);
     }
 
     pub fn analyze(&mut self) {
@@ -40,48 +42,71 @@ impl Analyzer {
             //println!("{:?}", el);
 
             match &el.kind {
-                LxSymbol(sy) => {
-                    let toadd = match sy.as_str() {
-                        "val" => TokenKind::TkKWVal,
-                        "op" => TokenKind::TkKWOp,
+                LxSymbol => {
+                    let tkk = match &el.literal {
+                        SymbolKind::Identity(id) => match id.as_str() {
+                            "val" => TokenKind::TkKWVal,
+                            "op" => TokenKind::TkKWOp,
 
-                        "Int" => TokenKind::TkTyInt,
-                        "Flt" => TokenKind::TkTyFlt,
-                        "Str" => TokenKind::TkTyStr,
-                        &_ => TokenKind::TkSymbol(sy.to_string()),
+                            "Int" => TokenKind::TkTyInt,
+                            "Flt" => TokenKind::TkTyFlt,
+                            "Str" => TokenKind::TkTyStr,
+                            &_ => TokenKind::TkSymbol,
+                        },
+                        _ => panic!("How did you get here?")
                     };
-                    self.add(toadd, LxSymbol(sy.to_string()))
-                },
-                LxLiteral(st) => {self.add(TokenKind::TkLiteral(st.to_string()), LxLiteral(st.to_string()))},
-                LxNumeric(i) => {self.add(TokenKind::TkNumeric(*i))},
-                LxPlus => {self.add(TokenKind::TkPlus)},
-                LxMinus => {self.add(TokenKind::TkMinus)},
-                LxStar => {self.add(TokenKind::TkStar)},
-                LxSlash => {self.add(TokenKind::TkSlash)},
-                LxLparen => {self.add(TokenKind::TkLparen)},
-                LxRparen => {self.add(TokenKind::TkRparen)},
-                LxSmallArr => {self.add(TokenKind::TkSmallArr)},
-                LxBigArr => {self.add(TokenKind::TkBigArr)},
-                LxPipe => {self.add(TokenKind::TkPipe)},
-                LxPercent => {self.add(TokenKind::TkPercent)},
-                LxDoubleDot => {self.add(TokenKind::TkDoubleDot)},
-                LxLBrace => {self.add(TokenKind::TkLBrace)},
-                LxRBrace => {self.add(TokenKind::TkRBrace)},
-                LxStatementEnd => {self.add(TokenKind::TkStatementEnd)},
-                LxEqual => {self.add(TokenKind::TkEqual)},
-                LxCEQ => {self.add(TokenKind::TkCEQ)},
-                LxCNE => {self.add(TokenKind::TkCNE)},
-                LxCLT => {self.add(TokenKind::TkCLT)},
-                LxCLE => {self.add(TokenKind::TkCLE)},
-                LxCGT => {self.add(TokenKind::TkCGT)},
-                LxCGE => {self.add(TokenKind::TkCGE)},
-                LxAnd => {self.add(TokenKind::TkAnd)},
-                LxOr => {self.add(TokenKind::TkOr)},
-                LxComma => {self.add(TokenKind::TkComma)},
-                LxColon => {self.add(TokenKind::TkColon)},
-                LxDot => {self.add(TokenKind::TkDot)},
-                Err => {panic!("uh oh")},
-                Eof => {self.add(TokenKind::TEof)},
+                    let toadd: Token = Token { kind: tkk, lexeme: el.clone(), literal: el.literal, location: el.location };
+                    self.add(toadd)
+                }
+                LxLiteral => {
+                    match &el.literal {
+                        SymbolKind::Str(st) => {
+                            self.add(
+                                Token { kind: TokenKind::TkLiteral, lexeme: el.clone(), literal: el.literal, location: el.location }
+                            );
+                        }
+                        _ => panic!("How did you get here? Who are you? What do you want?!")
+                    };
+                }
+                LxNumeric => {
+                    match el.literal {
+                        SymbolKind::Int(i) => {
+                            self.add(Token { kind: TokenKind::TkNumeric, lexeme: el.clone(), literal: el.literal, location: el.location });
+                        }
+                        _ => panic!("How did you get here? Who are you? What do you want?!")
+                    }
+                    
+                }
+                LxPlus => self.add(TokenKind::TkPlus),
+                LxMinus => self.add(TokenKind::TkMinus),
+                LxStar => self.add(TokenKind::TkStar),
+                LxSlash => self.add(TokenKind::TkSlash),
+                LxLparen => self.add(TokenKind::TkLparen),
+                LxRparen => self.add(TokenKind::TkRparen,),
+                LxSmallArr => self.add(TokenKind::TkSmallArr),
+                LxBigArr => self.add(TokenKind::TkBigArr),
+                LxPipe => self.add(TokenKind::TkPipe),
+                LxPercent => self.add(TokenKind::TkPercent),
+                LxDoubleDot => self.add(TokenKind::TkDoubleDot),
+                LxLBrace => self.add(TokenKind::TkLBrace),
+                LxRBrace => self.add(TokenKind::TkRBrace),
+                LxStatementEnd => self.add(TokenKind::TkStatementEnd),
+                LxEqual => self.add(TokenKind::TkEqual),
+                LxCEQ => self.add(TokenKind::TkCEQ),
+                LxCNE => self.add(TokenKind::TkCNE),
+                LxCLT => self.add(TokenKind::TkCLT),
+                LxCLE => self.add(TokenKind::TkCLE),
+                LxCGT => self.add(TokenKind::TkCGT),
+                LxCGE => self.add(TokenKind::TkCGE),
+                LxAnd => self.add(TokenKind::TkAnd),
+                LxOr => self.add(TokenKind::TkOr),
+                LxComma => self.add(TokenKind::TkComma),
+                LxColon => self.add(TokenKind::TkColon),
+                LxDot => self.add(TokenKind::TkDot),
+                Err => {
+                    panic!("uh oh")
+                }
+                Eof => self.add(TokenKind::TEof),
             }
             /*
             match el {
@@ -180,7 +205,7 @@ impl Analyzer {
                 Eof => self.add(TEof),
             }
              */
-            
+
             self.loc += 1;
         }
     }

@@ -1,12 +1,12 @@
-use super::{ast::SymbolKind, lexemes::LexemeKind};
+use super::{ast::SymbolKind, lexemes::Lexeme};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenKind {
     TkKWOp,
     TkKWVal,
-    TkSymbol(String),
-    TkLiteral(String),
-    TkNumeric(i32),
+    TkSymbol,
+    TkLiteral,
+    TkNumeric,
     TkTyInt,
     TkTyFlt,
     TkTyStr,
@@ -45,7 +45,7 @@ pub enum TokenKind {
 #[derive(Clone, Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub lexeme: String,
-    pub literal: LexemeKind,
+    pub lexeme: Lexeme,
+    pub literal: SymbolKind,
     pub location: usize,
 }

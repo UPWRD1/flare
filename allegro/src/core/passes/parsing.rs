@@ -66,22 +66,22 @@ impl Parser {
 
     fn primary(&mut self) -> Expr {
         if self.search(vec![TkFalse]) {
-            return Expr::Literal(LiteralExpr {value: SymbolKind::Bool(false)})
+            return Expr::Literal(LiteralExpr {value: TkSymbol(SymbolKind::Bool(false))})
         } else if self.search(vec![TkTrue]) {
-            return Expr::Literal(LiteralExpr {value: SymbolKind::Bool(true)})
+            return Expr::Literal(LiteralExpr {value: TkSymbol(SymbolKind::Bool(true))})
         } else if self.search(vec![TkLiteral("dummy?".to_string())]) {
-            return Expr::Literal(LiteralExpr {value: self.previous().literal})
+            return Expr::Literal(LiteralExpr {value: TkSymbol(self.previous().literal)})
         } else if self.search(vec![TkLparen]) {
             let expr: Expr = self.expression();
             self.consume(TkRparen, "Expected ')' after expression");
             return Expr::Grouping(GroupExpr { expression: Box::new(expr) })
         } else {
-            panic!()
+            return Expr::Empty
         }
     }
 
     fn unary(&mut self) -> Expr {
-        if (self.search(vec![TkMinus])) {
+        if self.search(vec![TkMinus]) {
             let operator: Token = self.previous();
             let right = self.unary();
             return Expr::Unary(UnaryExpr { operator, right: Box::new(right) })
@@ -105,7 +105,7 @@ impl Parser {
     fn term(&mut self) -> Expr {
         let mut expr: Expr = self.factor();
 
-        while (self.search(vec![TkMinus, TkPlus])) {
+        while self.search(vec![TkMinus, TkPlus]) {
             let operator: Token = self.previous();
             let right: Expr = self.factor();
             expr = Expr::Binary(BinExpr { left: Box::new(expr), operator, right: Box::new(right)})
@@ -117,7 +117,7 @@ impl Parser {
     fn comparison(&mut self) -> Expr {
         let mut expr = self.term();
 
-        while (self.search(vec![TkCGT, TkCGE, TkCLT, TkCLE])) {
+        while self.search(vec![TkCGT, TkCGE, TkCLT, TkCLE]) {
             let operator: Token = self.previous();
             let right: Expr = self.term();
             expr = Expr::Binary(BinExpr { left: Box::new(expr), operator, right: Box::new(right) })

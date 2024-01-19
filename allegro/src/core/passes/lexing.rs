@@ -1,8 +1,7 @@
+use crate::core::resource::ast::SymbolKind;
+use crate::core::resource::ast::SymbolKind::*;
 use crate::core::resource::lexemes::Lexeme;
-use crate::core::resource::{
-    lexemes::LexemeKind,
-    lexemes::LexemeKind::*,
-};
+use crate::core::resource::{lexemes::LexemeKind, lexemes::LexemeKind::*};
 
 use crate::lexingerror;
 use crate::quit;
@@ -16,11 +15,12 @@ pub struct Lexer {
 }
 
 macro_rules! create_lexeme {
-    ($lx:tt, $st:expr, $ln:expr) => {
+    ($lx:tt, $st:expr, $lt:expr, $ln:expr) => {
         Lexeme {
             kind: $lx,
             character: $st,
-            location: $ln
+            literal: $lt,
+            location: $ln,
         }
     };
 }
@@ -56,8 +56,9 @@ impl Lexer {
         }
     */
 
-    fn add(&mut self, lx: LexemeKind) {
-        self.lxvec.push(create_lexeme!(lx, self.srccharvec[self.location], self.location));
+    fn add(&mut self, lx: LexemeKind, sy: SymbolKind) {
+        print!("{lx:?}:{sy:?}, ");
+        //self.lxvec.push(create_lexeme!(lx,self.srccharvec[self.location - 0],sy,self.location));
         self.advance();
     }
 
@@ -81,69 +82,71 @@ impl Lexer {
             //println!("{} {}", self.location, self.svec[self.location]);
             match self.srccharvec[self.location] {
                 ' ' | '\t' => self.advance(),
-                '\n' | '\r' => self.add(LxStatementEnd),
+                '\n' | '\r' => self.add(LxStatementEnd, Nothing),
                 '(' => {
-                    self.add(LxLparen);
+                    self.add(LxLparen, Nothing);
                 }
                 ')' => {
-                    self.add(LxRparen);
+                    self.add(LxRparen, Nothing);
                 }
                 '=' => {
                     if self.next() == '>' {
-                        self.add(LxBigArr);
+                        self.add(LxBigArr, Nothing);
                         self.advance();
                     } else {
-                        self.add(LxEqual);
+                        self.add(LxEqual, Nothing);
                     }
                 }
                 '+' => {
-                    self.add(LxPlus);
+                    self.add(LxPlus, Nothing);
                     self.advance();
                 }
                 '-' => {
                     if self.next() == '>' {
-                        self.add(LxSmallArr);
+                        self.add(LxSmallArr, Nothing);
                         self.advance()
                     } else if self.next() == '-' {
-                        while self.srccharvec[self.location] != '\n' && self.location < self.srccharvec.len() {
+                        while self.srccharvec[self.location] != '\n'
+                            && self.location < self.srccharvec.len()
+                        {
                             self.advance();
                         }
                     } else {
-                        self.add(LxMinus);
+                        self.add(LxMinus, Nothing);
                         self.advance()
                     }
                 }
                 '*' => {
-                    self.add(LxStar);
+                    self.add(LxStar, Nothing);
                 }
                 '/' => {
-                    self.add(LxSlash);
+                    self.add(LxSlash, Nothing);
                 }
 
                 '%' => {
-                    self.add(LxPercent);
+                    self.add(LxPercent, Nothing);
                 }
                 ',' => {
-                    self.add(LxComma);
+                    self.add(LxComma, Nothing);
                 }
                 '|' => {
-                    self.add(LxPipe);
+                    self.add(LxPipe, Nothing);
                 }
                 '{' => {
-                    self.add(LxLBrace);
+                    self.add(LxLBrace, Nothing);
                 }
                 '}' => {
-                    self.add(LxRBrace);
+                    self.add(LxRBrace, Nothing);
                 }
                 '>' => {
                     if !((self.srccharvec[self.location - 1] == '-')
                         || (self.srccharvec[self.location - 1] == '='))
                     {
                         if self.next() == '=' {
-                            self.add(LxCGE);
+                            self.add(LxCGE, Nothing);
                             self.advance()
                         } else {
-                            self.add(LxCGT);
+                            self.add(LxCGT, Nothing);
                             self.advance()
                         }
                     }
@@ -151,57 +154,57 @@ impl Lexer {
 
                 '.' => {
                     if self.next() == '.' {
-                        self.add(LxDoubleDot);
+                        self.add(LxDoubleDot, Nothing);
                         self.advance()
                     } else {
-                        self.add(LxDot);
+                        self.add(LxDot, Nothing);
                         self.advance()
                     }
                 }
 
                 '<' => {
                     if self.next() == '=' {
-                        self.add(LxCLE);
+                        self.add(LxCLE, Nothing);
                         self.advance()
                     } else {
-                        self.add(LxCLT);
+                        self.add(LxCLT, Nothing);
                         self.advance()
                     }
                 }
                 '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
-                    self.get_numeric();
+                    self.create_numeric();
                 }
 
                 'a'..='z' | 'A'..='Z' | '_' => {
-                    self.get_symbol();
+                    self.create_symbol();
                 }
 
                 '"' => {
-                    self.get_literal();
+                    self.create_literal();
                 }
 
                 ':' => {
-                    self.add(LxColon);
+                    self.add(LxColon, Nothing);
                     self.advance();
                 }
 
-                _ => {lexingerror!(
-                    "IDK: '{}' {:b}, {}",
-                    self.current(),
-                    self.current() as usize,
-                    self.location
-                );},
+                _ => {
+                    lexingerror!(
+                        "IDK: '{}' {:b}, {}",
+                        self.current(),
+                        self.current() as usize,
+                        self.location
+                    );
+                }
             }
             //println!("{:?}", self.Lxvec);
         }
         _lc = self.location;
-        self.add(LxStatementEnd);
-        self.add(Eof);
+        self.add(LxStatementEnd, Nothing);
+        self.add(Eof, Nothing);
     }
 
-
-
-    fn get_symbol(&mut self) {
+    fn create_symbol(&mut self) {
         let mut accumulator: Vec<char> = vec![];
         while (self.current() != ' ')
             && (self.current() != ':')
@@ -220,11 +223,13 @@ impl Lexer {
             Identclass::Symbol,
         )))
         */
-        self.add(LxSymbol(accumulator.iter().collect::<String>(),
-    ))
+        self.add(
+            LxSymbol,
+            SymbolKind::Identity(accumulator.iter().collect::<String>()),
+        )
     }
 
-    fn get_numeric(&mut self) {
+    fn create_numeric(&mut self) {
         let mut accumulator: Vec<char> = vec![];
         while (self.current() != ' ')
             && (self.current() != ':')
@@ -237,12 +242,13 @@ impl Lexer {
             accumulator.push(self.current());
             self.advance();
         }
-        self.add(LxNumeric(
-            accumulator.iter().collect::<String>().parse().unwrap(),
-        ))
+        self.add(
+            LxNumeric,
+            Int(accumulator.iter().collect::<String>().parse().unwrap()),
+        )
     }
 
-    fn get_literal(&mut self) {
+    fn create_literal(&mut self) {
         let mut accumulator: Vec<char> = vec![];
         self.advance(); //Continue past the initial "
         while (self.current() != '"') && (self.current() != '\n') {
@@ -250,7 +256,10 @@ impl Lexer {
             self.advance();
         }
         self.advance(); //Continue past the final "
-        self.add(LxLiteral(accumulator.iter().collect::<String>()));
+        self.add(
+            LxLiteral,
+            SymbolKind::Str(accumulator.iter().collect::<String>()),
+        );
     }
 
     pub fn supply(&mut self) -> Vec<Lexeme> {
