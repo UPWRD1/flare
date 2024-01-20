@@ -10,17 +10,17 @@ pub fn start(filename: &String) {
     let contents = &std::fs::read_to_string(filename).unwrap();
     let mut lxr = lexing::Lexer::new(contents.to_string());
     lxr.lex();
-    let cstvec = lxr.supply();
-    println!("{:?}", cstvec);
+    let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();
+    //println!("{:?}", cstvec);
     println!("[i] Lexing: OK");
     
-    let mut proc = analyze::Analyzer::new(cstvec.clone());
-    proc.analyze();
-    let processed = proc.supply();
-    println!("{:?}", processed);
-    println!("[i] Processing: OK");
+    let mut analyzer = analyze::Analyzer::new(cstvec);
+    analyzer.analyze();
+    let analyzed = analyzer.supply();
+    //println!("{:?}", analyzed);
+    println!("[i] Analyzing: OK");
 
-    let mut parser = parsing::Parser::new(processed);
+    let mut parser = parsing::Parser::new(analyzed);
     
     let parsed = parser.parse();
     println!("{:?}", parsed);

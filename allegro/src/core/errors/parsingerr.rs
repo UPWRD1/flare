@@ -7,7 +7,7 @@ pub struct ParseError {
 }
 
 impl ParseError {
-    pub fn report(&mut self) {
+    pub fn _report(&mut self) {
         if self.token.kind == TokenKind::TEof {
 
         }

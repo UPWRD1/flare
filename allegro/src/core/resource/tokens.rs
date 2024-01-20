@@ -1,9 +1,10 @@
-use super::{ast::SymbolKind, lexemes::Lexeme};
+use super::ast::SymbolKind;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenKind {
     TkKWOp,
     TkKWVal,
+    TkKwPrint,
     TkSymbol,
     TkLiteral,
     TkNumeric,
@@ -45,7 +46,19 @@ pub enum TokenKind {
 #[derive(Clone, Debug)]
 pub struct Token {
     pub kind: TokenKind,
-    pub lexeme: Lexeme,
+    //pub lexeme: Lexeme,
     pub literal: SymbolKind,
     pub location: usize,
+}
+
+#[macro_export]
+macro_rules! create_token {
+    ($el: tt, $kind: tt) => {
+        Token {
+            kind: $kind,
+            //lexeme: $el.clone(),
+            literal: $el.value.clone(),
+            location: $el.location,
+        }
+    };
 }

@@ -29,7 +29,7 @@ pub struct GroupExpr {
 
 #[derive(Clone, Debug)]
 pub struct LiteralExpr {
-    pub value: TokenKind,
+    pub value: Token,
 }
 
 #[derive(Clone, Debug)]

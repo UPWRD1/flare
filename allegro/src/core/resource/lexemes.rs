@@ -39,7 +39,6 @@ pub enum LexemeKind {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Lexeme {
     pub kind: LexemeKind,
-    pub character: char,
-    pub literal: SymbolKind,
+    pub value: SymbolKind,
     pub location: usize,
 }
