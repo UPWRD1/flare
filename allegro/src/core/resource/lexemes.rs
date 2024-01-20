@@ -36,7 +36,7 @@ pub enum LexemeKind {
     Eof,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Lexeme {
     pub kind: LexemeKind,
     pub value: SymbolKind,

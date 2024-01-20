@@ -24,9 +24,6 @@ macro_rules! create_lexeme {
     };
 }
 
-
-
-
 impl Lexer {
     pub fn new(source: String) -> Self {
         Lexer {
@@ -84,7 +81,7 @@ impl Lexer {
             //println!("{} {}", self.location, self.svec[self.location]);
             match self.srccharvec[self.location] {
                 ' ' | '\t' => self.advance(),
-                '\n' | '\r' | ';' => self.add(create_lexeme!(LxStatementEnd,  Nothing, self)),
+                '\n' | '\r' | ';' => self.add(create_lexeme!(LxStatementEnd, Nothing, self)),
                 '(' => {
                     self.add(create_lexeme!(LxLparen, Nothing, self));
                 }
@@ -227,7 +224,8 @@ impl Lexer {
         */
         self.add(create_lexeme!(
             LxSymbol,
-            SymbolKind::Identity(accumulator.iter().collect::<String>()), self
+            SymbolKind::Identity(accumulator.iter().collect::<String>()),
+            self
         ))
     }
 
@@ -244,11 +242,19 @@ impl Lexer {
             accumulator.push(self.current());
             self.advance();
         }
-        self.add(create_lexeme!(
+        if accumulator.contains(&'.') {
+            self.add(create_lexeme!(
+                LxNumeric,
+                Float(accumulator.iter().collect::<String>().parse().unwrap()),
+                self
+            ))
+        } else {
+            self.add(create_lexeme!(
             LxNumeric,
             Int(accumulator.iter().collect::<String>().parse().unwrap()),
             self
         ))
+        }
     }
 
     fn create_literal(&mut self) {

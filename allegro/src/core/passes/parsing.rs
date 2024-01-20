@@ -55,13 +55,6 @@ impl Parser {
         return self.peek().kind == kind;
     }
 
-    fn grab(&mut self) -> Option<Token> {
-        if self.is_at_end() {
-            return None;
-        };
-        Some(self.peek())
-    }
-
     fn search(&mut self, kinds: Vec<TokenKind>) -> bool {
         for kind in kinds {
             if self.check(kind) {
@@ -69,23 +62,12 @@ impl Parser {
                 return true;
             }
         }
-
         return false;
-    }
-
-    fn search_get(&mut self, kinds: Vec<TokenKind>) -> Option<Token> {
-        for _kind in kinds {
-            if let Some(x) = self.grab() {
-                return Some(x);
-            }
-        }
-
-        return None;
     }
 
     fn error(&mut self, token: Token, msg: String) {
         let pe = ParseError { token, msg };
-        panic!("Error! {:?}", pe);
+        println!("Error! {:?}", pe);
     }
 
     fn consume(&mut self, kind: TokenKind, message: &str) -> Token {
@@ -95,28 +77,18 @@ impl Parser {
             let tk = self.peek();
             println!("{tk:?}");
             self.error(tk.clone(), message.to_string());
-            panic!()
+            //panic!()
+            return self.advance();
         }
-    }
-
-    fn consume_options(&mut self, kinds: Vec<TokenKind>, message: &str) -> Token {
-        for kind in kinds {
-            if self.check(kind) {
-                return self.advance();
-            }
-        }
-        let tk = self.peek();
-        println!("{tk:?}");
-        self.error(tk.clone(), message.to_string());
-        panic!()
     }
 
     fn primary(&mut self) -> Expr {
-        if let Some(tk) = self.search_get(vec![TkFalse]) {
+        let tk = self.peek();
+        if self.search(vec![TkFalse]) {
             return Expr::Literal(LiteralExpr { value: tk });
-        } else if let Some(tk) = self.search_get(vec![TkTrue]) {
+        } else if self.search(vec![TkTrue]) {
             return Expr::Literal(LiteralExpr { value: tk });
-        } else if let Some(tk) = self.search_get(vec![TkLiteral]) {
+        } else if self.search(vec![TkLiteral, TkNumeric]) {
             return Expr::Literal(LiteralExpr { value: tk });
         } else if self.search(vec![TkLparen]) {
             let expr: Expr = self.expression();
@@ -125,7 +97,7 @@ impl Parser {
                 expression: Box::new(expr),
             });
         } else {
-            return Expr::Empty;
+            panic!("Empty File!");
         }
     }
 
@@ -157,9 +129,8 @@ impl Parser {
         return expr;
     }
 
-    fn termExpr(&mut self) -> Expr {
+    fn term_expr(&mut self) -> Expr {
         let mut expr: Expr = self.factor_expr();
-
         while self.search(vec![TkMinus, TkPlus]) {
             let operator: Token = self.previous();
             let right: Expr = self.factor_expr();
@@ -173,11 +144,11 @@ impl Parser {
         return expr;
     }
 
-    fn comparisonExpr(&mut self) -> Expr {
-        let mut expr = self.termExpr();
+    fn comparison_expr(&mut self) -> Expr {
+        let mut expr = self.term_expr();
         while self.search(vec![TkCGT, TkCGE, TkCLT, TkCLE]) {
             let operator: Token = self.previous();
-            let right: Expr = self.termExpr();
+            let right: Expr = self.term_expr();
             expr = Expr::Binary(BinExpr {
                 left: Box::new(expr),
                 operator,
@@ -189,11 +160,11 @@ impl Parser {
     }
 
     fn equality_expr(&mut self) -> Expr {
-        let mut expr: Expr = self.comparisonExpr();
+        let mut expr: Expr = self.comparison_expr();
 
         while self.search(vec![TkCNE, TkCEQ]) {
             let operator: Token = self.previous();
-            let right: Expr = self.comparisonExpr();
+            let right: Expr = self.comparison_expr();
             expr = Expr::Binary(BinExpr {
                 left: Box::new(expr),
                 operator: operator,
@@ -208,13 +179,13 @@ impl Parser {
         return self.equality_expr();
     }
 
-    fn printStmt(&mut self) -> Statement {
-        let value: Expr = self.expression();
-        self.consume_options(vec![TkStatementEnd, TkLparen], "Unexpected end of print statement!");
-        return Statement::Print(PrintStmt { expression: value });
+    fn print_stmt(&mut self) -> Statement {
+        let expr: Expr = self.expression();
+        self.consume(TkStatementEnd, "Unexpected end of print statement!");
+        return Statement::Print(PrintStmt { expression: expr });
     }
 
-    fn exprStmt(&mut self) -> Statement {
+    fn expr_stmt(&mut self) -> Statement {
         let expr: Expr = self.expression();
         self.consume(TkStatementEnd, "Unexpected end of expression!");
         return Statement::Expression(ExpressionStmt { expression: expr });
@@ -222,9 +193,9 @@ impl Parser {
 
     fn statement(&mut self) -> Statement {
         if self.search(vec![TkKwPrint]) {
-            return self.printStmt();
+            return self.print_stmt();
         } else {
-            return self.exprStmt();
+            return self.expr_stmt();
         }
     }
 

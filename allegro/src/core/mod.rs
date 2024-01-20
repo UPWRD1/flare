@@ -17,13 +17,13 @@ pub fn start(filename: &String) {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    //println!("{:?}", analyzed);
+    //dbg!(analyzed.clone());
     println!("[i] Analyzing: OK");
 
     let mut parser = parsing::Parser::new(analyzed);
     
     let parsed = parser.parse();
-    println!("{:?}", parsed);
+    dbg!(parsed);
     println!("[i] Parsing: OK");
 
 

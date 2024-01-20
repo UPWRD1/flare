@@ -86,6 +86,13 @@ impl Analyzer {
                             location: el.location,
                         });
                     }
+                    SymbolKind::Float(_) => {
+                        self.add(Token {
+                            kind: TokenKind::TkNumeric,
+                            literal: el.value.clone(),
+                            location: el.location,
+                        });
+                    }
                     _ => panic!("How did you get here? Who are you? What do you want?!"),
                 },
                 LxPlus => self.add(create_token!(el, TkPlus)),

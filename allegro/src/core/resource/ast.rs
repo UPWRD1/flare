@@ -118,10 +118,11 @@ pub enum Statement {
     Val(ValStmt),
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, PartialOrd,)]
 pub enum SymbolKind {
     Str(String),
     Int(i32),
+    Float(f32),
     Bool(bool),
     Identity(String),
     Nothing
