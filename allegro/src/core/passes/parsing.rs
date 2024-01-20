@@ -142,7 +142,7 @@ impl Parser {
         return self.primary();
     }
 
-    fn factorExpr(&mut self) -> Expr {
+    fn factor_expr(&mut self) -> Expr {
         let mut expr: Expr = self.unary_expr();
         while self.search(vec![TkStar, TkSlash]) {
             let operator: Token = self.previous();
@@ -158,11 +158,11 @@ impl Parser {
     }
 
     fn termExpr(&mut self) -> Expr {
-        let mut expr: Expr = self.factorExpr();
+        let mut expr: Expr = self.factor_expr();
 
         while self.search(vec![TkMinus, TkPlus]) {
             let operator: Token = self.previous();
-            let right: Expr = self.factorExpr();
+            let right: Expr = self.factor_expr();
             expr = Expr::Binary(BinExpr {
                 left: Box::new(expr),
                 operator,
