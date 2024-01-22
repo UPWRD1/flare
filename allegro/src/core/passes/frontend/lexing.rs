@@ -81,7 +81,7 @@ impl Lexer {
             //println!("{} {}", self.location, self.svec[self.location]);
             match self.srccharvec[self.location] {
                 ' ' | '\t' => self.advance(),
-                '\n' | '\r' | ';' => self.add(create_lexeme!(LxStatementEnd, Nothing, self)),
+                '\r' | '\n' | ';' => { self.add(create_lexeme!(LxStatementEnd, Nothing, self));},
                 '(' => {
                     self.add(create_lexeme!(LxLparen, Nothing, self));
                 }
@@ -154,6 +154,7 @@ impl Lexer {
                 '.' => {
                     if self.next() == '.' {
                         self.add(create_lexeme!(LxDoubleDot, Nothing, self));
+                        self.advance();
                         self.advance()
                     } else {
                         self.add(create_lexeme!(LxDot, Nothing, self));
@@ -224,7 +225,7 @@ impl Lexer {
         */
         self.add(create_lexeme!(
             LxSymbol,
-            SymbolKind::Identity(accumulator.iter().collect::<String>()),
+            SymbolKind::Identity(accumulator.iter().collect::<String>(), Box::new(Unknown)),
             self
         ))
     }

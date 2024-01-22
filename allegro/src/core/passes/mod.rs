@@ -1,3 +1,3 @@
-pub mod analyze;
-pub mod lexing;
-pub mod parsing;
+pub mod frontend;
+pub mod backend;
+pub mod midend;

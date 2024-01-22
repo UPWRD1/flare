@@ -40,6 +40,11 @@ impl Analyzer {
 
     pub fn analyze(&mut self) {
         //println!("{:?}", self.lexvec);
+        self.extract_keywords();
+        self.fix_types();
+    }
+
+    fn extract_keywords(&mut self) {
         while self.loc < self.lexvec.len() {
             let el = &self.lexvec[self.loc].clone();
             //println!("{:?}", el);
@@ -47,7 +52,7 @@ impl Analyzer {
             match &el.kind {
                 LxSymbol => {
                     let tkk = match &el.value {
-                        SymbolKind::Identity(id) => match id.as_str() {
+                        SymbolKind::Identity(id, _) => match id.as_str() {
                             "val" => TokenKind::TkKWVal,
                             "op" => TokenKind::TkKWOp,
                             "print" => TokenKind::TkKwPrint,
@@ -55,6 +60,8 @@ impl Analyzer {
                             "Int" => TokenKind::TkTyInt,
                             "Flt" => TokenKind::TkTyFlt,
                             "Str" => TokenKind::TkTyStr,
+                            "true" => TokenKind::TkTrue,
+                            "false" => TokenKind::TkFalse,
                             &_ => TokenKind::TkSymbol,
                         },
                         _ => panic!("How did you get here?"),
@@ -108,7 +115,11 @@ impl Analyzer {
                 LxDoubleDot => self.add(create_token!(el, TkDoubleDot)),
                 LxLBrace => self.add(create_token!(el, TkLBrace)),
                 LxRBrace => self.add(create_token!(el, TkRBrace)),
-                LxStatementEnd => self.add(create_token!(el, TkStatementEnd)),
+                LxStatementEnd => {
+                    if self.lexvec[self.loc - 1].kind != LxLBrace {
+                        self.add(create_token!(el, TkStatementEnd))
+                    }
+                }
                 LxEqual => self.add(create_token!(el, TkEqual)),
                 LxCEQ => self.add(create_token!(el, TkCEQ)),
                 LxCNE => self.add(create_token!(el, TkCNE)),
@@ -228,6 +239,30 @@ impl Analyzer {
         }
     }
 
+    fn fix_types(&mut self) {
+        self.loc = 0;
+        while self.loc < self.tkvec.len() {
+            let el = &mut self.tkvec[self.loc].clone();
+            //println!("{:?}", el);
+
+            let new_literal: SymbolKind = match &el.literal {
+                SymbolKind::Identity(_, _) => match el.kind {
+                    TkTyInt => SymbolKind::TyInt,
+                    TkTyFlt => SymbolKind::TyFlt,
+                    TkTyStr => SymbolKind::TyStr,
+                    TkTyMute => SymbolKind::TyMute,
+                    _ => {el.literal.clone()}
+                },
+                _ => {el.literal.clone()}
+            };
+            self.tkvec[self.loc] = Token {
+                kind: el.kind.clone(),
+                literal: new_literal,
+                location: self.loc,
+            };
+            self.loc += 1;
+        }
+    }
     pub fn supply(&mut self) -> Vec<Token> {
         self.tkvec.clone()
     }

@@ -47,7 +47,7 @@ pub struct UnaryExpr {
 
 #[derive(Clone, Debug)]
 pub struct VariableExpr {
-    pub name: TokenKind
+    pub name: Token
 }
 
 #[derive(Clone, Debug)]
@@ -76,8 +76,9 @@ pub struct ExpressionStmt {
 
 #[derive(Clone, Debug)]
 pub struct FunctionStmt {
-    pub name: TokenKind,
-    pub params: Vec<TokenKind>,
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub kind: SymbolKind,
     pub body: Vec<Statement>,
 }
 
@@ -100,8 +101,9 @@ pub struct ReturnStmt {
 }
 
 #[derive(Clone, Debug)]
-pub struct ValStmt {
-    pub name: TokenKind,
+pub struct ValDecl {
+    pub name: Token,
+    pub kind: SymbolKind,
     pub initializer: Expr,
 }
 
@@ -115,15 +117,23 @@ pub enum Statement {
     If(IfStmt),
     Print(PrintStmt),
     Return(ReturnStmt),
-    Val(ValStmt),
+    Val(ValDecl),
+    Empty,
+
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd,)]
 pub enum SymbolKind {
     Str(String),
+    TyStr,
     Int(i32),
+    TyInt,
     Float(f32),
+    TyFlt,
     Bool(bool),
-    Identity(String),
-    Nothing
+    TyBool,
+    TyMute,
+    Identity(String, Box<SymbolKind>), //name value
+    Nothing,
+    Unknown,
 }

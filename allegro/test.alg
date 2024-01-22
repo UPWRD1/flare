@@ -1,1 +1,1 @@
-print 1.0
+val x: Int = 3 + 5
