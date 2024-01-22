@@ -69,8 +69,8 @@ impl Parser {
             //let tk = self.peek();
             //println!("{:?}", self.tkvec);
             println!("{message}");
-            //panic!();
-            return self.advance();
+            panic!();
+            //return self.advance();
         }
     }
 
@@ -93,7 +93,8 @@ impl Parser {
                 expression: Box::new(expr),
             });
         } else {
-            panic!("An error occured!!");
+            Expr::Empty
+            //panic!("An error occured!!");
         }
     }
 
@@ -196,15 +197,16 @@ impl Parser {
     }
 
     fn val_decl(&mut self) -> Statement {
-        let name: Token = self.consume(TkSymbol, "Expected value name");
-        
-        let kind: SymbolKind = self.advance().literal.clone();
-        
-        let mut initializer: Expr = Expr::Empty;
-        if self.search(vec![TkEqual]) {
-            initializer = self.expression()
+        let (name, kind) = self.val_signiture();
+        self.consume(TkEqual, "Expected '='");
+        println!("{:?}", self.tkvec[self.curr].clone());
+
+        let initializer: Expr = self.expression();
+
+        if !self.search(vec![TkStatementEnd, TkRBrace]) {
+            println!("{:?}", self.tkvec[self.curr].clone());
+            panic!("Unexpected end of value declaration!")
         }
-        self.consume(TkStatementEnd, "Unexpected end of value declaration!");
         return Statement::Val(ValDecl {
             name,
             kind,
@@ -212,24 +214,57 @@ impl Parser {
         });
     }
 
+    fn val_signiture(&mut self) -> (Token, SymbolKind) {
+        let name: Token = self.consume(TkSymbol, "Expected value name");
+
+        let kind: SymbolKind = self.advance().literal.clone();
+        (name, kind)
+    }
+
     fn op_decl(&mut self) -> Statement {
         let name: Token = self.consume(TkSymbol, "Expected operation name");
         println!("Creating opdecl");
-        let mut initializer: Expr = Expr::Empty;
-        self.consume(TkEqual, "Expected '=' after operation name!");
-        self.consume(TkLparen, "Expected '=' after operation name!");
-        let mut params: Vec<Expr> = vec![];
-        while self.search(vec![TkRparen]) {
-            //params.push(self.val_decl())
+        let mut params: Vec<Statement> = vec![];
+
+        self.consume(TkEqual, "Expected '='");
+        self.consume(TkLparen, "Expected '('");
+        while self.tkvec[self.curr].kind == TkSymbol {
+            //println!("{:?}", self.tkvec[self.curr].clone());
+
+            let np = self.val_signiture();
+            params.push(Statement::Val(ValDecl {
+                name: np.0,
+                kind: np.1,
+                initializer: Expr::Empty,
+            }));
+            self.curr += 1;
+        }
+        //self.advance();
+        self.consume(TkSmallArr, "Expected '->'");
+        let opreturnkind = self.tkvec[self.curr].clone().literal;
+        self.advance();
+        self.consume(TkPipe, "Expected '|'");
+
+        // println!("Operation {:?} of type {:?} with params: {:?}", name, opreturnkind, params);
+        return Statement::Function(FunctionStmt {
+            name,
+            params,
+            kind: opreturnkind,
+            body: BlockStmt {
+                statements: self.block(),
+            },
+        });
+    }
+
+    fn block(&mut self) -> Vec<Statement> {
+        let mut collector: Vec<Statement> = vec![];
+        self.consume(TkLBrace, "Expected '{'");
+        while !self.is_at_end() && self.tkvec[self.curr].kind != TkRBrace {
+            collector.push(self.declaration());
+            self.curr += 1;
         }
         self.advance();
-        self.advance();
-        self.advance();
-        self.advance();
-        self.advance();
-        
-        //println!("{:?}", self.tkvec[self.curr]);
-        return self.statement();
+        collector
     }
 
     fn declaration(&mut self) -> Statement {

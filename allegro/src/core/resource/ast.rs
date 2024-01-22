@@ -83,9 +83,9 @@ pub struct ExpressionStmt {
 #[derive(Clone, Debug)]
 pub struct FunctionStmt {
     pub name: Token,
-    pub params: Vec<Token>,
+    pub params: Vec<Statement>,
     pub kind: SymbolKind,
-    pub body: Vec<Statement>,
+    pub body: BlockStmt,
 }
 
 #[derive(Clone, Debug)]

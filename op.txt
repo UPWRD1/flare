@@ -1,81 +1,83 @@
-[src/core/mod.rs:26] parsed = [
-    Expression(
-        ExpressionStmt {
-            expression: Grouping(
-                GroupExpr {
-                    expression: Binary(
-                        BinExpr {
-                            left: Binary(
-                                BinExpr {
-                                    left: Literal(
-                                        LiteralExpr {
-                                            value: Token {
-                                                kind: TkNumeric,
-                                                literal: Int(
-                                                    8,
-                                                ),
-                                                location: 2,
-                                            },
-                                        },
-                                    ),
-                                    operator: Token {
-                                        kind: TkStar,
-                                        literal: Nothing,
-                                        location: 3,
-                                    },
-                                    right: Literal(
-                                        LiteralExpr {
-                                            value: Token {
-                                                kind: TkNumeric,
-                                                literal: Int(
-                                                    3,
-                                                ),
-                                                location: 6,
-                                            },
-                                        },
-                                    ),
-                                },
+[
+    Val(
+        ValDecl {
+            name: Token {
+                kind: TkSymbol,
+                literal: Identity(
+                    "y",
+                    Unknown,
+                ),
+                location: 1,
+            },
+            kind: TyInt,
+            initializer: Literal(
+                LiteralExpr {
+                    value: Token {
+                        kind: TkNumeric,
+                        literal: Int(
+                            0,
+                        ),
+                        location: 4,
+                    },
+                },
+            ),
+        },
+    ),
+    Function(
+        FunctionStmt {
+            name: Token {
+                kind: TkSymbol,
+                literal: Identity(
+                    "main",
+                    Unknown,
+                ),
+                location: 7,
+            },
+            params: [
+                Val(
+                    ValDecl {
+                        name: Token {
+                            kind: TkSymbol,
+                            literal: Identity(
+                                "a",
+                                Unknown,
                             ),
-                            operator: Token {
-                                kind: TkPlus,
-                                literal: Nothing,
-                                location: 7,
+                            location: 10,
+                        },
+                        kind: TyInt,
+                        initializer: Empty,
+                    },
+                ),
+            ],
+            kind: TyInt,
+            body: BlockStmt {
+                statements: [
+                    Val(
+                        ValDecl {
+                            name: Token {
+                                kind: TkSymbol,
+                                literal: Identity(
+                                    "x",
+                                    Unknown,
+                                ),
+                                location: 18,
                             },
-                            right: Binary(
-                                BinExpr {
-                                    left: Literal(
-                                        LiteralExpr {
-                                            value: Token {
-                                                kind: TkNumeric,
-                                                literal: Int(
-                                                    10,
-                                                ),
-                                                location: 11,
-                                            },
-                                        },
-                                    ),
-                                    operator: Token {
-                                        kind: TkSlash,
-                                        literal: Nothing,
-                                        location: 12,
+                            kind: TyInt,
+                            initializer: Literal(
+                                LiteralExpr {
+                                    value: Token {
+                                        kind: TkNumeric,
+                                        literal: Int(
+                                            100,
+                                        ),
+                                        location: 21,
                                     },
-                                    right: Literal(
-                                        LiteralExpr {
-                                            value: Token {
-                                                kind: TkNumeric,
-                                                literal: Int(
-                                                    5,
-                                                ),
-                                                location: 15,
-                                            },
-                                        },
-                                    ),
                                 },
                             ),
                         },
                     ),
-                },
-            ),
+                ],
+            },
         },
     ),
 ]

@@ -116,7 +116,7 @@ impl Analyzer {
                 LxLBrace => self.add(create_token!(el, TkLBrace)),
                 LxRBrace => self.add(create_token!(el, TkRBrace)),
                 LxStatementEnd => {
-                    if self.lexvec[self.loc - 1].kind != LxLBrace {
+                    if self.loc != 0 && self.lexvec[self.loc - 1].kind != LxLBrace {
                         self.add(create_token!(el, TkStatementEnd))
                     }
                 }

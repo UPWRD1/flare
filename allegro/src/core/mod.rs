@@ -5,12 +5,12 @@ mod resource;
 use passes::frontend::analyze;
 use passes::frontend::lexing;
 use passes::frontend::parsing;
-use passes::midend::collapse;
-use passes::midend::typechecking;
+//use passes::midend::collapse;
+//use passes::midend::typechecking;
 
-use passes::backend::codegen;
+//use passes::backend::codegen;
 
-use std::io::Write;
+//use std::io::Write;
 
 pub fn start(filename: &String) {
     let contents = &std::fs::read_to_string(filename).unwrap();
@@ -23,33 +23,33 @@ pub fn start(filename: &String) {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    //dbg!(analyzed.clone());
+    dbg!(analyzed.clone());
     println!("[i] Analyzing: OK");
 
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
     let ast = parser.supply();
-    //dbg!(ast.clone());
+    dbg!(ast.clone());
     println!("[i] Parsing: OK");
 
-    let mut collapser = collapse::Collapser::new(ast);
-    collapser.collapse();
-    let collapsed = collapser.supply();
+    //let mut collapser = collapse::Collapser::new(ast);
+    //collapser.collapse();
+    //let collapsed = collapser.supply();
     //dbg!(collapsed.clone());
-    println!("[i] Collapsing: OK");
+    //println!("[i] Collapsing: OK");
 
-    let mut checker = typechecking::Typechecker::new(collapsed.clone());
-    checker.check();
-    let checked = checker.supply();
-    dbg!(checked.clone());
-    println!("[i] Checking: OK");
+    //let mut checker = typechecking::Typechecker::new(collapsed.clone());
+    //checker.check();
+    //let checked = checker.supply();
+    //dbg!(checked.clone());
+    //println!("[i] Checking: OK");
 
-    let mut generator = codegen::Generator::new(collapsed.clone());
-    generator.generate();
-    let generated = generator.supply();
-    println!("{}", generated.clone());
-    println!("[i] Generation: OK");
+    //let mut generator = codegen::Generator::new(collapsed.clone());
+    //generator.generate();
+    //let generated = generator.supply();
+    //println!("{}", generated.clone());
+    //println!("[i] Generation: OK");
 
-    let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
-    let _ = file.write_all(format!("{}", generated).as_bytes());
+    //let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
+    //let _ = file.write_all(format!("{}", generated).as_bytes());
 }

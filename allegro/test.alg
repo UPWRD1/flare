@@ -1,2 +1,2 @@
-val x: Int = 3
-printf(x)
+val y: Int = 0;
+val x: Int = 100
