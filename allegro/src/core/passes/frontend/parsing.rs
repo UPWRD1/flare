@@ -68,7 +68,7 @@ impl Parser {
         } else {
             //let tk = self.peek();
             //println!("{:?}", self.tkvec);
-            //println!("{tk:?} - {message}");
+            println!("{message}");
             //panic!();
             return self.advance();
         }
@@ -228,7 +228,7 @@ impl Parser {
         self.advance();
         self.advance();
         
-        println!("{:?}", self.tkvec[self.curr]);
+        //println!("{:?}", self.tkvec[self.curr]);
         return self.statement();
     }
 

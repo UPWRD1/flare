@@ -8,6 +8,10 @@ use passes::frontend::parsing;
 use passes::midend::collapse;
 use passes::midend::typechecking;
 
+use passes::backend::codegen;
+
+use std::io::Write;
+
 pub fn start(filename: &String) {
     let contents = &std::fs::read_to_string(filename).unwrap();
     let mut lxr = lexing::Lexer::new(contents.to_string());
@@ -37,6 +41,15 @@ pub fn start(filename: &String) {
     let mut checker = typechecking::Typechecker::new(collapsed.clone());
     checker.check();
     let checked = checker.supply();
-    //dbg!(checked.clone());
+    dbg!(checked.clone());
     println!("[i] Checking: OK");
+
+    let mut generator = codegen::Generator::new(collapsed.clone());
+    generator.generate();
+    let generated = generator.supply();
+    println!("{}", generated.clone());
+    println!("[i] Generation: OK");
+
+    let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
+    let _ = file.write_all(format!("{}", generated).as_bytes());
 }

@@ -1,1 +1,2 @@
-val x: Int = 3 + 5
+val x: Int = 3
+printf(x)

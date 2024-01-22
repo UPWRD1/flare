@@ -51,6 +51,12 @@ pub struct Token {
     pub location: usize,
 }
 
+impl Token {
+    pub fn get_value(&mut self) -> SymbolKind {
+        return self.literal.clone()
+    }
+}
+
 #[macro_export]
 macro_rules! create_token {
     ($el: tt, $kind: tt) => {

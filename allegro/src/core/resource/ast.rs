@@ -32,6 +32,12 @@ pub struct LiteralExpr {
     pub value: Token,
 }
 
+impl LiteralExpr {
+    pub fn get_literal_value(&mut self) -> SymbolKind {
+        self.value.get_value()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct LogicalExpr {
     pub left: Box<Expr>,
