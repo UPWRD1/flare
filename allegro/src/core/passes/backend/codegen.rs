@@ -37,6 +37,15 @@ impl Generator {
         self.output.push(st);
     }
 
+    fn get_identity(&mut self, sk: &SymbolKind) -> String {
+        match sk {
+            SymbolKind::Identity(n, _) => {
+                return n.to_string()
+            }
+            _ => panic!("Expected Identity, found {:?}", sk)
+        }
+    }
+
     fn get_cval(&mut self, sk: SymbolKind) -> String {
         match sk {
             SymbolKind::Int(i) => i.to_string(),
@@ -49,13 +58,26 @@ impl Generator {
     }
 
     fn get_ctype(&mut self, vd: ValDecl) -> String {
-        println!("{vd:?}");
+        //println!("{vd:?}");
         match vd.kind {
             SymbolKind::TyStr => return "char*".to_string(),
 
             SymbolKind::TyInt => return "int".to_string(),
 
             _ => panic!("Unsupported type!"),
+        }
+    }
+
+    fn get_oprtkind(&mut self, op: OpDecl) -> String {
+        //println!("{vd:?}");
+        match op.kind {
+            SymbolKind::TyStr => return "char*".to_string(),
+
+            SymbolKind::TyInt => return "int".to_string(),
+
+            SymbolKind::Nothing => return "void".to_string(),
+
+            _ => panic!("Unsupported type! {:?}", op.kind),
         }
     }
 
@@ -70,12 +92,21 @@ impl Generator {
                         Expr::Literal(mut le) => le.get_literal_value(),
                         _ => panic!("Unkown type!"),
                     });
-                    match vd.name.literal {
-                        SymbolKind::Identity(n, v) => cname = n,
-                        _ => panic!("Unknown name!"),
-                    }
+                    cname = self.get_identity(&vd.name.literal);
                     self.add(line!(0, "{} {} = {}", ckind, cname, cval));
                 }
+
+                Statement::Operation(op) => {
+                    let opname: String = self.get_identity(&op.name.literal);
+                    let oprtkind: String = self.get_oprtkind(op.clone());
+
+                    for stmt in op.body.statements {
+                        self.generate()
+                    }
+
+                    println!("{} {}()", oprtkind, opname);
+                }
+
                 _ => {
                     panic!("Unsuportted ast Token {:?}", el);
                 }

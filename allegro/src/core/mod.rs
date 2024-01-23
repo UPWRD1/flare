@@ -30,10 +30,11 @@ pub fn start(filename: &String) {
     //dbg!(analyzed.clone());
     println!("[i] Analyzing: OK");
 
-    let mut parser = parsing::Parser::new(analyzed);
+    let mut parser = parsing::Parser::new(analyzed, global_context);
     parser.parse();
-    let ast = parser.supply();
-    dbg!(ast.clone());
+    let (ast, symbols) = parser.supply();
+    //dbg!(ast.clone());
+    dbg!(symbols);
     println!("[i] Parsing: OK");
 
     //let mut collapser = collapse::Collapser::new(ast);
@@ -48,7 +49,7 @@ pub fn start(filename: &String) {
     //dbg!(checked.clone());
     //println!("[i] Checking: OK");
 
-    //let mut generator = codegen::Generator::new(collapsed.clone());
+    //let mut generator = codegen::Generator::new(ast.clone());
     //generator.generate();
     //let generated = generator.supply();
     //println!("{}", generated.clone());

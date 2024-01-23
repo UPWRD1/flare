@@ -34,7 +34,7 @@ pub struct LiteralExpr {
 
 impl LiteralExpr {
     pub fn get_literal_value(&mut self) -> SymbolKind {
-        self.value.get_value()
+         self.value.get_value()
     }
 }
 

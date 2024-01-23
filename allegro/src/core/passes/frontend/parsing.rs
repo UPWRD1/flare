@@ -4,19 +4,62 @@ use crate::core::resource::{
     tokens::{Token, TokenKind, TokenKind::*},
 };
 
+use std::hash::*;
+use std::collections::hash_map::DefaultHasher;
+
 pub struct Parser {
     pub tkvec: Vec<Token>,
     pub curr: usize,
+    pub symboltable: GlobalTable,
     pub ast: Vec<Statement>,
 }
 
 impl Parser {
-    pub fn new(tkvec: Vec<Token>) -> Self {
+    pub fn new(tkvec: Vec<Token>, sy: GlobalTable) -> Self {
         Parser {
             tkvec,
             curr: 0,
+            symboltable: sy,
             ast: vec![],
         }
+    }
+
+    fn init_val(&mut self, n: &Token, sk: &SymbolKind) -> String {
+        let mut s = DefaultHasher::new();
+        let collected: String = format!("{:?}", n.kind);
+        collected.hash(&mut s);
+        let res = format!("{}", s.finish());
+        self.symboltable.values.entries.push(Entry { hash: res.clone(), value: None });
+        return res
+    }
+
+    fn assign_val(&mut self, vd: ValDecl, h: String) {
+        let index = self.symboltable.values.entries.iter().position(|s| s.hash == h).unwrap();
+        self.symboltable.values.entries.insert(index, Entry { hash: h, value: Some(vd) });
+    }
+
+    fn add_val(&mut self, vd: ValDecl) {
+        let hash = self.init_val(&vd.name.clone(), &vd.kind.clone());
+        self.assign_val(vd, hash);
+    }
+
+    fn init_operation(&mut self, n: &Token, sk: &SymbolKind) -> String {
+        let mut s = DefaultHasher::new();
+        let collected: String = format!("{:?}{:?}", n.literal, n.location);
+        collected.hash(&mut s);
+        let res = format!("{}", s.finish());
+        self.symboltable.values.entries.push(Entry { hash: res.clone(), value: None });
+        return res
+    }
+
+    fn assign_operation(&mut self, vd: ValDecl, h: String) {
+        let index = self.symboltable.values.entries.iter().position(|s| s.hash == h).unwrap();
+        self.symboltable.values.entries.insert(index, Entry { hash: h, value: Some(vd) });
+    }
+
+    fn add_operation(&mut self, vd: ValDecl, n: &Token, sk: &SymbolKind) {
+        let hash = self.init_operation(n, sk);
+        self.assign_operation(vd, hash);
     }
 
     fn peek(&mut self) -> Token {
@@ -46,13 +89,6 @@ impl Parser {
         return self.previous();
     }
 
-    fn retreat(&mut self) -> Token {
-        if !self.is_at_end() {
-            self.curr -= 1;
-        }
-        return self.peek();
-    }
-
     fn check(&mut self, kind: TokenKind) -> bool {
         if self.is_at_end() {
             return false;
@@ -74,10 +110,8 @@ impl Parser {
         if self.check(kind) {
             return self.advance();
         } else {
-            //let tk = self.peek();
             println!("{message}");
             panic!();
-            //return self.advance();
         }
     }
 
@@ -95,9 +129,9 @@ impl Parser {
 
     fn primary(&mut self) -> Expr {
         let tk = self.peek();
-        if self.search(vec![TkFalse]) {
+        if self.search(vec![TkKwFalse]) {
             return Expr::Literal(LiteralExpr { value: tk });
-        } else if self.search(vec![TkTrue]) {
+        } else if self.search(vec![TkKwTrue]) {
             return Expr::Literal(LiteralExpr { value: tk });
         } else if self.search(vec![TkLiteral, TkNumeric]) {
             return Expr::Literal(LiteralExpr { value: tk });
@@ -212,7 +246,9 @@ impl Parser {
             return self.print_stmt();
         } else if self.search(vec![TkKWVal]) {
             return self.val_decl();
-        } else {
+        } else if self.search(vec![TkKwIf]) {
+            return self.val_decl();
+        }else {
             return self.expr_stmt();
         }
     }
@@ -226,21 +262,40 @@ impl Parser {
         if !self.search(vec![TkStatementEnd]) {
             panic!("Unexpected end of value declaration!")
         }
-        return Statement::Val(ValDecl {
+        let res = ValDecl {
             name,
             kind,
             initializer,
-        });
+        };
+
+        self.add_val(res.clone());
+        
+        return Statement::Val(res)
+    }
+
+    fn init_param(&mut self) -> (Token, SymbolKind, String) {
+        let name: Token = self.consume(TkSymbol, "Expected value name");
+
+        let kind: SymbolKind = self
+            .consume_vec(vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool], "Invalid type")
+            .literal;
+
+        let hash = self.init_val(&name, &kind);
+
+        (name, kind, hash)
     }
 
     fn val_signiture(&mut self) -> (Token, SymbolKind) {
         let name: Token = self.consume(TkSymbol, "Expected value name");
 
         let kind: SymbolKind = self
-            .consume_vec(vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute], "Invalid type")
+            .consume_vec(vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool], "Invalid type")
             .literal;
+
         (name, kind)
     }
+
+    
 
     fn op_decl(&mut self) -> Statement {
         let name: Token = self.consume(TkSymbol, "Expected operation name");
@@ -256,7 +311,7 @@ impl Parser {
                 || self.tkvec[self.curr].kind == TkTyInt
                 || self.tkvec[self.curr].kind == TkTyFlt
             {
-                let nv = self.val_signiture();
+                let nv = self.init_param();
                 params.push(Statement::Val(ValDecl {
                     name: nv.0,
                     kind: nv.1,
@@ -287,9 +342,8 @@ impl Parser {
         let mut collector: Vec<Statement> = vec![];
         self.consume(TkLBrace, "Expected '{'");
         //sprintln!("{:?}", self.tkvec[self.curr].kind);
-        while self.tkvec[self.curr].kind != TkRBrace && self.tkvec[self.curr + 1].kind != TEof{
+        while self.tkvec[self.curr].kind != TkRBrace && self.tkvec[self.curr + 1].kind != TEof {
             collector.push(self.statement());
-
         }
         self.consume(TkRBrace, "Expected '}'");
         collector
@@ -310,7 +364,7 @@ impl Parser {
         self.ast = statements;
     }
 
-    pub fn supply(&mut self) -> Vec<Statement> {
-        return self.ast.clone();
+    pub fn supply(&mut self) -> (Vec<Statement>, GlobalTable) {
+        return (self.ast.clone(), self.symboltable.clone());
     }
 }

@@ -1,7 +1,3 @@
-op main = () -> .. is {
-    3 * 4;
-}
-
-op test = () -> .. is {
-    4 * 5;
+op main = (a: Int) -> .. is {
+    val x: Bool = true;
 }

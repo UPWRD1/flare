@@ -1,6 +1,6 @@
 use crate::core::resource::ast::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GlobalTable {
     pub values: Table<ValDecl>,
     pub operations: Table<OpDecl>,
@@ -12,14 +12,19 @@ impl  GlobalTable {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Table<T> {
-    hashes: Vec<i32>,
-    values: Vec<T>,
+    pub entries: Vec<Entry<T>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Entry<T> {
+    pub hash: String,
+    pub value: Option<T>,
 }
 
 impl <T> Table <T> {
     pub fn new() -> Self {
-        Table { hashes: vec![], values: vec![] }
+        Table { entries: vec![] }
     }
 }
