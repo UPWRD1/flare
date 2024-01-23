@@ -12,7 +12,11 @@ use passes::frontend::parsing;
 
 //use std::io::Write;
 
+use resource::table::*;
+
 pub fn start(filename: &String) {
+    let mut global_context: GlobalTable = GlobalTable::new();
+
     let contents = &std::fs::read_to_string(filename).unwrap();
     let mut lxr = lexing::Lexer::new(contents.to_string());
     lxr.lex();
@@ -23,7 +27,7 @@ pub fn start(filename: &String) {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    dbg!(analyzed.clone());
+    //dbg!(analyzed.clone());
     println!("[i] Analyzing: OK");
 
     let mut parser = parsing::Parser::new(analyzed);

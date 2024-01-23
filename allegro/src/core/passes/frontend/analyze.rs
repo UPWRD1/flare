@@ -56,6 +56,7 @@ impl Analyzer {
                             "val" => TokenKind::TkKWVal,
                             "op" => TokenKind::TkKWOp,
                             "print" => TokenKind::TkKwPrint,
+                            "is" => TokenKind::TkKwIs,
 
                             "Int" => TokenKind::TkTyInt,
                             "Flt" => TokenKind::TkTyFlt,
@@ -112,7 +113,7 @@ impl Analyzer {
                 LxBigArr => self.add(create_token!(el, TkBigArr)),
                 LxPipe => self.add(create_token!(el, TkPipe)),
                 LxPercent => self.add(create_token!(el, TkPercent)),
-                LxDoubleDot => self.add(create_token!(el, TkDoubleDot)),
+                LxDoubleDot => self.add(create_token!(el, TkTyMute)),
                 LxLBrace => self.add(create_token!(el, TkLBrace)),
                 LxRBrace => self.add(create_token!(el, TkRBrace)),
                 LxStatementEnd => {
@@ -137,103 +138,6 @@ impl Analyzer {
                 }
                 Eof => self.add(create_token!(el, TEof)),
             }
-            /*
-            match el {
-                LxItem => {
-                    match id.name.as_str() {
-                        "val" => self.add(TkKWVal) => {},
-                        "op" => self.add(TkKWOp) => {},
-
-                        "Flt" => self.add(TkTyFlt),
-                        "Int" => self.add(TkTyInt),
-                        "Str" => self.add(TkTyStr),
-                        _ => {
-                            self.add(TkItem(Item {
-                                name: id.name.clone(),
-                                class: id.class.clone(),
-                                value: id.value.clone(),
-                            }));
-                        }
-                    }
-                    /*
-                        id.
-                        match id {
-                            Identtype::Sym(s, at) => match s.as_str() {
-                            "val" => self.add(TkKWVal),
-                            "op" => self.add(TkKWOp),
-
-                            "Flt" => self.add(TkTyFlt),
-                            "Int" => self.add(TkTyInt),
-                            "Str" => self.add(TkTyStr),
-                            &_ => {
-                                let previous_tk = &self.tkvec[self.tkvec.len() - 1];
-                                match previous_tk {
-                                    TkKWOp => self.add(TkIdent(Identtype::Sym(
-                                        s.to_string(),
-                                        Identclass::Operation,
-                                    ))),
-                                    TkKWVal => self.add(TkIdent(Identtype::Sym(
-                                        s.to_string(),
-                                        Identclass::Symbol,
-                                    ))),
-                                    _ => self.add(TkIdent(Identtype::Sym(
-                                        s.to_string(),
-                                        Identclass::Symbol,
-                                    ))),
-                                }
-                            }
-                        },
-                        _ => unreachable!(),
-                    }
-                    */
-                }
-
-                LxLiteral(s) => self.add(TkItem(Item {
-                    name: s.to_string(),
-                    class: Itemclass::Literal,
-                    value: Itemtype::Str(s.to_string()),
-                })),
-                LxNumeric(n) => {
-                    self.add(TkItem(Item {
-                    name: n.to_string(),
-                    class: Itemclass::Integer,
-                    value: Itemtype::Int(*n),
-                }));}
-                LxPlus => self.add(TkPlus),
-                LxMinus => self.add(TkMinus),
-                LxStar => self.add(TkStar),
-                LxSlash => self.add(TkSlash),
-                LxLparen => self.add(TkLparen),
-                LxRparen => self.add(TkRparen),
-                LxSmallArr => self.add(TkSmallArr),
-                LxBigArr => self.add(TkBigArr),
-                LxPipe => self.add(TkPipe),
-                LxPercent => self.add(TkPercent),
-                LxDoubleDot => self.add(TkTyMute),
-                LxLBrace => self.add(TkLBrace),
-                LxRBrace => self.add(TkRBrace),
-                LxStatementEnd => {
-                    //nothing
-                }
-                LxEqual => {
-                    //self.add(TkEqual);
-                }
-                LxCEQ => self.add(TkCEQ),
-                LxCNE => self.add(TkCNE),
-                LxCLT => self.add(TkCLT),
-                LxCLE => self.add(TkCLE),
-                LxCGT => self.add(TkCGT),
-                LxCGE => self.add(TkCGE),
-                LxAnd => self.add(TkAnd),
-                LxOr => self.add(TkOr),
-                LxComma => self.add(TkComma),
-                LxColon => {
-                    //self.add(TkColon);
-                }
-                LxDot => self.add(TkDot),
-                Eof => self.add(TEof),
-            }
-             */
 
             self.loc += 1;
         }
@@ -251,9 +155,9 @@ impl Analyzer {
                     TkTyFlt => SymbolKind::TyFlt,
                     TkTyStr => SymbolKind::TyStr,
                     TkTyMute => SymbolKind::TyMute,
-                    _ => {el.literal.clone()}
+                    _ => el.literal.clone(),
                 },
-                _ => {el.literal.clone()}
+                _ => el.literal.clone(),
             };
             self.tkvec[self.loc] = Token {
                 kind: el.kind.clone(),

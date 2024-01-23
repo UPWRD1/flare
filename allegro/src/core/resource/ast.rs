@@ -1,5 +1,5 @@
-use super::tokens::TokenKind;
 use super::tokens::Token;
+use super::tokens::TokenKind;
 
 #[derive(Clone, Debug)]
 pub struct AssignExpr {
@@ -24,7 +24,7 @@ pub struct CallExpr {
 
 #[derive(Clone, Debug)]
 pub struct GroupExpr {
-    pub expression: Box<Expr>
+    pub expression: Box<Expr>,
 }
 
 #[derive(Clone, Debug)]
@@ -53,7 +53,7 @@ pub struct UnaryExpr {
 
 #[derive(Clone, Debug)]
 pub struct VariableExpr {
-    pub name: Token
+    pub name: Token,
 }
 
 #[derive(Clone, Debug)]
@@ -67,21 +67,21 @@ pub enum Expr {
     Logical(LogicalExpr),
     Unary(UnaryExpr),
     Variable(VariableExpr),
-    Empty
+    Empty,
 }
 
 #[derive(Clone, Debug)]
 pub struct BlockStmt {
-    pub statements: Vec<Statement>
+    pub statements: Vec<Statement>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ExpressionStmt {
-    pub expression: Expr
+    pub expression: Expr,
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionStmt {
+pub struct OpDecl {
     pub name: Token,
     pub params: Vec<Statement>,
     pub kind: SymbolKind,
@@ -113,22 +113,20 @@ pub struct ValDecl {
     pub initializer: Expr,
 }
 
-
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub enum Statement {
     Block(BlockStmt),
     Expression(ExpressionStmt),
-    Function(FunctionStmt),
+    Operation(OpDecl),
     If(IfStmt),
     Print(PrintStmt),
     Return(ReturnStmt),
     Val(ValDecl),
     Empty,
-
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd,)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum SymbolKind {
     Str(String),
     TyStr,

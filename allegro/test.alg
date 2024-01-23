@@ -1,2 +1,7 @@
-val y: Int = 0;
-val x: Int = 100
+op main = () -> .. is {
+    3 * 4;
+}
+
+op test = () -> .. is {
+    4 * 5;
+}
