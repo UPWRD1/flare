@@ -52,18 +52,12 @@ pub enum TokenKind {
     TEof,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     //pub lexeme: Lexeme,
     pub literal: SymbolKind,
     pub location: usize,
-}
-
-impl Token {
-    pub fn get_value(&mut self) -> SymbolKind {
-        return self.literal.clone()
-    }
 }
 
 #[macro_export]
