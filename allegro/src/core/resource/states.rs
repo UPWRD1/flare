@@ -8,6 +8,7 @@ pub enum ObjectState {
     Used,
 }
 
+#[derive(Debug, Clone)]
 pub struct Appearances {
     used: i32,
     read: i32,
@@ -60,26 +61,23 @@ pub fn merge(a: Appearances, b: Appearances) -> Appearances {
 }
 
 pub fn merge_list(l: Vec<Appearances>) -> Appearances {
-    l.iter().fold(ZERO_APPEARANCES, |acc, x| merge(acc, *x))
+    l.iter().fold(ZERO_APPEARANCES, |acc, x| merge(acc, x.clone()))
 }
 
 pub fn count_apps(name: Statement, expr: Expr) -> Appearances {
     let c: Appearances = match expr {
         Expr::Value(ve) => {
-            if name.get_token_value() == ve.name {
+            if name.clone().get_token_value() == ve.name {
                 USED_ONCE
             } else {
                 ZERO_APPEARANCES
             }
         }
-
-        Expr::Call(ce) => {
-            merge_list(ce.args)
-        }
         _ => {
-            panic!("Unknown expression {}", expr)
+            panic!("Unknown expression {:?}", expr)
         }
     };
+    c
 }
 
 #[derive(Debug, Clone)]

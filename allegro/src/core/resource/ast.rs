@@ -68,31 +68,31 @@ impl Expr {
     pub fn get_expr_value(&mut self) -> Token {
         match self {
             Self::Assign(a) => {
-                a.name
+                a.name.clone()
             }
             Self::Binary(b) => {
-                b.operator
+                b.operator.clone()
             }
             Self::Call(c) => {
-                c.parent
+                c.parent.clone()
             }
             Self::Empty => {
                 panic!("Cannot get value of empty expression!")
             }
             Self::Grouping(g) => {
-                g.expression.get_expr_value()
+                g.expression.get_expr_value().clone()
             }
             Self::Literal(l) => {
-                l.value
+                l.value.clone()
             }
             Self::Logical(l) => {
-                l.operator
+                l.operator.clone()
             }
             Self::Unary(u) => {
-                u.operator
+                u.operator.clone()
             }
             Self::Value(v) => {
-                v.name
+                v.name.clone()
             }
         }
     }
@@ -158,10 +158,10 @@ impl Statement {
     pub fn get_token_value(&mut self) -> Token {
         match self {
             Self::Val(vd) => {
-                vd.name
+                vd.name.clone()
             }
-            &mut Self::Operation(op) => {
-                op.name
+            Self::Operation(op) => {
+                op.name.clone()
             }
             Self::Expression(ex) => {
                 ex.expression.get_expr_value()

@@ -1,3 +1,5 @@
+use core::panic;
+
 use crate::core::resource::{ast::*, states::{Appearances, StateTable}};
 
 pub struct Typechecker {
@@ -25,9 +27,9 @@ impl Typechecker {
     }
 
     fn check_expr(&mut self, tbl: StateTable, depth: usize, expr: Expr) -> StateTable {
-        let names: Vec<Statement> = tbl.entries.iter().map(|e| e.name).collect();
-        for entry in tbl.entries {
-            self.check_var_in_expr(tbl, depth, entry.name, expr)
+        let names: Vec<Statement> = tbl.clone().entries.iter().map(|e| e.name.clone()).collect();
+        for entry in tbl.clone().entries {
+            self.check_var_in_expr(tbl.clone(), depth, entry.name, expr.clone())
         }
         tbl
     }
@@ -37,6 +39,7 @@ impl Typechecker {
             Statement::Val(vd) => {
                 let tbl: StateTable = self.check_expr(tbl, depth, vd.initializer);
             }
+            _ => panic!("Unkown statemnet")
         }
     }
 
@@ -51,13 +54,6 @@ impl Typechecker {
     pub fn check(&mut self) {
         while self.loc < self.ast.len() {
             let mut stmt: Statement = self.ast[self.loc].clone();
-
-            match stmt {
-                Statement::Operation(od) => {
-                    self.linearity_check(od.params, od.body)
-                }
-                _ => {}
-            }
 
             self.loc += 1
         }
