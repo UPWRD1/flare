@@ -2,7 +2,7 @@ use crate::core::resource::{
     ast::SymbolKind,
     lexemes::Lexeme,
     lexemes::LexemeKind::*,
-    tokens::{Token, TokenKind, TokenKind::*},
+    tokens::{Token, TokenType, TokenType::*},
 };
 
 use crate::create_token;
@@ -53,30 +53,31 @@ impl Analyzer {
                 LxSymbol => {
                     let tkk = match &el.value {
                         SymbolKind::Identity(id, _) => match id.as_str() {
-                            "val" => TokenKind::TkKWVal,
-                            "op" => TokenKind::TkKWOp,
-                            "print" => TokenKind::TkKwPrint,
-                            "is" => TokenKind::TkKwIs,
-                            "if" => TokenKind::TkKwIf,
-                            "else" => TokenKind::TkKwElse,
-                            "match" => TokenKind::TkKwMatch,
-                            "while" => TokenKind::TkKwWhile,
-                            "for" => TokenKind::TkKwFor,
-                            "in" => TokenKind::TkKwIn,
-                            "task" => TokenKind::TkKwTask,
-                            "invoke" => TokenKind::TkKwInvoke,
+                            "val" => TokenType::TkKwVal,
+                            "op" => TokenType::TkKWOp,
+                            "print" => TokenType::TkKwPrint,
+                            "is" => TokenType::TkKwIs,
+                            "if" => TokenType::TkKwIf,
+                            "else" => TokenType::TkKwElse,
+                            "match" => TokenType::TkKwMatch,
+                            "while" => TokenType::TkKwWhile,
+                            "for" => TokenType::TkKwFor,
+                            "in" => TokenType::TkKwIn,
+                            "task" => TokenType::TkKwTask,
+                            "invoke" => TokenType::TkKwInvoke,
+                            "return" => TokenType::TkKwReturn,
 
-                            "Int" => TokenKind::TkTyInt,
-                            "Flt" => TokenKind::TkTyFlt,
-                            "Str" => TokenKind::TkTyStr,
-                            "Bool" => TokenKind::TkTyBool,
-                            &_ => TokenKind::TkSymbol,
+                            "Int" => TokenType::TkTyInt,
+                            "Flt" => TokenType::TkTyFlt,
+                            "Str" => TokenType::TkTyStr,
+                            "Bool" => TokenType::TkTyBool,
+                            &_ => TokenType::TkSymbol,
                         },
                         _ => panic!("How did you get here?"),
                     };
                     let toadd: Token = Token {
-                        kind: tkk,
-                        literal: el.value.clone(),
+                        tokentype: tkk,
+                        kind: el.value.clone(),
                         location: el.location,
                     };
                     self.add(toadd)
@@ -85,8 +86,8 @@ impl Analyzer {
                     match &el.value {
                         SymbolKind::Str(_) => {
                             self.add(Token {
-                                kind: TokenKind::TkLiteral,
-                                literal: el.value.clone(),
+                                tokentype: TokenType::TkLiteral,
+                                kind: el.value.clone(),
                                 location: el.location,
                             });
                         }
@@ -96,15 +97,15 @@ impl Analyzer {
                 LxNumeric => match el.value {
                     SymbolKind::Int(_) => {
                         self.add(Token {
-                            kind: TokenKind::TkNumeric,
-                            literal: el.value.clone(),
+                            tokentype: TokenType::TkNumeric,
+                            kind: el.value.clone(),
                             location: el.location,
                         });
                     }
                     SymbolKind::Float(_) => {
                         self.add(Token {
-                            kind: TokenKind::TkNumeric,
-                            literal: el.value.clone(),
+                            tokentype: TokenType::TkNumeric,
+                            kind: el.value.clone(),
                             location: el.location,
                         });
                     }
@@ -156,19 +157,19 @@ impl Analyzer {
             let el = &mut self.tkvec[self.loc].clone();
             //println!("{:?}", el);
 
-            let new_literal: SymbolKind = match &el.literal {
-                SymbolKind::Identity(_, _) => match el.kind {
+            let new_literal: SymbolKind = match &el.kind {
+                SymbolKind::Identity(_, _) => match el.tokentype {
                     TkTyInt => SymbolKind::TyInt,
                     TkTyFlt => SymbolKind::TyFlt,
                     TkTyStr => SymbolKind::TyStr,
                     TkTyMute => SymbolKind::TyMute,
-                    _ => el.literal.clone(),
+                    _ => el.kind.clone(),
                 },
-                _ => el.literal.clone(),
+                _ => el.kind.clone(),
             };
             self.tkvec[self.loc] = Token {
-                kind: el.kind.clone(),
-                literal: new_literal,
+                tokentype: el.tokentype.clone(),
+                kind: new_literal,
                 location: self.loc,
             };
             self.loc += 1;

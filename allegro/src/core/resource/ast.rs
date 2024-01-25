@@ -1,5 +1,4 @@
 use super::tokens::Token;
-use super::tokens::TokenKind;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssignExpr {
@@ -17,8 +16,7 @@ pub struct BinExpr {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallExpr {
-    pub callee: Box<Expr>,
-    pub parent: Token,
+    pub operation: Token,
     pub args: Vec<Expr>,
 }
 
@@ -74,7 +72,7 @@ impl Expr {
                 b.operator.clone()
             }
             Self::Call(c) => {
-                c.parent.clone()
+                c.operation.clone()
             }
             Self::Empty => {
                 panic!("Cannot get value of empty expression!")
@@ -120,7 +118,7 @@ pub struct OpDecl {
 pub struct IfStmt {
     pub condition: Expr,
     pub then_branch: Box<Statement>,
-    pub else_branch: Box<Statement>,
+    pub else_branch: Option<Box<Statement>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -130,7 +128,6 @@ pub struct PrintStmt {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReturnStmt {
-    pub keyword: TokenKind,
     pub value: Expr,
 }
 
@@ -191,4 +188,25 @@ pub enum SymbolKind {
     Identity(String, Box<SymbolKind>), //name value
     Nothing,
     Unknown,
+}
+
+impl SymbolKind {
+    pub fn get_identity_string(&mut self) -> String {
+        match self {
+            Self::Identity(n, _) => {
+                return n.to_string()
+            }
+            _ => panic!("Cannot get identity of {:?}", self)
+        }
+    }
+
+    pub fn translate_kind(self) -> SymbolKind {
+        match self {
+            Self::Int(_) => Self::TyInt,
+            Self::Float(_) => Self::TyFlt,
+            Self::Bool(_) => Self::TyBool,
+            Self::Str(_) => Self::TyStr,
+            _ => self
+        }
+    }
 }

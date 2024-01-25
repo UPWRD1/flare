@@ -29,7 +29,7 @@ pub fn start(filename: &String) {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    //dbg!(analyzed.clone());
+    dbg!(analyzed.clone());
     println!("[i] Analyzing: OK");
 
     let mut parser = parsing::Parser::new(analyzed);

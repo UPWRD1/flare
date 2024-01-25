@@ -1,3 +1,3 @@
-op main = (a: Int) -> .. is {
-    val x: Bool = true;
+op main = () -> .. is {
+    test(32);
 }

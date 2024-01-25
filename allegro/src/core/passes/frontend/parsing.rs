@@ -1,12 +1,13 @@
 use crate::core::resource::{
     ast::*,
-    tokens::{Token, TokenKind, TokenKind::*},
+    tokens::{Token, TokenType, TokenType::*},
 };
 
 pub struct Parser {
     pub tkvec: Vec<Token>,
     pub curr: usize,
     pub ast: Vec<Statement>,
+    pub new_stmts: Vec<Statement>,
 }
 
 impl Parser {
@@ -15,6 +16,7 @@ impl Parser {
             tkvec,
             curr: 0,
             ast: vec![],
+            new_stmts: vec![],
         }
     }
 
@@ -23,8 +25,8 @@ impl Parser {
             self.tkvec.get(self.curr).unwrap().clone()
         } else {
             Token {
-                kind: TEof,
-                literal: SymbolKind::Nothing,
+                tokentype: TEof,
+                kind: SymbolKind::Nothing,
                 location: self.curr,
             }
         }
@@ -35,7 +37,7 @@ impl Parser {
     }
 
     fn is_at_end(&mut self) -> bool {
-        self.peek().kind == TokenKind::TEof
+        self.peek().tokentype == TokenType::TEof
     }
 
     fn advance(&mut self) -> Token {
@@ -45,14 +47,14 @@ impl Parser {
         return self.previous();
     }
 
-    fn check(&mut self, kind: TokenKind) -> bool {
+    fn check(&mut self, kind: TokenType) -> bool {
         if self.is_at_end() {
             return false;
         };
-        return self.peek().kind == kind;
+        return self.peek().tokentype == kind;
     }
 
-    fn search(&mut self, kinds: Vec<TokenKind>) -> bool {
+    fn search(&mut self, kinds: Vec<TokenType>) -> bool {
         for kind in kinds {
             if self.check(kind) {
                 self.advance();
@@ -62,7 +64,7 @@ impl Parser {
         return false;
     }
 
-    fn consume(&mut self, kind: TokenKind, message: &str) -> Token {
+    fn consume(&mut self, kind: TokenType, message: &str) -> Token {
         if self.check(kind) {
             return self.advance();
         } else {
@@ -71,7 +73,7 @@ impl Parser {
         }
     }
 
-    fn consume_vec(&mut self, kinds: Vec<TokenKind>, message: &str) -> Token {
+    fn consume_vec(&mut self, kinds: Vec<TokenType>, message: &str) -> Token {
         for kind in kinds {
             if self.check(kind) {
                 return self.advance();
@@ -92,9 +94,23 @@ impl Parser {
         } else if self.search(vec![TkLiteral, TkNumeric]) {
             return Expr::Literal(LiteralExpr { value: tk });
         } else if self.search(vec![TkSymbol]) {
-            return Expr::Value(ValueExpr {
+            println!("{:?}", self.tkvec[self.curr]);
+
+            if self.peek().tokentype == TkLparen {
+                self.advance();
+                let mut args: Vec<Expr> = vec![];
+                while self.tkvec[self.curr].tokentype != TkRparen {
+                    args.push(self.expression());
+                    self.curr += 1
+                }
+                return Expr::Call(CallExpr { operation: self.previous(), args}
+);
+            } else {
+                return Expr::Value(ValueExpr {
                 name: self.previous(),
             });
+            }
+
         } else if self.search(vec![TkLparen]) {
             let expr: Expr = self.expression();
             self.consume(TkRparen, "Expected ')' after expression");
@@ -186,7 +202,7 @@ impl Parser {
 
     fn print_stmt(&mut self) -> Statement {
         let expr: Expr = self.expression();
-        self.consume(TkStatementEnd, "Unexpected end of print statement!");
+        //self.consume(TkStatementEnd, "Unexpected end of print statement!");
         return Statement::Print(PrintStmt { expression: expr });
     }
 
@@ -196,14 +212,19 @@ impl Parser {
         return Statement::Expression(ExpressionStmt { expression: expr });
     }
 
+    fn return_stmt(&mut self) -> Statement {
+        let value: Expr = self.expression();
+        return Statement::Return(ReturnStmt { value });
+    }
+
     fn statement(&mut self) -> Statement {
         if self.search(vec![TkKwPrint]) {
             return self.print_stmt();
-        } else if self.search(vec![TkKWVal]) {
+        } else if self.search(vec![TkKwVal]) {
             return self.val_decl();
-        } else if self.search(vec![TkKwIf]) {
-            return self.val_decl();
-        }else {
+        } else if self.search(vec![TkKwReturn]) {
+            return self.return_stmt();
+        } else {
             return self.expr_stmt();
         }
     }
@@ -222,16 +243,19 @@ impl Parser {
             kind,
             initializer,
         };
-        
-        return Statement::Val(res)
+
+        return Statement::Val(res);
     }
 
     fn init_param(&mut self) -> (Token, SymbolKind) {
         let name: Token = self.consume(TkSymbol, "Expected value name");
 
         let kind: SymbolKind = self
-            .consume_vec(vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool], "Invalid type")
-            .literal;
+            .consume_vec(
+                vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool],
+                "Invalid type",
+            )
+            .kind;
 
         (name, kind)
     }
@@ -240,13 +264,14 @@ impl Parser {
         let name: Token = self.consume(TkSymbol, "Expected value name");
 
         let kind: SymbolKind = self
-            .consume_vec(vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool], "Invalid type")
-            .literal;
+            .consume_vec(
+                vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool],
+                "Invalid type",
+            )
+            .kind;
 
         (name, kind)
     }
-
-    
 
     fn op_decl(&mut self) -> Statement {
         let name: Token = self.consume(TkSymbol, "Expected operation name");
@@ -255,11 +280,11 @@ impl Parser {
         self.consume(TkEqual, "Expected '='");
         self.consume(TkLparen, "Expected '('");
 
-        if self.tkvec[self.curr].kind != TkRparen {
-            while self.tkvec[self.curr].kind == TkSymbol
-                || self.tkvec[self.curr].kind == TkTyStr
-                || self.tkvec[self.curr].kind == TkTyInt
-                || self.tkvec[self.curr].kind == TkTyFlt
+        if self.tkvec[self.curr].tokentype != TkRparen {
+            while self.tkvec[self.curr].tokentype == TkSymbol
+                || self.tkvec[self.curr].tokentype == TkTyStr
+                || self.tkvec[self.curr].tokentype == TkTyInt
+                || self.tkvec[self.curr].tokentype == TkTyFlt
             {
                 let nv = self.init_param();
                 params.push(ValDecl {
@@ -275,7 +300,7 @@ impl Parser {
         //println!("{:?}", self.tkvec[self.curr]);
 
         self.consume(TkSmallArr, "Expected '->'");
-        opreturnkind = self.advance().literal;
+        opreturnkind = self.advance().kind;
         self.consume(TkKwIs, "Expected keyword 'is'");
 
         return Statement::Operation(OpDecl {
@@ -291,7 +316,9 @@ impl Parser {
     fn opblock(&mut self) -> Vec<Statement> {
         let mut collector: Vec<Statement> = vec![];
         self.consume(TkLBrace, "Expected '{'");
-        while self.tkvec[self.curr].kind != TkRBrace && self.tkvec[self.curr + 1].kind != TEof {
+        while self.tkvec[self.curr].tokentype != TkRBrace
+            && self.tkvec[self.curr + 1].tokentype != TEof
+        {
             collector.push(self.statement());
         }
         self.consume(TkRBrace, "Expected '}'");
@@ -310,24 +337,20 @@ impl Parser {
         while !self.is_at_end() {
             statements.push(self.declaration());
         }
-        let mut new_statements: Vec<Statement> = vec![];
-        for (i, el) in statements.clone().iter().enumerate() {
+        for (_i, el) in statements.clone().iter().enumerate() {
             match el {
-                Statement::Expression(es) => {
-                    match es.expression {
-                        Expr::Empty => {}
-                        _ => {
-                            new_statements.push(el.to_owned());
-                        }
+                Statement::Expression(es) => match es.expression {
+                    Expr::Empty => {}
+                    _ => {
+                        self.new_stmts.push(el.to_owned());
                     }
-                }
-                _ => {new_statements.push(el.to_owned())}
+                },
+                _ => self.new_stmts.push(el.to_owned()),
             }
         }
-        self.ast = new_statements;
     }
 
     pub fn supply(&mut self) -> Vec<Statement> {
-        return self.ast.clone();
+        return self.new_stmts.clone();
     }
 }

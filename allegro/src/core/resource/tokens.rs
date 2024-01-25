@@ -1,9 +1,9 @@
 use super::ast::SymbolKind;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum TokenKind {
+pub enum TokenType {
     TkKWOp,
-    TkKWVal,
+    TkKwVal,
     TkKwPrint,
     TkKwIs,
     TkKwIf,
@@ -14,6 +14,7 @@ pub enum TokenKind {
     TkKwIn,
     TkKwTask,
     TkKwInvoke,
+    TkKwReturn,
     TkKwTrue,
     TkKwFalse,
     TkSymbol,
@@ -54,9 +55,9 @@ pub enum TokenKind {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
-    pub kind: TokenKind,
+    pub tokentype: TokenType,
     //pub lexeme: Lexeme,
-    pub literal: SymbolKind,
+    pub kind: SymbolKind,
     pub location: usize,
 }
 
@@ -64,9 +65,9 @@ pub struct Token {
 macro_rules! create_token {
     ($el: tt, $kind: tt) => {
         Token {
-            kind: $kind,
+            tokentype: $kind,
             //lexeme: $el.clone(),
-            literal: $el.value.clone(),
+            kind: $el.value.clone(),
             location: $el.location,
         }
     };

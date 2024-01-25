@@ -1,4 +1,4 @@
-use crate::core::resource::tokens::{Token, TokenKind};
+use crate::core::resource::tokens::{Token, TokenType};
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -8,7 +8,7 @@ pub struct ParseError {
 
 impl ParseError {
     pub fn _report(&mut self) {
-        if self.token.kind == TokenKind::TEof {
+        if self.token.tokentype == TokenType::TEof {
 
         }
     }
