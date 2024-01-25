@@ -1,4 +1,4 @@
-use super::ast::SymbolKind;
+use super::{ast::SymbolValue, environment::AKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenType {
@@ -20,11 +20,7 @@ pub enum TokenType {
     TkSymbol,
     TkLiteral,
     TkNumeric,
-    TkTyInt,
-    TkTyFlt,
-    TkTyStr,
-    TkTyBool,
-    TkTyMute,
+    TkType(AKind),
     TkPlus,
     TkMinus,
     TkStar,
@@ -56,19 +52,20 @@ pub enum TokenType {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub tokentype: TokenType,
-    //pub lexeme: Lexeme,
-    pub kind: SymbolKind,
+    pub value: SymbolValue,
+    pub kind: Option<AKind>,
     pub location: usize,
 }
 
 #[macro_export]
 macro_rules! create_token {
-    ($el: tt, $kind: tt) => {
+    ($el: tt,$kind: tt) => {
         Token {
             tokentype: $kind,
-            //lexeme: $el.clone(),
-            kind: $el.value.clone(),
+            value: $el.value.clone(),
+            kind: ,
             location: $el.location,
         }
     };
+
 }

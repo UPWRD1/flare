@@ -29,7 +29,7 @@ pub fn start(filename: &String) {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    dbg!(analyzed.clone());
+    //dbg!(analyzed.clone());
     println!("[i] Analyzing: OK");
 
     let mut parser = parsing::Parser::new(analyzed);
@@ -41,7 +41,7 @@ pub fn start(filename: &String) {
     let mut checker = typechecking::Typechecker::new(ast.clone());
     checker.check();
     let checked = checker.supply();
-    dbg!(checked.clone());
+    //dbg!(checked.clone());
     println!("[i] Checking: OK");
 
     //let mut generator = codegen::Generator::new(ast.clone());

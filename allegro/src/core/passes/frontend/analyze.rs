@@ -1,8 +1,5 @@
 use crate::core::resource::{
-    ast::SymbolKind,
-    lexemes::Lexeme,
-    lexemes::LexemeKind::*,
-    tokens::{Token, TokenType, TokenType::*},
+    ast::{Ident, SymbolValue}, environment::AKind, lexemes::Lexeme, lexemes::LexemeKind::*, tokens::{Token, TokenType, TokenType::*}
 };
 
 use crate::create_token;
@@ -41,7 +38,7 @@ impl Analyzer {
     pub fn analyze(&mut self) {
         //println!("{:?}", self.lexvec);
         self.extract_keywords();
-        self.fix_types();
+        //self.fix_types();
     }
 
     fn extract_keywords(&mut self) {
@@ -51,8 +48,8 @@ impl Analyzer {
 
             match &el.kind {
                 LxSymbol => {
-                    let tkk = match &el.value {
-                        SymbolKind::Identity(id, _) => match id.as_str() {
+                    let tkk = match el.value.clone() {
+                        SymbolValue::Identity(id) => match id.name.unwrap().as_str() {
                             "val" => TokenType::TkKwVal,
                             "op" => TokenType::TkKWOp,
                             "print" => TokenType::TkKwPrint,
@@ -67,27 +64,31 @@ impl Analyzer {
                             "invoke" => TokenType::TkKwInvoke,
                             "return" => TokenType::TkKwReturn,
 
-                            "Int" => TokenType::TkTyInt,
-                            "Flt" => TokenType::TkTyFlt,
-                            "Str" => TokenType::TkTyStr,
-                            "Bool" => TokenType::TkTyBool,
+                            "Int" => TokenType::TkType(AKind::TyInt),
+                            "Flt" => TokenType::TkType(AKind::TyFlt),
+                            "Str" => TokenType::TkType(AKind::TyStr),
+                            "Bool" => TokenType::TkType(AKind::TyBool),
+
                             &_ => TokenType::TkSymbol,
-                        },
+                            }
+                            
                         _ => panic!("How did you get here?"),
                     };
                     let toadd: Token = Token {
                         tokentype: tkk,
-                        kind: el.value.clone(),
+                        kind: None,
+                        value: el.value.clone(),
                         location: el.location,
                     };
                     self.add(toadd)
                 }
                 LxLiteral => {
                     match &el.value {
-                        SymbolKind::Str(_) => {
+                        SymbolValue::Str(_) => {
                             self.add(Token {
                                 tokentype: TokenType::TkLiteral,
-                                kind: el.value.clone(),
+                                value: el.value.clone(),
+                                kind: Some(AKind::TyStr),
                                 location: el.location,
                             });
                         }
@@ -95,23 +96,26 @@ impl Analyzer {
                     };
                 }
                 LxNumeric => match el.value {
-                    SymbolKind::Int(_) => {
+                    SymbolValue::Int(_) => {
                         self.add(Token {
                             tokentype: TokenType::TkNumeric,
-                            kind: el.value.clone(),
+                            value: el.value.clone(),
+                            kind: Some(AKind::TyInt),
                             location: el.location,
                         });
                     }
-                    SymbolKind::Float(_) => {
+                    SymbolValue::Float(_) => {
                         self.add(Token {
                             tokentype: TokenType::TkNumeric,
-                            kind: el.value.clone(),
+                            value: el.value.clone(),
+                            kind: Some(AKind::TyFlt),
+
                             location: el.location,
                         });
                     }
                     _ => panic!("How did you get here? Who are you? What do you want?!"),
                 },
-                LxPlus => self.add(create_token!(el, TkPlus)),
+                LxPlus => self.add(create_token!(el, ,TkPlus)),
                 LxMinus => self.add(create_token!(el, TkMinus)),
                 LxStar => self.add(create_token!(el, TkStar)),
                 LxSlash => self.add(create_token!(el, TkSlash)),
@@ -121,7 +125,7 @@ impl Analyzer {
                 LxBigArr => self.add(create_token!(el, TkBigArr)),
                 LxPipe => self.add(create_token!(el, TkPipe)),
                 LxPercent => self.add(create_token!(el, TkPercent)),
-                LxDoubleDot => self.add(create_token!(el, TkTyMute)),
+                LxDoubleDot => self.add(create_token!(el, TkType(AKind::TyMute))),
                 LxLBrace => self.add(create_token!(el, TkLBrace)),
                 LxRBrace => self.add(create_token!(el, TkRBrace)),
                 LxStatementEnd => {
@@ -157,12 +161,12 @@ impl Analyzer {
             let el = &mut self.tkvec[self.loc].clone();
             //println!("{:?}", el);
 
-            let new_literal: SymbolKind = match &el.kind {
-                SymbolKind::Identity(_, _) => match el.tokentype {
-                    TkTyInt => SymbolKind::TyInt,
-                    TkTyFlt => SymbolKind::TyFlt,
-                    TkTyStr => SymbolKind::TyStr,
-                    TkTyMute => SymbolKind::TyMute,
+            let new_literal: SymbolValue = match &el.kind {
+                SymbolValue::Identity(_) => match el.tokentype {
+                    TkTyInt => SymbolValue::TyInt,
+                    TkTyFlt => SymbolValue::TyFlt,
+                    TkTyStr => SymbolValue::TyStr,
+                    TkTyMute => SymbolValue::TyMute,
                     _ => el.kind.clone(),
                 },
                 _ => el.kind.clone(),

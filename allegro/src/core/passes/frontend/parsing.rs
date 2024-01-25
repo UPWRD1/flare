@@ -1,3 +1,5 @@
+use std::io::Empty;
+
 use crate::core::resource::{
     ast::*,
     tokens::{Token, TokenType, TokenType::*},
@@ -26,7 +28,7 @@ impl Parser {
         } else {
             Token {
                 tokentype: TEof,
-                kind: SymbolKind::Nothing,
+                kind: SymbolValue::Nothing,
                 location: self.curr,
             }
         }
@@ -86,31 +88,23 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Expr {
-        let tk = self.peek();
-        if self.search(vec![TkKwFalse]) {
+        let mut tk = self.peek();
+        if self.search(vec![TkSymbol]) {            
+            return Expr::Value(ValueExpr { name: tk });
+        } else if self.search(vec![TkKwFalse]) {
             return Expr::Literal(LiteralExpr { value: tk });
         } else if self.search(vec![TkKwTrue]) {
             return Expr::Literal(LiteralExpr { value: tk });
         } else if self.search(vec![TkLiteral, TkNumeric]) {
-            return Expr::Literal(LiteralExpr { value: tk });
-        } else if self.search(vec![TkSymbol]) {
-            println!("{:?}", self.tkvec[self.curr]);
-
-            if self.peek().tokentype == TkLparen {
-                self.advance();
-                let mut args: Vec<Expr> = vec![];
-                while self.tkvec[self.curr].tokentype != TkRparen {
-                    args.push(self.expression());
-                    self.curr += 1
-                }
-                return Expr::Call(CallExpr { operation: self.previous(), args}
-);
-            } else {
-                return Expr::Value(ValueExpr {
-                name: self.previous(),
+            return Expr::Literal(LiteralExpr {
+                value: Token {
+                    tokentype: tk.tokentype,
+                    kind: SymbolValue::Identity(
+                        Ident::L(Box::new(tk.kind.get_identity_kind())),
+                    ),
+                    location: tk.location,
+                },
             });
-            }
-
         } else if self.search(vec![TkLparen]) {
             let expr: Expr = self.expression();
             self.consume(TkRparen, "Expected ')' after expression");
@@ -118,8 +112,39 @@ impl Parser {
                 expression: Box::new(expr),
             });
         } else {
-            Expr::Empty
+            return Expr::Empty
+                }
+    }
+
+    fn secondary(&mut self) -> Expr {
+        let expr = self.primary();
+        loop {
+            if self.search(vec![TkLparen]) {
+                let paren: Token;
+                let mut args: Vec<Expr> = vec![];
+                if self.search(vec![TkRparen]) {
+                    paren = self.previous();
+                } else {
+                    loop {
+                        let argument = self.expression();
+                        args.push(argument);
+                        if !self.search(vec![TkComma]) {
+                            break;
+                        }
+                    }
+                    paren = self.consume(TkRparen, "expect ')' after arguments")
+                }
+            
+                return Expr::Call(CallExpr {
+                    callee: Box::new(expr),
+                    paren,
+                    args,
+                });
+            } else {
+                break;
+            }
         }
+        return expr;
     }
 
     fn unary_expr(&mut self) -> Expr {
@@ -132,7 +157,7 @@ impl Parser {
             });
         }
 
-        return self.primary();
+        return self.secondary();
     }
 
     fn factor_expr(&mut self) -> Expr {
@@ -247,26 +272,33 @@ impl Parser {
         return Statement::Val(res);
     }
 
-    fn init_param(&mut self) -> (Token, SymbolKind) {
-        let name: Token = self.consume(TkSymbol, "Expected value name");
-
-        let kind: SymbolKind = self
+    fn init_param(&mut self) -> (Token, SymbolValue) {
+        let mut name: Token = self.consume(TkSymbol, "Expected value name");
+        self.consume(TkColon, "Expected ':'");
+        let kind: SymbolValue = self
             .consume_vec(
                 vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool],
-                "Invalid type",
+                format!("Invalid type {:?}", self.tkvec[self.curr]).as_str(),
             )
             .kind;
-
-        (name, kind)
+        //println!("{:?}", self.tkvec[self.curr]);
+        self.advance();
+        let new = Token {
+            tokentype: name.tokentype,
+            kind: SymbolValue::Identity(Ident::S(name.kind.get_identity_string())),
+            location: name.location,
+        };
+        (new.clone(), new.kind)
     }
 
-    fn val_signiture(&mut self) -> (Token, SymbolKind) {
+    fn val_signiture(&mut self) -> (Token, SymbolValue) {
         let name: Token = self.consume(TkSymbol, "Expected value name");
+        self.consume(TkColon, "Expected ':'");
 
-        let kind: SymbolKind = self
+        let kind: SymbolValue = self
             .consume_vec(
                 vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool],
-                "Invalid type",
+                format!("Invalid type {:?}", self.tkvec[self.curr]).as_str(),
             )
             .kind;
 
@@ -275,17 +307,7 @@ impl Parser {
 
     fn op_decl(&mut self) -> Statement {
         let name: Token = self.consume(TkSymbol, "Expected operation name");
-        let mut params: Vec<ValDecl> = vec![];
-        let opreturnkind: SymbolKind;
-        self.consume(TkEqual, "Expected '='");
-        self.consume(TkLparen, "Expected '('");
-
-        if self.tkvec[self.curr].tokentype != TkRparen {
-            while self.tkvec[self.curr].tokentype == TkSymbol
-                || self.tkvec[self.curr].tokentype == TkTyStr
-                || self.tkvec[self.curr].tokentype == TkTyInt
-                || self.tkvec[self.curr].tokentype == TkTyFlt
-            {
+        
                 let nv = self.init_param();
                 params.push(ValDecl {
                     name: nv.0,
@@ -293,10 +315,7 @@ impl Parser {
                     initializer: Expr::Empty,
                 });
                 //self.curr += 2;
-            }
-        } else {
-            self.consume(TkRparen, "Expected ')'");
-        }
+
         //println!("{:?}", self.tkvec[self.curr]);
 
         self.consume(TkSmallArr, "Expected '->'");

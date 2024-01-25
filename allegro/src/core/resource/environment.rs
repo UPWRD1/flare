@@ -1,9 +1,17 @@
-use super::ast::SymbolKind;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AKind {
+    TyStr,
+    TyInt,
+    TyFlt,
+    TyBool,
+    TyOp,
+}
 
 #[derive(Debug, Clone)]
 pub struct Entry {
     pub name: String,
-    pub value: SymbolKind,
+    pub value: AKind,
 }
 
 #[derive(Debug, Clone)]
@@ -21,11 +29,11 @@ impl Environment {
         Environment { entries: vec![], enclosing: Some(Box::new(e)) }
     }
 
-    pub fn define(&mut self, name: String, value: SymbolKind) {
+    pub fn define(&mut self, name: String, value: AKind) {
         self.entries.push(Entry { name, value });
     }
 
-    pub fn get(&mut self, name: String) -> SymbolKind {
+    pub fn get(&mut self, name: String) -> AKind {
         match self.entries.iter().position(|e| e.name == name) {
             Some(l) => return self.entries[l].value.clone(),
             None => {

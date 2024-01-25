@@ -1,4 +1,4 @@
-use crate::core::resource::ast::SymbolKind;
+use crate::core::resource::ast::SymbolValue;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -39,6 +39,6 @@ pub enum LexemeKind {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Lexeme {
     pub kind: LexemeKind,
-    pub value: SymbolKind,
+    pub value: SymbolValue,
     pub location: usize,
 }

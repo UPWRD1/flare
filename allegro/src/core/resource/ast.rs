@@ -1,9 +1,10 @@
 use super::tokens::Token;
+use super::environment::AKind;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssignExpr {
     pub name: Token,
-    pub kind: SymbolKind,
+    pub kind: AKind,
     pub value: Box<Expr>,
 }
 
@@ -16,7 +17,8 @@ pub struct BinExpr {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallExpr {
-    pub operation: Token,
+    pub callee: Box<Expr>,
+    pub paren: Token,
     pub args: Vec<Expr>,
 }
 
@@ -65,33 +67,33 @@ pub enum Expr {
 impl Expr {
     pub fn get_expr_value(&mut self) -> Token {
         match self {
-            Self::Assign(a) => {
-                a.name.clone()
-            }
-            Self::Binary(b) => {
-                b.operator.clone()
-            }
-            Self::Call(c) => {
-                c.operation.clone()
-            }
+            Self::Assign(a) => a.name.clone(),
+            Self::Binary(b) => b.operator.clone(),
+            Self::Call(c) => c.paren.clone(),
             Self::Empty => {
                 panic!("Cannot get value of empty expression!")
             }
-            Self::Grouping(g) => {
-                g.expression.get_expr_value().clone()
+            Self::Grouping(g) => g.expression.get_expr_value().clone(),
+            Self::Literal(l) => l.value.clone(),
+            Self::Logical(l) => l.operator.clone(),
+            Self::Unary(u) => u.operator.clone(),
+            Self::Value(v) => v.name.clone(),
+        }
+    }
+
+    pub fn get_expr_type(&mut self) -> AKind {
+        match self {
+            Self::Assign(a) => a.kind.clone(),
+            Self::Binary(b) => b.left.clone().get_expr_type(),
+            Self::Call(c) => c.callee.get_expr_type(),
+            Self::Empty => {
+                panic!("Cannot get value of empty expression!")
             }
-            Self::Literal(l) => {
-                l.value.clone()
-            }
-            Self::Logical(l) => {
-                l.operator.clone()
-            }
-            Self::Unary(u) => {
-                u.operator.clone()
-            }
-            Self::Value(v) => {
-                v.name.clone()
-            }
+            Self::Grouping(g) => g.expression.get_expr_type().clone(),
+            Self::Literal(l) => l.value.kind.clone(),
+            Self::Logical(l) => l.left.get_expr_type().clone(),
+            Self::Unary(u) => u.right.get_expr_type().clone(),
+            Self::Value(v) => v.name.kind.clone(),
         }
     }
 }
@@ -110,7 +112,7 @@ pub struct ExpressionStmt {
 pub struct OpDecl {
     pub name: Token,
     pub params: Vec<ValDecl>,
-    pub kind: SymbolKind,
+    pub kind: SymbolValue,
     pub body: BlockStmt,
 }
 
@@ -134,7 +136,7 @@ pub struct ReturnStmt {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValDecl {
     pub name: Token,
-    pub kind: SymbolKind,
+    pub kind: SymbolValue,
     pub initializer: Expr,
 }
 
@@ -154,59 +156,43 @@ pub enum Statement {
 impl Statement {
     pub fn get_token_value(&mut self) -> Token {
         match self {
-            Self::Val(vd) => {
-                vd.name.clone()
-            }
-            Self::Operation(op) => {
-                op.name.clone()
-            }
-            Self::Expression(ex) => {
-                ex.expression.get_expr_value()
-            }
-            Self::Print(p) => {
-                p.expression.get_expr_value()
-            }
-            Self::Return(r) => {
-                r.value.get_expr_value()
-            }
-            _ => panic!("Unkown statemnet kind")
+            Self::Val(vd) => vd.name.clone(),
+            Self::Operation(op) => op.name.clone(),
+            Self::Expression(ex) => ex.expression.get_expr_value(),
+            Self::Print(p) => p.expression.get_expr_value(),
+            Self::Return(r) => r.value.get_expr_value(),
+            _ => panic!("Unkown statemnet kind"),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
-pub enum SymbolKind {
+pub enum SymbolValue {
     Str(String),
-    TyStr,
     Int(i32),
-    TyInt,
     Float(f32),
-    TyFlt,
     Bool(bool),
-    TyBool,
-    TyMute,
-    Identity(String, Box<SymbolKind>), //name value
-    Nothing,
+    Identity(Ident), //name value
     Unknown,
+    Nothing,
 }
 
-impl SymbolKind {
-    pub fn get_identity_string(&mut self) -> String {
+impl SymbolValue {
+    pub fn to_akind(self) -> AKind {
         match self {
-            Self::Identity(n, _) => {
-                return n.to_string()
-            }
-            _ => panic!("Cannot get identity of {:?}", self)
+            Self::Bool(b) => AKind::TyBool,
+            Self::Float(f) => AKind::TyFlt,
+            Self::Int(i) => AKind::TyInt,
+            Self::Str(s)=> AKind::TyStr,
+            Self::Unknown => panic!("Unknown type!")
         }
     }
+}
 
-    pub fn translate_kind(self) -> SymbolKind {
-        match self {
-            Self::Int(_) => Self::TyInt,
-            Self::Float(_) => Self::TyFlt,
-            Self::Bool(_) => Self::TyBool,
-            Self::Str(_) => Self::TyStr,
-            _ => self
-        }
-    }
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct Ident {
+    pub name: Option<String>,
+    pub kind: Box<AKind>,
+    pub value: Box<SymbolValue>,
 }

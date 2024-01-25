@@ -1,7 +1,9 @@
-use crate::core::resource::ast::SymbolKind;
-use crate::core::resource::ast::SymbolKind::*;
+use crate::core::resource::ast::SymbolValue;
+use crate::core::resource::ast::SymbolValue::*;
 use crate::core::resource::lexemes::Lexeme;
 use crate::core::resource::lexemes::LexemeKind::*;
+use crate::core::resource::ast::Ident;
+
 
 use crate::lexingerror;
 use crate::quit;
@@ -63,6 +65,10 @@ impl Lexer {
 
     fn advance(&mut self) {
         self.location += 1;
+    }
+
+    fn retreat(&mut self) {
+        self.location -= 1;
     }
 
     fn next(&mut self) -> char {
@@ -225,9 +231,10 @@ impl Lexer {
         */
         self.add(create_lexeme!(
             LxSymbol,
-            SymbolKind::Identity(accumulator.iter().collect::<String>(), Box::new(Unknown)),
+            SymbolValue::Identity(Ident::S(accumulator.iter().collect::<String>())),
             self
-        ))
+        ));
+        self.retreat();
     }
 
     fn create_numeric(&mut self) {
@@ -256,6 +263,7 @@ impl Lexer {
             self
         ))
         }
+        self.retreat();
     }
 
     fn create_literal(&mut self) {
@@ -268,9 +276,10 @@ impl Lexer {
         self.advance(); //Continue past the final "
         self.add(create_lexeme!(
             LxLiteral,
-            SymbolKind::Str(accumulator.iter().collect::<String>()),
+            SymbolValue::Str(accumulator.iter().collect::<String>()),
             self
         ));
+        self.retreat();
     }
 
     pub fn supply(&mut self) -> Vec<Lexeme> {
