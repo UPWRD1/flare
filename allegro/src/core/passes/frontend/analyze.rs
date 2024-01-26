@@ -1,5 +1,5 @@
 use crate::core::resource::{
-    ast::{Ident, SymbolValue}, environment::AKind, lexemes::Lexeme, lexemes::LexemeKind::*, tokens::{Token, TokenType, TokenType::*}
+    ast::SymbolValue, environment::AKind, lexemes::Lexeme, lexemes::LexemeKind::*, tokens::{Token, TokenType, TokenType::*}
 };
 
 use crate::create_token;
@@ -115,7 +115,7 @@ impl Analyzer {
                     }
                     _ => panic!("How did you get here? Who are you? What do you want?!"),
                 },
-                LxPlus => self.add(create_token!(el, ,TkPlus)),
+                LxPlus => self.add(create_token!(el, TkPlus)),
                 LxMinus => self.add(create_token!(el, TkMinus)),
                 LxStar => self.add(create_token!(el, TkStar)),
                 LxSlash => self.add(create_token!(el, TkSlash)),
@@ -125,7 +125,10 @@ impl Analyzer {
                 LxBigArr => self.add(create_token!(el, TkBigArr)),
                 LxPipe => self.add(create_token!(el, TkPipe)),
                 LxPercent => self.add(create_token!(el, TkPercent)),
-                LxDoubleDot => self.add(create_token!(el, TkType(AKind::TyMute))),
+                LxDoubleDot => {
+                    let toadd: Token = Token { tokentype: TkType(AKind::TyMute), value: el.value.clone(), kind: Some(AKind::TyMute), location: el.location.clone() };
+                    self.add(toadd)
+                },
                 LxLBrace => self.add(create_token!(el, TkLBrace)),
                 LxRBrace => self.add(create_token!(el, TkRBrace)),
                 LxStatementEnd => {
@@ -161,19 +164,20 @@ impl Analyzer {
             let el = &mut self.tkvec[self.loc].clone();
             //println!("{:?}", el);
 
-            let new_literal: SymbolValue = match &el.kind {
-                SymbolValue::Identity(_) => match el.tokentype {
-                    TkTyInt => SymbolValue::TyInt,
-                    TkTyFlt => SymbolValue::TyFlt,
-                    TkTyStr => SymbolValue::TyStr,
-                    TkTyMute => SymbolValue::TyMute,
-                    _ => el.kind.clone(),
+            let new_literal: AKind = match &el.value {
+                SymbolValue::Identity(_) => match &el.tokentype {
+                    TkTyInt => AKind::TyInt,
+                    TkTyFlt => AKind::TyFlt,
+                    TkTyStr => AKind::TyStr,
+                    TkTyMute => AKind::TyMute,
+                    _ => el.kind.clone().expect("Expected value"),
                 },
-                _ => el.kind.clone(),
+                _ => el.kind.clone().unwrap(),
             };
             self.tkvec[self.loc] = Token {
                 tokentype: el.tokentype.clone(),
-                kind: new_literal,
+                kind: Some(new_literal),
+                value: el.value.clone(),
                 location: self.loc,
             };
             self.loc += 1;

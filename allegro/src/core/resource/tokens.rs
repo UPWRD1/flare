@@ -50,6 +50,12 @@ pub enum TokenType {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct TokenValue {
+    value: SymbolValue,
+    kind: Option<AKind>
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub tokentype: TokenType,
     pub value: SymbolValue,
@@ -59,13 +65,21 @@ pub struct Token {
 
 #[macro_export]
 macro_rules! create_token {
-    ($el: tt,$kind: tt) => {
+    ($el: tt, $kind: tt) => {
         Token {
             tokentype: $kind,
             value: $el.value.clone(),
-            kind: ,
+            kind: None,
             location: $el.location,
         }
     };
 
+    ($el: tt, $kind: tt($a: expr)) => {
+        Token {
+            tokentype: $kind,
+            value: $el.value.clone(),
+            kind: $a,
+            location: $el.location,
+        }
+    };
 }

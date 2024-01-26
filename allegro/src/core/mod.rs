@@ -35,7 +35,7 @@ pub fn start(filename: &String) {
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
     let ast = parser.supply();
-    dbg!(ast.clone());
+    //dbg!(ast.clone());
     println!("[i] Parsing: OK");
 
     let mut checker = typechecking::Typechecker::new(ast.clone());

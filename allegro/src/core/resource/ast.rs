@@ -81,9 +81,9 @@ impl Expr {
         }
     }
 
-    pub fn get_expr_type(&mut self) -> AKind {
+    pub fn get_expr_type(&mut self) -> Option<AKind> {
         match self {
-            Self::Assign(a) => a.kind.clone(),
+            Self::Assign(a) => Some(a.kind.clone()),
             Self::Binary(b) => b.left.clone().get_expr_type(),
             Self::Call(c) => c.callee.get_expr_type(),
             Self::Empty => {
@@ -112,7 +112,7 @@ pub struct ExpressionStmt {
 pub struct OpDecl {
     pub name: Token,
     pub params: Vec<ValDecl>,
-    pub kind: SymbolValue,
+    pub kind: AKind,
     pub body: BlockStmt,
 }
 
@@ -136,7 +136,7 @@ pub struct ReturnStmt {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValDecl {
     pub name: Token,
-    pub kind: SymbolValue,
+    pub kind: AKind,
     pub initializer: Expr,
 }
 
@@ -184,7 +184,23 @@ impl SymbolValue {
             Self::Float(f) => AKind::TyFlt,
             Self::Int(i) => AKind::TyInt,
             Self::Str(s)=> AKind::TyStr,
-            Self::Unknown => panic!("Unknown type!")
+            Self::Identity(i) => {if i.kind.is_some() {
+                return *i.kind.unwrap()
+            } else {
+                return AKind::TyUnknown
+            }
+        },
+            Self::Nothing => AKind::TyMute,
+            _ => panic!("Unknown type!")
+        }
+    }
+
+    pub fn get_string(self) -> Option<String> {
+        match self {
+            Self::Identity(i) => {
+                return i.name
+            },
+            _ => panic!("Cannot get string name of value {:?}", self)
         }
     }
 }
@@ -193,6 +209,6 @@ impl SymbolValue {
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct Ident {
     pub name: Option<String>,
-    pub kind: Box<AKind>,
+    pub kind: Option<Box<AKind>>,
     pub value: Box<SymbolValue>,
 }

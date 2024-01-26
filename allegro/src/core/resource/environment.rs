@@ -5,7 +5,10 @@ pub enum AKind {
     TyInt,
     TyFlt,
     TyBool,
+    TyMute,
     TyOp,
+    TyUnknown,
+    TyEof,
 }
 
 #[derive(Debug, Clone)]

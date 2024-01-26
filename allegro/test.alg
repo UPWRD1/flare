@@ -3,6 +3,6 @@ op test = (a: Int) -> Int is {
 }
 
 op main = () -> .. is {
-    val x: Int = 2;
+    val x: Int = 2.5;
     test(x);
 }

@@ -3,7 +3,7 @@ use crate::core::resource::ast::SymbolValue::*;
 use crate::core::resource::lexemes::Lexeme;
 use crate::core::resource::lexemes::LexemeKind::*;
 use crate::core::resource::ast::Ident;
-
+use crate::core::resource::environment::AKind;
 
 use crate::lexingerror;
 use crate::quit;
@@ -223,15 +223,9 @@ impl Lexer {
             accumulator.push(self.current());
             self.advance();
         }
-        /*
-        self.lxvec.push(LxIdent(Identtype::Sym(
-            accumulator.iter().collect::<String>(),
-            Identclass::Symbol,
-        )))
-        */
         self.add(create_lexeme!(
             LxSymbol,
-            SymbolValue::Identity(Ident::S(accumulator.iter().collect::<String>())),
+            SymbolValue::Identity(Ident {name: Some(accumulator.iter().collect::<String>()), kind: None, value: Box::new(SymbolValue::Str(accumulator.iter().collect::<String>()))}),
             self
         ));
         self.retreat();

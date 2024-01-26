@@ -2,6 +2,7 @@ use std::io::Empty;
 
 use crate::core::resource::{
     ast::*,
+    environment::AKind,
     tokens::{Token, TokenType, TokenType::*},
 };
 
@@ -28,7 +29,8 @@ impl Parser {
         } else {
             Token {
                 tokentype: TEof,
-                kind: SymbolValue::Nothing,
+                value: SymbolValue::Nothing,
+                kind: Some(AKind::TyEof),
                 location: self.curr,
             }
         }
@@ -89,22 +91,21 @@ impl Parser {
 
     fn primary(&mut self) -> Expr {
         let mut tk = self.peek();
-        if self.search(vec![TkSymbol]) {            
+        if self.search(vec![TkSymbol]) {
             return Expr::Value(ValueExpr { name: tk });
         } else if self.search(vec![TkKwFalse]) {
             return Expr::Literal(LiteralExpr { value: tk });
         } else if self.search(vec![TkKwTrue]) {
             return Expr::Literal(LiteralExpr { value: tk });
         } else if self.search(vec![TkLiteral, TkNumeric]) {
-            return Expr::Literal(LiteralExpr {
-                value: Token {
-                    tokentype: tk.tokentype,
-                    kind: SymbolValue::Identity(
-                        Ident::L(Box::new(tk.kind.get_identity_kind())),
-                    ),
-                    location: tk.location,
-                },
-            });
+            return Expr::Literal(LiteralExpr { value: tk });
+            //value: Token
+            //tokentype: tk.tokentype,
+            //value: SymbolValue::Identity(
+            //Ident { name: None, kind: Some(AKind::TyStr), value: SymbolValue::Str())
+            //),
+            //kind:
+            //location: tk.location,
         } else if self.search(vec![TkLparen]) {
             let expr: Expr = self.expression();
             self.consume(TkRparen, "Expected ')' after expression");
@@ -112,8 +113,8 @@ impl Parser {
                 expression: Box::new(expr),
             });
         } else {
-            return Expr::Empty
-                }
+            return Expr::Empty;
+        }
     }
 
     fn secondary(&mut self) -> Expr {
@@ -134,7 +135,7 @@ impl Parser {
                     }
                     paren = self.consume(TkRparen, "expect ')' after arguments")
                 }
-            
+
                 return Expr::Call(CallExpr {
                     callee: Box::new(expr),
                     paren,
@@ -272,54 +273,92 @@ impl Parser {
         return Statement::Val(res);
     }
 
-    fn init_param(&mut self) -> (Token, SymbolValue) {
-        let mut name: Token = self.consume(TkSymbol, "Expected value name");
+    fn init_param(&mut self) -> (Token, AKind) {
+        let name: Token = self.advance();
         self.consume(TkColon, "Expected ':'");
-        let kind: SymbolValue = self
+
+        let newkind: AKind = self
             .consume_vec(
-                vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool],
-                format!("Invalid type {:?}", self.tkvec[self.curr]).as_str(),
+                vec![
+                    TkType(AKind::TyInt),
+                    TkType(AKind::TyFlt),
+                    TkType(AKind::TyStr),
+                    TkType(AKind::TyBool),
+                    TkType(AKind::TyMute),
+                    TkType(AKind::TyEof),
+                ],
+                "Expected type",
             )
-            .kind;
-        //println!("{:?}", self.tkvec[self.curr]);
-        self.advance();
+            .value
+            .to_akind();
         let new = Token {
             tokentype: name.tokentype,
-            kind: SymbolValue::Identity(Ident::S(name.kind.get_identity_string())),
+            kind: Some(newkind.clone()),
+            value: SymbolValue::Identity(Ident {
+                name: Some(name.value.get_string().expect("Expected param name")),
+                kind: Some(Box::new(newkind)),
+                value: Box::new(SymbolValue::Unknown),
+            }),
             location: name.location,
         };
-        (new.clone(), new.kind)
+        (new.clone(), new.kind.unwrap())
     }
 
-    fn val_signiture(&mut self) -> (Token, SymbolValue) {
+    fn val_signiture(&mut self) -> (Token, AKind) {
         let name: Token = self.consume(TkSymbol, "Expected value name");
-        self.consume(TkColon, "Expected ':'");
+        self.consume(TkColon, "Expected ':' in vdecl");
 
-        let kind: SymbolValue = self
+        let kind = self
             .consume_vec(
-                vec![TkTyFlt, TkTyInt, TkTyStr, TkTyMute, TkTyBool],
-                format!("Invalid type {:?}", self.tkvec[self.curr]).as_str(),
+                vec![
+                    TkType(AKind::TyInt),
+                    TkType(AKind::TyFlt),
+                    TkType(AKind::TyStr),
+                    TkType(AKind::TyBool),
+                    TkType(AKind::TyEof),
+                    TkType(AKind::TyMute),
+                ],
+                "Expected type",
             )
-            .kind;
+            .value.to_akind();
+        let new = Token {
+            tokentype: name.clone().tokentype,
+            kind: Some(kind.clone()),
+            value: SymbolValue::Identity(Ident {
+                name: Some(
+                    name.clone()
+                        .value
+                        .get_string()
+                        .expect("Expected param name"),
+                ),
+                kind: Some(Box::new(kind.clone())),
+                value: Box::new(SymbolValue::Unknown),
+            }),
+            location: name.location,
+        };
 
         (name, kind)
     }
 
     fn op_decl(&mut self) -> Statement {
         let name: Token = self.consume(TkSymbol, "Expected operation name");
-        
-                let nv = self.init_param();
-                params.push(ValDecl {
-                    name: nv.0,
-                    kind: nv.1,
-                    initializer: Expr::Empty,
-                });
-                //self.curr += 2;
+        self.consume(TkEqual, "Expected '='");
+        self.consume(TkLparen, "Expected '('");
 
-        //println!("{:?}", self.tkvec[self.curr]);
+        let mut params: Vec<ValDecl> = vec![];
+        if self.peek().tokentype != TkRparen {
+            let nv = self.init_param();
+            params.push(ValDecl {
+                name: nv.0,
+                kind: nv.1,
+                initializer: Expr::Empty,
+            });
+        }
 
+        //self.curr += 2;
+        self.consume(TkRparen, "Expected ')'");
         self.consume(TkSmallArr, "Expected '->'");
-        opreturnkind = self.advance().kind;
+        let opreturnkind = self.advance().value.to_akind();
         self.consume(TkKwIs, "Expected keyword 'is'");
 
         return Statement::Operation(OpDecl {
