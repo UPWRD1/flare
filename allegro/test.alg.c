@@ -1,3 +1,3 @@
-void main() {
-    char* x = "a123";
+void main(int a, double b) {
+char* x = "3.3";
 }

@@ -1,3 +1,4 @@
+use crate::core::resource;
 use crate::core::resource::ast::Expr;
 use crate::core::resource::ast::Statement;
 use crate::core::resource::environment::AKind;
@@ -34,8 +35,8 @@ impl Typechecker {
                 //println!("{:?}", vd);
                 let declared_type = vd.name.value.clone().to_akind();
                 let resolved_type = self.resolve_expr(vd.initializer.clone());
-                //println!("Declared: {:?}", declared_type);
-                //println!("Resolved: {:?}", resolved_type);
+                println!("Declared: {:?}", declared_type);
+                println!("Resolved: {:?}", resolved_type);
 
                 self.expect_expr(
                     vd.initializer,
@@ -126,9 +127,6 @@ impl Typechecker {
             let nk: AKind = exprkind.clone();
 
             if expected_kinds.contains(&AKind::TyUnknown){
-                return;
-            }
-            if expected_kinds.contains(&AKind::TyStr) {
                 return;
             } else if nk == *kind {
                 return;
@@ -223,8 +221,14 @@ impl Typechecker {
     }
 
     pub fn check(&mut self) {
-        let nast = self.ast.clone();
-        while self.loc < self.ast.len() {
+        let mut nast = self.ast.clone();
+        for s in nast.len()..0 {
+            let c = &nast[s];
+            if *c == Statement::Expression(resource::ast::ExpressionStmt { expression: Expr::Empty }) {
+                nast.remove(self.loc);
+            }
+        }
+        while self.loc < nast.len() {
             //dbg!(self.env.clone());
             let stmt: Statement = nast[self.loc].clone();
             self.check_statement(stmt.clone());

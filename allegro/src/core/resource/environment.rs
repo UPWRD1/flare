@@ -13,6 +13,21 @@ pub enum AKind {
     TyEof,
 }
 
+impl AKind {
+    pub fn to_ctype(self) -> String {
+        match self {
+            Self::TyInt => return "int".to_string(),
+            AKind::TyStr => return "char*".to_string(),
+            AKind::TyFlt => return "double".to_string(),
+            AKind::TyBool => return "bool".to_string(),
+            AKind::TyMute => return "void".to_string(),
+            //AKind::TyUnknown => return "null".to_string(),
+            _ => panic!("Invalid type {:?}", self),
+           
+        }
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Entry {

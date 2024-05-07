@@ -35,23 +35,23 @@ pub fn start(filename: &String) {
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
     let ast = parser.supply();
-    dbg!(ast.clone());
+    //dbg!(ast.clone());
     println!("[i] Parsing: OK");
 
     let mut checker = typechecking::Typechecker::new(ast.clone());
     checker.check();
     let checked = checker.supply();
-    //dbg!(checked.clone());
+    dbg!(checked.clone());
     println!("[i] Checking: OK");
 
-    let mut generator = codegen::Generator::new(ast.clone());
-    //generator.generate();
-    //let generated = generator.supply();
-    //println!("{}", generated.clone());
-    //println!("[i] Generation: OK");
+    let mut generator = codegen::Generator::new(checked.clone());
+    generator.generate();
+    let generated = generator.supply();
+    println!("{}", generated.clone());
+    println!("[i] Generation: OK");
 
-    //let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
-    //let _ = file.write_all(format!("{}", generated).as_bytes());
+    let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
+    let _ = file.write_all(format!("{}", generated).as_bytes());
 
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);

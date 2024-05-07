@@ -34,8 +34,16 @@ impl Parser {
         }
     }
 
+    fn inspect(&mut self) {
+        println!("{:?}", self.tkvec[self.curr].tokentype)
+    }
+
     fn previous(&mut self) -> Token {
         self.tkvec.get(self.curr - 1).unwrap().clone()
+    }
+
+    fn current(&mut self) -> Token {
+        self.tkvec.get(self.curr).unwrap().clone()
     }
 
     fn is_at_end(&mut self) -> bool {
@@ -306,8 +314,8 @@ impl Parser {
             }),
             location: name.location,
         };
-        //println!("{:?}", new);
-        new.clone()
+        println!("{:?}", new);
+        new
     }
 
     fn val_signiture(&mut self) -> Token {
@@ -361,19 +369,26 @@ impl Parser {
 
         let mut params: Vec<ValDecl> = vec![];
         if self.peek().tokentype != TkRparen {
-            let nv = self.init_param();
-            params.push(ValDecl {
-                name: nv,
-                initializer: Expr::Empty,
-            });
+            while self.peek().tokentype != TkRparen {
+                let nv = self.init_param();
+                params.push(ValDecl {
+                   name: nv,
+                    initializer: Expr::Empty,
+                });
+                if self.current().tokentype == TkRparen {
+                    break;
+                } else {
+                    self.advance();
+                }
+            }
         }
-
-        //self.curr += 2;
+        self.inspect();
         self.consume(TkRparen, "Expected ')'");
+
         self.consume(TkSmallArr, "Expected '->'");
         let opreturnkind = self.advance().value;
         self.consume(TkKwIs, "Expected keyword 'is'");
-        println!("{:?}", opreturnkind);
+        // println!("{:?}", opreturnkind);
         match name.value {
             SymbolValue::Identity(ref mut i) => {
                 i.kind = Some(Box::new(opreturnkind.clone().to_akind()))
