@@ -115,7 +115,10 @@ impl Lexer {
                         {
                             self.advance();
                         }
-                    } else {
+                    } else if (0..9).contains(&self.next().to_string().parse::<i32>().unwrap()) {
+                        self.create_numeric()
+
+                    }                        else {
                         self.add(create_lexeme!(LxMinus, Nothing, self));
                         self.advance()
                     }
@@ -158,7 +161,7 @@ impl Lexer {
 
                 '.' => {
                     if self.next() == '.' {
-                        self.add(create_lexeme!(LxDoubleDot, Nothing, self));
+                        self.add(create_lexeme!(LxDoubleDot, Mute, self));
                         self.advance();
                         self.advance()
                     } else {

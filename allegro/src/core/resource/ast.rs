@@ -1,5 +1,4 @@
-use super::tokens::Token;
-use super::environment::AKind;
+use super::{environment::AKind, tokens::Token};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssignExpr {
@@ -113,6 +112,7 @@ pub struct ExpressionStmt {
 pub struct OpDecl {
     pub name: Token,
     pub params: Vec<ValDecl>,
+    pub returnval: SymbolValue,
     pub body: BlockStmt,
 }
 
@@ -173,10 +173,28 @@ pub enum SymbolValue {
     Bool(bool),
     Identity(Ident), //name value
     Unknown,
+    Mute,
     Nothing,
 }
 
 impl SymbolValue {
+    pub fn to_akind(self) -> AKind {
+        match self {
+            Self::Bool(_) => AKind::TyBool,
+            Self::Float(_) => AKind::TyFlt,
+            Self::Int(_) => AKind::TyInt,
+            Self::Str(_)=> AKind::TyStr,
+            Self::Identity(i) => {if i.kind.is_some() {
+                return *i.kind.unwrap()
+            } else {
+                return AKind::TyUnknown
+            }
+        },
+            Self::Nothing => AKind::TyMute,
+            Self::Mute => AKind::TyMute,
+            _ => panic!("Unknown type! {:?}", self)
+        }
+    }
 
     pub fn get_string(self) -> Option<String> {
         match self {
@@ -192,6 +210,6 @@ impl SymbolValue {
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct Ident {
     pub name: Option<String>,
-    pub kind: Option<Box<SymbolValue>>,
+    pub kind: Option<Box<AKind>>,
     pub value: Box<SymbolValue>,
 }

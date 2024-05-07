@@ -1,6 +1,5 @@
 use crate::core::resource::ast::Expr;
 use crate::core::resource::ast::Statement;
-use crate::core::resource::ast::SymbolValue;
 use crate::core::resource::environment::AKind;
 use crate::core::resource::environment::Environment;
 use crate::core::resource::tokens::TokenType;
@@ -32,8 +31,12 @@ impl Typechecker {
                 self.resolve_expr(e.expression);
             }
             Statement::Val(vd) => {
-                let declared_type = vd.kind;
+                //println!("{:?}", vd);
+                let declared_type = vd.name.value.clone().to_akind();
                 let resolved_type = self.resolve_expr(vd.initializer.clone());
+                //println!("Declared: {:?}", declared_type);
+                //println!("Resolved: {:?}", resolved_type);
+
                 self.expect_expr(
                     vd.initializer,
                     resolved_type.expect("Expected type"),
@@ -54,7 +57,7 @@ impl Typechecker {
             }
 
             Statement::Operation(o) => {
-                let op_type = o.kind;
+                let op_type = o.returnval.to_akind();
                 self.env
                     .define(o.name.value.clone().get_string().unwrap(), op_type.clone());
 
@@ -65,8 +68,9 @@ impl Typechecker {
                 self.current_op_kind = Some(op_type);
 
                 for param in o.params {
+                    //println!("{:?}", param);
                     self.env
-                        .define(param.name.value.get_string().unwrap(), param.kind)
+                        .define(param.name.value.clone().get_string().unwrap(), param.name.value.to_akind())
                 }
 
                 self.check_statement(Statement::Block(o.body));
@@ -101,6 +105,7 @@ impl Typechecker {
 
             Statement::Return(r) => {
                 if self.current_op_kind == Some(AKind::TyMute) {
+                    println!("{:?}", self.current_op_kind);
                     panic!("This operation does not return any value")
                 }
                 let value_kind = self.resolve_expr(r.value.clone());
@@ -118,7 +123,8 @@ impl Typechecker {
 
     fn expect_expr(&mut self, expr: Expr, exprkind: AKind, expected_kinds: Vec<AKind>) {
         for kind in &expected_kinds {
-            let nk = exprkind.clone();
+            let nk: AKind = exprkind.clone();
+
             if expected_kinds.contains(&AKind::TyUnknown){
                 return;
             }
@@ -129,10 +135,11 @@ impl Typechecker {
             }
         }
 
-        panic!(
-            "Expected {:?} to be of type {:?}, but found {:?}",
+        println!(
+            "Error: Expected {:?} to be of type {:?}, but found {:?}",
             expr, expected_kinds, exprkind
-        )
+        );
+        std::process::exit(1);
     }
 
     fn resolve_expr(&mut self, expr: Expr) -> Option<AKind> {
@@ -146,7 +153,7 @@ impl Typechecker {
                     TokenType::TkPlus => self.expect_expr(
                         *b.left.clone(),
                         lhstype.clone()?,
-                        vec![AKind::TyInt, AKind::TyFlt],
+                        vec![AKind::TyInt, AKind::TyFlt, AKind::TyStr],
                     ),
                     TokenType::TkMinus
                     | TokenType::TkStar
@@ -157,7 +164,7 @@ impl Typechecker {
                     | TokenType::TkCGT => self.expect_expr(
                         *b.left.clone(),
                         lhstype.clone()?,
-                        vec![AKind::TyInt, AKind::TyFlt, AKind::TyStr],
+                        vec![AKind::TyInt, AKind::TyFlt],
                     ),
                     _ => panic!("Invalid operator {:?}", b.operator),
                 }
@@ -198,11 +205,15 @@ impl Typechecker {
                 let callee_type = self.resolve_expr(*c.callee.clone());
                 for (i, arg) in c.args.iter().enumerate() {
                     let arg_type = self.resolve_expr(arg.clone());
-                    let expected_type = c.clone().args[i].get_expr_type();
+                    let expected_type = c.clone().args[i].get_expr_value().value.to_akind();
                     println!("{:?}", expected_type.clone());
-                    self.expect_expr(arg.clone(), arg_type?, vec![expected_type?])
+                    self.expect_expr(arg.clone(), arg_type?, vec![expected_type])
                 }
                 return callee_type;
+            }
+
+            Expr::Grouping(g) => {
+                return self.resolve_expr(*g.expression)
             }
 
             Expr::Empty => return None,
@@ -216,7 +227,8 @@ impl Typechecker {
         while self.loc < self.ast.len() {
             //dbg!(self.env.clone());
             let stmt: Statement = nast[self.loc].clone();
-            self.check_statement(stmt);
+            self.check_statement(stmt.clone());
+            self.checked.push(stmt);
             self.loc += 1
         }
     }

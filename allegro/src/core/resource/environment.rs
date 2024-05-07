@@ -1,3 +1,5 @@
+use super::ast::SymbolValue;
+
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AKind {
@@ -10,6 +12,7 @@ pub enum AKind {
     TyUnknown,
     TyEof,
 }
+
 
 #[derive(Debug, Clone)]
 pub struct Entry {

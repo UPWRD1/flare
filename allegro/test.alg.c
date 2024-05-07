@@ -1,3 +1,3 @@
 void main() {
-int x = 3;
+    char* x = "a123";
 }

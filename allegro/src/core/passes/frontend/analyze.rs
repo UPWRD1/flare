@@ -81,6 +81,12 @@ impl Analyzer {
                             value: el.value.clone(),
                             location: el.location,
                         };
+                    } else if tkk == TokenType::TkType(AKind::TyInt) ||  tkk == TokenType::TkType(AKind::TyFlt) || tkk == TokenType::TkType(AKind::TyStr) || tkk == TokenType::TkType(AKind::TyBool){
+                        toadd = Token {
+                            tokentype: tkk,
+                            value: el.value.clone(),
+                            location: el.location,
+                        };
                     } else {
                         toadd = Token {
                             tokentype: tkk,

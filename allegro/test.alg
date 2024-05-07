@@ -1,3 +1,7 @@
 op main = () -> .. is {
-    val x: Int = 3;
+    val x: Str = "a";
+}
+
+op test = (a: Int) -> Int is {
+    return a * 3;
 }
