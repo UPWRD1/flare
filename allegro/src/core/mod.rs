@@ -9,7 +9,7 @@ use passes::frontend::analyze;
 use passes::frontend::lexing;
 use passes::frontend::parsing;
 //use passes::midend::collapse;
-use passes::midend::typechecking;
+//use passes::midend::typechecking;
 
 //use passes::backend::codegen;
 
@@ -35,14 +35,14 @@ pub fn start(filename: &String) {
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
     let ast = parser.supply();
-    //dbg!(ast.clone());
+    dbg!(ast.clone());
     println!("[i] Parsing: OK");
 
-    let mut checker = typechecking::Typechecker::new(ast.clone());
-    checker.check();
-    let checked = checker.supply();
+    //let mut checker = typechecking::Typechecker::new(ast.clone());
+    //checker.check();
+    //let checked = checker.supply();
     //dbg!(checked.clone());
-    println!("[i] Checking: OK");
+    //println!("[i] Checking: OK");
 
     //let mut generator = codegen::Generator::new(ast.clone());
     //generator.generate();

@@ -3,7 +3,6 @@ use crate::core::resource::ast::SymbolValue::*;
 use crate::core::resource::lexemes::Lexeme;
 use crate::core::resource::lexemes::LexemeKind::*;
 use crate::core::resource::ast::Ident;
-use crate::core::resource::environment::AKind;
 
 use crate::lexingerror;
 use crate::quit;

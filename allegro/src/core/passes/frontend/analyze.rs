@@ -74,12 +74,20 @@ impl Analyzer {
                             
                         _ => panic!("How did you get here?"),
                     };
-                    let toadd: Token = Token {
-                        tokentype: tkk,
-                        kind: None,
-                        value: el.value.clone(),
-                        location: el.location,
-                    };
+                    let toadd: Token;
+                    if tkk == TokenType::TkSymbol {
+                        toadd = Token {
+                            tokentype: tkk,
+                            value: el.value.clone(),
+                            location: el.location,
+                        };
+                    } else {
+                        toadd = Token {
+                            tokentype: tkk,
+                            value: SymbolValue::Nothing,
+                            location: el.location,
+                        };
+                    }
                     self.add(toadd)
                 }
                 LxLiteral => {
@@ -88,7 +96,7 @@ impl Analyzer {
                             self.add(Token {
                                 tokentype: TokenType::TkLiteral,
                                 value: el.value.clone(),
-                                kind: Some(AKind::TyStr),
+                                //kind: Some(AKind::TyStr),
                                 location: el.location,
                             });
                         }
@@ -100,7 +108,7 @@ impl Analyzer {
                         self.add(Token {
                             tokentype: TokenType::TkNumeric,
                             value: el.value.clone(),
-                            kind: Some(AKind::TyInt),
+                            //kind: Some(AKind::TyInt),
                             location: el.location,
                         });
                     }
@@ -108,7 +116,6 @@ impl Analyzer {
                         self.add(Token {
                             tokentype: TokenType::TkNumeric,
                             value: el.value.clone(),
-                            kind: Some(AKind::TyFlt),
 
                             location: el.location,
                         });
@@ -126,7 +133,7 @@ impl Analyzer {
                 LxPipe => self.add(create_token!(el, TkPipe)),
                 LxPercent => self.add(create_token!(el, TkPercent)),
                 LxDoubleDot => {
-                    let toadd: Token = Token { tokentype: TkType(AKind::TyMute), value: el.value.clone(), kind: Some(AKind::TyMute), location: el.location.clone() };
+                    let toadd: Token = Token { tokentype: TkType(AKind::TyMute), value: el.value.clone(), location: el.location.clone() };
                     self.add(toadd)
                 },
                 LxLBrace => self.add(create_token!(el, TkLBrace)),
@@ -161,26 +168,7 @@ impl Analyzer {
     fn fix_types(&mut self) {
         self.loc = 0;
         while self.loc < self.tkvec.len() {
-            let el = &mut self.tkvec[self.loc].clone();
-            //println!("{:?}", el);
-
-            let new_literal: AKind = match &el.value {
-                SymbolValue::Identity(_) => match &el.tokentype {
-                    TkTyInt => AKind::TyInt,
-                    TkTyFlt => AKind::TyFlt,
-                    TkTyStr => AKind::TyStr,
-                    TkTyMute => AKind::TyMute,
-                    _ => el.kind.clone().expect("Expected value"),
-                },
-                _ => el.kind.clone().unwrap(),
-            };
-            self.tkvec[self.loc] = Token {
-                tokentype: el.tokentype.clone(),
-                kind: Some(new_literal),
-                value: el.value.clone(),
-                location: self.loc,
-            };
-            self.loc += 1;
+            
         }
     }
     pub fn supply(&mut self) -> Vec<Token> {

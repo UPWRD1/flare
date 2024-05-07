@@ -4,7 +4,6 @@ use super::environment::AKind;
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssignExpr {
     pub name: Token,
-    pub kind: AKind,
     pub value: Box<Expr>,
 }
 
@@ -80,7 +79,7 @@ impl Expr {
             Self::Value(v) => v.name.clone(),
         }
     }
-
+    /*
     pub fn get_expr_type(&mut self) -> Option<AKind> {
         match self {
             Self::Assign(a) => Some(a.kind.clone()),
@@ -90,12 +89,14 @@ impl Expr {
                 panic!("Cannot get value of empty expression!")
             }
             Self::Grouping(g) => g.expression.get_expr_type().clone(),
-            Self::Literal(l) => l.value.kind.clone(),
+            Self::Literal(l) => l.value.value.clone(),
             Self::Logical(l) => l.left.get_expr_type().clone(),
             Self::Unary(u) => u.right.get_expr_type().clone(),
             Self::Value(v) => v.name.kind.clone(),
         }
     }
+     */
+    
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -112,7 +113,6 @@ pub struct ExpressionStmt {
 pub struct OpDecl {
     pub name: Token,
     pub params: Vec<ValDecl>,
-    pub kind: AKind,
     pub body: BlockStmt,
 }
 
@@ -136,7 +136,6 @@ pub struct ReturnStmt {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValDecl {
     pub name: Token,
-    pub kind: AKind,
     pub initializer: Expr,
 }
 
@@ -178,22 +177,6 @@ pub enum SymbolValue {
 }
 
 impl SymbolValue {
-    pub fn to_akind(self) -> AKind {
-        match self {
-            Self::Bool(b) => AKind::TyBool,
-            Self::Float(f) => AKind::TyFlt,
-            Self::Int(i) => AKind::TyInt,
-            Self::Str(s)=> AKind::TyStr,
-            Self::Identity(i) => {if i.kind.is_some() {
-                return *i.kind.unwrap()
-            } else {
-                return AKind::TyUnknown
-            }
-        },
-            Self::Nothing => AKind::TyMute,
-            _ => panic!("Unknown type!")
-        }
-    }
 
     pub fn get_string(self) -> Option<String> {
         match self {
@@ -209,6 +192,6 @@ impl SymbolValue {
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct Ident {
     pub name: Option<String>,
-    pub kind: Option<Box<AKind>>,
+    pub kind: Option<Box<SymbolValue>>,
     pub value: Box<SymbolValue>,
 }

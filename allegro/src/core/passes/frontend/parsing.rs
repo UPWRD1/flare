@@ -1,4 +1,3 @@
-use std::io::Empty;
 
 use crate::core::resource::{
     ast::*,
@@ -30,7 +29,6 @@ impl Parser {
             Token {
                 tokentype: TEof,
                 value: SymbolValue::Nothing,
-                kind: Some(AKind::TyEof),
                 location: self.curr,
             }
         }
@@ -266,18 +264,17 @@ impl Parser {
         }
         let res = ValDecl {
             name,
-            kind,
             initializer,
         };
 
         return Statement::Val(res);
     }
 
-    fn init_param(&mut self) -> (Token, AKind) {
+    fn init_param(&mut self) -> (Token, SymbolValue) {
         let name: Token = self.advance();
         self.consume(TkColon, "Expected ':'");
 
-        let newkind: AKind = self
+        let newkind = self
             .consume_vec(
                 vec![
                     TkType(AKind::TyInt),
@@ -289,11 +286,9 @@ impl Parser {
                 ],
                 "Expected type",
             )
-            .value
-            .to_akind();
+            .value;
         let new = Token {
             tokentype: name.tokentype,
-            kind: Some(newkind.clone()),
             value: SymbolValue::Identity(Ident {
                 name: Some(name.value.get_string().expect("Expected param name")),
                 kind: Some(Box::new(newkind)),
@@ -301,10 +296,10 @@ impl Parser {
             }),
             location: name.location,
         };
-        (new.clone(), new.kind.unwrap())
+        (new.clone(), new.value.clone())
     }
 
-    fn val_signiture(&mut self) -> (Token, AKind) {
+    fn val_signiture(&mut self) -> (Token, SymbolValue) {
         let name: Token = self.consume(TkSymbol, "Expected value name");
         self.consume(TkColon, "Expected ':' in vdecl");
 
@@ -320,10 +315,9 @@ impl Parser {
                 ],
                 "Expected type",
             )
-            .value.to_akind();
+            .value;
         let new = Token {
             tokentype: name.clone().tokentype,
-            kind: Some(kind.clone()),
             value: SymbolValue::Identity(Ident {
                 name: Some(
                     name.clone()
@@ -350,7 +344,6 @@ impl Parser {
             let nv = self.init_param();
             params.push(ValDecl {
                 name: nv.0,
-                kind: nv.1,
                 initializer: Expr::Empty,
             });
         }
@@ -358,13 +351,12 @@ impl Parser {
         //self.curr += 2;
         self.consume(TkRparen, "Expected ')'");
         self.consume(TkSmallArr, "Expected '->'");
-        let opreturnkind = self.advance().value.to_akind();
+        let opreturnkind = self.advance().value;
         self.consume(TkKwIs, "Expected keyword 'is'");
 
         return Statement::Operation(OpDecl {
             name,
             params,
-            kind: opreturnkind,
             body: BlockStmt {
                 statements: self.opblock(),
             },

@@ -59,7 +59,7 @@ pub struct TokenValue {
 pub struct Token {
     pub tokentype: TokenType,
     pub value: SymbolValue,
-    pub kind: Option<AKind>,
+    //pub kind: Option<AKind>,
     pub location: usize,
 }
 
@@ -69,7 +69,6 @@ macro_rules! create_token {
         Token {
             tokentype: $kind,
             value: $el.value.clone(),
-            kind: None,
             location: $el.location,
         }
     };

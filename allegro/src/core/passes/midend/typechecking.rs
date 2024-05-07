@@ -31,7 +31,7 @@ impl Typechecker {
             Statement::Expression(e) => {
                 self.resolve_expr(e.expression);
             }
-            Statement::Val(mut vd) => {
+            Statement::Val(vd) => {
                 let declared_type = vd.kind;
                 let resolved_type = self.resolve_expr(vd.initializer.clone());
                 self.expect_expr(
@@ -212,9 +212,10 @@ impl Typechecker {
     }
 
     pub fn check(&mut self) {
+        let nast = self.ast.clone();
         while self.loc < self.ast.len() {
             //dbg!(self.env.clone());
-            let stmt: Statement = self.ast[self.loc].clone();
+            let stmt: Statement = nast[self.loc].clone();
             self.check_statement(stmt);
             self.loc += 1
         }
