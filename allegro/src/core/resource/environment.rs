@@ -21,6 +21,8 @@ impl AKind {
             AKind::TyFlt => return "double".to_string(),
             AKind::TyBool => return "bool".to_string(),
             AKind::TyMute => return "void".to_string(),
+            AKind::TyUnknown => return "null".to_string(),
+
             //AKind::TyUnknown => return "null".to_string(),
             _ => panic!("Invalid type {:?}", self),
            

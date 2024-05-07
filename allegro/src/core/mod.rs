@@ -41,13 +41,13 @@ pub fn start(filename: &String) {
     let mut checker = typechecking::Typechecker::new(ast.clone());
     checker.check();
     let checked = checker.supply();
-    dbg!(checked.clone());
+    //dbg!(checked.clone());
     println!("[i] Checking: OK");
 
     let mut generator = codegen::Generator::new(checked.clone());
     generator.generate();
     let generated = generator.supply();
-    println!("{}", generated.clone());
+    //println!("{}", generated.clone());
     println!("[i] Generation: OK");
 
     let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");

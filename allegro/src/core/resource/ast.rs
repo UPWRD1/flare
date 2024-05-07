@@ -112,7 +112,7 @@ pub struct ExpressionStmt {
 pub struct OpDecl {
     pub name: Token,
     pub params: Vec<ValDecl>,
-    pub returnval: SymbolValue,
+    pub returnval: AKind,
     pub body: BlockStmt,
 }
 
@@ -131,6 +131,7 @@ pub struct PrintStmt {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReturnStmt {
     pub value: Expr,
+    pub returntype: AKind
 }
 
 #[derive(Clone, Debug, PartialEq)]

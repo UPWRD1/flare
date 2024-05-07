@@ -1,3 +1,8 @@
-void main(int a, double b) {
-char* x = "3.3";
+void main()
+{
+int x = 3;
+}
+int test(int a, int b)
+{
+return
 }

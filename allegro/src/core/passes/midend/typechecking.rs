@@ -1,4 +1,5 @@
 use crate::core::resource;
+use crate::core::resource::ast::BinExpr;
 use crate::core::resource::ast::Expr;
 use crate::core::resource::ast::Statement;
 use crate::core::resource::environment::AKind;
@@ -35,8 +36,8 @@ impl Typechecker {
                 //println!("{:?}", vd);
                 let declared_type = vd.name.value.clone().to_akind();
                 let resolved_type = self.resolve_expr(vd.initializer.clone());
-                println!("Declared: {:?}", declared_type);
-                println!("Resolved: {:?}", resolved_type);
+                //println!("Declared: {:?}", declared_type);
+                //println!("Resolved: {:?}", resolved_type);
 
                 self.expect_expr(
                     vd.initializer,
@@ -58,7 +59,7 @@ impl Typechecker {
             }
 
             Statement::Operation(o) => {
-                let op_type = o.returnval.to_akind();
+                let op_type = o.returnval;
                 self.env
                     .define(o.name.value.clone().get_string().unwrap(), op_type.clone());
 
@@ -106,7 +107,7 @@ impl Typechecker {
 
             Statement::Return(r) => {
                 if self.current_op_kind == Some(AKind::TyMute) {
-                    println!("{:?}", self.current_op_kind);
+                    //println!("{:?}", self.current_op_kind);
                     panic!("This operation does not return any value")
                 }
                 let value_kind = self.resolve_expr(r.value.clone());
@@ -123,10 +124,11 @@ impl Typechecker {
     }
 
     fn expect_expr(&mut self, expr: Expr, exprkind: AKind, expected_kinds: Vec<AKind>) {
-        for kind in &expected_kinds {
-            let nk: AKind = exprkind.clone();
+        let nk: AKind = exprkind.clone();
 
-            if expected_kinds.contains(&AKind::TyUnknown){
+        for kind in &expected_kinds {
+
+            if expected_kinds.contains(&AKind::TyUnknown) {
                 return;
             } else if nk == *kind {
                 return;
@@ -204,7 +206,7 @@ impl Typechecker {
                 for (i, arg) in c.args.iter().enumerate() {
                     let arg_type = self.resolve_expr(arg.clone());
                     let expected_type = c.clone().args[i].get_expr_value().value.to_akind();
-                    println!("{:?}", expected_type.clone());
+                    //println!("{:?}", expected_type.clone());
                     self.expect_expr(arg.clone(), arg_type?, vec![expected_type])
                 }
                 return callee_type;

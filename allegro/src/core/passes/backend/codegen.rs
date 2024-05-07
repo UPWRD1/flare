@@ -52,7 +52,7 @@ impl Generator {
         //println!("{s:?}");
         match s {
             Statement::Val(vd) => vd.name.value.to_akind().to_ctype(),
-            Statement::Operation(o) => o.name.value.to_akind().to_ctype(),
+            Statement::Operation(o) => o.returnval.to_ctype(),
             _ => panic!("Unsupported statement {s:?}")
         }
        
@@ -111,21 +111,30 @@ impl Generator {
                 let cname: String = o.name.value.get_string().unwrap();
                 let ckind = self.get_ctype(el.clone());
                 let cparams = self.gen_cparams(el);
-                self.add(line!(0, "{ckind} {cname}({cparams}) {{"));
+                self.add(line!(0, "{ckind} {cname}({cparams})"));
                 self.gen_code(Statement::Block(o.body))
         
             }
     
             Statement::Block(b) => {
+                self.add(line!(0, "{{"));
                 for s in b.statements {
                     self.gen_code(s)
                 }
+                self.add(line!(0, "}}"));
+
             }
 
             Statement::Expression(e) => {
                 if e.expression == Expr::Empty {
                 //do nothing
                 }
+            }
+
+            Statement::Return(r) => {
+                self.add(line!(0, "return"));
+                self.gen_code(Statement::Expression(ExpressionStmt { expression: r.value }));
+
             }
             _ => {
                 panic!("Unsupported ast Token: {:?}", el);
@@ -138,7 +147,7 @@ impl Generator {
         for i in self.output.clone() {
             accum = format!("{accum}{}\n", i.c)
         }
-        accum = format!("{accum}}}");
+        accum = format!("{accum}");
         return accum;
     }
 }

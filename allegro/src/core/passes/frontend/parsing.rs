@@ -157,9 +157,9 @@ impl Parser {
     fn unary_expr(&mut self) -> Expr {
         if self.search(vec![TkMinus]) {
             let operator: Token = self.previous();
-            println!("{:?}", operator);
+            //println!("{:?}", operator);
             self.advance();
-            println!("{:?}", self.previous());
+            //println!("{:?}", self.previous());
             let right = self.secondary();
             return Expr::Unary(UnaryExpr {
                 operator,
@@ -248,8 +248,8 @@ impl Parser {
     }
 
     fn return_stmt(&mut self) -> Statement {
-        let value: Expr = self.expression();
-        return Statement::Return(ReturnStmt { value });
+        let mut value: Expr = self.expression();
+        return Statement::Return(ReturnStmt { value: value.clone(), returntype: value.get_expr_value().value.to_akind() });
     }
 
     fn statement(&mut self) -> Statement {
@@ -314,7 +314,7 @@ impl Parser {
             }),
             location: name.location,
         };
-        println!("{:?}", new);
+        //println!("{:?}", new);
         new
     }
 
@@ -386,12 +386,18 @@ impl Parser {
         self.consume(TkRparen, "Expected ')'");
 
         self.consume(TkSmallArr, "Expected '->'");
-        let opreturnkind = self.advance().value;
+        let opreturnkind_tk = self.advance().tokentype;
+        let opreturnkind = match opreturnkind_tk {
+            TkType(t) => {
+                t
+            }
+            _ => panic!("invalid type {opreturnkind_tk:?}")
+        };  
         self.consume(TkKwIs, "Expected keyword 'is'");
-        // println!("{:?}", opreturnkind);
+        //println!("{:?}", opreturnkind);
         match name.value {
             SymbolValue::Identity(ref mut i) => {
-                i.kind = Some(Box::new(opreturnkind.clone().to_akind()))
+                i.kind = Some(Box::new(opreturnkind.clone()))
             },
             _ => panic!("Invalid function name")
         }
