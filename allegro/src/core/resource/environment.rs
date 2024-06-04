@@ -63,7 +63,7 @@ impl Environment {
             Some(l) => return self.entries[l].value.clone(),
             None => {
                 if self.enclosing.is_some() {
-                    return self.enclosing.clone().unwrap().get(name);
+                    self.enclosing.clone().unwrap().get(name)
                 } else {
                     panic!("Unknown value binding {}", name)
                 }
