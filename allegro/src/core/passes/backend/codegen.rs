@@ -80,14 +80,7 @@ impl Generator {
                 let mut count = 0;
                 for v in &p {
                     let n = &v.name.name;
-                    let t = <ast::SymbolValue as Clone>::clone(
-                        &<Option<ast::SymbolValue> as Clone>::clone(
-                            &v.initializer.get_expr_value().value,
-                        )
-                        .unwrap(),
-                    )
-                    .to_akind()
-                    .to_ctype();
+                    let t = v.name.kind.to_ctype();
                     if count == &p.len() - 1 {
                         accum = format!("{accum}{t} {n}");
                     } else {
@@ -239,7 +232,7 @@ impl Generator {
                 TokenType::TkKwTrue => todo!(),
                 TokenType::TkKwFalse => todo!(),
                 TokenType::TkSymbol => {
-                    println!("{:?}", p.expression.get_expr_value().value);
+                    //println!("{:?}", p.expression.get_expr_value().value);
                     "//printf".to_string()
                     //return format!("printf({}", key,)
                 }

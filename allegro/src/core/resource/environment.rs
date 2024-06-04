@@ -11,7 +11,7 @@ pub enum AKind {
 }
 
 impl AKind {
-    pub fn to_ctype(self) -> String {
+    pub fn to_ctype(&self) -> String {
         match self {
             Self::TyInt => "int".to_string(),
             AKind::TyStr => "char*".to_string(),

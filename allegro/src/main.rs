@@ -12,7 +12,7 @@ fn main() {
                 let filename = &prog_args[2];
                 let output_filename = &prog_args[3];
                 println!("[i] Compiling {} to {}", filename, output_filename);
-                core::start(filename);
+                core::full_compile(filename);
             }
 
             &_ => todo!(),

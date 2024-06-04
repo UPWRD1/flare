@@ -2,6 +2,7 @@ use super::{ast::SymbolValue, environment::AKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenType {
+    TkKwUse,
     TkKWOp,
     TkKwLet,
     TkKwPrint,

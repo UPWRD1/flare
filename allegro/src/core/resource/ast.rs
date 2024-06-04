@@ -160,6 +160,17 @@ pub enum Scalar {
     Bool(bool),
 }
 
+impl Scalar {
+    fn to_akind(&self) -> AKind {
+        return match self {
+            Self::Bool(_) => AKind::TyBool,
+            Self::Float(_) => AKind::TyFlt,
+            Self::Int(_) => AKind::TyInt,
+            Self::Str(_) => AKind::TyStr,
+        };
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum SymbolValue {
     Scalar(Scalar),
@@ -169,7 +180,7 @@ pub enum SymbolValue {
 }
 
 impl SymbolValue {
-    pub fn to_akind(self) -> AKind {
+    pub fn to_akind(&self) -> AKind {
         match self {
             Self::Scalar(s) => match s {
                 Scalar::Bool(_) => AKind::TyBool,
@@ -177,12 +188,8 @@ impl SymbolValue {
                 Scalar::Int(_) => AKind::TyInt,
                 Scalar::Str(_) => AKind::TyStr,
             },
-            Self::Identity(_) => {
-                //if i.kind.is_some() {
-                //    return *i.kind.unwrap();
-                //} else {
-                AKind::TyUnknown
-                //}
+            Self::Identity(i) => {
+                return i.clone().kind; //}
             }
             Self::Mute => AKind::TyMute,
             _ => panic!("Unknown type! {:?}", self),
@@ -206,6 +213,6 @@ impl SymbolValue {
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct Ident {
     pub name: String,
-    //pub kind: Option<Box<AKind>>,
-    //pub value: Box<SymbolValue>,
+    pub kind: AKind,
+    pub value: Box<SymbolValue>,
 }

@@ -32,15 +32,12 @@ impl Typechecker {
                 self.resolve_expr(e.expression);
             }
             Statement::Val(vd) => {
-                //println!("{:?}", vd);
-                let declared_type = vd
-                    .initializer
-                    .get_expr_value()
-                    .value
-                    .unwrap()
-                    .clone()
-                    .to_akind();
+                println!("{:?}", vd);
+                let declared_type = vd.name.kind;
+                println!("{:?}", declared_type);
+
                 let resolved_type = self.resolve_expr(vd.initializer.clone());
+                println!("{:?}", resolved_type);
 
                 self.expect_expr(
                     vd.initializer,
@@ -74,9 +71,10 @@ impl Typechecker {
                 self.current_op_kind = Some(op_type);
 
                 for param in o.params {
-                    self.env.define(
+                    //println!("{}", param.name.name);
+                                        self.env.define(
                         param.name.name,
-                        param.initializer.get_expr_value().value.unwrap().to_akind(),
+                        param.name.kind
                     )
                 }
 
@@ -133,7 +131,7 @@ impl Typechecker {
 
         for kind in &expected_kinds {
             if expected_kinds.contains(&AKind::TyUnknown) {
-                return;
+                panic!()
             } else if nk == *kind {
                 return;
             }
@@ -240,7 +238,7 @@ impl Typechecker {
             let stmt: Statement = nast[self.loc].clone();
             self.check_statement(stmt.clone());
             self.checked.push(stmt.clone());
-            dbg!("{:?}", stmt);
+            //dbg!(stmt);
             self.loc += 1
         }
     }

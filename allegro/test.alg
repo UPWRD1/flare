@@ -1,6 +1,9 @@
+use other.alg;
+
 -- we love comments
 
 op main: .. of () -> {
-    let x := 3;
+    let x: Int = 3;
     print x;
 }
+ 

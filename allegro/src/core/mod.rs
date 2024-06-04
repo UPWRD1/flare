@@ -14,22 +14,12 @@ use passes::midend::typechecking;
 use passes::backend::codegen;
 
 
-pub fn start(filename: &String) {
+pub fn full_compile(filename: &String) {
     let now = Instant::now();
 
+    let cstvec = compile_lex(filename);
 
-    let contents = &std::fs::read_to_string(filename).unwrap();
-    let mut lxr = lexing::Lexer::new(contents.to_string());
-    lxr.lex();
-    let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();
-    //dbg!(cstvec.clone());
-    println!("[i] Lexing: OK");
-
-    let mut analyzer = analyze::Analyzer::new(cstvec);
-    analyzer.analyze();
-    let analyzed = analyzer.supply();
-    //dbg!(analyzed.clone());
-    println!("[i] Analyzing: OK");
+    let analyzed = compile_analyze(cstvec);
 
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
@@ -56,3 +46,23 @@ pub fn start(filename: &String) {
     println!("Elapsed: {:.2?}", elapsed);
 
 }
+
+fn compile_analyze(cstvec: Vec<resource::lexemes::Lexeme>) -> Vec<resource::tokens::Token> {
+    let mut analyzer = analyze::Analyzer::new(cstvec);
+    analyzer.analyze();
+    let analyzed = analyzer.supply();
+    //dbg!(analyzed.clone());
+    println!("[i] Analyzing: OK");
+    analyzed
+}
+
+fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
+    let contents = &std::fs::read_to_string(filename).unwrap();
+    let mut lxr = lexing::Lexer::new(contents.to_string());
+    lxr.lex();
+    let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();
+    //dbg!(cstvec.clone());
+    println!("[i] Lexing: OK");
+    cstvec
+}
+

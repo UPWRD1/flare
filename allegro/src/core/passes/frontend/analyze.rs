@@ -73,6 +73,8 @@ impl Analyzer {
                             "Str" => TokenType::TkType(AKind::TyStr),
                             "Bool" => TokenType::TkType(AKind::TyBool),
 
+                            "use" => TokenType::TkKwUse,
+
                             &_ => TokenType::TkSymbol,
                         },
 

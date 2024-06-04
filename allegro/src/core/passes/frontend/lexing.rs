@@ -1,6 +1,7 @@
 use crate::core::resource::ast::Ident;
 use crate::core::resource::ast::Scalar;
 use crate::core::resource::ast::SymbolValue;
+use crate::core::resource::environment::AKind;
 use crate::core::resource::lexemes::Lexeme;
 use crate::core::resource::lexemes::LexemeKind::*;
 
@@ -210,6 +211,8 @@ impl Lexer {
         self.add(Lexeme {
             kind: LxSymbol(SymbolValue::Identity(Ident {
                 name: accumulator.iter().collect::<String>(),
+                value: Box::new(SymbolValue::Unknown),
+                kind: AKind::TyUnknown
                 //kind: None,
                 //value: Box::new(SymbolValue::Scalar(Scalar::Str(accumulator.iter().collect::<String>()))),
             })),
