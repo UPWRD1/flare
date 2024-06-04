@@ -26,7 +26,7 @@ pub struct GroupExpr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LiteralExpr {
+pub struct ScalarExpr {
     pub value: Token,
 }
 
@@ -55,7 +55,7 @@ pub enum Expr {
     Binary(BinExpr),
     Call(CallExpr),
     Grouping(GroupExpr),
-    Literal(LiteralExpr),
+    ScalarEx(ScalarExpr),
     Logical(LogicalExpr),
     Unary(UnaryExpr),
     Value(ValueExpr),
@@ -63,16 +63,16 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn get_expr_value(&mut self) -> Token {
+    pub fn get_expr_value(&self) -> Token {
         match self {
             Self::Assign(a) => a.name.clone(),
-            Self::Binary(b) => b.operator.clone(),
+            Self::Binary(b) => b.left.clone().get_expr_value(),
             Self::Call(c) => c.paren.clone(),
             Self::Empty => {
                 panic!("Cannot get value of empty expression!")
             }
             Self::Grouping(g) => g.expression.get_expr_value().clone(),
-            Self::Literal(l) => l.value.clone(),
+            Self::ScalarEx(l) => l.value.clone(),
             Self::Logical(l) => l.operator.clone(),
             Self::Unary(u) => u.operator.clone(),
             Self::Value(v) => v.name.clone(),
@@ -95,7 +95,6 @@ impl Expr {
         }
     }
      */
-    
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -131,12 +130,12 @@ pub struct PrintStmt {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReturnStmt {
     pub value: Expr,
-    pub returntype: AKind
+    pub returntype: AKind,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValDecl {
-    pub name: Token,
+    pub name: Ident,
     pub initializer: Expr,
 }
 
@@ -153,64 +152,60 @@ pub enum Statement {
     Empty,
 }
 
-impl Statement {
-    pub fn get_token_value(&mut self) -> Token {
-        match self {
-            Self::Val(vd) => vd.name.clone(),
-            Self::Operation(op) => op.name.clone(),
-            Self::Expression(ex) => ex.expression.get_expr_value(),
-            Self::Print(p) => p.expression.get_expr_value(),
-            Self::Return(r) => r.value.get_expr_value(),
-            _ => panic!("Unkown statemnet kind"),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
-pub enum SymbolValue {
+pub enum Scalar {
     Str(String),
     Int(i32),
     Float(f32),
     Bool(bool),
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub enum SymbolValue {
+    Scalar(Scalar),
     Identity(Ident), //name value
     Unknown,
     Mute,
-    Nothing,
 }
 
 impl SymbolValue {
     pub fn to_akind(self) -> AKind {
         match self {
-            Self::Bool(_) => AKind::TyBool,
-            Self::Float(_) => AKind::TyFlt,
-            Self::Int(_) => AKind::TyInt,
-            Self::Str(_)=> AKind::TyStr,
-            Self::Identity(i) => {if i.kind.is_some() {
-                return *i.kind.unwrap()
-            } else {
-                return AKind::TyUnknown
+            Self::Scalar(s) => match s {
+                Scalar::Bool(_) => AKind::TyBool,
+                Scalar::Float(_) => AKind::TyFlt,
+                Scalar::Int(_) => AKind::TyInt,
+                Scalar::Str(_) => AKind::TyStr,
+            },
+            Self::Identity(_) => {
+                //if i.kind.is_some() {
+                //    return *i.kind.unwrap();
+                //} else {
+                return AKind::TyUnknown;
+                //}
             }
-        },
-            Self::Nothing => AKind::TyMute,
             Self::Mute => AKind::TyMute,
-            _ => panic!("Unknown type! {:?}", self)
+            _ => panic!("Unknown type! {:?}", self),
         }
     }
 
     pub fn get_string(self) -> Option<String> {
         match self {
-            Self::Identity(i) => {
-                return i.name
+            Self::Identity(i) => return Some(i.name),
+            Self::Scalar(s) => match s {
+                Scalar::Int(v) => format!("{v}").into(),
+                Scalar::Float(v) => format!("{v}").into(),
+                Scalar::Str(v) => format!("{v}").into(),
+                Scalar::Bool(v) => format!("{v}").into(),
             },
-            _ => panic!("Cannot get string name of value {:?}", self)
+            _ => panic!("Cannot get string name of value {:?}", self),
         }
     }
 }
 
-
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct Ident {
-    pub name: Option<String>,
-    pub kind: Option<Box<AKind>>,
-    pub value: Box<SymbolValue>,
+    pub name: String,
+    //pub kind: Option<Box<AKind>>,
+    //pub value: Box<SymbolValue>,
 }

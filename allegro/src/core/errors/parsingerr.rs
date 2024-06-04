@@ -8,8 +8,6 @@ pub struct ParseError {
 
 impl ParseError {
     pub fn _report(&mut self) {
-        if self.token.tokentype == TokenType::TEof {
-
-        }
+        if self.token.tokentype == TokenType::TkEof {}
     }
 }

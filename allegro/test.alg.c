@@ -1,8 +1,9 @@
-void main()
-{
-int x = 3;
+#include <stdio.h>
+
+int test(int a) {
+    return a * 3;
 }
-int test(int a, int b)
-{
-return
+void main() {
+    int x = 3;
+    //printf
 }

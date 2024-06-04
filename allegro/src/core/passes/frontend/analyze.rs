@@ -1,8 +1,12 @@
 use crate::core::resource::{
-    ast::SymbolValue, environment::AKind, lexemes::Lexeme, lexemes::LexemeKind::*, tokens::{Token, TokenType, TokenType::*}
+    ast::SymbolValue,
+    environment::AKind,
+    lexemes::{Lexeme, LexemeKind::*},
+    tokens::{
+        Token,
+        TokenType::{self, *},
+    },
 };
-
-use crate::create_token;
 
 pub struct Analyzer {
     lexvec: Vec<Lexeme>,
@@ -47,13 +51,13 @@ impl Analyzer {
             //println!("{:?}", el);
 
             match &el.kind {
-                LxSymbol => {
-                    let tkk = match el.value.clone() {
-                        SymbolValue::Identity(id) => match id.name.unwrap().as_str() {
-                            "val" => TokenType::TkKwVal,
+                LxSymbol(sv) => {
+                    let tkk = match sv.clone() {
+                        SymbolValue::Identity(id) => match id.name.as_str() {
+                            "let" => TokenType::TkKwLet,
                             "op" => TokenType::TkKWOp,
                             "print" => TokenType::TkKwPrint,
-                            "is" => TokenType::TkKwIs,
+                            "of" => TokenType::TkKwOf,
                             "if" => TokenType::TkKwIf,
                             "else" => TokenType::TkKwElse,
                             "match" => TokenType::TkKwMatch,
@@ -70,113 +74,201 @@ impl Analyzer {
                             "Bool" => TokenType::TkType(AKind::TyBool),
 
                             &_ => TokenType::TkSymbol,
-                            }
-                            
+                        },
+
                         _ => panic!("How did you get here?"),
                     };
                     let toadd: Token;
                     if tkk == TokenType::TkSymbol {
                         toadd = Token {
                             tokentype: tkk,
-                            value: el.value.clone(),
+                            value: Some(sv.clone()),
                             location: el.location,
                         };
-                    } else if tkk == TokenType::TkType(AKind::TyInt) ||  tkk == TokenType::TkType(AKind::TyFlt) || tkk == TokenType::TkType(AKind::TyStr) || tkk == TokenType::TkType(AKind::TyBool){
+                    } else if tkk == TokenType::TkType(AKind::TyInt)
+                        || tkk == TokenType::TkType(AKind::TyFlt)
+                        || tkk == TokenType::TkType(AKind::TyStr)
+                        || tkk == TokenType::TkType(AKind::TyBool)
+                    {
                         toadd = Token {
                             tokentype: tkk,
-                            value: el.value.clone(),
+                            value: Some(sv.clone()),
                             location: el.location,
                         };
                     } else {
                         toadd = Token {
                             tokentype: tkk,
-                            value: SymbolValue::Nothing,
+                            value: None,
                             location: el.location,
                         };
                     }
                     self.add(toadd)
                 }
-                LxLiteral => {
-                    match &el.value {
-                        SymbolValue::Str(_) => {
-                            self.add(Token {
-                                tokentype: TokenType::TkLiteral,
-                                value: el.value.clone(),
-                                //kind: Some(AKind::TyStr),
-                                location: el.location,
-                            });
-                        }
-                        _ => panic!("How did you get here? Who are you? What do you want?!"),
-                    };
+                LxScalar(s) => {
+                    self.add(Token {
+                        tokentype: TokenType::TkScalar,
+                        value: Some(SymbolValue::Scalar(s.clone())),
+                        //kind: Some(AKind::TyStr),
+                        location: el.location,
+                    });
                 }
-                LxNumeric => match el.value {
-                    SymbolValue::Int(_) => {
-                        self.add(Token {
-                            tokentype: TokenType::TkNumeric,
-                            value: el.value.clone(),
-                            //kind: Some(AKind::TyInt),
-                            location: el.location,
-                        });
-                    }
-                    SymbolValue::Float(_) => {
-                        self.add(Token {
-                            tokentype: TokenType::TkNumeric,
-                            value: el.value.clone(),
 
-                            location: el.location,
-                        });
-                    }
-                    _ => panic!("How did you get here? Who are you? What do you want?!"),
-                },
-                LxPlus => self.add(create_token!(el, TkPlus)),
-                LxMinus => self.add(create_token!(el, TkMinus)),
-                LxStar => self.add(create_token!(el, TkStar)),
-                LxSlash => self.add(create_token!(el, TkSlash)),
-                LxLparen => self.add(create_token!(el, TkLparen)),
-                LxRparen => self.add(create_token!(el, TkRparen)),
-                LxSmallArr => self.add(create_token!(el, TkSmallArr)),
-                LxBigArr => self.add(create_token!(el, TkBigArr)),
-                LxPipe => self.add(create_token!(el, TkPipe)),
-                LxPercent => self.add(create_token!(el, TkPercent)),
+                LxPlus => self.add(Token {
+                    tokentype: TkPlus,
+                    value: None,
+                    location: el.location,
+                }),
+                LxMinus => self.add(Token {
+                    tokentype: TkMinus,
+                    value: None,
+                    location: el.location,
+                }),
+                LxStar => self.add(Token {
+                    tokentype: TkStar,
+                    value: None,
+                    location: el.location,
+                }),
+                LxSlash => self.add(Token {
+                    tokentype: TkSlash,
+                    value: None,
+                    location: el.location,
+                }),
+                LxLparen => self.add(Token {
+                    tokentype: TkLparen,
+                    value: None,
+                    location: el.location,
+                }),
+                LxRparen => self.add(Token {
+                    tokentype: TkRparen,
+                    value: None,
+                    location: el.location,
+                }),
+                LxSmallArr => self.add(Token {
+                    tokentype: TkSmallArr,
+                    value: None,
+                    location: el.location,
+                }),
+                LxBigArr => self.add(Token {
+                    tokentype: TkBigArr,
+                    value: None,
+                    location: el.location,
+                }),
+                LxPipe => self.add(Token {
+                    tokentype: TkPipe,
+                    value: None,
+                    location: el.location,
+                }),
+                LxPercent => self.add(Token {
+                    tokentype: TkPercent,
+                    value: None,
+                    location: el.location,
+                }),
                 LxDoubleDot => {
-                    let toadd: Token = Token { tokentype: TkType(AKind::TyMute), value: el.value.clone(), location: el.location.clone() };
+                    let toadd: Token = Token {
+                        tokentype: TkType(AKind::TyMute),
+                        value: Some(SymbolValue::Mute),
+                        location: el.location.clone(),
+                    };
                     self.add(toadd)
-                },
-                LxLBrace => self.add(create_token!(el, TkLBrace)),
-                LxRBrace => self.add(create_token!(el, TkRBrace)),
+                }
+                LxLBrace => self.add(Token {
+                    tokentype: TkLBrace,
+                    value: None,
+                    location: el.location,
+                }),
+                LxRBrace => self.add(Token {
+                    tokentype: TkRBrace,
+                    value: None,
+                    location: el.location,
+                }),
                 LxStatementEnd => {
                     if self.loc != 0 && self.lexvec[self.loc - 1].kind != LxLBrace {
-                        self.add(create_token!(el, TkStatementEnd))
+                        self.add(Token {
+                            tokentype: TkStatementEnd,
+                            value: None,
+                            location: el.location,
+                        })
                     }
                 }
-                LxEqual => self.add(create_token!(el, TkEqual)),
-                LxCEQ => self.add(create_token!(el, TkCEQ)),
-                LxCNE => self.add(create_token!(el, TkCNE)),
-                LxCLT => self.add(create_token!(el, TkCLT)),
-                LxCLE => self.add(create_token!(el, TkCLE)),
-                LxCGT => self.add(create_token!(el, TkCGT)),
-                LxCGE => self.add(create_token!(el, TkCGE)),
-                LxAnd => self.add(create_token!(el, TkAnd)),
-                LxOr => self.add(create_token!(el, TkOr)),
-                LxComma => self.add(create_token!(el, TkComma)),
-                LxColon => self.add(create_token!(el, TkColon)),
-                LxDot => self.add(create_token!(el, TkDot)),
+                LxEqual => self.add(Token {
+                    tokentype: TkAssign,
+                    value: None,
+                    location: el.location,
+                }),
+                LxAssignInfer => self.add(Token {
+                    tokentype: TkAssignInfer,
+                    value: None,
+                    location: el.location,
+                }),
+                LxCEQ => self.add(Token {
+                    tokentype: TkCEQ,
+                    value: None,
+                    location: el.location,
+                }),
+                LxCNE => self.add(Token {
+                    tokentype: TkCNE,
+                    value: None,
+                    location: el.location,
+                }),
+                LxCLT => self.add(Token {
+                    tokentype: TkCLT,
+                    value: None,
+                    location: el.location,
+                }),
+                LxCLE => self.add(Token {
+                    tokentype: TkCLE,
+                    value: None,
+                    location: el.location,
+                }),
+                LxCGT => self.add(Token {
+                    tokentype: TkCGT,
+                    value: None,
+                    location: el.location,
+                }),
+                LxCGE => self.add(Token {
+                    tokentype: TkCGE,
+                    value: None,
+                    location: el.location,
+                }),
+                LxAnd => self.add(Token {
+                    tokentype: TkAnd,
+                    value: None,
+                    location: el.location,
+                }),
+                LxOr => self.add(Token {
+                    tokentype: TkOr,
+                    value: None,
+                    location: el.location,
+                }),
+                LxComma => self.add(Token {
+                    tokentype: TkComma,
+                    value: None,
+                    location: el.location,
+                }),
+                LxColon => self.add(Token {
+                    tokentype: TkColon,
+                    value: None,
+                    location: el.location,
+                }),
+                LxDot => self.add(Token {
+                    tokentype: TkDot,
+                    value: None,
+                    location: el.location,
+                }),
                 Err => {
                     panic!("uh oh")
                 }
-                Eof => self.add(create_token!(el, TEof)),
+                Eof => self.add(Token {
+                    tokentype: TokenType::TkEof,
+                    value: None,
+                    location: el.location,
+                }),
             }
 
             self.loc += 1;
         }
     }
 
-    fn fix_types(&mut self) {
-        self.loc = 0;
-        while self.loc < self.tkvec.len() {
-            
-        }
-    }
     pub fn supply(&mut self) -> Vec<Token> {
         self.tkvec.clone()
     }

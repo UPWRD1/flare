@@ -40,18 +40,18 @@ pub fn start(filename: &String) {
 
     let mut checker = typechecking::Typechecker::new(ast.clone());
     checker.check();
-    let checked = checker.supply();
+    let (checked, e) = checker.supply();
     //dbg!(checked.clone());
     println!("[i] Checking: OK");
 
-    let mut generator = codegen::Generator::new(checked.clone());
+    let mut generator = codegen::Generator::new(checked.clone(), e);
     generator.generate();
     let generated = generator.supply();
     //println!("{}", generated.clone());
     println!("[i] Generation: OK");
 
-    let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
-    let _ = file.write_all(format!("{}", generated).as_bytes());
+    //let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
+    //let _ = file.write_all(format!("{}", generated).as_bytes());
 
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);

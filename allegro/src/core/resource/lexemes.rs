@@ -1,11 +1,14 @@
 use crate::core::resource::ast::SymbolValue;
 
+use super::ast::Scalar;
+
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+//#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum LexemeKind {
-    LxSymbol,
-    LxLiteral,
-    LxNumeric,
+    LxSymbol(SymbolValue),
+    LxScalar(Scalar),
+    //LxNumeric(SymbolValue),
     LxPlus,
     LxMinus,
     LxStar,
@@ -21,6 +24,7 @@ pub enum LexemeKind {
     LxRBrace,
     LxStatementEnd,
     LxEqual,
+    LxAssignInfer,
     LxCEQ,
     LxCNE,
     LxCLT,
@@ -39,6 +43,6 @@ pub enum LexemeKind {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Lexeme {
     pub kind: LexemeKind,
-    pub value: SymbolValue,
+    //pub value: SymbolValue,
     pub location: usize,
 }

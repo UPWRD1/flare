@@ -1,7 +1,6 @@
-op main = () -> .. is {
-    val x: Int = 3;
-}
+-- we love comments
 
-op test = (a: Int, b: Int) -> Int is {
-    return a * (b * b);
+op main: .. of () -> {
+    let x := 3;
+    print x;
 }

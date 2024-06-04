@@ -1,15 +1,19 @@
 use core::panic;
 
-use crate::core::resource::{ast::{self, *}, environment::AKind};
+use crate::core::resource::{
+    ast::{self, *},
+    environment::Environment,
+    tokens::{Token, TokenType},
+};
 
 #[derive(Debug, Clone)]
 pub struct GenLine {
-    i: usize,
     c: String,
 }
 
 pub struct Generator {
     ast: Vec<Statement>,
+    env: Environment,
     loc: usize,
     output: Vec<GenLine>,
 }
@@ -18,16 +22,16 @@ pub struct Generator {
 macro_rules! line {
     ($i:expr, $($arg:tt)*) => {
         GenLine {
-            i: $i,
             c: format!("{}", format_args!($($arg)*))
         }
     };
 }
 
 impl Generator {
-    pub fn new(ast: Vec<Statement>) -> Self {
+    pub fn new(ast: Vec<Statement>, e: Environment) -> Self {
         return Generator {
             ast,
+            env: e,
             loc: 0,
             output: vec![],
         };
@@ -39,9 +43,14 @@ impl Generator {
 
     fn get_cval(&mut self, sk: SymbolValue) -> String {
         match sk {
-            SymbolValue::Int(i) => i.to_string(),
-            SymbolValue::Str(s) => format!("\"{}\"", s.to_string()),
-            SymbolValue::Float(f) => f.to_string(),
+            SymbolValue::Scalar(s) => match s {
+                Scalar::Int(i) => i.to_string(),
+                Scalar::Str(s) => format!("\"{}\"", s.to_string()),
+                Scalar::Float(f) => f.to_string(),
+                _ => {
+                    panic!("Unkown type!")
+                }
+            },
             _ => {
                 panic!("Unkown type!")
             }
@@ -51,11 +60,16 @@ impl Generator {
     fn get_ctype(&mut self, s: Statement) -> String {
         //println!("{s:?}");
         match s {
-            Statement::Val(vd) => vd.name.value.to_akind().to_ctype(),
+            Statement::Val(vd) => vd
+                .initializer
+                .get_expr_value()
+                .value
+                .unwrap()
+                .to_akind()
+                .to_ctype(),
             Statement::Operation(o) => o.returnval.to_ctype(),
-            _ => panic!("Unsupported statement {s:?}")
+            _ => panic!("Unsupported statement {s:?}"),
         }
-       
     }
 
     fn gen_cparams(&mut self, s: Statement) -> String {
@@ -65,87 +79,209 @@ impl Generator {
                 let mut accum: String = "".to_string();
                 let mut count = 0;
                 for v in &p {
-                    let n = v.name.value.clone().get_string().unwrap();
-                    let t = <ast::SymbolValue as Clone>::clone(&v.name.value).to_akind().to_ctype();
-                    if count == &p.len() -1 {
+                    let n = &v.name.name;
+                    let t = <ast::SymbolValue as Clone>::clone(
+                        &<Option<ast::SymbolValue> as Clone>::clone(
+                            &v.initializer.get_expr_value().value,
+                        )
+                        .unwrap(),
+                    )
+                    .to_akind()
+                    .to_ctype();
+                    if count == &p.len() - 1 {
                         accum = format!("{accum}{t} {n}");
                     } else {
                         accum = format!("{accum}{t} {n}, ");
                     }
                     count += 1;
                 }
-                return accum
+                return accum;
             }
-            _ => panic!(
-                "{:?} is not an operation!", s
-            )
+            _ => panic!("{:?} is not an operation!", s),
         }
+    }
+
+    fn gen_operator(&mut self, o: Token) -> String {
+        return match o.tokentype {
+            TokenType::TkPlus => "+".to_string(),
+            TokenType::TkMinus => "-".to_string(),
+            TokenType::TkStar => "*".to_string(),
+            TokenType::TkSlash => "/".to_string(),
+            TokenType::TkPercent => "%".to_string(),
+            TokenType::TkCEQ => "==".to_string(),
+            TokenType::TkCNE => "!=".to_string(),
+            TokenType::TkCLT => "<".to_string(),
+            TokenType::TkCLE => "<=".to_string(),
+            TokenType::TkCGT => ">".to_string(),
+            TokenType::TkCGE => ">=".to_string(),
+            TokenType::TkAnd => "&&".to_string(),
+            TokenType::TkOr => "||".to_string(),
+            _ => panic!("{:?} is not an operator", o),
+        };
     }
 
     pub fn generate(&mut self) {
         while self.loc < self.ast.len() {
             let el = self.ast[self.loc].clone();
-            self.gen_code(el);
-
+            let res = self.gen_code(el);
+            //println!("{res}");
+            self.add(line!(0, "{res}"));
             self.loc += 1
         }
     }
 
-    fn gen_code(&mut self, el: Statement) {
-        match el.clone() {
+    fn gen_code(&mut self, el: Statement) -> String {
+        return match el.clone() {
             Statement::Val(vd) => {
                 let cname: String;
                 let ckind = self.get_ctype(el);
                 let cval: String = self.get_cval(match vd.initializer {
-                    Expr::Literal(mut le) => le.value.value,
+                    Expr::ScalarEx(le) => le.value.value.unwrap(),
                     _ => panic!("Unknown type!"),
                 });
-                match vd.name.value {
-                    SymbolValue::Identity(n) => cname = n.name.unwrap(),
-                    _ => panic!("Unknown name!"),
-                }
-                self.add(line!(0, "{} {} = {};", ckind, cname, cval));
+                cname = vd.name.name;
+                let x = format!("{} {} = {};", ckind, cname, cval);
+                x
             }
-    
+
             Statement::Operation(o) => {
-                let cname: String = o.name.value.get_string().unwrap();
+                let cname: String = o.name.value.unwrap().get_string().unwrap();
                 let ckind = self.get_ctype(el.clone());
                 let cparams = self.gen_cparams(el);
-                self.add(line!(0, "{ckind} {cname}({cparams})"));
-                self.gen_code(Statement::Block(o.body))
-        
+                let b = self.gen_code(Statement::Block(o.body));
+                let x = format!("{ckind} {cname}({cparams}) {b}");
+                x
             }
-    
+
             Statement::Block(b) => {
-                self.add(line!(0, "{{"));
+                let mut accum: String = "{".to_string();
                 for s in b.statements {
-                    self.gen_code(s)
+                    if s != Statement::Empty
+                        && s != Statement::Expression(ExpressionStmt {
+                            expression: Expr::Empty,
+                        })
+                    {
+                        accum = format!("{accum}\n    {}", self.gen_code(s))
+                    }
                 }
-                self.add(line!(0, "}}"));
-
+                accum = format!("{accum}\n}}\n");
+                accum
             }
 
-            Statement::Expression(e) => {
-                if e.expression == Expr::Empty {
-                //do nothing
+            Statement::Expression(e) => match e.expression {
+                Expr::Assign(a) => {
+                    let cvname = a.name.value.clone().unwrap().get_string().unwrap();
+                    let cvtype = self
+                        .env
+                        .get(a.name.value.unwrap().get_string().unwrap())
+                        .to_ctype();
+                    let cvval = self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: *a.value,
+                    }));
+                    return format!("{cvtype} {cvname} = {cvval}");
                 }
-            }
+                Expr::Binary(b) => {
+                    let cl = self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: *b.left,
+                    }));
+                    let cr = self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: *b.right,
+                    }));
+                    let o = self.gen_operator(b.operator);
+
+                    return format!("{cl} {o} {cr}");
+                }
+                Expr::Call(c) => todo!(),
+                Expr::Grouping(g) => {
+                    let x = format!(
+                        "({})",
+                        self.gen_code(Statement::Expression(ExpressionStmt {
+                            expression: *g.expression
+                        }))
+                    );
+                    x
+                }
+                Expr::ScalarEx(l) => {
+                    let x = l.value.value.unwrap().get_string().unwrap();
+                    x
+                }
+                Expr::Logical(l) => {
+                    let cl = self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: *l.left,
+                    }));
+                    let cr = self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: *l.right,
+                    }));
+                    let o = self.gen_operator(l.operator);
+
+                    return format!("{cl} {o} {cr}");
+                }
+                Expr::Unary(u) => todo!(),
+                Expr::Value(v) => {
+                    let x = v.name.value.unwrap().get_string().unwrap();
+                    return x;
+                }
+                Expr::Empty => return "".to_string(),
+            },
 
             Statement::Return(r) => {
-                self.add(line!(0, "return"));
-                self.gen_code(Statement::Expression(ExpressionStmt { expression: r.value }));
-
+                let mut accum = "return".to_string();
+                accum = format!(
+                    "{accum} {};",
+                    self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: r.value
+                    }))
+                );
+                accum
             }
+
+            Statement::Print(p) => match p.expression.get_expr_value().tokentype {
+                TokenType::TkKwTrue => todo!(),
+                TokenType::TkKwFalse => todo!(),
+                TokenType::TkSymbol => {
+                    println!("{:?}", p.expression.get_expr_value().value);
+                    return "//printf".to_string();
+                    //return format!("printf({}", key,)
+                }
+                TokenType::TkScalar => match p.expression.get_expr_value().value.unwrap() {
+                    SymbolValue::Scalar(s) => match s {
+                        Scalar::Str(_st) => {
+                            let accum = format!(
+                                "printf(\"{}\");",
+                                self.gen_code(Statement::Expression(ExpressionStmt {
+                                    expression: p.expression
+                                }))
+                            );
+                            return accum;
+                        }
+                        Scalar::Float(f) => {
+                            let accum = format!("printf(\"%d\", {});", f);
+                            return accum;
+                        }
+                        Scalar::Int(i) => {
+                            let accum = format!("printf(\"%d\", {});", i);
+                            return accum;
+                        }
+                        Scalar::Bool(b) => {
+                            let accum = format!("printf({});", b);
+                            return accum;
+                        }
+                    },
+                    _ => panic!("{:?} cannot be printed!", p.expression),
+                },
+                _ => panic!("{:?} cannot be printed!", p.expression),
+            },
+
             _ => {
                 panic!("Unsupported ast Token: {:?}", el);
             }
         };
     }
-    
+
     pub fn supply(&mut self) -> String {
-        let mut accum: String = "".to_string();
+        let mut accum: String = "#include <stdio.h>\n\n".to_string();
         for i in self.output.clone() {
-            accum = format!("{accum}{}\n", i.c)
+            accum = format!("{accum}{}", i.c)
         }
         accum = format!("{accum}");
         return accum;

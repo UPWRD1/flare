@@ -1,8 +1,8 @@
+use crate::core::resource::ast::Ident;
+use crate::core::resource::ast::Scalar;
 use crate::core::resource::ast::SymbolValue;
-use crate::core::resource::ast::SymbolValue::*;
 use crate::core::resource::lexemes::Lexeme;
 use crate::core::resource::lexemes::LexemeKind::*;
-use crate::core::resource::ast::Ident;
 
 use crate::lexingerror;
 use crate::quit;
@@ -19,7 +19,6 @@ macro_rules! create_lexeme {
     ($kind:tt, $literal:expr, $sel:expr) => {
         Lexeme {
             kind: $kind,
-            value: $literal,
             location: $sel.location,
         }
     };
@@ -34,27 +33,6 @@ impl Lexer {
             lxvec: vec![],
         }
     }
-    /*
-    pub fn check_keyword(&mut self, pos: usize, length: usize, tocheck: &str) -> bool {
-            let mut collector: Vec<char> = vec![];
-            //eprintln!("Searching for {} at {} with room for {}",tocheck, pos, length);
-            for i in pos..(pos + length) {
-                collector.push(self.srccharvec[i]);
-            }
-            //println!("{:?}", collector);
-            let str: String = collector.iter().collect();
-            let tc: String = tocheck.to_string();
-            if str == tc {
-                //println!("found");
-                self.jump(length);
-                true
-            } else {
-                //println!("not found");
-                self.jump(1);
-                false
-            }
-        }
-    */
 
     fn add(&mut self, lx: Lexeme) {
         //print!("{lx:?}");
@@ -80,13 +58,14 @@ impl Lexer {
 
     pub fn lex(&mut self) {
         self.srccharvec = self.source.chars().collect();
-        let mut _lc = self.location;
+        //let mut _lc = self.location;
         while self.location < self.srccharvec.len() - 1 {
             let _lc: usize = self.location;
-            //println!("{} {}", self.location, self.svec[self.location]);
             match self.srccharvec[self.location] {
                 ' ' | '\t' => self.advance(),
-                '\r' | '\n' | ';' => { self.add(create_lexeme!(LxStatementEnd, Nothing, self));},
+                '\r' | '\n' | ';' => {
+                    self.add(create_lexeme!(LxStatementEnd, Nothing, self));
+                }
                 '(' => {
                     self.add(create_lexeme!(LxLparen, Nothing, self));
                 }
@@ -108,7 +87,7 @@ impl Lexer {
                 '-' => {
                     if self.next() == '>' {
                         self.add(create_lexeme!(LxSmallArr, Nothing, self));
-                        self.advance()
+                        self.advance();
                     } else if self.next() == '-' {
                         while self.srccharvec[self.location] != '\n'
                             && self.location < self.srccharvec.len()
@@ -117,8 +96,7 @@ impl Lexer {
                         }
                     } else if (0..9).contains(&self.next().to_string().parse::<i32>().unwrap()) {
                         self.create_numeric()
-
-                    }                        else {
+                    } else {
                         self.add(create_lexeme!(LxMinus, Nothing, self));
                         self.advance()
                     }
@@ -192,8 +170,13 @@ impl Lexer {
                 }
 
                 ':' => {
-                    self.add(create_lexeme!(LxColon, Nothing, self));
-                    self.advance();
+                    if self.next() == '=' {
+                        self.add(create_lexeme!(LxAssignInfer, Nothing, self));
+                        self.advance();
+                    } else {
+                        self.add(create_lexeme!(LxColon, Nothing, self));
+                        self.advance();
+                    }
                 }
 
                 _ => {
@@ -205,9 +188,8 @@ impl Lexer {
                     );
                 }
             }
-            //println!("{:?}", self.Lxvec);
         }
-        _lc = self.location;
+        //_lc = self.location;
         self.add(create_lexeme!(LxStatementEnd, Nothing, self));
         self.add(create_lexeme!(Eof, Nothing, self));
     }
@@ -225,11 +207,15 @@ impl Lexer {
             accumulator.push(self.current());
             self.advance();
         }
-        self.add(create_lexeme!(
-            LxSymbol,
-            SymbolValue::Identity(Ident {name: Some(accumulator.iter().collect::<String>()), kind: None, value: Box::new(SymbolValue::Str(accumulator.iter().collect::<String>()))}),
-            self
-        ));
+        self.add(Lexeme {
+            kind: LxSymbol(SymbolValue::Identity(Ident {
+                name: accumulator.iter().collect::<String>(),
+                //kind: None,
+                //value: Box::new(SymbolValue::Scalar(Scalar::Str(accumulator.iter().collect::<String>()))),
+            })),
+
+            location: self.location,
+        });
         self.retreat();
     }
 
@@ -247,17 +233,21 @@ impl Lexer {
             self.advance();
         }
         if accumulator.contains(&'.') {
-            self.add(create_lexeme!(
-                LxNumeric,
-                Float(accumulator.iter().collect::<String>().parse().unwrap()),
-                self
-            ))
+            self.add(Lexeme {
+                kind: LxScalar(Scalar::Float(
+                    accumulator.iter().collect::<String>().parse().unwrap(),
+                )),
+                //value: SymbolValue::Float(accumulator.iter().collect::<String>().parse().unwrap()),
+                location: self.location,
+            })
         } else {
-            self.add(create_lexeme!(
-            LxNumeric,
-            Int(accumulator.iter().collect::<String>().parse().unwrap()),
-            self
-        ))
+            self.add(Lexeme {
+                kind: LxScalar(Scalar::Int(
+                    accumulator.iter().collect::<String>().parse().unwrap(),
+                )),
+                //value: SymbolValue::Int(accumulator.iter().collect::<String>().parse().unwrap()),
+                location: self.location,
+            })
         }
         self.retreat();
     }
@@ -269,12 +259,12 @@ impl Lexer {
             accumulator.push(self.current());
             self.advance();
         }
-        self.advance(); //Continue past the final "
-        self.add(create_lexeme!(
-            LxLiteral,
-            SymbolValue::Str(accumulator.iter().collect::<String>()),
-            self
-        ));
+        self.advance();
+        self.add(Lexeme {
+            kind: LxScalar(Scalar::Str(accumulator.iter().collect::<String>())),
+            //value: SymbolValue::Str(accumulator.iter().collect::<String>()),
+            location: self.location,
+        }); //Continue past the final "
         self.retreat();
     }
 

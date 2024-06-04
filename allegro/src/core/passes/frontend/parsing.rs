@@ -1,4 +1,3 @@
-
 use crate::core::resource::{
     ast::*,
     environment::AKind,
@@ -27,8 +26,8 @@ impl Parser {
             self.tkvec.get(self.curr).unwrap().clone()
         } else {
             Token {
-                tokentype: TEof,
-                value: SymbolValue::Nothing,
+                tokentype: TkEof,
+                value: None,
                 location: self.curr,
             }
         }
@@ -47,7 +46,7 @@ impl Parser {
     }
 
     fn is_at_end(&mut self) -> bool {
-        self.peek().tokentype == TokenType::TEof
+        self.peek().tokentype == TokenType::TkEof
     }
 
     fn advance(&mut self) -> Token {
@@ -100,11 +99,11 @@ impl Parser {
         if self.search(vec![TkSymbol]) {
             return Expr::Value(ValueExpr { name: tk });
         } else if self.search(vec![TkKwFalse]) {
-            return Expr::Literal(LiteralExpr { value: tk });
+            return Expr::ScalarEx(ScalarExpr { value: tk });
         } else if self.search(vec![TkKwTrue]) {
-            return Expr::Literal(LiteralExpr { value: tk });
-        } else if self.search(vec![TkLiteral, TkNumeric]) {
-            return Expr::Literal(LiteralExpr { value: tk });
+            return Expr::ScalarEx(ScalarExpr { value: tk });
+        } else if self.search(vec![TkScalar]) {
+            return Expr::ScalarEx(ScalarExpr { value: tk });
             //value: Token
             //tokentype: tk.tokentype,
             //value: SymbolValue::Identity(
@@ -248,14 +247,23 @@ impl Parser {
     }
 
     fn return_stmt(&mut self) -> Statement {
-        let mut value: Expr = self.expression();
-        return Statement::Return(ReturnStmt { value: value.clone(), returntype: value.get_expr_value().value.to_akind() });
+        let value: Expr = self.expression();
+        return Statement::Return(ReturnStmt {
+            value: value.clone(),
+            returntype: match value.get_expr_value().value {
+                Some(v) => v.to_akind(),
+                None => {
+                    println!("{:?}", value);
+                    todo!()
+                }
+            },
+        });
     }
 
     fn statement(&mut self) -> Statement {
         if self.search(vec![TkKwPrint]) {
             return self.print_stmt();
-        } else if self.search(vec![TkKwVal]) {
+        } else if self.search(vec![TkKwLet]) {
             return self.val_decl();
         } else if self.search(vec![TkKwReturn]) {
             return self.return_stmt();
@@ -266,19 +274,39 @@ impl Parser {
 
     fn val_decl(&mut self) -> Statement {
         let name = self.val_signiture();
-        self.consume(TkEqual, "Expected '='");
+        if name.value.clone().unwrap().to_akind() == AKind::TyUnknown {
+            self.consume(TkAssignInfer, "Expected ':='");
 
-        let initializer: Expr = self.expression();
+            let initializer: Expr = self.expression();
 
-        if !self.search(vec![TkStatementEnd]) {
-            panic!("Unexpected end of value declaration!")
+            if !self.search(vec![TkStatementEnd]) {
+                panic!("Unexpected end of value declaration!")
+            }
+            let res = ValDecl {
+                name: Ident {
+                    name: name.value.unwrap().get_string().unwrap(),
+                },
+                initializer,
+            };
+
+            return Statement::Val(res);
+        } else {
+            self.consume(TkAssign, "Expected '='");
+
+            let initializer: Expr = self.expression();
+
+            if !self.search(vec![TkStatementEnd]) {
+                panic!("Unexpected end of value declaration!")
+            }
+            let res = ValDecl {
+                name: Ident {
+                    name: name.value.unwrap().get_string().unwrap(),
+                },
+                initializer,
+            };
+
+            return Statement::Val(res);
         }
-        let res = ValDecl {
-            name,
-            initializer,
-        };
-
-        return Statement::Val(res);
     }
 
     fn init_param(&mut self) -> Token {
@@ -296,22 +324,23 @@ impl Parser {
                     TkType(AKind::TyMute),
                 ],
                 "Expected type",
-            ).tokentype;
-        let kind = match tty {
-            TkType(t) => {
-                t
-            },
-            _ => panic!(
-                "Token cannot be type"
             )
+            .tokentype;
+        let kind = match tty {
+            TkType(t) => t,
+            _ => panic!("Token cannot be type"),
         };
         let new = Token {
             tokentype: name.tokentype,
-            value: SymbolValue::Identity(Ident {
-                name: Some(name.value.get_string().expect("Expected param name")),
-                kind: Some(Box::new(kind)),
-                value: Box::new(SymbolValue::Unknown),
-            }),
+            value: Some(SymbolValue::Identity(Ident {
+                name: name
+                    .value
+                    .unwrap()
+                    .get_string()
+                    .expect("Expected param name"),
+                //kind: Some(Box::new(kind)),
+                //value: Box::new(SymbolValue::Unknown),
+            })),
             location: name.location,
         };
         //println!("{:?}", new);
@@ -320,42 +349,45 @@ impl Parser {
 
     fn val_signiture(&mut self) -> Token {
         let name: Token = self.consume(TkSymbol, "Expected value name");
-        self.consume(TkColon, "Expected ':' in vdecl");
 
-        let tty = self
-            .consume_vec(
-                vec![
-                    TkType(AKind::TyInt),
-                    TkType(AKind::TyFlt),
-                    TkType(AKind::TyStr),
-                    TkType(AKind::TyBool),
-                    TkType(AKind::TyEof),
-                    TkType(AKind::TyMute),
-                ],
-                "Expected type",
-            ).tokentype;
-        let kind = match tty {
-            TkType(t) => {
-                t
-            },
-            _ => panic!(
-                "Token cannot be type"
-            )
-        };
-            
+        //let kind: AKind;
+        if self.check(TkAssignInfer) {
+            //kind = AKind::TyUnknown;
+        } else {
+            self.consume(TkColon, "Expected ':' in vdecl");
+
+            let tty = self
+                .consume_vec(
+                    vec![
+                        TkType(AKind::TyInt),
+                        TkType(AKind::TyFlt),
+                        TkType(AKind::TyStr),
+                        TkType(AKind::TyBool),
+                        TkType(AKind::TyEof),
+                        TkType(AKind::TyMute),
+                    ],
+                    "Expected type",
+                )
+                .tokentype;
+            //kind = match tty {
+            //    TkType(t) => t,
+            //    _ => panic!("Token cannot be type"),
+            //};
+        }
+
         //println!("{:?}", kind);
         let new = Token {
             tokentype: name.clone().tokentype,
-            value: SymbolValue::Identity(Ident {
-                name: Some(
-                    name.clone()
-                        .value
-                        .get_string()
-                        .expect("Expected param name"),
-                ),
-                kind: Some(Box::new(kind.clone())),
-                value: Box::new(SymbolValue::Unknown),
-            }),
+            value: Some(SymbolValue::Identity(Ident {
+                name: name
+                    .clone()
+                    .value
+                    .unwrap()
+                    .get_string()
+                    .expect("Expected param name"),
+                //kind: Some(Box::new(kind.clone())),
+                //value: Box::new(SymbolValue::Unknown),
+            })),
             location: name.location,
         };
 
@@ -363,8 +395,19 @@ impl Parser {
     }
 
     fn op_decl(&mut self) -> Statement {
-        let mut name: Token = self.consume(TkSymbol, "Expected operation name");
-        self.consume(TkEqual, "Expected '='");
+        let name: Token = self.consume(TkSymbol, "Expected operation name");
+
+        self.consume(TkColon, "Expected ':'");
+
+        let opreturnkind_tk = self.advance().tokentype;
+        let opreturnkind = match opreturnkind_tk {
+            TkType(t) => t,
+            _ => panic!("invalid type {opreturnkind_tk:?}"),
+        };
+        //println!("{:?}", opreturnkind);
+
+        self.consume(TkKwOf, "Expected keyword 'is'");
+
         self.consume(TkLparen, "Expected '('");
 
         let mut params: Vec<ValDecl> = vec![];
@@ -372,7 +415,9 @@ impl Parser {
             while self.peek().tokentype != TkRparen {
                 let nv = self.init_param();
                 params.push(ValDecl {
-                   name: nv,
+                    name: Ident {
+                        name: nv.value.unwrap().get_string().unwrap(),
+                    },
                     initializer: Expr::Empty,
                 });
                 if self.current().tokentype == TkRparen {
@@ -382,25 +427,15 @@ impl Parser {
                 }
             }
         }
-        self.inspect();
         self.consume(TkRparen, "Expected ')'");
 
         self.consume(TkSmallArr, "Expected '->'");
-        let opreturnkind_tk = self.advance().tokentype;
-        let opreturnkind = match opreturnkind_tk {
-            TkType(t) => {
-                t
-            }
-            _ => panic!("invalid type {opreturnkind_tk:?}")
-        };  
-        self.consume(TkKwIs, "Expected keyword 'is'");
-        //println!("{:?}", opreturnkind);
-        match name.value {
-            SymbolValue::Identity(ref mut i) => {
-                i.kind = Some(Box::new(opreturnkind.clone()))
-            },
-            _ => panic!("Invalid function name")
-        }
+
+        // Fix return type of op name's identity
+        //match name.value.clone().unwrap() {
+        //    SymbolValue::Identity(ref mut i) => i.kind = Some(Box::new(opreturnkind.clone())),
+        //    _ => panic!("Invalid function name"),
+        //}
 
         return Statement::Operation(OpDecl {
             name,
@@ -416,7 +451,7 @@ impl Parser {
         let mut collector: Vec<Statement> = vec![];
         self.consume(TkLBrace, "Expected '{'");
         while self.tkvec[self.curr].tokentype != TkRBrace
-            && self.tkvec[self.curr + 1].tokentype != TEof
+            && self.tkvec[self.curr + 1].tokentype != TkEof
         {
             collector.push(self.statement());
         }

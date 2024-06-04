@@ -1,5 +1,4 @@
 use crate::core::resource;
-use crate::core::resource::ast::BinExpr;
 use crate::core::resource::ast::Expr;
 use crate::core::resource::ast::Statement;
 use crate::core::resource::environment::AKind;
@@ -34,18 +33,21 @@ impl Typechecker {
             }
             Statement::Val(vd) => {
                 //println!("{:?}", vd);
-                let declared_type = vd.name.value.clone().to_akind();
+                let declared_type = vd
+                    .initializer
+                    .get_expr_value()
+                    .value
+                    .unwrap()
+                    .clone()
+                    .to_akind();
                 let resolved_type = self.resolve_expr(vd.initializer.clone());
-                //println!("Declared: {:?}", declared_type);
-                //println!("Resolved: {:?}", resolved_type);
 
                 self.expect_expr(
                     vd.initializer,
                     resolved_type.expect("Expected type"),
                     vec![declared_type.clone()],
                 );
-                self.env
-                    .define(vd.name.value.get_string().unwrap(), declared_type)
+                self.env.define(vd.name.name, declared_type)
             }
             Statement::Block(b) => {
                 let previous = self.env.clone();
@@ -60,8 +62,10 @@ impl Typechecker {
 
             Statement::Operation(o) => {
                 let op_type = o.returnval;
-                self.env
-                    .define(o.name.value.clone().get_string().unwrap(), op_type.clone());
+                self.env.define(
+                    o.name.value.clone().unwrap().get_string().unwrap(),
+                    op_type.clone(),
+                );
 
                 let previous = self.env.clone();
                 self.env = Environment::new_with_previous(previous.clone());
@@ -70,9 +74,10 @@ impl Typechecker {
                 self.current_op_kind = Some(op_type);
 
                 for param in o.params {
-                    //println!("{:?}", param);
-                    self.env
-                        .define(param.name.value.clone().get_string().unwrap(), param.name.value.to_akind())
+                    self.env.define(
+                        param.name.name,
+                        param.initializer.get_expr_value().value.unwrap().to_akind(),
+                    )
                 }
 
                 self.check_statement(Statement::Block(o.body));
@@ -80,7 +85,7 @@ impl Typechecker {
                 if self.current_op_kind != Some(AKind::TyMute) && !self.has_current_op_returned {
                     panic!(
                         "Expected operation '{:?}' to return a value of type {:?}",
-                        o.name.value.clone().get_string().unwrap(),
+                        o.name.value.clone().unwrap().get_string().unwrap(),
                         self.current_op_kind,
                     )
                 }
@@ -127,7 +132,6 @@ impl Typechecker {
         let nk: AKind = exprkind.clone();
 
         for kind in &expected_kinds {
-
             if expected_kinds.contains(&AKind::TyUnknown) {
                 return;
             } else if nk == *kind {
@@ -144,7 +148,7 @@ impl Typechecker {
 
     fn resolve_expr(&mut self, expr: Expr) -> Option<AKind> {
         match expr {
-            Expr::Literal(l) => Some(l.value.value.to_akind()),
+            Expr::ScalarEx(l) => Some(l.value.value.unwrap().to_akind()),
             Expr::Binary(b) => {
                 let lhstype = self.resolve_expr(*b.left.clone());
                 let rhstype = self.resolve_expr(*b.right.clone());
@@ -194,10 +198,10 @@ impl Typechecker {
                     _ => panic!("Invalid unary operation {:?}", u.operator),
                 }
             }
-            Expr::Value(mut v) => return Some(self.env.get(v.name.value.get_string().unwrap())),
+            Expr::Value(v) => return Some(self.env.get(v.name.value?.get_string().unwrap())),
             Expr::Assign(a) => {
                 let value_type = self.resolve_expr(*a.value.clone());
-                let bind_type = self.env.get(a.name.value.get_string().unwrap());
+                let bind_type = self.env.get(a.name.value?.get_string().unwrap());
                 self.expect_expr(*a.value.clone(), value_type.clone()?, vec![bind_type]);
                 return value_type;
             }
@@ -205,16 +209,15 @@ impl Typechecker {
                 let callee_type = self.resolve_expr(*c.callee.clone());
                 for (i, arg) in c.args.iter().enumerate() {
                     let arg_type = self.resolve_expr(arg.clone());
-                    let expected_type = c.clone().args[i].get_expr_value().value.to_akind();
+                    let expected_type =
+                        c.clone().args[i].get_expr_value().value.unwrap().to_akind();
                     //println!("{:?}", expected_type.clone());
                     self.expect_expr(arg.clone(), arg_type?, vec![expected_type])
                 }
                 return callee_type;
             }
 
-            Expr::Grouping(g) => {
-                return self.resolve_expr(*g.expression)
-            }
+            Expr::Grouping(g) => return self.resolve_expr(*g.expression),
 
             Expr::Empty => return None,
 
@@ -226,20 +229,25 @@ impl Typechecker {
         let mut nast = self.ast.clone();
         for s in nast.len()..0 {
             let c = &nast[s];
-            if *c == Statement::Expression(resource::ast::ExpressionStmt { expression: Expr::Empty }) {
-                nast.remove(self.loc);
+            if *c
+                == Statement::Expression(resource::ast::ExpressionStmt {
+                    expression: Expr::Empty,
+                })
+            {
+                nast.remove(s);
             }
         }
         while self.loc < nast.len() {
             //dbg!(self.env.clone());
             let stmt: Statement = nast[self.loc].clone();
             self.check_statement(stmt.clone());
-            self.checked.push(stmt);
+            self.checked.push(stmt.clone());
+            dbg!("{:?}", stmt);
             self.loc += 1
         }
     }
 
-    pub fn supply(&mut self) -> Vec<Statement> {
-        return self.checked.clone();
+    pub fn supply(&mut self) -> (Vec<Statement>, Environment) {
+        return (self.checked.clone(), self.env.clone());
     }
 }

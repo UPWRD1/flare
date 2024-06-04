@@ -1,6 +1,3 @@
-use super::ast::SymbolValue;
-
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AKind {
     TyStr,
@@ -31,7 +28,7 @@ impl AKind {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Entry {
     pub name: String,
     pub value: AKind,
@@ -53,7 +50,12 @@ impl Environment {
     }
 
     pub fn define(&mut self, name: String, value: AKind) {
-        self.entries.push(Entry { name, value });
+        let e = Entry { name, value };
+        for i in &self.entries {
+            assert_ne!(e, *i, "Invalid entry");
+        }
+        
+        self.entries.push(e);
     }
 
     pub fn get(&mut self, name: String) -> AKind {

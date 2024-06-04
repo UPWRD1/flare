@@ -3,9 +3,9 @@ use super::{ast::SymbolValue, environment::AKind};
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenType {
     TkKWOp,
-    TkKwVal,
+    TkKwLet,
     TkKwPrint,
-    TkKwIs,
+    TkKwOf,
     TkKwIf,
     TkKwElse,
     TkKwMatch,
@@ -18,8 +18,7 @@ pub enum TokenType {
     TkKwTrue,
     TkKwFalse,
     TkSymbol,
-    TkLiteral,
-    TkNumeric,
+    TkScalar,
     TkType(AKind),
     TkPlus,
     TkMinus,
@@ -34,7 +33,8 @@ pub enum TokenType {
     TkLBrace,
     TkRBrace,
     TkStatementEnd,
-    TkEqual,
+    TkAssign,
+    TkAssignInfer,
     TkCEQ,
     TkCNE,
     TkCLT,
@@ -46,39 +46,12 @@ pub enum TokenType {
     TkComma,
     TkColon,
     TkDot,
-    TEof,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct TokenValue {
-    value: SymbolValue,
-    kind: Option<AKind>
+    TkEof,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     pub tokentype: TokenType,
-    pub value: SymbolValue,
-    //pub kind: Option<AKind>,
+    pub value: Option<SymbolValue>,
     pub location: usize,
-}
-
-#[macro_export]
-macro_rules! create_token {
-    ($el: tt, $kind: tt) => {
-        Token {
-            tokentype: $kind,
-            value: $el.value.clone(),
-            location: $el.location,
-        }
-    };
-
-    ($el: tt, $kind: tt($a: expr)) => {
-        Token {
-            tokentype: $kind,
-            value: $el.value.clone(),
-            kind: $a,
-            location: $el.location,
-        }
-    };
 }
