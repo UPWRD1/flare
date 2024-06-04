@@ -53,14 +53,14 @@ impl Parser {
         if !self.is_at_end() {
             self.curr += 1;
         }
-        return self.previous();
+        self.previous()
     }
 
     fn check(&mut self, kind: TokenType) -> bool {
         if self.is_at_end() {
             return false;
         };
-        return self.peek().tokentype == kind;
+        self.peek().tokentype == kind
     }
 
     fn search(&mut self, kinds: Vec<TokenType>) -> bool {
@@ -70,12 +70,12 @@ impl Parser {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     fn consume(&mut self, kind: TokenType, message: &str) -> Token {
         if self.check(kind) {
-            return self.advance();
+            self.advance()
         } else {
             println!("{message}");
             panic!();
@@ -97,7 +97,7 @@ impl Parser {
     fn primary(&mut self) -> Expr {
         let tk = self.peek();
         if self.search(vec![TkSymbol]) {
-            return Expr::Value(ValueExpr { name: tk });
+            Expr::Value(ValueExpr { name: tk })
         } else if self.search(vec![TkKwFalse]) {
             return Expr::ScalarEx(ScalarExpr { value: tk });
         } else if self.search(vec![TkKwTrue]) {
@@ -150,7 +150,7 @@ impl Parser {
                 break;
             }
         }
-        return expr;
+        expr
     }
 
     fn unary_expr(&mut self) -> Expr {
@@ -166,7 +166,7 @@ impl Parser {
             });
         }
 
-        return self.secondary();
+        self.secondary()
     }
 
     fn factor_expr(&mut self) -> Expr {
@@ -181,7 +181,7 @@ impl Parser {
             })
         }
 
-        return expr;
+        expr
     }
 
     fn term_expr(&mut self) -> Expr {
@@ -196,7 +196,7 @@ impl Parser {
             })
         }
 
-        return expr;
+        expr
     }
 
     fn comparison_expr(&mut self) -> Expr {
@@ -211,7 +211,7 @@ impl Parser {
             })
         }
 
-        return expr;
+        expr
     }
 
     fn equality_expr(&mut self) -> Expr {
@@ -222,33 +222,33 @@ impl Parser {
             let right: Expr = self.comparison_expr();
             expr = Expr::Binary(BinExpr {
                 left: Box::new(expr),
-                operator: operator,
+                operator,
                 right: Box::new(right),
             });
         }
 
-        return expr;
+        expr
     }
 
     fn expression(&mut self) -> Expr {
-        return self.equality_expr();
+        self.equality_expr()
     }
 
     fn print_stmt(&mut self) -> Statement {
         let expr: Expr = self.expression();
         //self.consume(TkStatementEnd, "Unexpected end of print statement!");
-        return Statement::Print(PrintStmt { expression: expr });
+        Statement::Print(PrintStmt { expression: expr })
     }
 
     fn expr_stmt(&mut self) -> Statement {
         let expr: Expr = self.expression();
         self.consume(TkStatementEnd, "Unexpected end of expression!");
-        return Statement::Expression(ExpressionStmt { expression: expr });
+        Statement::Expression(ExpressionStmt { expression: expr })
     }
 
     fn return_stmt(&mut self) -> Statement {
         let value: Expr = self.expression();
-        return Statement::Return(ReturnStmt {
+        Statement::Return(ReturnStmt {
             value: value.clone(),
             returntype: match value.get_expr_value().value {
                 Some(v) => v.to_akind(),
@@ -257,12 +257,12 @@ impl Parser {
                     todo!()
                 }
             },
-        });
+        })
     }
 
     fn statement(&mut self) -> Statement {
         if self.search(vec![TkKwPrint]) {
-            return self.print_stmt();
+            self.print_stmt()
         } else if self.search(vec![TkKwLet]) {
             return self.val_decl();
         } else if self.search(vec![TkKwReturn]) {
@@ -289,7 +289,7 @@ impl Parser {
                 initializer,
             };
 
-            return Statement::Val(res);
+            Statement::Val(res)
         } else {
             self.consume(TkAssign, "Expected '='");
 
@@ -305,7 +305,7 @@ impl Parser {
                 initializer,
             };
 
-            return Statement::Val(res);
+            Statement::Val(res)
         }
     }
 
@@ -330,7 +330,9 @@ impl Parser {
             TkType(t) => t,
             _ => panic!("Token cannot be type"),
         };
-        let new = Token {
+        
+        //println!("{:?}", new);
+        Token {
             tokentype: name.tokentype,
             value: Some(SymbolValue::Identity(Ident {
                 name: name
@@ -342,9 +344,7 @@ impl Parser {
                 //value: Box::new(SymbolValue::Unknown),
             })),
             location: name.location,
-        };
-        //println!("{:?}", new);
-        new
+        }
     }
 
     fn val_signiture(&mut self) -> Token {
@@ -376,7 +376,9 @@ impl Parser {
         }
 
         //println!("{:?}", kind);
-        let new = Token {
+        
+
+        Token {
             tokentype: name.clone().tokentype,
             value: Some(SymbolValue::Identity(Ident {
                 name: name
@@ -389,9 +391,7 @@ impl Parser {
                 //value: Box::new(SymbolValue::Unknown),
             })),
             location: name.location,
-        };
-
-        new
+        }
     }
 
     fn op_decl(&mut self) -> Statement {
@@ -437,14 +437,14 @@ impl Parser {
         //    _ => panic!("Invalid function name"),
         //}
 
-        return Statement::Operation(OpDecl {
+        Statement::Operation(OpDecl {
             name,
             params,
             returnval: opreturnkind,
             body: BlockStmt {
                 statements: self.opblock(),
             },
-        });
+        })
     }
 
     fn opblock(&mut self) -> Vec<Statement> {
@@ -463,7 +463,7 @@ impl Parser {
         if self.search(vec![TkKWOp]) {
             return self.op_decl();
         }
-        return self.statement();
+        self.statement()
     }
 
     pub fn parse(&mut self) {
@@ -485,6 +485,6 @@ impl Parser {
     }
 
     pub fn supply(&mut self) -> Vec<Statement> {
-        return self.new_stmts.clone();
+        self.new_stmts.clone()
     }
 }

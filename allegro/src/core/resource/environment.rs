@@ -13,12 +13,12 @@ pub enum AKind {
 impl AKind {
     pub fn to_ctype(self) -> String {
         match self {
-            Self::TyInt => return "int".to_string(),
-            AKind::TyStr => return "char*".to_string(),
-            AKind::TyFlt => return "double".to_string(),
-            AKind::TyBool => return "bool".to_string(),
-            AKind::TyMute => return "void".to_string(),
-            AKind::TyUnknown => return "null".to_string(),
+            Self::TyInt => "int".to_string(),
+            AKind::TyStr => "char*".to_string(),
+            AKind::TyFlt => "double".to_string(),
+            AKind::TyBool => "bool".to_string(),
+            AKind::TyMute => "void".to_string(),
+            AKind::TyUnknown => "null".to_string(),
 
             //AKind::TyUnknown => return "null".to_string(),
             _ => panic!("Invalid type {:?}", self),
@@ -60,7 +60,7 @@ impl Environment {
 
     pub fn get(&mut self, name: String) -> AKind {
         match self.entries.iter().position(|e| e.name == name) {
-            Some(l) => return self.entries[l].value.clone(),
+            Some(l) => self.entries[l].value.clone(),
             None => {
                 if self.enclosing.is_some() {
                     self.enclosing.clone().unwrap().get(name)

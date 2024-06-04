@@ -29,12 +29,12 @@ macro_rules! line {
 
 impl Generator {
     pub fn new(ast: Vec<Statement>, e: Environment) -> Self {
-        return Generator {
+        Generator {
             ast,
             env: e,
             loc: 0,
             output: vec![],
-        };
+        }
     }
 
     fn add(&mut self, st: GenLine) {
@@ -45,7 +45,7 @@ impl Generator {
         match sk {
             SymbolValue::Scalar(s) => match s {
                 Scalar::Int(i) => i.to_string(),
-                Scalar::Str(s) => format!("\"{}\"", s.to_string()),
+                Scalar::Str(s) => format!("\"{}\"", s),
                 Scalar::Float(f) => f.to_string(),
                 _ => {
                     panic!("Unkown type!")
@@ -95,14 +95,14 @@ impl Generator {
                     }
                     count += 1;
                 }
-                return accum;
+                accum
             }
             _ => panic!("{:?} is not an operation!", s),
         }
     }
 
     fn gen_operator(&mut self, o: Token) -> String {
-        return match o.tokentype {
+        match o.tokentype {
             TokenType::TkPlus => "+".to_string(),
             TokenType::TkMinus => "-".to_string(),
             TokenType::TkStar => "*".to_string(),
@@ -117,7 +117,7 @@ impl Generator {
             TokenType::TkAnd => "&&".to_string(),
             TokenType::TkOr => "||".to_string(),
             _ => panic!("{:?} is not an operator", o),
-        };
+        }
     }
 
     pub fn generate(&mut self) {
@@ -131,15 +131,15 @@ impl Generator {
     }
 
     fn gen_code(&mut self, el: Statement) -> String {
-        return match el.clone() {
+        match el.clone() {
             Statement::Val(vd) => {
-                let cname: String;
+                
                 let ckind = self.get_ctype(el);
                 let cval: String = self.get_cval(match vd.initializer {
                     Expr::ScalarEx(le) => le.value.value.unwrap(),
                     _ => panic!("Unknown type!"),
                 });
-                cname = vd.name.name;
+                let cname: String = vd.name.name;
                 let x = format!("{} {} = {};", ckind, cname, cval);
                 x
             }
@@ -178,7 +178,7 @@ impl Generator {
                     let cvval = self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: *a.value,
                     }));
-                    return format!("{cvtype} {cvname} = {cvval}");
+                    format!("{cvtype} {cvname} = {cvval}")
                 }
                 Expr::Binary(b) => {
                     let cl = self.gen_code(Statement::Expression(ExpressionStmt {
@@ -189,7 +189,7 @@ impl Generator {
                     }));
                     let o = self.gen_operator(b.operator);
 
-                    return format!("{cl} {o} {cr}");
+                    format!("{cl} {o} {cr}")
                 }
                 Expr::Call(c) => todo!(),
                 Expr::Grouping(g) => {
@@ -202,8 +202,8 @@ impl Generator {
                     x
                 }
                 Expr::ScalarEx(l) => {
-                    let x = l.value.value.unwrap().get_string().unwrap();
-                    x
+                    
+                    l.value.value.unwrap().get_string().unwrap()
                 }
                 Expr::Logical(l) => {
                     let cl = self.gen_code(Statement::Expression(ExpressionStmt {
@@ -214,14 +214,14 @@ impl Generator {
                     }));
                     let o = self.gen_operator(l.operator);
 
-                    return format!("{cl} {o} {cr}");
+                    format!("{cl} {o} {cr}")
                 }
                 Expr::Unary(u) => todo!(),
                 Expr::Value(v) => {
                     let x = v.name.value.unwrap().get_string().unwrap();
-                    return x;
+                    x
                 }
-                Expr::Empty => return "".to_string(),
+                Expr::Empty => "".to_string(),
             },
 
             Statement::Return(r) => {
@@ -240,7 +240,7 @@ impl Generator {
                 TokenType::TkKwFalse => todo!(),
                 TokenType::TkSymbol => {
                     println!("{:?}", p.expression.get_expr_value().value);
-                    return "//printf".to_string();
+                    "//printf".to_string()
                     //return format!("printf({}", key,)
                 }
                 TokenType::TkScalar => match p.expression.get_expr_value().value.unwrap() {
@@ -252,19 +252,19 @@ impl Generator {
                                     expression: p.expression
                                 }))
                             );
-                            return accum;
+                            accum
                         }
                         Scalar::Float(f) => {
                             let accum = format!("printf(\"%d\", {});", f);
-                            return accum;
+                            accum
                         }
                         Scalar::Int(i) => {
                             let accum = format!("printf(\"%d\", {});", i);
-                            return accum;
+                            accum
                         }
                         Scalar::Bool(b) => {
                             let accum = format!("printf({});", b);
-                            return accum;
+                            accum
                         }
                     },
                     _ => panic!("{:?} cannot be printed!", p.expression),
@@ -275,7 +275,7 @@ impl Generator {
             _ => {
                 panic!("Unsupported ast Token: {:?}", el);
             }
-        };
+        }
     }
 
     pub fn supply(&mut self) -> String {
@@ -283,7 +283,7 @@ impl Generator {
         for i in self.output.clone() {
             accum = format!("{accum}{}", i.c)
         }
-        accum = format!("{accum}");
-        return accum;
+        accum = accum.to_string();
+        accum
     }
 }

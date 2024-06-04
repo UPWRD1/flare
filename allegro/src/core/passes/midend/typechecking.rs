@@ -16,14 +16,14 @@ pub struct Typechecker {
 
 impl Typechecker {
     pub fn new(ast: Vec<Statement>) -> Self {
-        return Typechecker {
+        Typechecker {
             ast,
             loc: 0,
             env: Environment::new(),
             has_current_op_returned: false,
             current_op_kind: None,
             checked: vec![],
-        };
+        }
     }
 
     fn check_statement(&mut self, stmt: Statement) {
@@ -172,10 +172,8 @@ impl Typechecker {
                     ),
                     _ => panic!("Invalid operator {:?}", b.operator),
                 }
-                if lhstype.clone().unwrap() != AKind::TyUnknown {
-                    if lhstype.clone() != rhstype.clone() {
-                        panic!("{:?} and {:?} are of differing types!", lhstype, rhstype);
-                    }
+                if lhstype.clone().unwrap() != AKind::TyUnknown && lhstype.clone() != rhstype.clone() {
+                    panic!("{:?} and {:?} are of differing types!", lhstype, rhstype);
                 }
 
                 match b.operator.tokentype {
@@ -184,8 +182,8 @@ impl Typechecker {
                     | TokenType::TkCGE
                     | TokenType::TkCGT
                     | TokenType::TkCEQ
-                    | TokenType::TkCNE => return Some(AKind::TyBool),
-                    _ => return Some(AKind::TyInt),
+                    | TokenType::TkCNE => Some(AKind::TyBool),
+                    _ => Some(AKind::TyInt),
                 }
             }
             Expr::Unary(u) => {
@@ -193,17 +191,17 @@ impl Typechecker {
                 match u.operator.tokentype {
                     TokenType::TkMinus => {
                         self.expect_expr(*u.right, rhstype?, vec![AKind::TyInt, AKind::TyFlt]);
-                        return Some(AKind::TyInt);
+                        Some(AKind::TyInt)
                     }
                     _ => panic!("Invalid unary operation {:?}", u.operator),
                 }
             }
-            Expr::Value(v) => return Some(self.env.get(v.name.value?.get_string().unwrap())),
+            Expr::Value(v) => Some(self.env.get(v.name.value?.get_string().unwrap())),
             Expr::Assign(a) => {
                 let value_type = self.resolve_expr(*a.value.clone());
                 let bind_type = self.env.get(a.name.value?.get_string().unwrap());
                 self.expect_expr(*a.value.clone(), value_type.clone()?, vec![bind_type]);
-                return value_type;
+                value_type
             }
             Expr::Call(c) => {
                 let callee_type = self.resolve_expr(*c.callee.clone());
@@ -214,12 +212,12 @@ impl Typechecker {
                     //println!("{:?}", expected_type.clone());
                     self.expect_expr(arg.clone(), arg_type?, vec![expected_type])
                 }
-                return callee_type;
+                callee_type
             }
 
-            Expr::Grouping(g) => return self.resolve_expr(*g.expression),
+            Expr::Grouping(g) => self.resolve_expr(*g.expression),
 
-            Expr::Empty => return None,
+            Expr::Empty => None,
 
             _ => panic!("Unknown expression type {:?}", expr),
         }
@@ -248,6 +246,6 @@ impl Typechecker {
     }
 
     pub fn supply(&mut self) -> (Vec<Statement>, Environment) {
-        return (self.checked.clone(), self.env.clone());
+        (self.checked.clone(), self.env.clone())
     }
 }

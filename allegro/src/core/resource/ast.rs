@@ -181,7 +181,7 @@ impl SymbolValue {
                 //if i.kind.is_some() {
                 //    return *i.kind.unwrap();
                 //} else {
-                return AKind::TyUnknown;
+                AKind::TyUnknown
                 //}
             }
             Self::Mute => AKind::TyMute,
@@ -191,11 +191,11 @@ impl SymbolValue {
 
     pub fn get_string(self) -> Option<String> {
         match self {
-            Self::Identity(i) => return Some(i.name),
+            Self::Identity(i) => Some(i.name),
             Self::Scalar(s) => match s {
                 Scalar::Int(v) => format!("{v}").into(),
                 Scalar::Float(v) => format!("{v}").into(),
-                Scalar::Str(v) => format!("{v}").into(),
+                Scalar::Str(v) => v.to_string().into(),
                 Scalar::Bool(v) => format!("{v}").into(),
             },
             _ => panic!("Cannot get string name of value {:?}", self),

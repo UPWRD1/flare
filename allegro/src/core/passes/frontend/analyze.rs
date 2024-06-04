@@ -167,7 +167,7 @@ impl Analyzer {
                     let toadd: Token = Token {
                         tokentype: TkType(AKind::TyMute),
                         value: Some(SymbolValue::Mute),
-                        location: el.location.clone(),
+                        location: el.location,
                     };
                     self.add(toadd)
                 }
