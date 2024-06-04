@@ -13,7 +13,6 @@ use passes::midend::typechecking;
 
 use passes::backend::codegen;
 
-use std::io::Write;
 
 pub fn start(filename: &String) {
     let now = Instant::now();
