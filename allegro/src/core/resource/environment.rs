@@ -59,8 +59,9 @@ impl Environment {
                 error!("Operation {} already exists!", e.name);
             }
         }
-        
         self.entries.push(e);
+        //dbg!(self.entries.clone());
+
     }
 
     pub fn get_akind(&mut self, name: String) -> AKind {

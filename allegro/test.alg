@@ -1,11 +1,7 @@
 -- we love comments
 
-op factorial: Int of (n: Int) -> {
-    return n * factorial(n - 1)
-}
-
-op main: .. of () -> {
-    let x := factorial(10);
-    print x;
+op main: Int of () -> {
+    let x := 3 * 5;
+    return x;
 }
  

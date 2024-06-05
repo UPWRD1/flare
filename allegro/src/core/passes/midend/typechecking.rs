@@ -30,8 +30,19 @@ impl Typechecker {
     fn build_environment(&mut self, stmt: Statement) {
         match stmt {
             Statement::Val(vd) => {
-                let declared_type = vd.name.kind;
-                self.env.define(vd.name.name, declared_type, -1)
+                match vd.initializer.clone() {
+                    Expr::Call(c) => {
+                        let calltype = self.env.get_akind(c.callee.value.unwrap().get_string().unwrap());
+                        dbg!(calltype.clone());
+                        self.env.define(vd.name.name, calltype, -1);
+                        println!("Hello");
+                    }
+                    _ => {
+                        let declared_type = vd.name.kind;
+                        self.env.define(vd.name.name, declared_type, -1)
+        
+                    }
+                }
             }
             Statement::Block(b) => {
                 //let previous = self.env.clone();
@@ -264,7 +275,8 @@ impl Typechecker {
                     let expected_type =
                         c.clone().args[i].get_expr_value().value.unwrap().to_akind();
                     //println!("{:?}", expected_type.clone());
-                    self.expect_expr(arg.clone(), arg_type?, vec![expected_type])
+                    self.expect_expr(arg.clone(), arg_type?, vec![expected_type]);
+                    return Some(retval);
                 }
                 let call_arity = self
                     .env
@@ -308,7 +320,7 @@ impl Typechecker {
         }
         self.loc = 0;
         while self.loc < nast.len() {
-            dbg!(self.env.clone());
+            //dbg!(self.env.clone());
             let stmt: Statement = nast[self.loc].clone();
             self.check_statement(stmt.clone());
             self.checked.push(stmt.clone());
