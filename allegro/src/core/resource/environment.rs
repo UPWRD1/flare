@@ -1,3 +1,5 @@
+use crate::error;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AKind {
     TyStr,
@@ -31,6 +33,7 @@ impl AKind {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Entry {
     pub name: String,
+    pub arity: i32,
     pub value: AKind,
 }
 
@@ -49,21 +52,36 @@ impl Environment {
         Environment { entries: vec![], enclosing: Some(Box::new(e)) }
     }
 
-    pub fn define(&mut self, name: String, value: AKind) {
-        let e = Entry { name, value };
+    pub fn define(&mut self, name: String, value: AKind, arity: i32) {
+        let e = Entry { name, arity, value };
         for i in &self.entries {
-            assert_ne!(e, *i, "Invalid entry");
+            if *i == e {
+                error!("Operation {} already exists!", e.name);
+            }
         }
         
         self.entries.push(e);
     }
 
-    pub fn get(&mut self, name: String) -> AKind {
+    pub fn get_akind(&mut self, name: String) -> AKind {
         match self.entries.iter().position(|e| e.name == name) {
             Some(l) => self.entries[l].value.clone(),
             None => {
                 if self.enclosing.is_some() {
-                    self.enclosing.clone().unwrap().get(name)
+                    self.enclosing.clone().unwrap().get_akind(name)
+                } else {
+                    panic!("Unknown value binding {}", name)
+                }
+            }
+        }
+    }
+
+    pub fn get_arity(&mut self, name:String) -> i32 {
+        match self.entries.iter().position(|e| e.name == name) {
+            Some(l) => self.entries[l].arity.clone(),
+            None => {
+                if self.enclosing.is_some() {
+                    self.enclosing.clone().unwrap().get_arity(name)
                 } else {
                     panic!("Unknown value binding {}", name)
                 }

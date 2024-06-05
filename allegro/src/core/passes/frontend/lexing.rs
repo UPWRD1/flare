@@ -5,7 +5,7 @@ use crate::core::resource::environment::AKind;
 use crate::core::resource::lexemes::Lexeme;
 use crate::core::resource::lexemes::LexemeKind::*;
 
-use crate::lexingerror;
+use crate::error;
 use crate::quit;
 
 #[derive(Debug, Clone)]
@@ -95,7 +95,7 @@ impl Lexer {
                         {
                             self.advance();
                         }
-                    } else if (0..9).contains(&self.next().to_string().parse::<i32>().unwrap()) {
+                    } else if self.next().is_digit(10) {
                         self.create_numeric()
                     } else {
                         self.add(create_lexeme!(LxMinus, Nothing, self));
@@ -181,7 +181,7 @@ impl Lexer {
                 }
 
                 _ => {
-                    lexingerror!(
+                    error!(
                         "IDK: '{}' {:b}, {}",
                         self.current(),
                         self.current() as usize,

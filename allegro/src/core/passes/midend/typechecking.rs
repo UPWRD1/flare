@@ -4,6 +4,7 @@ use crate::core::resource::ast::Statement;
 use crate::core::resource::environment::AKind;
 use crate::core::resource::environment::Environment;
 use crate::core::resource::tokens::TokenType;
+use crate::error;
 
 pub struct Typechecker {
     ast: Vec<Statement>,
@@ -26,25 +27,69 @@ impl Typechecker {
         }
     }
 
+    fn build_environment(&mut self, stmt: Statement) {
+        match stmt {
+            Statement::Val(vd) => {
+                let declared_type = vd.name.kind;
+                self.env.define(vd.name.name, declared_type, -1)
+            }
+            Statement::Block(b) => {
+                //let previous = self.env.clone();
+                //self.env = Environment::new_with_previous(previous.clone());
+                for statement in b.statements {
+                    self.build_environment(statement)
+                }
+                //self.env = previous
+            }
+
+            Statement::Operation(o) => {
+                let op_type = o.returnval;
+                self.env.define(
+                    o.name.value.clone().unwrap().get_string().unwrap(),
+                    op_type.clone(),
+                    o.params.len().try_into().unwrap(),
+                );
+
+                let previous = self.env.clone();
+                //self.env = Environment::new_with_previous(previous);
+
+                self.has_current_op_returned = false;
+                self.current_op_kind = Some(op_type);
+
+                for param in o.params {
+                    //println!("{}", param.name.name);
+                    self.env.define(param.name.name, param.name.kind, -1)
+                }
+
+                self.build_environment(Statement::Block(o.body));
+
+            }
+
+            _ => {
+                // do nothing
+            }
+        }
+    }
+
     fn check_statement(&mut self, stmt: Statement) {
         match stmt {
             Statement::Expression(e) => {
                 self.resolve_expr(e.expression);
             }
             Statement::Val(vd) => {
-                println!("{:?}", vd);
+                //println!("{:?}", vd);
                 let declared_type = vd.name.kind;
-                println!("{:?}", declared_type);
+                //println!("{:?}", declared_type);
 
                 let resolved_type = self.resolve_expr(vd.initializer.clone());
-                println!("{:?}", resolved_type);
+                //println!("{:?}", resolved_type);
 
                 self.expect_expr(
                     vd.initializer,
                     resolved_type.expect("Expected type"),
                     vec![declared_type.clone()],
                 );
-                self.env.define(vd.name.name, declared_type)
+                //self.env.define(vd.name.name, declared_type, -1)
             }
             Statement::Block(b) => {
                 let previous = self.env.clone();
@@ -59,10 +104,11 @@ impl Typechecker {
 
             Statement::Operation(o) => {
                 let op_type = o.returnval;
-                self.env.define(
-                    o.name.value.clone().unwrap().get_string().unwrap(),
-                    op_type.clone(),
-                );
+                //self.env.define(
+                //    o.name.value.clone().unwrap().get_string().unwrap(),
+                //    op_type.clone(),
+                //    o.params.len().try_into().unwrap(),
+                //);
 
                 let previous = self.env.clone();
                 self.env = Environment::new_with_previous(previous.clone());
@@ -70,13 +116,10 @@ impl Typechecker {
                 self.has_current_op_returned = false;
                 self.current_op_kind = Some(op_type);
 
-                for param in o.params {
-                    //println!("{}", param.name.name);
-                                        self.env.define(
-                        param.name.name,
-                        param.name.kind
-                    )
-                }
+                //for param in o.params {
+                //    //println!("{}", param.name.name);
+                //    self.env.define(param.name.name, param.name.kind, -1)
+                //}
 
                 self.check_statement(Statement::Block(o.body));
 
@@ -131,13 +174,14 @@ impl Typechecker {
 
         for kind in &expected_kinds {
             if expected_kinds.contains(&AKind::TyUnknown) {
-                panic!()
+                return;
+                //panic!()
             } else if nk == *kind {
                 return;
             }
         }
 
-        println!(
+        panic!(
             "Error: Expected {:?} to be of type {:?}, but found {:?}",
             expr, expected_kinds, exprkind
         );
@@ -170,7 +214,9 @@ impl Typechecker {
                     ),
                     _ => panic!("Invalid operator {:?}", b.operator),
                 }
-                if lhstype.clone().unwrap() != AKind::TyUnknown && lhstype.clone() != rhstype.clone() {
+                if lhstype.clone().unwrap() != AKind::TyUnknown
+                    && lhstype.clone() != rhstype.clone()
+                {
                     panic!("{:?} and {:?} are of differing types!", lhstype, rhstype);
                 }
 
@@ -194,15 +240,25 @@ impl Typechecker {
                     _ => panic!("Invalid unary operation {:?}", u.operator),
                 }
             }
-            Expr::Value(v) => Some(self.env.get(v.name.value?.get_string().unwrap())),
+            Expr::Value(v) => Some(self.env.get_akind(v.name.value?.get_string().unwrap())),
             Expr::Assign(a) => {
                 let value_type = self.resolve_expr(*a.value.clone());
-                let bind_type = self.env.get(a.name.value?.get_string().unwrap());
+                let bind_type = self
+                    .env
+                    .get_akind(a.name.value.clone()?.get_string().unwrap());
                 self.expect_expr(*a.value.clone(), value_type.clone()?, vec![bind_type]);
+                self.env.define(
+                    a.name.value.unwrap().get_string().unwrap(),
+                    value_type.clone().unwrap(),
+                    -1,
+                );
                 value_type
             }
             Expr::Call(c) => {
-                let callee_type = self.resolve_expr(*c.callee.clone());
+                let retval = self
+                    .env
+                    .get_akind(c.callee.value.clone().unwrap().get_string().unwrap());
+                //let callee_type = c.callee.value.clone().unwrap().to_akind();
                 for (i, arg) in c.args.iter().enumerate() {
                     let arg_type = self.resolve_expr(arg.clone());
                     let expected_type =
@@ -210,7 +266,19 @@ impl Typechecker {
                     //println!("{:?}", expected_type.clone());
                     self.expect_expr(arg.clone(), arg_type?, vec![expected_type])
                 }
-                callee_type
+                let call_arity = self
+                    .env
+                    .get_arity(c.callee.value.clone().unwrap().get_string().unwrap());
+                if call_arity != c.args.len().try_into().unwrap() {
+                    error!(
+                        "Call to '{}' has {} arguments instead of {}",
+                        c.callee.value.clone().unwrap().get_string().unwrap(),
+                        c.args.len(),
+                        call_arity
+                    );
+                }
+
+                Some(retval)
             }
 
             Expr::Grouping(g) => self.resolve_expr(*g.expression),
@@ -234,7 +302,13 @@ impl Typechecker {
             }
         }
         while self.loc < nast.len() {
-            //dbg!(self.env.clone());
+            let stmt: Statement = nast[self.loc].clone();
+            self.build_environment(stmt.clone());
+            self.loc += 1
+        }
+        self.loc = 0;
+        while self.loc < nast.len() {
+            dbg!(self.env.clone());
             let stmt: Statement = nast[self.loc].clone();
             self.check_statement(stmt.clone());
             self.checked.push(stmt.clone());

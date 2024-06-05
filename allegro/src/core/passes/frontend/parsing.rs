@@ -1,8 +1,8 @@
-use crate::core::resource::{
+use crate::{core::resource::{
     ast::*,
     environment::AKind,
-    tokens::{Token, TokenType, TokenType::*},
-};
+    tokens::{Token, TokenType::{self, *}},
+}, info};
 
 pub struct Parser {
     pub tkvec: Vec<Token>,
@@ -33,6 +33,7 @@ impl Parser {
         }
     }
 
+    #[allow(dead_code)]
     fn inspect(&mut self) {
         println!("{:?}", self.tkvec[self.curr].tokentype)
     }
@@ -142,7 +143,7 @@ impl Parser {
                 }
 
                 return Expr::Call(CallExpr {
-                    callee: Box::new(expr),
+                    callee: expr.get_expr_value(),
                     paren,
                     args,
                 });
@@ -269,15 +270,15 @@ impl Parser {
             return self.return_stmt();
         } else if self.search(vec![TkKwUse]) {
             self.use_statement();
-            todo!()
+            return self.expr_stmt();
         } else {
             return self.expr_stmt();
         }
     }
 
     fn use_statement(&mut self) {
-        println!("{:?}", self.current());
-        
+        //self.advance();
+        info!("Found dependancy {:?}", self.current().value.unwrap().get_string().unwrap());
     }
 
     fn val_decl(&mut self) -> Statement {
@@ -308,6 +309,8 @@ impl Parser {
             if !self.search(vec![TkStatementEnd]) {
                 panic!("Unexpected end of value declaration!")
             }
+
+            //println!("{:?}", initializer);
             let res = ValDecl {
                 name: Ident {
                     name: name.value.unwrap().get_string().unwrap(),
@@ -447,7 +450,7 @@ impl Parser {
 
     fn opblock(&mut self) -> Vec<Statement> {
         let mut collector: Vec<Statement> = vec![];
-        self.inspect();
+        //self.inspect();
         if self.check(TkKwReturn) {
             collector.push(self.statement());
         } else {

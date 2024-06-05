@@ -1,7 +1,7 @@
 use core::panic;
 
 use crate::core::resource::{
-    ast::{self, *},
+    ast::*,
     environment::Environment,
     tokens::{Token, TokenType},
 };
@@ -51,8 +51,12 @@ impl Generator {
                     panic!("Unkown type!")
                 }
             },
+            SymbolValue::Identity(i) => {
+                let name = format!("{}()", i.name);
+                name
+            }
             _ => {
-                panic!("Unkown type!")
+                panic!("Unkown type {:?}!", sk)
             }
         }
     }
@@ -126,12 +130,12 @@ impl Generator {
     fn gen_code(&mut self, el: Statement) -> String {
         match el.clone() {
             Statement::Val(vd) => {
-                
                 let ckind = self.get_ctype(el);
-                let cval: String = self.get_cval(match vd.initializer {
-                    Expr::ScalarEx(le) => le.value.value.unwrap(),
-                    _ => panic!("Unknown type!"),
-                });
+                let cval: String = match vd.initializer {
+                    Expr::ScalarEx(le) => self.get_cval(le.value.value.unwrap()),
+                    Expr::Call(c) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Call(c) })),
+                    _ => panic!("Unknown value {:?}!", vd.initializer),
+                };
                 let cname: String = vd.name.name;
                 let x = format!("{} {} = {};", ckind, cname, cval);
                 x
@@ -166,7 +170,7 @@ impl Generator {
                     let cvname = a.name.value.clone().unwrap().get_string().unwrap();
                     let cvtype = self
                         .env
-                        .get(a.name.value.unwrap().get_string().unwrap())
+                        .get_akind(a.name.value.unwrap().get_string().unwrap())
                         .to_ctype();
                     let cvval = self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: *a.value,
@@ -184,7 +188,22 @@ impl Generator {
 
                     format!("{cl} {o} {cr}")
                 }
-                Expr::Call(c) => todo!(),
+                Expr::Call(c) => {
+                    let name = c.callee.value.unwrap().get_string().unwrap();
+                    let mut argstring = "".to_string();
+                    let mut argcount = 0;
+                    for arg in c.args {
+                        argcount += 1;
+                        if argcount > 1 {
+                            argstring = format!("{}, {}", argstring, self.gen_code(Statement::Expression(ExpressionStmt { expression: arg })))
+                        } else {
+                            argstring = format!("{}{}", argstring, self.gen_code(Statement::Expression(ExpressionStmt { expression: arg })))
+
+                        }
+                    }
+                    format!("{}({})", name, argstring)
+                    //todo!()
+                },
                 Expr::Grouping(g) => {
                     let x = format!(
                         "({})",
@@ -194,10 +213,7 @@ impl Generator {
                     );
                     x
                 }
-                Expr::ScalarEx(l) => {
-                    
-                    l.value.value.unwrap().get_string().unwrap()
-                }
+                Expr::ScalarEx(l) => l.value.value.unwrap().get_string().unwrap(),
                 Expr::Logical(l) => {
                     let cl = self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: *l.left,
@@ -209,7 +225,11 @@ impl Generator {
 
                     format!("{cl} {o} {cr}")
                 }
-                Expr::Unary(u) => todo!(),
+                Expr::Unary(u) => {
+                    return format!("{}{}", self.gen_operator(u.operator), self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: *u.right,
+                    })))
+                },
                 Expr::Value(v) => {
                     let x = v.name.value.unwrap().get_string().unwrap();
                     x

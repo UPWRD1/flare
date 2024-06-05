@@ -1,3 +1,5 @@
+extern crate colored;
+
 use std::env;
 
 mod core;
@@ -11,7 +13,7 @@ fn main() {
             "-c" => {
                 let filename = &prog_args[2];
                 let output_filename = &prog_args[3];
-                println!("[i] Compiling {} to {}", filename, output_filename);
+                info!("Compiling {} to {}", filename, output_filename);
                 core::full_compile(filename);
             }
 

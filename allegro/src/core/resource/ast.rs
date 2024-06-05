@@ -15,7 +15,7 @@ pub struct BinExpr {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallExpr {
-    pub callee: Box<Expr>,
+    pub callee: Token,
     pub paren: Token,
     pub args: Vec<Expr>,
 }
@@ -67,7 +67,7 @@ impl Expr {
         match self {
             Self::Assign(a) => a.name.clone(),
             Self::Binary(b) => b.left.clone().get_expr_value(),
-            Self::Call(c) => c.paren.clone(),
+            Self::Call(c) => c.callee.clone(),
             Self::Empty => {
                 panic!("Cannot get value of empty expression!")
             }

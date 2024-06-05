@@ -11,7 +11,8 @@ use crate::core::resource::{
 pub struct Analyzer {
     lexvec: Vec<Lexeme>,
     tkvec: Vec<Token>,
-    loc: usize,
+    lx_loc: usize,
+    tk_loc: usize,
 }
 /*
 macro_rules! ctk {
@@ -30,7 +31,8 @@ impl Analyzer {
     pub fn new(lxvec: Vec<Lexeme>) -> Self {
         Analyzer {
             lexvec: lxvec,
-            loc: 0,
+            lx_loc: 0,
+            tk_loc: 0,
             tkvec: vec![],
         }
     }
@@ -39,15 +41,20 @@ impl Analyzer {
         self.tkvec.push(t);
     }
 
+    fn next_t(&mut self) -> Token {
+        self.tkvec[self.tk_loc + 1].clone()
+    }
+
     pub fn analyze(&mut self) {
         //println!("{:?}", self.lexvec);
         self.extract_keywords();
+        self.import_pass();
         //self.fix_types();
     }
 
     fn extract_keywords(&mut self) {
-        while self.loc < self.lexvec.len() {
-            let el = &self.lexvec[self.loc].clone();
+        while self.lx_loc < self.lexvec.len() {
+            let el = &self.lexvec[self.lx_loc].clone();
             //println!("{:?}", el);
 
             match &el.kind {
@@ -184,7 +191,7 @@ impl Analyzer {
                     location: el.location,
                 }),
                 LxStatementEnd => {
-                    if self.loc != 0 && self.lexvec[self.loc - 1].kind != LxLBrace {
+                    if self.lx_loc != 0 && self.lexvec[self.lx_loc - 1].kind != LxLBrace {
                         self.add(Token {
                             tokentype: TkStatementEnd,
                             value: None,
@@ -267,8 +274,31 @@ impl Analyzer {
                 }),
             }
 
-            self.loc += 1;
+            self.lx_loc += 1;
         }
+    }
+    
+    fn import_pass(&mut self) -> Vec<Token> {
+        let tv: Vec<Token> = self.tkvec.clone();
+        while self.tk_loc < tv.len() {
+            match self.tkvec[self.tk_loc].tokentype {
+                TkKwUse => {
+                    let to_import = self.next_t().value.unwrap().get_string().unwrap();
+                    let mut nfile = crate::core::compile_import(&to_import);
+                    nfile.remove(nfile.len() -1);
+                    self.tkvec.remove(self.tkvec.len() -1);
+
+                    self.tkvec.append(&mut nfile);
+                    println!("{:?}", self.tkvec.remove(self.tk_loc));
+                    println!("{:?}", self.tkvec.remove(self.tk_loc));
+                }
+                _ => {
+                    self.tk_loc += 1;
+
+                }
+            }
+        }
+        return self.tkvec.clone()
     }
 
     pub fn supply(&mut self) -> Vec<Token> {

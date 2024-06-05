@@ -1,9 +1,9 @@
 #include <stdio.h>
 
-int test(int a) {
-    return a * 3;
+int factorial(int n) {
+    return n * factorial(n - 1);
 }
 void main() {
-    int x = 3;
+    null x = factorial(10);
     //printf
 }
