@@ -321,7 +321,7 @@ impl Parser {
                 name: Ident {
                     name: name.value.unwrap().get_string().unwrap(),
                     value: Box::new(initializer.get_expr_value().value.unwrap()),
-                    kind: kind,
+                    kind,
                 },
                 initializer,
             };

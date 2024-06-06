@@ -13,7 +13,7 @@ macro_rules! quit {
 #[macro_export]
 macro_rules! error {
     () => {
-        use crate::quit;
+        use $crate::quit;
         use colored::Colorize;
 
         eprintln!("{} An Error Occured!", "[!]".red());
@@ -24,7 +24,7 @@ macro_rules! error {
         use colored::Colorize;
 
         eprintln!("{} {}", "[!]".red(), format_args!($($arg)*));
-        crate::quit!();
+        $crate::quit!();
     };
 }
 

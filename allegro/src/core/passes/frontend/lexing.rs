@@ -100,7 +100,7 @@ impl Lexer {
                         {
                             self.advance();
                         }
-                    } else if self.next().is_digit(10) {
+                    } else if self.next().is_ascii_digit() {
                         self.create_numeric()
                     } else {
                         self.add(create_lexeme!(LxMinus, Nothing, self));

@@ -107,7 +107,7 @@ impl Analyzer {
                             location: el.location,
                         };
                     } else if tkk == TokenType::TkScalar {
-                        if <ast::SymbolValue as Clone>::clone(&sv).get_string().unwrap() == "true" {
+                        if <ast::SymbolValue as Clone>::clone(sv).get_string().unwrap() == "true" {
                             toadd = Token {
                                 tokentype: tkk,
                                 value: Some(SymbolValue::Scalar(Scalar::Bool(true))),
