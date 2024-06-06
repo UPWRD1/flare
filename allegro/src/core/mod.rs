@@ -80,7 +80,7 @@ fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
     let mut lxr = lexing::Lexer::new(contents.to_string());
     lxr.lex();
     let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();
-    dbg!(cstvec.clone());
+    //dbg!(cstvec.clone());
     info!("Lexing: OK");
     cstvec
 }

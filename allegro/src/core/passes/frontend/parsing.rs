@@ -447,6 +447,7 @@ impl Parser {
             }
             self.consume(TkRparen, "Expected ')'");
     
+            self.inspect();
             self.consume(TkSmallArr, "Expected '->'");
     
             // Fix return type of op name's identity

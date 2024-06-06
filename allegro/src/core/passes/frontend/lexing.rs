@@ -87,7 +87,8 @@ impl Lexer {
                 }
                 '-' => {
                     if self.next() == '>' {
-                        if self.srccharvec[self.location - 1] != ')' {
+                        dbg!(self.srccharvec[self.location - 2]);
+                        if self.srccharvec[self.location - 2] != ')' {
                             self.add(create_lexeme!(LxOpMuteShorthand, Nothing, self));
                             self.advance();
                         } else {

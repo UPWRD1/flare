@@ -29,28 +29,27 @@ impl Typechecker {
 
     fn build_environment(&mut self, stmt: Statement) {
         match stmt {
-            Statement::Val(vd) => {
-                match vd.initializer.clone() {
-                    Expr::Call(c) => {
-                        let calltype = self.env.get_akind(c.callee.value.unwrap().get_string().unwrap());
-                        dbg!(calltype.clone());
-                        self.env.define(vd.name.name, calltype, -1);
-                        println!("Hello");
-                    }
-                    _ => {
-                        let declared_type = vd.name.kind;
-                        self.env.define(vd.name.name, declared_type, -1)
-        
-                    }
+            Statement::Val(vd) => match vd.initializer.clone() {
+                Expr::Call(c) => {
+                    let calltype = self
+                        .env
+                        .get_akind_scoped(c.callee.value.unwrap().get_string().unwrap());
+                    //dbg!(calltype.clone());
+                    self.env.define(vd.name.name, calltype, -1);
+                    println!("Hello");
                 }
-            }
+                _ => {
+                    let declared_type = vd.name.kind;
+                    self.env.define(vd.name.name, declared_type, -1)
+                }
+            },
             Statement::Block(b) => {
-                //let previous = self.env.clone();
-                //self.env = Environment::new_with_previous(previous.clone());
+                self.env.scope.new_parent();
                 for statement in b.statements {
                     self.build_environment(statement)
                 }
-                //self.env = previous
+                self.env.scope.drop_enclosing();
+
             }
 
             Statement::Operation(o) => {
@@ -73,6 +72,7 @@ impl Typechecker {
                 }
 
                 self.build_environment(Statement::Block(o.body));
+                self.env.scope.drop_enclosing();
 
             }
 
@@ -98,19 +98,19 @@ impl Typechecker {
                 self.expect_expr(
                     vd.initializer,
                     resolved_type.expect("Expected type"),
-                    vec![declared_type.clone()],
+                    declared_type.clone(),
                 );
                 //self.env.define(vd.name.name, declared_type, -1)
             }
             Statement::Block(b) => {
-                let previous = self.env.clone();
-                self.env = Environment::new_with_previous(previous.clone());
+                //let previous = self.env.clone();
+                //self.env = Environment::enclose_new(previous.clone());
 
                 for statement in b.statements {
                     self.check_statement(statement)
                 }
 
-                self.env = previous.clone()
+                //self.env = previous.clone()
             }
 
             Statement::Operation(o) => {
@@ -121,8 +121,8 @@ impl Typechecker {
                 //    o.params.len().try_into().unwrap(),
                 //);
 
-                let previous = self.env.clone();
-                self.env = Environment::new_with_previous(previous.clone());
+                //let previous = self.env.clone();
+                //self.env = Environment::enclose_new(previous.clone());
 
                 self.has_current_op_returned = false;
                 self.current_op_kind = Some(op_type);
@@ -134,7 +134,9 @@ impl Typechecker {
 
                 self.check_statement(Statement::Block(o.body));
 
-                if self.current_op_kind != Some(AKind::TyOp(Box::new(AKind::TyMute))) && !self.has_current_op_returned {
+                if self.current_op_kind != Some(AKind::TyOp(Box::new(AKind::TyMute)))
+                    && !self.has_current_op_returned
+                {
                     panic!(
                         "Expected operation '{:?}' to return a value of type {:?}",
                         o.name.value.clone().unwrap().get_string().unwrap(),
@@ -142,7 +144,7 @@ impl Typechecker {
                     )
                 }
 
-                self.env = previous.clone();
+                //self.env = previous.clone();
             }
 
             Statement::Print(p) => {
@@ -154,7 +156,7 @@ impl Typechecker {
                 self.expect_expr(
                     i.condition,
                     condition_type.expect("Expected Type"),
-                    vec![AKind::TyBool],
+                    AKind::TyBool,
                 );
                 self.check_statement(*i.then_branch.clone());
                 if i.else_branch.is_some() {
@@ -171,7 +173,7 @@ impl Typechecker {
                 self.expect_expr(
                     r.value,
                     value_kind.expect("Expected Type"),
-                    vec![self.current_op_kind.clone().expect("Expected return type")],
+                    self.current_op_kind.clone().expect("Expected return type").extract_op_type(),
                 );
                 self.has_current_op_returned = true;
             }
@@ -180,21 +182,29 @@ impl Typechecker {
         }
     }
 
-    fn expect_expr(&mut self, expr: Expr, exprkind: AKind, expected_kinds: Vec<AKind>) {
+    fn expect_expr(&mut self, expr: Expr, exprkind: AKind, expected_kind: AKind) {
         let nk: AKind = exprkind.clone();
 
-        for kind in &expected_kinds {
-            if expected_kinds.contains(&AKind::TyUnknown) {
+        match nk {
+            AKind::TyUnknown => {
                 return;
-                //panic!()
-            } else if nk == *kind {
-                return;
+            }
+            AKind::TyOp(ref t) => {
+                if **t == expected_kind {
+                    return;
+                }
+            }
+
+            _ => {
+                if nk == expected_kind {
+                    return;
+                }
             }
         }
 
         panic!(
-            "Error: Expected {:?} to be of type {:?}, but found {:?}",
-            expr, expected_kinds, exprkind
+            "Expected {:?} to be of type {:?}, but found {:?}",
+            expr, expected_kind, exprkind
         );
         //std::process::exit(1);
     }
@@ -202,27 +212,34 @@ impl Typechecker {
     fn resolve_expr(&mut self, expr: Expr) -> Option<AKind> {
         match expr {
             Expr::ScalarEx(l) => Some(l.value.value.unwrap().to_akind()),
-            Expr::Binary(b) => {
+            Expr::Binary(ref b) => {
                 let lhstype = self.resolve_expr(*b.left.clone());
                 let rhstype = self.resolve_expr(*b.right.clone());
 
                 match b.operator.tokentype {
-                    TokenType::TkPlus => self.expect_expr(
-                        *b.left.clone(),
-                        lhstype.clone()?,
-                        vec![AKind::TyInt, AKind::TyFlt, AKind::TyStr],
-                    ),
+                    TokenType::TkPlus => {
+                        if !lhstype.clone().unwrap().is_numeric_type() && lhstype.clone().unwrap() != AKind::TyStr
+                        {
+                            error!(
+                                "Expected {:?} to be of type Int, Flt, or Str, but found {:?}",
+                                expr, lhstype
+                            );
+                        }
+                    }
                     TokenType::TkMinus
                     | TokenType::TkStar
                     | TokenType::TkSlash
                     | TokenType::TkCLE
                     | TokenType::TkCLT
                     | TokenType::TkCGE
-                    | TokenType::TkCGT => self.expect_expr(
-                        *b.left.clone(),
-                        lhstype.clone()?,
-                        vec![AKind::TyInt, AKind::TyFlt],
-                    ),
+                    | TokenType::TkCGT => {
+                        if !lhstype.clone().unwrap().is_numeric_type() {
+                            error!(
+                                "Expected {:?} to be of type Int or Flt, but found {:?}",
+                                expr, lhstype
+                            );
+                        }
+               }
                     _ => panic!("Invalid operator {:?}", b.operator),
                 }
                 if lhstype.clone().unwrap() != AKind::TyUnknown
@@ -241,23 +258,28 @@ impl Typechecker {
                     _ => Some(AKind::TyInt),
                 }
             }
-            Expr::Unary(u) => {
+            Expr::Unary(ref u) => {
                 let rhstype = self.resolve_expr(*u.right.clone());
                 match u.operator.tokentype {
                     TokenType::TkMinus => {
-                        self.expect_expr(*u.right, rhstype?, vec![AKind::TyInt, AKind::TyFlt]);
+                        if !rhstype.clone().unwrap().is_numeric_type() {
+                            error!(
+                                "Expected {:?} to be of type Int or Flt, but found {:?}",
+                                expr, rhstype
+                            );
+                        }
                         Some(AKind::TyInt)
                     }
                     _ => panic!("Invalid unary operation {:?}", u.operator),
                 }
             }
-            Expr::Value(v) => Some(self.env.get_akind(v.name.value?.get_string().unwrap())),
+            Expr::Value(v) => Some(self.env.get_akind_scoped(v.name.value?.get_string().unwrap())),
             Expr::Assign(a) => {
                 let value_type = self.resolve_expr(*a.value.clone());
                 let bind_type = self
                     .env
-                    .get_akind(a.name.value.clone()?.get_string().unwrap());
-                self.expect_expr(*a.value.clone(), value_type.clone()?, vec![bind_type]);
+                    .get_akind_scoped(a.name.value.clone()?.get_string().unwrap());
+                self.expect_expr(*a.value.clone(), value_type.clone()?, bind_type);
                 self.env.define(
                     a.name.value.unwrap().get_string().unwrap(),
                     value_type.clone().unwrap(),
@@ -268,14 +290,14 @@ impl Typechecker {
             Expr::Call(c) => {
                 let retval = self
                     .env
-                    .get_akind(c.callee.value.clone().unwrap().get_string().unwrap());
+                    .get_akind_scoped(c.callee.value.clone().unwrap().get_string().unwrap());
                 //let callee_type = c.callee.value.clone().unwrap().to_akind();
                 for (i, arg) in c.args.iter().enumerate() {
                     let arg_type = self.resolve_expr(arg.clone());
                     let expected_type =
                         c.clone().args[i].get_expr_value().value.unwrap().to_akind();
                     //println!("{:?}", expected_type.clone());
-                    self.expect_expr(arg.clone(), arg_type?, vec![expected_type]);
+                    self.expect_expr(arg.clone(), arg_type?, expected_type);
                     return Some(retval);
                 }
                 let call_arity = self
@@ -314,9 +336,12 @@ impl Typechecker {
             }
         }
         while self.loc < nast.len() {
+
             let stmt: Statement = nast[self.loc].clone();
             self.build_environment(stmt.clone());
-            self.loc += 1
+            self.loc += 1;
+            dbg!(self.env.clone());
+
         }
         self.loc = 0;
         while self.loc < nast.len() {

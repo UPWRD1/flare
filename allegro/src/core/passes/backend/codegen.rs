@@ -68,10 +68,10 @@ impl Generator {
     fn get_ctype(&mut self, s: Statement) -> String {
         //println!("{s:?}");
         match s {
-            Statement::Val(vd) => self.env.get_akind(vd.name.name).to_ctype(),
+            Statement::Val(vd) => self.env.get_akind_symbol(vd.name.name).to_ctype(),
             Statement::Operation(o) => self
                 .env
-                .get_akind(o.name.value.unwrap().get_string().unwrap())
+                .get_akind_symbol(o.name.value.unwrap().get_string().unwrap())
                 .to_ctype(),
             _ => panic!("Unsupported statement {s:?}"),
         }
@@ -177,7 +177,7 @@ impl Generator {
                     let cvname = a.name.value.clone().unwrap().get_string().unwrap();
                     let cvtype = self
                         .env
-                        .get_akind(a.name.value.unwrap().get_string().unwrap())
+                        .get_akind_symbol(a.name.value.unwrap().get_string().unwrap())
                         .to_ctype();
                     let cvval = self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: *a.value,
