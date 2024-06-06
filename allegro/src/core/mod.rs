@@ -32,7 +32,7 @@ pub fn full_compile(filename: &String) {
     let generated = compile_codegen(checked, e);
     
     let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
-    let _ = file.write_all(format!("{}", generated).as_bytes());
+    let _ = file.write_all(generated.to_string().as_bytes());
 
     let elapsed = now.elapsed();
     info!("Elapsed: {:.2?}", elapsed);
@@ -80,7 +80,7 @@ fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
     let mut lxr = lexing::Lexer::new(contents.to_string());
     lxr.lex();
     let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();
-    //dbg!(cstvec.clone());
+    dbg!(cstvec.clone());
     info!("Lexing: OK");
     cstvec
 }

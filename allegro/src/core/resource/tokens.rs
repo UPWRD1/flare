@@ -36,6 +36,7 @@ pub enum TokenType {
     TkStatementEnd,
     TkAssign,
     TkAssignInfer,
+    TkOpMuteShortHand,
     TkCEQ,
     TkCNE,
     TkCLT,

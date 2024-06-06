@@ -7,7 +7,7 @@ pub enum AKind {
     TyFlt,
     TyBool,
     TyMute,
-    TyOp,
+    TyOp(Box<AKind>),
     TyUnknown,
     TyEof,
 }
@@ -21,7 +21,7 @@ impl AKind {
             AKind::TyBool => "bool".to_string(),
             AKind::TyMute => "void".to_string(),
             AKind::TyUnknown => "null".to_string(),
-
+            AKind::TyOp(t) => (*t.to_ctype()).to_string(),
             //AKind::TyUnknown => return "null".to_string(),
             _ => panic!("Invalid type {:?}", self),
            
@@ -79,7 +79,7 @@ impl Environment {
 
     pub fn get_arity(&mut self, name:String) -> i32 {
         match self.entries.iter().position(|e| e.name == name) {
-            Some(l) => self.entries[l].arity.clone(),
+            Some(l) => self.entries[l].arity,
             None => {
                 if self.enclosing.is_some() {
                     self.enclosing.clone().unwrap().get_arity(name)

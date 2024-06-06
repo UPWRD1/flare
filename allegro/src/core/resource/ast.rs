@@ -161,13 +161,14 @@ pub enum Scalar {
 }
 
 impl Scalar {
+    #[allow(dead_code)]
     fn to_akind(&self) -> AKind {
-        return match self {
+        match self {
             Self::Bool(_) => AKind::TyBool,
             Self::Float(_) => AKind::TyFlt,
             Self::Int(_) => AKind::TyInt,
             Self::Str(_) => AKind::TyStr,
-        };
+        }
     }
 }
 
@@ -189,7 +190,7 @@ impl SymbolValue {
                 Scalar::Str(_) => AKind::TyStr,
             },
             Self::Identity(i) => {
-                return i.clone().kind; //}
+                i.clone().kind
             }
             Self::Mute => AKind::TyMute,
             _ => panic!("Unknown type! {:?}", self),

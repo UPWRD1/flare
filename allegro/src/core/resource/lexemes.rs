@@ -25,6 +25,7 @@ pub enum LexemeKind {
     LxStatementEnd,
     LxEqual,
     LxAssignInfer,
+    LxOpMuteShorthand,
     LxCEQ,
     LxCNE,
     LxCLT,

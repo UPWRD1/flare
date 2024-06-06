@@ -47,8 +47,12 @@ impl Generator {
                 Scalar::Int(i) => i.to_string(),
                 Scalar::Str(s) => format!("\"{}\"", s),
                 Scalar::Float(f) => f.to_string(),
-                _ => {
-                    panic!("Unkown type!")
+                Scalar::Bool(b) => {
+                    if b {
+                        "true".to_string()
+                    } else {
+                        "false".to_string()
+                    }
                 }
             },
             SymbolValue::Identity(i) => {
@@ -65,7 +69,10 @@ impl Generator {
         //println!("{s:?}");
         match s {
             Statement::Val(vd) => self.env.get_akind(vd.name.name).to_ctype(),
-            Statement::Operation(o) => self.env.get_akind(o.name.value.unwrap().get_string().unwrap()).to_ctype(),
+            Statement::Operation(o) => self
+                .env
+                .get_akind(o.name.value.unwrap().get_string().unwrap())
+                .to_ctype(),
             _ => panic!("Unsupported statement {s:?}"),
         }
     }
@@ -75,8 +82,7 @@ impl Generator {
             Statement::Operation(o) => {
                 let p = o.params;
                 let mut accum: String = "".to_string();
-                let mut count = 0;
-                for v in &p {
+                for (count, v) in p.iter().enumerate() {
                     let n = &v.name.name;
                     let t = v.name.kind.to_ctype();
                     if count == &p.len() - 1 {
@@ -84,7 +90,6 @@ impl Generator {
                     } else {
                         accum = format!("{accum}{t} {n}, ");
                     }
-                    count += 1;
                 }
                 accum
             }
@@ -127,9 +132,15 @@ impl Generator {
                 let ckind = self.get_ctype(el);
                 let cval: String = match vd.initializer {
                     Expr::ScalarEx(le) => self.get_cval(le.value.value.unwrap()),
-                    Expr::Call(c) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Call(c) })),
-                    Expr::Binary(b) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Binary(b) })),
-                    Expr::Grouping(g) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Grouping(g) })),
+                    Expr::Call(c) => self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: Expr::Call(c),
+                    })),
+                    Expr::Binary(b) => self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: Expr::Binary(b),
+                    })),
+                    Expr::Grouping(g) => self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: Expr::Grouping(g),
+                    })),
                     _ => panic!("Unknown value {:?}!", vd.initializer),
                 };
                 let cname: String = vd.name.name;
@@ -191,15 +202,26 @@ impl Generator {
                     for arg in c.args {
                         argcount += 1;
                         if argcount > 1 {
-                            argstring = format!("{}, {}", argstring, self.gen_code(Statement::Expression(ExpressionStmt { expression: arg })))
+                            argstring = format!(
+                                "{}, {}",
+                                argstring,
+                                self.gen_code(Statement::Expression(ExpressionStmt {
+                                    expression: arg
+                                }))
+                            )
                         } else {
-                            argstring = format!("{}{}", argstring, self.gen_code(Statement::Expression(ExpressionStmt { expression: arg })))
-
+                            argstring = format!(
+                                "{}{}",
+                                argstring,
+                                self.gen_code(Statement::Expression(ExpressionStmt {
+                                    expression: arg
+                                }))
+                            )
                         }
                     }
                     format!("{}({})", name, argstring)
                     //todo!()
-                },
+                }
                 Expr::Grouping(g) => {
                     let x = format!(
                         "({})",
@@ -222,13 +244,16 @@ impl Generator {
                     format!("{cl} {o} {cr}")
                 }
                 Expr::Unary(u) => {
-                    return format!("{}{}", self.gen_operator(u.operator), self.gen_code(Statement::Expression(ExpressionStmt {
-                        expression: *u.right,
-                    })))
-                },
+                    format!(
+                        "{}{}",
+                        self.gen_operator(u.operator),
+                        self.gen_code(Statement::Expression(ExpressionStmt {
+                            expression: *u.right,
+                        }))
+                    )
+                }
                 Expr::Value(v) => {
-                    let x = v.name.value.unwrap().get_string().unwrap();
-                    x
+                    v.name.value.unwrap().get_string().unwrap()
                 }
                 Expr::Empty => "".to_string(),
             },
@@ -288,7 +313,8 @@ impl Generator {
     }
 
     pub fn supply(&mut self) -> String {
-        let mut accum: String = "//THIS FILE WAS GENERATED BY algc.\n#include <stdio.h>\n\n".to_string();
+        let mut accum: String =
+            "//This file was automatically generated by allegro.\n//Submit bug reports to https://github.com/UPWRD1/allegro\n\n#include <stdio.h>\n\n".to_string();
         for i in self.output.clone() {
             accum = format!("{accum}{}", i.c)
         }

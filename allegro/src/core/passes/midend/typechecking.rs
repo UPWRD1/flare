@@ -61,7 +61,7 @@ impl Typechecker {
                     o.params.len().try_into().unwrap(),
                 );
 
-                let previous = self.env.clone();
+                //let previous = self.env.clone();
                 //self.env = Environment::new_with_previous(previous);
 
                 self.has_current_op_returned = false;
@@ -134,7 +134,7 @@ impl Typechecker {
 
                 self.check_statement(Statement::Block(o.body));
 
-                if self.current_op_kind != Some(AKind::TyMute) && !self.has_current_op_returned {
+                if self.current_op_kind != Some(AKind::TyOp(Box::new(AKind::TyMute))) && !self.has_current_op_returned {
                     panic!(
                         "Expected operation '{:?}' to return a value of type {:?}",
                         o.name.value.clone().unwrap().get_string().unwrap(),
@@ -196,7 +196,7 @@ impl Typechecker {
             "Error: Expected {:?} to be of type {:?}, but found {:?}",
             expr, expected_kinds, exprkind
         );
-        std::process::exit(1);
+        //std::process::exit(1);
     }
 
     fn resolve_expr(&mut self, expr: Expr) -> Option<AKind> {

@@ -1,5 +1,3 @@
-use colored::Colorize;
-
 #[macro_export]
 macro_rules! quit {
     () => {

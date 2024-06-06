@@ -6,7 +6,6 @@ use crate::core::resource::lexemes::Lexeme;
 use crate::core::resource::lexemes::LexemeKind::*;
 
 use crate::error;
-use crate::quit;
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
@@ -61,6 +60,7 @@ impl Lexer {
         self.srccharvec = self.source.chars().collect();
         //let mut _lc = self.location;
         while self.location < self.srccharvec.len() - 1 {
+            //println!("{}", self.current());
             let _lc: usize = self.location;
             match self.srccharvec[self.location] {
                 ' ' | '\t' => self.advance(),
@@ -87,8 +87,13 @@ impl Lexer {
                 }
                 '-' => {
                     if self.next() == '>' {
-                        self.add(create_lexeme!(LxSmallArr, Nothing, self));
-                        self.advance();
+                        if self.srccharvec[self.location - 1] != ')' {
+                            self.add(create_lexeme!(LxOpMuteShorthand, Nothing, self));
+                            self.advance();
+                        } else {
+                            self.add(create_lexeme!(LxSmallArr, Nothing, self));
+                            self.advance();
+                        }
                     } else if self.next() == '-' {
                         while self.srccharvec[self.location] != '\n'
                             && self.location < self.srccharvec.len()
@@ -212,9 +217,8 @@ impl Lexer {
             kind: LxSymbol(SymbolValue::Identity(Ident {
                 name: accumulator.iter().collect::<String>(),
                 value: Box::new(SymbolValue::Unknown),
-                kind: AKind::TyUnknown
-                //kind: None,
-                //value: Box::new(SymbolValue::Scalar(Scalar::Str(accumulator.iter().collect::<String>()))),
+                kind: AKind::TyUnknown, //kind: None,
+                                        //value: Box::new(SymbolValue::Scalar(Scalar::Str(accumulator.iter().collect::<String>()))),
             })),
 
             location: self.location,

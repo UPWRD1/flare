@@ -1,5 +1,5 @@
 use crate::core::resource::{
-    ast::SymbolValue,
+    ast::{self, Scalar, SymbolValue},
     environment::AKind,
     lexemes::{Lexeme, LexemeKind::*},
     tokens::{
@@ -81,6 +81,8 @@ impl Analyzer {
                             "Bool" => TokenType::TkType(AKind::TyBool),
 
                             "use" => TokenType::TkKwUse,
+                            "true" => TokenType::TkScalar,
+                            "false" => TokenType::TkScalar,
 
                             &_ => TokenType::TkSymbol,
                         },
@@ -104,6 +106,20 @@ impl Analyzer {
                             value: Some(sv.clone()),
                             location: el.location,
                         };
+                    } else if tkk == TokenType::TkScalar {
+                        if <ast::SymbolValue as Clone>::clone(&sv).get_string().unwrap() == "true" {
+                            toadd = Token {
+                                tokentype: tkk,
+                                value: Some(SymbolValue::Scalar(Scalar::Bool(true))),
+                                location: el.location,
+                            }
+                        } else {
+                            toadd = Token {
+                                tokentype: tkk,
+                                value: Some(SymbolValue::Scalar(Scalar::Bool(false))),
+                                location: el.location,
+                            }
+                        }
                     } else {
                         toadd = Token {
                             tokentype: tkk,
@@ -209,6 +225,11 @@ impl Analyzer {
                     value: None,
                     location: el.location,
                 }),
+                LxOpMuteShorthand => self.add(Token {
+                    tokentype: TkOpMuteShortHand,
+                    value: None,
+                    location: el.location,
+                }),
                 LxCEQ => self.add(Token {
                     tokentype: TkCEQ,
                     value: None,
@@ -277,7 +298,7 @@ impl Analyzer {
             self.lx_loc += 1;
         }
     }
-    
+
     fn import_pass(&mut self) -> Vec<Token> {
         let tv: Vec<Token> = self.tkvec.clone();
         while self.tk_loc < tv.len() {
@@ -285,8 +306,8 @@ impl Analyzer {
                 TkKwUse => {
                     let to_import = self.next_t().value.unwrap().get_string().unwrap();
                     let mut nfile = crate::core::compile_import(&to_import);
-                    nfile.remove(nfile.len() -1);
-                    self.tkvec.remove(self.tkvec.len() -1);
+                    nfile.remove(nfile.len() - 1);
+                    self.tkvec.remove(self.tkvec.len() - 1);
 
                     self.tkvec.append(&mut nfile);
                     println!("{:?}", self.tkvec.remove(self.tk_loc));
@@ -294,11 +315,10 @@ impl Analyzer {
                 }
                 _ => {
                     self.tk_loc += 1;
-
                 }
             }
         }
-        return self.tkvec.clone()
+        self.tkvec.clone()
     }
 
     pub fn supply(&mut self) -> Vec<Token> {
