@@ -1,11 +1,11 @@
-use crate::core::resource::ast::Ident;
+use crate::core::resource::ast::Pair;
 use crate::core::resource::ast::Scalar;
 use crate::core::resource::ast::SymbolValue;
 use crate::core::resource::environment::AKind;
 use crate::core::resource::lexemes::Lexeme;
 use crate::core::resource::lexemes::LexemeKind::*;
 
-use crate::error;
+use crate::error_nocode;
 
 #[derive(Debug, Clone)]
 pub struct Lexer {
@@ -87,7 +87,7 @@ impl Lexer {
                 }
                 '-' => {
                     if self.next() == '>' {
-                        dbg!(self.srccharvec[self.location - 2]);
+                        //dbg!(self.srccharvec[self.location - 2]);
                         if self.srccharvec[self.location - 2] != ')' {
                             self.add(create_lexeme!(LxOpMuteShorthand, Nothing, self));
                             self.advance();
@@ -187,7 +187,7 @@ impl Lexer {
                 }
 
                 _ => {
-                    error!(
+                    error_nocode!(
                         "IDK: '{}' {:b}, {}",
                         self.current(),
                         self.current() as usize,
@@ -215,7 +215,7 @@ impl Lexer {
             self.advance();
         }
         self.add(Lexeme {
-            kind: LxSymbol(SymbolValue::Identity(Ident {
+            kind: LxSymbol(SymbolValue::Pair(Pair {
                 name: accumulator.iter().collect::<String>(),
                 value: Box::new(SymbolValue::Unknown),
                 kind: AKind::TyUnknown, //kind: None,

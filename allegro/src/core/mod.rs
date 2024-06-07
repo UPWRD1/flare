@@ -8,11 +8,9 @@ use std::time::Instant;
 use passes::frontend::analyze;
 use passes::frontend::lexing;
 use passes::frontend::parsing;
-//use passes::midend::collapse;
 use passes::midend::typechecking;
 
 use passes::backend::codegen;
-use resource::lexemes::Lexeme;
 use resource::tokens::Token;
 
 use crate::info;
@@ -21,7 +19,7 @@ use crate::info;
 pub fn full_compile(filename: &String) {
     let now = Instant::now();
 
-    let cstvec: Vec<Lexeme> = compile_lex(filename);
+    let cstvec = compile_lex(filename);
 
     let analyzed: Vec<Token> = compile_analyze(cstvec);
 
@@ -43,7 +41,7 @@ fn compile_codegen(checked: Vec<resource::ast::Statement>, e: resource::environm
     let mut generator = codegen::Generator::new(checked.clone(), e);
     generator.generate();
     let generated = generator.supply();
-    println!("{}", generated.clone());
+    //println!("{}", generated.clone());
     info!("Generation: OK");
     generated
 }
@@ -86,7 +84,7 @@ fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
 }
 
 pub fn compile_import(filename: &String) -> Vec<Token> {
-    let cstvec: Vec<Lexeme> = compile_lex(filename);
+    let cstvec = compile_lex(filename);
     let analyzed: Vec<Token> = compile_analyze(cstvec);
     analyzed
 }

@@ -48,6 +48,8 @@ pub struct ValueExpr {
     pub name: Token,
 }
 
+
+///Enum representing expression types
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum Expr {
@@ -63,6 +65,7 @@ pub enum Expr {
 }
 
 impl Expr {
+    ///Gets the token of the expressions
     pub fn get_expr_value(&self) -> Token {
         match self {
             Self::Assign(a) => a.name.clone(),
@@ -97,24 +100,28 @@ impl Expr {
      */
 }
 
+///AST Block Statement
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockStmt {
     pub statements: Vec<Statement>,
 }
 
+///AST Expression Wrapper
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExpressionStmt {
     pub expression: Expr,
 }
 
+///AST Operation Statement
 #[derive(Clone, Debug, PartialEq)]
 pub struct OpDecl {
     pub name: Token,
-    pub params: Vec<ValDecl>,
+    pub params: Vec<BindingDecl>,
     pub returnval: AKind,
     pub body: BlockStmt,
 }
 
+///AST If Statement
 #[derive(Clone, Debug, PartialEq)]
 pub struct IfStmt {
     pub condition: Expr,
@@ -122,23 +129,28 @@ pub struct IfStmt {
     pub else_branch: Option<Box<Statement>>,
 }
 
+//#[deprecated(since = "0.0.0", note = "PrintStmt may be replaced by standard library features")]
+///AST Print Statement
 #[derive(Clone, Debug, PartialEq)]
 pub struct PrintStmt {
     pub expression: Expr,
 }
 
+///AST Return Statement
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReturnStmt {
     pub value: Expr,
     pub returntype: AKind,
 }
 
+///AST Binding Declaration
 #[derive(Clone, Debug, PartialEq)]
-pub struct ValDecl {
-    pub name: Ident,
+pub struct BindingDecl {
+    pub name: Pair,
     pub initializer: Expr,
 }
 
+///Enum representing AST nodes.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 pub enum Statement {
@@ -148,10 +160,11 @@ pub enum Statement {
     If(IfStmt),
     Print(PrintStmt),
     Return(ReturnStmt),
-    Val(ValDecl),
+    Bind(BindingDecl),
     Empty,
 }
 
+///Enum representing different scalar types
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum Scalar {
     Str(String),
@@ -161,8 +174,9 @@ pub enum Scalar {
 }
 
 impl Scalar {
+    ///Converts a Scalar to its equivalent AKind representation
     #[allow(dead_code)]
-    fn to_akind(&self) -> AKind {
+    pub fn to_akind(&self) -> AKind {
         match self {
             Self::Bool(_) => AKind::TyBool,
             Self::Float(_) => AKind::TyFlt,
@@ -172,15 +186,17 @@ impl Scalar {
     }
 }
 
+///Enum showing different kinds of internal values
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum SymbolValue {
     Scalar(Scalar),
-    Identity(Ident), //name value
+    Pair(Pair), //name value
     Unknown,
     Mute,
 }
 
 impl SymbolValue {
+    ///Converts a SymbolValue to its equivalent AKind representation
     pub fn to_akind(&self) -> AKind {
         match self {
             Self::Scalar(s) => match s {
@@ -189,30 +205,32 @@ impl SymbolValue {
                 Scalar::Int(_) => AKind::TyInt,
                 Scalar::Str(_) => AKind::TyStr,
             },
-            Self::Identity(i) => {
+            Self::Pair(i) => {
                 i.clone().kind
             }
             Self::Mute => AKind::TyMute,
             _ => panic!("Unknown type! {:?}", self),
         }
     }
-
+    
+    ///Converts the internal value of a SymbolValue to its string representation, or the name of the pair
     pub fn get_string(self) -> Option<String> {
         match self {
-            Self::Identity(i) => Some(i.name),
+            Self::Pair(p) => Some(p.name),
             Self::Scalar(s) => match s {
                 Scalar::Int(v) => format!("{v}").into(),
                 Scalar::Float(v) => format!("{v}").into(),
                 Scalar::Str(v) => v.to_string().into(),
                 Scalar::Bool(v) => format!("{v}").into(),
             },
-            _ => panic!("Cannot get string name of value {:?}", self),
+            _ => panic!("Cannot get string of value {:?}", self),
         }
     }
 }
 
+///Recursive struct representing a key/value pair, with type information:
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
-pub struct Ident {
+pub struct Pair {
     pub name: String,
     pub kind: AKind,
     pub value: Box<SymbolValue>,

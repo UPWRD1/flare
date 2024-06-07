@@ -3,10 +3,10 @@
 
 #include <stdio.h>
 
-void test() {
-    int y = 3;
+int test(int y) {
+    return y;
 }
 int main() {
-    bool x = true;
-    return y;
+    int x = test(1);
+    return x;
 }

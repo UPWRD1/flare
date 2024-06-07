@@ -2,6 +2,8 @@ use crate::core::resource::ast::SymbolValue;
 
 use super::ast::Scalar;
 
+
+///Enum for different types of lexemes
 #[allow(dead_code)]
 //#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -41,6 +43,7 @@ pub enum LexemeKind {
     Eof,
 }
 
+///Level 1 Abstraction, represents individual chars as enum
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Lexeme {
     pub kind: LexemeKind,

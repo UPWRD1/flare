@@ -55,7 +55,7 @@ impl Generator {
                     }
                 }
             },
-            SymbolValue::Identity(i) => {
+            SymbolValue::Pair(i) => {
                 let name = format!("{}()", i.name);
                 name
             }
@@ -68,11 +68,13 @@ impl Generator {
     fn get_ctype(&mut self, s: Statement) -> String {
         //println!("{s:?}");
         match s {
-            Statement::Val(vd) => self.env.get_akind_symbol(vd.name.name).to_ctype(),
+            Statement::Bind(vd) => self.env.get_akind_symbol(&vd.name.name).to_ctype(),
             Statement::Operation(o) => self
                 .env
-                .get_akind_symbol(o.name.value.unwrap().get_string().unwrap())
+                .get_akind_symbol(&o.name.value.unwrap().get_string().unwrap())
                 .to_ctype(),
+
+            
             _ => panic!("Unsupported statement {s:?}"),
         }
     }
@@ -128,9 +130,9 @@ impl Generator {
 
     fn gen_code(&mut self, el: Statement) -> String {
         match el.clone() {
-            Statement::Val(vd) => {
-                let ckind = self.get_ctype(el);
-                let cval: String = match vd.initializer {
+            Statement::Bind(vd) => {
+                let ckind = self.get_ctype(Statement::Bind(vd.clone()));
+                let cval: String = match vd.initializer.clone() {
                     Expr::ScalarEx(le) => self.get_cval(le.value.value.unwrap()),
                     Expr::Call(c) => self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: Expr::Call(c),
@@ -141,6 +143,7 @@ impl Generator {
                     Expr::Grouping(g) => self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: Expr::Grouping(g),
                     })),
+                    Expr::Value(v) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Value(v) })),
                     _ => panic!("Unknown value {:?}!", vd.initializer),
                 };
                 let cname: String = vd.name.name;
@@ -177,7 +180,7 @@ impl Generator {
                     let cvname = a.name.value.clone().unwrap().get_string().unwrap();
                     let cvtype = self
                         .env
-                        .get_akind_symbol(a.name.value.unwrap().get_string().unwrap())
+                        .get_akind_symbol(&a.name.value.unwrap().get_string().unwrap())
                         .to_ctype();
                     let cvval = self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: *a.value,

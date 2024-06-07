@@ -1,10 +1,8 @@
 -- we love comments
 
-op test -> {
-    let y := 3
-}
+op test: int  (y: int) -> return y;
 
-op main: Int of () -> {
-    let x := true;
-    return y;
+op main: int of () -> {
+    let x := test(1);
+    return x;
 }

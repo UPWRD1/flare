@@ -60,7 +60,7 @@ impl Analyzer {
             match &el.kind {
                 LxSymbol(sv) => {
                     let tkk = match sv.clone() {
-                        SymbolValue::Identity(id) => match id.name.as_str() {
+                        SymbolValue::Pair(id) => match id.name.as_str() {
                             "let" => TokenType::TkKwLet,
                             "op" => TokenType::TkKWOp,
                             "print" => TokenType::TkKwPrint,
@@ -75,10 +75,10 @@ impl Analyzer {
                             "invoke" => TokenType::TkKwInvoke,
                             "return" => TokenType::TkKwReturn,
 
-                            "Int" => TokenType::TkType(AKind::TyInt),
-                            "Flt" => TokenType::TkType(AKind::TyFlt),
-                            "Str" => TokenType::TkType(AKind::TyStr),
-                            "Bool" => TokenType::TkType(AKind::TyBool),
+                            "int" => TokenType::TkType(AKind::TyInt),
+                            "flt" => TokenType::TkType(AKind::TyFlt),
+                            "str" => TokenType::TkType(AKind::TyStr),
+                            "bool" => TokenType::TkType(AKind::TyBool),
 
                             "use" => TokenType::TkKwUse,
                             "true" => TokenType::TkScalar,
@@ -95,6 +95,7 @@ impl Analyzer {
                             tokentype: tkk,
                             value: Some(sv.clone()),
                             location: el.location,
+                            //lit: sv.clone().get_string().unwrap()
                         };
                     } else if tkk == TokenType::TkType(AKind::TyInt)
                         || tkk == TokenType::TkType(AKind::TyFlt)
@@ -105,6 +106,7 @@ impl Analyzer {
                             tokentype: tkk,
                             value: Some(sv.clone()),
                             location: el.location,
+                            //lit: format!("{} ", sv.clone().get_string().unwrap())
                         };
                     } else if tkk == TokenType::TkScalar {
                         if <ast::SymbolValue as Clone>::clone(sv).get_string().unwrap() == "true" {
@@ -112,12 +114,14 @@ impl Analyzer {
                                 tokentype: tkk,
                                 value: Some(SymbolValue::Scalar(Scalar::Bool(true))),
                                 location: el.location,
+                                //lit: format!("{} ", sv.clone().get_string().unwrap())
                             }
                         } else {
                             toadd = Token {
                                 tokentype: tkk,
                                 value: Some(SymbolValue::Scalar(Scalar::Bool(false))),
                                 location: el.location,
+                                //lit: format!("{} ", sv.clone().get_string().unwrap()),
                             }
                         }
                     } else {
@@ -125,6 +129,7 @@ impl Analyzer {
                             tokentype: tkk,
                             value: None,
                             location: el.location,
+                            //lit: format!("{} ", sv.clone().get_string().unwrap()),
                         };
                     }
                     self.add(toadd)
@@ -135,6 +140,7 @@ impl Analyzer {
                         value: Some(SymbolValue::Scalar(s.clone())),
                         //kind: Some(AKind::TyStr),
                         location: el.location,
+                        //lit: SymbolValue::Scalar(s.clone()).get_string().unwrap(),
                     });
                 }
 
@@ -142,57 +148,77 @@ impl Analyzer {
                     tokentype: TkPlus,
                     value: None,
                     location: el.location,
+                    //lit: "+".to_string()
                 }),
                 LxMinus => self.add(Token {
                     tokentype: TkMinus,
                     value: None,
                     location: el.location,
+                    //lit: "-".to_string()
                 }),
                 LxStar => self.add(Token {
                     tokentype: TkStar,
                     value: None,
                     location: el.location,
+                    //lit: "*".to_string()
+
                 }),
                 LxSlash => self.add(Token {
                     tokentype: TkSlash,
                     value: None,
                     location: el.location,
+                    //lit: "/".to_string()
+
                 }),
                 LxLparen => self.add(Token {
                     tokentype: TkLparen,
                     value: None,
                     location: el.location,
+                    //lit: "(".to_string()
+
                 }),
                 LxRparen => self.add(Token {
                     tokentype: TkRparen,
                     value: None,
                     location: el.location,
+                    //lit: ") ".to_string()
+
                 }),
                 LxSmallArr => self.add(Token {
                     tokentype: TkSmallArr,
                     value: None,
                     location: el.location,
+                    //lit: "-> ".to_string()
+
                 }),
                 LxBigArr => self.add(Token {
                     tokentype: TkBigArr,
                     value: None,
                     location: el.location,
+                    //lit: "=>".to_string()
+
                 }),
                 LxPipe => self.add(Token {
                     tokentype: TkPipe,
                     value: None,
                     location: el.location,
+                    //lit: "|".to_string()
+
                 }),
                 LxPercent => self.add(Token {
                     tokentype: TkPercent,
                     value: None,
                     location: el.location,
+                    //lit: "%".to_string()
+
                 }),
                 LxDoubleDot => {
                     let toadd: Token = Token {
                         tokentype: TkType(AKind::TyMute),
                         value: Some(SymbolValue::Mute),
                         location: el.location,
+                        //lit: "..".to_string()
+
                     };
                     self.add(toadd)
                 }
@@ -200,11 +226,14 @@ impl Analyzer {
                     tokentype: TkLBrace,
                     value: None,
                     location: el.location,
+                    //lit: "{".to_string()
                 }),
                 LxRBrace => self.add(Token {
                     tokentype: TkRBrace,
                     value: None,
                     location: el.location,
+                    //lit: "}".to_string()
+
                 }),
                 LxStatementEnd => {
                     if self.lx_loc != 0 && self.lexvec[self.lx_loc - 1].kind != LxLBrace {
@@ -212,6 +241,8 @@ impl Analyzer {
                             tokentype: TkStatementEnd,
                             value: None,
                             location: el.location,
+                            //lit: "".to_string()
+
                         })
                     }
                 }
@@ -219,71 +250,99 @@ impl Analyzer {
                     tokentype: TkAssign,
                     value: None,
                     location: el.location,
+                    //lit: "=".to_string()
+
                 }),
                 LxAssignInfer => self.add(Token {
                     tokentype: TkAssignInfer,
                     value: None,
                     location: el.location,
+                    //lit: ":=".to_string()
+
                 }),
                 LxOpMuteShorthand => self.add(Token {
                     tokentype: TkOpMuteShortHand,
                     value: None,
                     location: el.location,
+                    //lit: ":->".to_string()
+
                 }),
                 LxCEQ => self.add(Token {
                     tokentype: TkCEQ,
                     value: None,
                     location: el.location,
+                    //lit: "==".to_string()
+
                 }),
                 LxCNE => self.add(Token {
                     tokentype: TkCNE,
                     value: None,
                     location: el.location,
+                    //lit: "!=".to_string()
+
                 }),
                 LxCLT => self.add(Token {
                     tokentype: TkCLT,
                     value: None,
                     location: el.location,
+                    //lit: "<".to_string()
+
                 }),
                 LxCLE => self.add(Token {
                     tokentype: TkCLE,
                     value: None,
                     location: el.location,
+                    //lit: "<=".to_string()
+
                 }),
                 LxCGT => self.add(Token {
                     tokentype: TkCGT,
                     value: None,
                     location: el.location,
+                    //lit: ">".to_string()
+
                 }),
                 LxCGE => self.add(Token {
                     tokentype: TkCGE,
                     value: None,
                     location: el.location,
+                    //lit: ">=".to_string()
+
                 }),
                 LxAnd => self.add(Token {
                     tokentype: TkAnd,
                     value: None,
                     location: el.location,
+                    //lit: "&&".to_string()
+
                 }),
                 LxOr => self.add(Token {
                     tokentype: TkOr,
                     value: None,
                     location: el.location,
+                    //lit: "||".to_string()
+
                 }),
                 LxComma => self.add(Token {
                     tokentype: TkComma,
                     value: None,
                     location: el.location,
+                    //lit: ",".to_string()
+
                 }),
                 LxColon => self.add(Token {
                     tokentype: TkColon,
                     value: None,
                     location: el.location,
+                    //lit: ": ".to_string()
+
                 }),
                 LxDot => self.add(Token {
                     tokentype: TkDot,
                     value: None,
                     location: el.location,
+                    //lit: ".".to_string()
+
                 }),
                 Err => {
                     panic!("uh oh")
@@ -292,6 +351,8 @@ impl Analyzer {
                     tokentype: TokenType::TkEof,
                     value: None,
                     location: el.location,
+                    //lit: "".to_string()
+
                 }),
             }
 
