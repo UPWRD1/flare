@@ -2,7 +2,7 @@ extern crate colored;
 
 use std::env;
 
-mod core;
+mod root;
 
 fn main() {
     const VERSION: &str = "0.0.1";
@@ -13,7 +13,7 @@ fn main() {
             "-c" | "--compile"=> {
                 let filename: &String = &prog_args[2];
                 info!("Compiling {} to {}.c", filename, filename);
-                core::full_compile(filename);
+                root::full_compile(filename);
             }
 
             &_ => todo!(),

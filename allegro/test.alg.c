@@ -3,10 +3,7 @@
 
 #include <stdio.h>
 
-int test(int y) {
-    return y;
-}
 int main() {
-    int x = test(1);
+    int x = 3;
     return x;
 }

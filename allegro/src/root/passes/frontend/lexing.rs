@@ -1,9 +1,9 @@
-use crate::core::resource::ast::Pair;
-use crate::core::resource::ast::Scalar;
-use crate::core::resource::ast::SymbolValue;
-use crate::core::resource::environment::AKind;
-use crate::core::resource::lexemes::Lexeme;
-use crate::core::resource::lexemes::LexemeKind::*;
+use crate::root::resource::ast::Pair;
+use crate::root::resource::ast::Scalar;
+use crate::root::resource::ast::SymbolValue;
+use crate::root::resource::environment::AKind;
+use crate::root::resource::lexemes::Lexeme;
+use crate::root::resource::lexemes::LexemeKind::*;
 
 use crate::error_nocode;
 

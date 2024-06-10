@@ -1,4 +1,4 @@
-use crate::{core::resource::errors::Errors, error};
+use crate::{root::resource::errors::Errors, error};
 
 ///Enum representing internal types used for typechecking.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -25,6 +25,19 @@ impl AKind {
             AKind::TyOp(t) => (*t.to_ctype()).to_string(),
             //AKind::TyUnknown => return "null".to_string(),
             _ => panic!("Invalid type {:?}", self),
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            AKind::TyStr => "str".to_string(),
+            AKind::TyInt => "int".to_string(),
+            AKind::TyFlt => "flt".to_string(),
+            AKind::TyBool => "bool".to_string(),
+            AKind::TyMute => "..".to_string(),
+            AKind::TyOp(t) => t.to_string(),
+            AKind::TyUnknown => "??".to_string(),
+            AKind::TyEof => "EOF".to_string(),
         }
     }
 

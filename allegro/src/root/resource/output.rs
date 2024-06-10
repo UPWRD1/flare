@@ -1,5 +1,5 @@
 use super::tokens::Token;
-use crate::colored::Colorize;
+use crate::{colored::Colorize, root::resource::tokens::TokenType};
 
 
 #[macro_export]
@@ -105,21 +105,41 @@ macro_rules! info {
 }
 
 pub fn draw_error(tkvec: &Vec<Token>, start: usize) {
-    let mut accum = format!("{}", "... ".to_string().black());
-    for i in start - 4..=start + 3 {
-        accum = format!("{accum}{}", tkvec.get(i).unwrap().to_string())
-    }
-    accum = format!("{accum} {}", "...".black());
+    //let mut accum = format!("{}", "...".to_string().black());
+    let mut accum = format!("");
 
-    let offending_str = &tkvec.get(start).unwrap().to_string();
-    //println!("| ");
-    println!("{} {}", "|".blue(),
-    accum);
+    let mut linestart = 0;
+    let mut lineend = 0;
+    let mut s: Vec<Token> = tkvec.clone()[0..start].to_vec();
+    let mut e: Vec<Token> = tkvec.clone()[start..tkvec.len()].to_vec();
+    s.reverse();
+    for (i, _t) in s.iter().enumerate() {
+        if tkvec.get(i).unwrap().tokentype == TokenType::TkStatementEnd || tkvec.get(i).unwrap().tokentype == TokenType::TkLBrace{
+            linestart = i + 1
+        }
+    }
+    for (i, _t) in e.iter().enumerate() {
+        if tkvec.get(i + start).unwrap().tokentype == TokenType::TkStatementEnd || tkvec.get(i + start).unwrap().tokentype == TokenType::TkLBrace{
+            lineend= i + start + 1;
+            break;
+        }
+    } 
+    for j in linestart ..lineend {
+        let c = tkvec.get(j).unwrap();
+        if j == linestart || c.tokentype == TokenType::TkLparen || c.tokentype == TokenType::TkColon {
+            accum = format!("{accum}{}", c.to_string())
+        } else {
+            accum = format!("{accum} {}", c.to_string())
+
+        }
+    }
+
+    let offending_str = &tkvec.get(start - 1).unwrap().to_string();
+    println!("\t{accum}");
     println!(
-        "{pipe} {char:>width$} {here}",
-        pipe = "|".blue(),
+        "\t{char:>width$} {here}",
         char = "^".repeat(offending_str.len()).red().bold(),
-        width = accum.find(offending_str).unwrap() + 3,
+        width = accum.find(offending_str).unwrap() + 2,
         here = "here".red().bold(),
     );
 }

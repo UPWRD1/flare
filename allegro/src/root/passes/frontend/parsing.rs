@@ -1,9 +1,9 @@
-use crate::core::resource::errors::Errors;
-use crate::core::resource::output::draw_error;
+use crate::root::resource::errors::Errors;
+use crate::root::resource::output::draw_error;
 use crate::{error, error_noquit, errorold_no_quit, quit};
 
 use crate::{
-    core::resource::{
+    root::resource::{
         ast::*,
         environment::AKind,
         tokens::{
@@ -90,14 +90,16 @@ impl Parser {
         if self.check(kind.clone()) {
             self.advance()
         } else {
-            let dummy: Token = Token { tokentype: kind.clone(), value: None, location: 0 };
+            let dummy: Token = Token { tokentype: kind.clone(), value: None, location: self.curr};
             if dummy.is_keyword() {
                 error_noquit!(Errors::SyntaxMissingKeyword, (dummy.to_string()));
-                draw_error(&self.tkvec, self.current().location);
+                draw_error(&self.tkvec, self.curr);
                 quit!();
 
             } else {
-                error!(Errors::SyntaxMissingChar, (self.current().to_string()));
+                error_noquit!(Errors::SyntaxMissingChar, (dummy.to_string()));
+                draw_error(&self.tkvec, self.curr);
+                quit!();
 
             }
             //error_nocode!("Error at {}: {message}", self.current().location);
@@ -105,18 +107,18 @@ impl Parser {
         }
     }
 
-    fn consume_vec(&mut self, kinds: Vec<TokenType>, message: &str) -> Token {
-        for kind in kinds {
+    fn consume_vec(&mut self, kinds: Vec<TokenType>) -> Token {
+        for kind in kinds.clone() {
             if self.check(kind) {
                 return self.advance();
             } else {
                 continue;
             }
         }
-        errorold_no_quit!("Error at '{}': {message}", self.current().value.unwrap().get_string().unwrap());
+        let dummy: Token = Token { tokentype: kinds[0].clone(), value: None, location: self.curr};
+        error_noquit!(Errors::SyntaxMissingType, (dummy.to_string()));
         draw_error(&self.tkvec, self.curr);
-        quit!();
-        //panic!()
+        quit!();        //panic!()
     }
 
     fn primary(&mut self) -> Expr {
@@ -386,7 +388,6 @@ impl Parser {
                         TkType(AKind::TyEof),
                         TkType(AKind::TyMute),
                     ],
-                    "Expected type",
                 )
                 .tokentype;
             match tty {

@@ -1,4 +1,4 @@
-use crate::core::resource::ast::SymbolValue;
+use crate::root::resource::ast::SymbolValue;
 
 use super::ast::Scalar;
 

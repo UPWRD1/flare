@@ -1,6 +1,6 @@
 use core::panic;
 
-use crate::core::resource::{
+use crate::root::resource::{
     ast::*,
     environment::Environment,
     tokens::{Token, TokenType},

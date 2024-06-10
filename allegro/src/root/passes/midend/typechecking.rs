@@ -1,10 +1,11 @@
-use crate::core::resource;
-use crate::core::resource::ast::Expr;
-use crate::core::resource::ast::Statement;
-use crate::core::resource::environment::AKind;
-use crate::core::resource::environment::Environment;
-use crate::core::resource::errors::Errors::*;
-use crate::core::resource::tokens::TokenType;
+use crate::root::resource;
+use crate::root::resource::ast::Expr;
+use crate::root::resource::ast::Statement;
+use crate::root::resource::environment::AKind;
+use crate::root::resource::environment::Environment;
+use crate::root::resource::errors::Errors;
+use crate::root::resource::errors::Errors::*;
+use crate::root::resource::tokens::TokenType;
 use crate::error;
 use crate::error_nocode;
 
@@ -50,6 +51,8 @@ impl Typechecker {
                 if declared_type.is_op() {
                     declared_type = declared_type.extract_op_type();
                 }
+                let nresolved_type = resolved_type.clone().unwrap();
+
                 if resolved_type.clone().unwrap().is_op() {
                     resolved_type = Some(resolved_type.unwrap().extract_op_type())
                 }
@@ -59,7 +62,7 @@ impl Typechecker {
                     resolved_type.expect("Expected type"),
                     declared_type.clone(),
                 );
-                self.env.define(bd.name.name, declared_type, -1)
+                self.env.define(bd.name.name, nresolved_type, -1)
 
             }
             Statement::Block(b) => {
@@ -129,11 +132,11 @@ impl Typechecker {
                 let value_kind = self.resolve_expr(r.value.clone());
                 self.expect_expr(
                     r.value,
-                    value_kind.expect("Expected Type"),
+                    AKind::TyOp(Box::new(value_kind.expect("Expected Type"))),
                     self.current_op_kind
                         .clone()
                         .expect("Expected return type")
-                        .extract_op_type(),
+                        
                 );
                 self.has_current_op_returned = true;
             }
@@ -147,10 +150,10 @@ impl Typechecker {
 
         match nk {
             AKind::TyUnknown => {
-                return;
+                panic!();
             }
             AKind::TyOp(ref t) => {
-                if **t == expected_kind {
+                if **t == expected_kind.extract_op_type() {
                     return;
                 }
             }
@@ -161,11 +164,15 @@ impl Typechecker {
                 }
             }
         }
+        if exprkind.is_op() {
+            println!("asdf");
+            
+            error!(Errors::TypeInvalidType, (expr.get_expr_value().to_string(), expected_kind, exprkind.extract_op_type()));
+        } else {
+            error!(Errors::TypeInvalidType, (expr.get_expr_value().to_string(), expected_kind, exprkind));
+        }
 
-        panic!(
-            "Expected {:?} to be of type {:?}, but found {:?}",
-            expr, expected_kind, exprkind
-        );
+        
         //std::process::exit(1);
     }
 
