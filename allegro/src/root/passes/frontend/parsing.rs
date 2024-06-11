@@ -130,6 +130,7 @@ impl Parser {
     fn primary(&mut self) -> Expr {
         let tk = self.peek();
         if self.search(vec![TkSymbol]) {
+            self.advance();
             Expr::Modify(ModifyExpr { name: tk, val: Box::new(self.expression())})
         } else if self.search(vec![TkKwFalse, TkKwTrue]) {
             return Expr::ScalarEx(ScalarExpr { value: tk });

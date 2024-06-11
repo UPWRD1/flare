@@ -101,20 +101,20 @@ impl fmt::Display for Errors {
 
             Errors::TypeError => "Type Error".to_string(),
             Errors::TypeInvalidType(n, e, f) => {
-                format!("Expected {} '{n}' to be of type '{}'", f.to_string(), e.to_string())
+                format!("Expected {} '{n}' to be of type '{}'", f.to_string_pretty(), e.to_string_pretty())
             }
             Errors::TypeInvalidReturn(n, e, f) => {
-                format!("Expected {} operation '{n}' to return type '{}'", f.to_string(), e.to_string())
+                format!("Expected {} operation '{n}' to return type '{}'", f.to_string_pretty(), e.to_string_pretty())
             }
             Errors::TypeIllegalEmptyType(s) => {
                 format!("Symbol {s} is empty!")
             }
             Errors::TypeNotNumeric(n, f) => {
-                format!("Expected {} {n} to be type int or flt", f.to_string())
+                format!("Expected {} {n} to be type int or flt", f.to_string_pretty())
             },
 
             Errors::TypeCannotAdd(n, f) => {
-                format!("Cannot add {} with operand {n}", f.to_string())
+                format!("Cannot add {} with operand {n}", f.to_string_pretty())
             }
         };
         let code: usize = self.discriminant().into();

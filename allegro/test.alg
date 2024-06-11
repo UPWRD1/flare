@@ -1,6 +1,7 @@
 -- we love comments 
 
 let main: .. of () -> {
-    val x: int = 3;
-    x = x - 3;
+    val y := "asdf";
+    val x: int = y;
+    print x;
 }

@@ -70,7 +70,7 @@ fn compile_analyze(cstvec: Vec<resource::lexemes::Lexeme>) -> Vec<resource::toke
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    //dbg!(analyzed.clone());
+    dbg!(analyzed.clone());
     info!("Analyzing: OK");
     analyzed
 }

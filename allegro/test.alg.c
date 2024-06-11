@@ -5,7 +5,7 @@
 #include <stdbool.h>
 
 void main() {
-    int x = 3;
-    x
-    x
+    char* y = "asdf";
+    char* x = y;
+    printf("%s\n", x);
  }

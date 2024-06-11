@@ -41,6 +41,19 @@ impl AKind {
         }
     }
 
+    pub fn to_string_pretty(&self) -> String {
+        match self {
+            AKind::TyStr => "string".to_string(),
+            AKind::TyInt => "integer".to_string(),
+            AKind::TyFlt => "float".to_string(),
+            AKind::TyBool => "bool".to_string(),
+            AKind::TyMute => "mute".to_string(),
+            AKind::TyOp(t) => t.to_string(),
+            AKind::TyUnknown => "??".to_string(),
+            AKind::TyEof => "EOF".to_string(),
+        }
+    }
+
     pub fn is_numeric_type(&self) -> bool {
         match &self {
             Self::TyFlt | Self::TyInt => true,

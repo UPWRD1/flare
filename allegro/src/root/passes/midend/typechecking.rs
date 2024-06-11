@@ -36,7 +36,7 @@ impl Typechecker {
                 self.resolve_expr(e.expression);
             }
             Statement::Bind(mut bd) => {
-                let mut declared_type = bd.clone().name.value.to_akind();
+                let mut declared_type = bd.clone().name.kind;
 
                 let resolved_type = self.resolve_expr(bd.initializer.clone());
                 //dbg!(declared_type.clone());
