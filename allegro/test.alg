@@ -1,6 +1,6 @@
 -- we love comments
 
-op main: int of () -> {
+op main: .. of () -> {
     let x := 3;
-    return x;
+    print x;
 }

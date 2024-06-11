@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-int main() {
+void main() {
     int x = 3;
-    return x;
+    //printf
 }
