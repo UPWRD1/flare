@@ -88,13 +88,10 @@ impl Lexer {
                 '-' => {
                     if self.next() == '>' {
                         //dbg!(self.srccharvec[self.location - 2]);
-                        if self.srccharvec[self.location - 2] != ')' {
-                            self.add(create_lexeme!(LxOpMuteShorthand, Nothing, self));
-                            self.advance();
-                        } else {
+                        
                             self.add(create_lexeme!(LxSmallArr, Nothing, self));
                             self.advance();
-                        }
+                        
                     } else if self.next() == '-' {
                         while self.srccharvec[self.location] != '\n'
                             && self.location < self.srccharvec.len()
@@ -236,9 +233,18 @@ impl Lexer {
             && (self.current() != '\n')
             && (self.current() != ',')
             && (self.current() != ')')
+            && (self.current() != '+')
+            && (self.current() != '-')
+            && (self.current() != '*')
+            && (self.current() != '/')
         {
+            if self.current() == '_' {
+                self.advance();
+                continue;
+            }
             accumulator.push(self.current());
             self.advance();
+           
         }
         if accumulator.contains(&'.') {
             self.add(Lexeme {
@@ -262,8 +268,10 @@ impl Lexer {
 
     fn create_literal(&mut self) {
         let mut accumulator: Vec<char> = vec![];
+
         self.advance(); //Continue past the initial "
         while (self.current() != '"') && (self.current() != '\n') {
+
             accumulator.push(self.current());
             self.advance();
         }

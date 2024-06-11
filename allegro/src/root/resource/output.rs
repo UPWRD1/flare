@@ -8,9 +8,9 @@ macro_rules! quit {
         std::process::exit(0);
     };
 
-    ($($arg:tt)*) => {
-        println!("[q] {}", format_args!($($arg)*))
-        std::process::exit(1);
+    ($code:ident) => {
+        //println!("[q] {}", format_args!($($arg)*))
+        std::process::exit($code);
     }
 }
 
@@ -51,7 +51,12 @@ macro_rules! error {
 
         //use crate::core::resource::errors::Errors;
         eprintln!("{} {}","[!]".red(), $code($($arg)*));
-        quit!();
+        if $code($($arg)*).get_hint().is_some() {
+            eprintln!("Hint: {}", $code($($arg)*).get_hint().unwrap());
+        }
+        let c: i32 = (($code as isize) as i32).try_into().unwrap();
+        //panic!();
+        quit!(c);
     }
     
 }
@@ -69,11 +74,14 @@ macro_rules! error_noquit {
     };
 
     ($code:path, ($($arg:tt)*)) => {
-        use crate::quit;
         use colored::Colorize;
 
         //use crate::core::resource::errors::Errors;
         eprintln!("{} {}","[!]".red(), $code($($arg)*));
+        if $code($($arg)*).get_hint().is_some() {
+            eprintln!("\tHint: {}", $code($($arg)*).get_hint().unwrap());
+        }
+
     }
     
 }
@@ -111,7 +119,7 @@ pub fn draw_error(tkvec: &Vec<Token>, start: usize) {
     let mut linestart = 0;
     let mut lineend = 0;
     let mut s: Vec<Token> = tkvec.clone()[0..start].to_vec();
-    let mut e: Vec<Token> = tkvec.clone()[start..tkvec.len()].to_vec();
+    let e: Vec<Token> = tkvec.clone()[start..tkvec.len()].to_vec();
     s.reverse();
     for (i, _t) in s.iter().enumerate() {
         if tkvec.get(i).unwrap().tokentype == TokenType::TkStatementEnd || tkvec.get(i).unwrap().tokentype == TokenType::TkLBrace{
@@ -126,7 +134,7 @@ pub fn draw_error(tkvec: &Vec<Token>, start: usize) {
     } 
     for j in linestart ..lineend {
         let c = tkvec.get(j).unwrap();
-        if j == linestart || c.tokentype == TokenType::TkLparen || c.tokentype == TokenType::TkColon {
+        if j == linestart || (c.tokentype == TokenType::TkLparen && tkvec.get(j).unwrap().tokentype == TokenType::TkSymbol) || c.tokentype == TokenType::TkColon || c.tokentype == TokenType::TkStatementEnd{
             accum = format!("{accum}{}", c.to_string())
         } else {
             accum = format!("{accum} {}", c.to_string())
@@ -139,7 +147,7 @@ pub fn draw_error(tkvec: &Vec<Token>, start: usize) {
     println!(
         "\t{char:>width$} {here}",
         char = "^".repeat(offending_str.len()).red().bold(),
-        width = accum.find(offending_str).unwrap() + 2,
+        width = accum.find(offending_str).unwrap() ,
         here = "here".red().bold(),
     );
 }

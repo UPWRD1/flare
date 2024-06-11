@@ -1,4 +1,4 @@
--- we love comments
+-- we love comments 
 
 op main: .. of () -> {
     let x := 3;

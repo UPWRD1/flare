@@ -1,4 +1,4 @@
-use super::{environment::AKind, tokens::Token};
+use super::{environment::AKind, tokens::{Token, TokenType}};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssignExpr {
@@ -72,11 +72,11 @@ impl Expr {
             Self::Binary(b) => b.left.clone().get_expr_value(),
             Self::Call(c) => c.callee.clone(),
             Self::Empty => {
-                panic!("Cannot get value of empty expression!")
+                Token { tokentype: TokenType::TkType(AKind::TyMute), value: Some(SymbolValue::Mute), location: 0 }
             }
             Self::Grouping(g) => g.expression.get_expr_value().clone(),
             Self::ScalarEx(l) => l.value.clone(),
-            Self::Logical(l) => l.operator.clone(),
+            Self::Logical(l) => l.left.clone().get_expr_value(),
             Self::Unary(u) => u.operator.clone(),
             Self::Value(v) => v.name.clone(),
         }
@@ -114,7 +114,7 @@ pub struct ExpressionStmt {
 
 ///AST Operation Statement
 #[derive(Clone, Debug, PartialEq)]
-pub struct OpDecl {
+pub struct FuncDecl {
     pub name: Token,
     pub params: Vec<BindingDecl>,
     pub returnval: AKind,
@@ -125,8 +125,8 @@ pub struct OpDecl {
 #[derive(Clone, Debug, PartialEq)]
 pub struct IfStmt {
     pub condition: Expr,
-    pub then_branch: Box<Statement>,
-    pub else_branch: Option<Box<Statement>>,
+    pub then_branch: Box<BlockStmt>,
+    pub else_branch: Option<Box<BlockStmt>>,
 }
 
 //#[deprecated(since = "0.0.0", note = "PrintStmt may be replaced by standard library features")]
@@ -156,7 +156,7 @@ pub struct BindingDecl {
 pub enum Statement {
     Block(BlockStmt),
     Expression(ExpressionStmt),
-    Operation(OpDecl),
+    Function(FuncDecl),
     If(IfStmt),
     Print(PrintStmt),
     Return(ReturnStmt),
@@ -206,10 +206,11 @@ impl SymbolValue {
                 Scalar::Str(_) => AKind::TyStr,
             },
             Self::Pair(i) => {
-                i.clone().kind
+                i.clone().value.to_akind()
             }
             Self::Mute => AKind::TyMute,
-            _ => panic!("Unknown type! {:?}", self),
+            Self::Unknown => AKind::TyUnknown,
+            //_ => panic!("Unknown type! {:?}", self),
         }
     }
     
@@ -223,6 +224,9 @@ impl SymbolValue {
                 Scalar::Str(v) => v.to_string().into(),
                 Scalar::Bool(v) => format!("{v}").into(),
             },
+            Self::Mute => {
+                Some("()".to_string())
+            }
             _ => panic!("Cannot get string of value {:?}", self),
         }
     }

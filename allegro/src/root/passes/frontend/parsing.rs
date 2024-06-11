@@ -1,8 +1,9 @@
 use crate::root::resource::errors::Errors;
 use crate::root::resource::output::draw_error;
-use crate::{error, error_noquit, errorold_no_quit, quit};
+use crate::{error, error_noquit, quit};
 
 use crate::{
+    info,
     root::resource::{
         ast::*,
         environment::AKind,
@@ -11,7 +12,6 @@ use crate::{
             TokenType::{self, *},
         },
     },
-    info,
 };
 
 pub struct Parser {
@@ -40,7 +40,6 @@ impl Parser {
                 value: None,
                 location: self.curr,
                 //lit: "".to_string()
-
             }
         }
     }
@@ -90,17 +89,21 @@ impl Parser {
         if self.check(kind.clone()) {
             self.advance()
         } else {
-            let dummy: Token = Token { tokentype: kind.clone(), value: None, location: self.curr};
+            let dummy: Token = Token {
+                tokentype: kind.clone(),
+                value: None,
+                location: self.curr,
+            };
             if dummy.is_keyword() {
                 error_noquit!(Errors::SyntaxMissingKeyword, (dummy.to_string()));
                 draw_error(&self.tkvec, self.curr);
                 quit!();
 
+                //dbg!(self.tkvec.clone());
             } else {
                 error_noquit!(Errors::SyntaxMissingChar, (dummy.to_string()));
                 draw_error(&self.tkvec, self.curr);
-                quit!();
-
+                panic!();
             }
             //error_nocode!("Error at {}: {message}", self.current().location);
             //panic!();
@@ -115,10 +118,13 @@ impl Parser {
                 continue;
             }
         }
-        let dummy: Token = Token { tokentype: kinds[0].clone(), value: None, location: self.curr};
-        error_noquit!(Errors::SyntaxMissingType, (dummy.to_string()));
+        self.advance();
+        error_noquit!(
+            Errors::SyntaxMissingType,
+            (self.peek().value.unwrap().to_akind().to_string())
+        );
         draw_error(&self.tkvec, self.curr);
-        quit!();        //panic!()
+        quit!(); //panic!()
     }
 
     fn primary(&mut self) -> Expr {
@@ -225,10 +231,10 @@ impl Parser {
 
     fn comparison_expr(&mut self) -> Expr {
         let mut expr = self.term_expr();
-        while self.search(vec![TkCGT, TkCGE, TkCLT, TkCLE]) {
+        while self.search(vec![TkCGT, TkCGE, TkCLT, TkCLE, TkCEQ, TkCNE]) {
             let operator: Token = self.previous();
             let right: Expr = self.term_expr();
-            expr = Expr::Binary(BinExpr {
+            expr = Expr::Logical(LogicalExpr {
                 left: Box::new(expr),
                 operator,
                 right: Box::new(right),
@@ -284,16 +290,35 @@ impl Parser {
         })
     }
 
+    fn if_stmt(&mut self) -> Statement {
+        let cond = self.expression();
+        let ib = self.block();
+        let mut eb: Option<Box<BlockStmt>> = None;
+        if self.check(TkKwElse) {
+            self.advance();
+            eb = Some(Box::new(BlockStmt {
+                statements: self.block(),
+            }));
+        }
+        Statement::If(IfStmt {
+            condition: cond,
+            then_branch: Box::new(BlockStmt { statements: ib }),
+            else_branch: eb,
+        })
+    }
+
     fn statement(&mut self) -> Statement {
         if self.search(vec![TkKwPrint]) {
             self.print_stmt()
-        } else if self.search(vec![TkKwLet]) {
+        } else if self.search(vec![TkKwVal]) {
             return self.val_decl();
         } else if self.search(vec![TkKwReturn]) {
             return self.return_stmt();
         } else if self.search(vec![TkKwUse]) {
             self.use_statement();
             return self.expr_stmt();
+        } else if self.search(vec![TkKwIf]) {
+            return self.if_stmt();
         } else {
             return self.expr_stmt();
         }
@@ -309,19 +334,31 @@ impl Parser {
 
     fn val_decl(&mut self) -> Statement {
         let (name, kind) = self.val_signiture();
-        if name.value.clone().unwrap().to_akind() == AKind::TyUnknown {
+        if kind.is_unknown() {
             self.consume(TkAssignInfer);
-
             let initializer: Expr = self.expression();
-
             if !self.search(vec![TkStatementEnd]) {
-                panic!("Unexpected end of value declaration!")
+                error!(
+                    Errors::SyntaxUnexpectedEnd,
+                    ("Unexpected end of value declaration".to_string())
+                );
             }
             let res = BindingDecl {
                 name: Pair {
                     name: name.value.unwrap().get_string().unwrap(),
                     value: Box::new(initializer.get_expr_value().value.unwrap()),
-                    kind: initializer.get_expr_value().value.unwrap().to_akind(),
+                    kind: match initializer {
+                        Expr::Assign(_)
+                        | Expr::Binary(_)
+                        | Expr::Call(_)
+                        | Expr::Grouping(_)
+                        | Expr::ScalarEx(_)
+                        | Expr::Unary(_)
+                        | Expr::Value(_)
+                        | Expr::Empty => initializer.get_expr_value().value.unwrap().to_akind(),
+
+                        Expr::Logical(_) => AKind::TyBool,
+                    },
                 },
                 initializer,
             };
@@ -355,7 +392,8 @@ impl Parser {
         Token {
             tokentype: TkSymbol,
             value: Some(SymbolValue::Pair(Pair {
-                name: name.clone()
+                name: name
+                    .clone()
                     .value
                     .unwrap()
                     .get_string()
@@ -366,29 +404,27 @@ impl Parser {
             })),
             location: name.location,
             //lit: name.value.unwrap().get_string().unwrap()
-
         }
     }
 
     fn val_signiture(&mut self) -> (Token, AKind) {
+        self.inspect();
         let name: Token = self.consume(TkSymbol);
-
-        let kind: AKind = if self.check(TkAssignInfer) {
+        
+        let kind: AKind = if self.peek().tokentype != TkColon || self.check(TkAssignInfer) {
             AKind::TyUnknown
         } else {
             self.consume(TkColon);
 
             let tty = self
-                .consume_vec(
-                    vec![
-                        TkType(AKind::TyInt),
-                        TkType(AKind::TyFlt),
-                        TkType(AKind::TyStr),
-                        TkType(AKind::TyBool),
-                        TkType(AKind::TyEof),
-                        TkType(AKind::TyMute),
-                    ],
-                )
+                .consume_vec(vec![
+                    TkType(AKind::TyInt),
+                    TkType(AKind::TyFlt),
+                    TkType(AKind::TyStr),
+                    TkType(AKind::TyBool),
+                    TkType(AKind::TyEof),
+                    TkType(AKind::TyMute),
+                ])
                 .tokentype;
             match tty {
                 TkType(t) => t,
@@ -416,77 +452,61 @@ impl Parser {
         )
     }
 
-    fn op_decl(&mut self) -> Statement {
+    fn func_decl(&mut self) -> Statement {
+        //self.consume(TkColon);
         let name: Token = self.consume(TkSymbol);
-        if self.check(TkOpMuteShortHand) {
-            let opreturnkind: AKind = AKind::TyOp(Box::new(AKind::TyMute));
-            self.consume(TkOpMuteShortHand);
-            Statement::Operation(OpDecl {
-                name,
-                params: vec![],
-                returnval: opreturnkind,
-                body: BlockStmt {
-                    statements: self.opblock(),
-                },
-            })
-        } else {
-            self.consume(TkColon);
+    
+        //let opreturnkind_tk = self.advance().tokentype;
+        // let opreturnkind = AKind::TyOp(match opreturnkind_tk {
+        //     TkType(t) => Box::new(t),
+        //     _ => panic!("invalid type {opreturnkind_tk:?}"),
+        // });
 
-            let opreturnkind_tk = self.advance().tokentype;
-            let opreturnkind = AKind::TyOp(match opreturnkind_tk {
-                TkType(t) => Box::new(t),
-                _ => panic!("invalid type {opreturnkind_tk:?}"),
+        let opreturnkind = AKind::TyOp(Box::new(AKind::TyUnknown));
+
+        self.consume(TkKwOf);
+
+        //self.consume(TkLparen);
+
+        let mut params: Vec<BindingDecl> = vec![];
+
+        while self.peek().tokentype != TkSmallArr {
+            let nv = self.init_param();
+            params.push(BindingDecl {
+                name: Pair {
+                    name: nv.value.clone().unwrap().get_string().unwrap(),
+                    kind: nv.value.clone().unwrap().to_akind(),
+                    value: Box::new(nv.value.unwrap()),
+                },
+                initializer: Expr::Empty,
             });
-    
-            self.consume(TkKwOf);
-    
-            self.consume(TkLparen);
-    
-            let mut params: Vec<BindingDecl> = vec![];
-            if self.peek().tokentype != TkRparen {
-                while self.peek().tokentype != TkRparen {
-                    let nv = self.init_param();
-                    //println!("{:?}", nv.value.clone().unwrap().() );
-                    params.push(BindingDecl {
-                        name: Pair {
-                            name: nv.value.clone().unwrap().get_string().unwrap(),
-                            kind: nv.value.clone().unwrap().to_akind(),
-                            value: Box::new(nv.value.unwrap()),
-                        },
-                        initializer: Expr::Empty,
-                    });
-                    if self.current().tokentype == TkRparen {
-                        break;
-                    } else {
-                        self.advance();
-                    }
-                }
-            }
-            self.consume(TkRparen);
-    
-            //self.inspect();
-            self.consume(TkSmallArr);
-    
-            // Fix return type of op name's identity
-            //match name.value.clone().unwrap() {
-            //    SymbolValue::Identity(ref mut i) => i.kind = Some(Box::new(opreturnkind.clone())),
-            //    _ => panic!("Invalid function name"),
-            //}
-    
-            Statement::Operation(OpDecl {
-                name,
-                params,
-                returnval: opreturnkind,
-                body: BlockStmt {
-                    statements: self.opblock(),
-                },
-            })
-        }
-
         
+                self.advance();
+            
+        }
+        //dbg!(params.clone());
+
+        //self.consume(TkRparen);
+
+        self.consume(TkSmallArr);
+
+        // Fix return type of op name's identity
+        //match name.value.clone().unwrap() {
+        //    SymbolValue::Identity(ref mut i) => i.kind = Some(Box::new(opreturnkind.clone())),
+        //    _ => panic!("Invalid function name"),
+        //}
+
+        Statement::Function(FuncDecl {
+            name,
+            params,
+            returnval: opreturnkind,
+            body: BlockStmt {
+                statements: self.funcblock(),
+            },
+        })
     }
 
-    fn opblock(&mut self) -> Vec<Statement> {
+    fn funcblock(&mut self) -> Vec<Statement> {
         let mut collector: Vec<Statement> = vec![];
         //self.inspect();
         if self.check(TkKwReturn) {
@@ -498,14 +518,29 @@ impl Parser {
             {
                 collector.push(self.statement());
             }
+
             self.consume(TkRBrace);
         }
         collector
     }
 
+    fn block(&mut self) -> Vec<Statement> {
+        let mut collector: Vec<Statement> = vec![];
+
+        self.consume(TkLBrace);
+        while self.tkvec[self.curr].tokentype != TkRBrace
+            && self.tkvec[self.curr + 1].tokentype != TkEof
+        {
+            collector.push(self.statement());
+        }
+        self.consume(TkRBrace);
+
+        collector
+    }
+
     fn declaration(&mut self) -> Statement {
-        if self.search(vec![TkKWOp]) {
-            return self.op_decl();
+        if self.search(vec![TkKwLet]) {
+            return self.func_decl();
         }
         self.statement()
     }

@@ -11,8 +11,10 @@ use passes::frontend::parsing;
 use passes::midend::typechecking;
 
 use passes::backend::codegen;
+use resource::errors::Errors;
 use resource::tokens::Token;
 
+use crate::error;
 use crate::info;
 
 
@@ -33,7 +35,7 @@ pub fn full_compile(filename: &String) {
     let _ = file.write_all(generated.to_string().as_bytes());
 
     let elapsed = now.elapsed();
-    info!("Elapsed: {:.2?}", elapsed);
+    info!("Compiled {} in {:.2?}", filename, elapsed);
 
 }
 
@@ -41,7 +43,7 @@ fn compile_codegen(checked: Vec<resource::ast::Statement>, e: resource::environm
     let mut generator = codegen::Generator::new(checked.clone(), e);
     generator.generate();
     let generated = generator.supply();
-    //println!("{}", generated.clone());
+    println!("{}", generated.clone());
     info!("Generation: OK");
     generated
 }
@@ -68,13 +70,17 @@ fn compile_analyze(cstvec: Vec<resource::lexemes::Lexeme>) -> Vec<resource::toke
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    //dbg!(analyzed.clone());
+    dbg!(analyzed.clone());
     info!("Analyzing: OK");
     analyzed
 }
 
 fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
-    let contents = &std::fs::read_to_string(filename).expect("Could not find file");
+    let contents_unsure = &std::fs::read_to_string(filename);
+    if contents_unsure.is_err() {
+        error!(Errors::MissingFile, (filename.to_string()));
+    };
+    let contents = contents_unsure.as_ref().unwrap();
     let mut lxr = lexing::Lexer::new(contents.to_string());
     lxr.lex();
     let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();

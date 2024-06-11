@@ -2,7 +2,7 @@ use core::panic;
 
 use crate::root::resource::{
     ast::*,
-    environment::Environment,
+    environment::{AKind, Environment},
     tokens::{Token, TokenType},
 };
 
@@ -16,6 +16,7 @@ pub struct Generator {
     env: Environment,
     loc: usize,
     output: Vec<GenLine>,
+    currentindent: usize,
 }
 
 #[allow(missing_fragment_specifier)]
@@ -34,11 +35,23 @@ impl Generator {
             env: e,
             loc: 0,
             output: vec![],
+            currentindent: 0,
         }
     }
 
     fn add(&mut self, st: GenLine) {
         self.output.push(st);
+    }
+
+    fn gen_cformat_specifier(&self, t: AKind) -> String {
+        match t {
+            AKind::TyStr => "%s".to_string(),
+            AKind::TyInt => "%d".to_string(),
+            AKind::TyFlt => "%f".to_string(),
+            AKind::TyOp(t) => self.gen_cformat_specifier(*t),
+            AKind::TyBool => "%d".to_string(),
+            _ => panic!("Cannot convert {t:?} to c representation")
+        }
     }
 
     fn get_cval(&mut self, sk: SymbolValue) -> String {
@@ -69,7 +82,7 @@ impl Generator {
         //println!("{s:?}");
         match s {
             Statement::Bind(vd) => self.env.get_akind_symbol(&vd.name.name).to_ctype(),
-            Statement::Operation(o) => self
+            Statement::Function(o) => self
                 .env
                 .get_akind_symbol(&o.name.value.unwrap().get_string().unwrap())
                 .to_ctype(),
@@ -81,12 +94,12 @@ impl Generator {
 
     fn gen_cparams(&mut self, s: Statement) -> String {
         match s {
-            Statement::Operation(o) => {
+            Statement::Function(o) => {
                 let p = o.params;
                 let mut accum: String = "".to_string();
                 for (count, v) in p.iter().enumerate() {
                     let n = &v.name.name;
-                    let t = v.name.kind.to_ctype();
+                    let t = v.name.value.to_akind().to_ctype();
                     if count == &p.len() - 1 {
                         accum = format!("{accum}{t} {n}");
                     } else {
@@ -129,6 +142,7 @@ impl Generator {
     }
 
     fn gen_code(&mut self, el: Statement) -> String {
+        //dbg!(self.currentindent);
         match el.clone() {
             Statement::Bind(vd) => {
                 let ckind = self.get_ctype(Statement::Bind(vd.clone()));
@@ -144,6 +158,9 @@ impl Generator {
                         expression: Expr::Grouping(g),
                     })),
                     Expr::Value(v) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Value(v) })),
+                    Expr::Logical(l) => self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: Expr::Logical(l),
+                    })),
                     _ => panic!("Unknown value {:?}!", vd.initializer),
                 };
                 let cname: String = vd.name.name;
@@ -151,27 +168,31 @@ impl Generator {
                 x
             }
 
-            Statement::Operation(o) => {
-                let cname: String = o.name.value.unwrap().get_string().unwrap();
-                let ckind = self.get_ctype(el.clone());
-                let cparams = self.gen_cparams(el);
+            Statement::Function(o) => {
+                let cname: String = o.name.to_string();
+                let ckind: String = self.get_ctype(el.clone());
+                let cparams = self.gen_cparams(el.clone());
                 let b = self.gen_code(Statement::Block(o.body));
-                let x = format!("{ckind} {cname}({cparams}) {b}");
+                let x: String = format!("{ckind} {cname}({cparams}) {b}");
+
                 x
             }
 
             Statement::Block(b) => {
-                let mut accum: String = "{".to_string();
+                let mut accum: String = "{".to_string(); //format!("{space:>width$}{{", space=" ", width=self.currentindent * 4);
+                self.currentindent += 1;
                 for s in b.statements {
                     if s != Statement::Empty
                         && s != Statement::Expression(ExpressionStmt {
                             expression: Expr::Empty,
                         })
                     {
-                        accum = format!("{accum}\n    {}", self.gen_code(s))
+                        //println!("{space:0>width$}", space=" ", width=self.currentindent * 4);
+                        accum = format!("{accum}\n{space:>width$}{}", self.gen_code(s), space=" ", width=self.currentindent * 4)
                     }
                 }
-                accum = format!("{accum}\n}}\n");
+                self.currentindent -= 1;
+                accum = format!("{accum}\n{space:>width$}}}", space=" ", width=self.currentindent * 4);
                 accum
             }
 
@@ -276,38 +297,44 @@ impl Generator {
                 TokenType::TkKwTrue => todo!(),
                 TokenType::TkKwFalse => todo!(),
                 TokenType::TkSymbol => {
-                    //println!("{:?}", p.expression.get_expr_value().value);
-                    "//printf".to_string()
+                    let name = p.expression.get_expr_value().value.unwrap().get_string().unwrap();
+                    let ty = self.gen_cformat_specifier(self.env.get_akind_symbol(&name));
+                    //println!("{:?}", p.expression.get_expr_value().value.unwrap().get_string().unwrap());
+                    //panic!();
+                    format!("printf(\"{}\\n\", {});", ty, name)
                     //return format!("printf({}", key,)
                 }
                 TokenType::TkScalar => match p.expression.get_expr_value().value.unwrap() {
-                    SymbolValue::Scalar(s) => match s {
-                        Scalar::Str(_st) => {
-                            let accum = format!(
-                                "printf(\"{}\");",
-                                self.gen_code(Statement::Expression(ExpressionStmt {
-                                    expression: p.expression
-                                }))
-                            );
-                            accum
-                        }
-                        Scalar::Float(f) => {
-                            let accum = format!("printf(\"%d\", {});", f);
-                            accum
-                        }
-                        Scalar::Int(i) => {
-                            let accum = format!("printf(\"%d\", {});", i);
-                            accum
-                        }
-                        Scalar::Bool(b) => {
-                            let accum = format!("printf({});", b);
-                            accum
-                        }
+                    SymbolValue::Scalar(s) => {
+                        let val = match s.clone() {
+                            Scalar::Str(str) => format!("\"{}\"", str),
+                            Scalar::Int(i) => i.to_string(),
+                            Scalar::Float(f) => f.to_string(),
+                            Scalar::Bool(b) => b.to_string(),
+                        };
+                        let ty = self.gen_cformat_specifier(s.to_akind());
+                        //println!("{:?}", p.expression.get_expr_value().value.unwrap().get_string().unwrap());
+                        //panic!();
+                        format!("printf(\"{}\\n\", {});", ty, val)
                     },
                     _ => panic!("{:?} cannot be printed!", p.expression),
                 },
                 _ => panic!("{:?} cannot be printed!", p.expression),
             },
+
+            Statement::If(i) => {
+                
+                let ifex = self.gen_code(Statement::Expression(ExpressionStmt { expression: i.condition }));
+                let tb = self.gen_code(Statement::Block(*i.then_branch));
+                if let Some(ref ebs) = i.else_branch {
+                    let eb = self.gen_code(Statement::Block(*ebs.clone()));
+                    return format!("if ({}) {} else {}", ifex, tb, eb )
+
+                } else {
+                    return format!("if ({}) {}", ifex, tb)
+
+                }
+            }
 
             _ => {
                 panic!("Unsupported ast Token: {:?}", el);
@@ -317,7 +344,7 @@ impl Generator {
 
     pub fn supply(&mut self) -> String {
         let mut accum: String =
-            "//This file was automatically generated by allegro.\n//Submit bug reports to https://github.com/UPWRD1/allegro\n\n#include <stdio.h>\n\n".to_string();
+            "//This file was automatically generated by allegro.\n//Submit bug reports to https://github.com/UPWRD1/allegro\n\n#include <stdio.h>\n#include <stdbool.h>\n\n".to_string();
         for i in self.output.clone() {
             accum = format!("{accum}{}", i.c)
         }

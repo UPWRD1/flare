@@ -1,3 +1,5 @@
+use crate::error;
+use crate::error_nocode;
 use crate::root::resource;
 use crate::root::resource::ast::Expr;
 use crate::root::resource::ast::Statement;
@@ -6,8 +8,6 @@ use crate::root::resource::environment::Environment;
 use crate::root::resource::errors::Errors;
 use crate::root::resource::errors::Errors::*;
 use crate::root::resource::tokens::TokenType;
-use crate::error;
-use crate::error_nocode;
 
 pub struct Typechecker {
     ast: Vec<Statement>,
@@ -36,14 +36,17 @@ impl Typechecker {
                 self.resolve_expr(e.expression);
             }
             Statement::Bind(mut bd) => {
-                let mut declared_type = bd.name.kind;
+                let mut declared_type = bd.clone().name.value.to_akind();
 
-                let mut resolved_type = self.resolve_expr(bd.initializer.clone());
+                let resolved_type = self.resolve_expr(bd.initializer.clone());
+                //dbg!(declared_type.clone());
+
+                //dbg!(resolved_type.clone());
 
                 if declared_type.is_unknown() {
                     let x: AKind = self
                         .env
-                        .get_akind_scoped(bd.name.value.get_string().unwrap());
+                        .get_akind_scoped(bd.clone().name.value.get_string().unwrap());
                     bd.name.kind = x.clone();
                     declared_type = x;
                 }
@@ -51,19 +54,21 @@ impl Typechecker {
                 if declared_type.is_op() {
                     declared_type = declared_type.extract_op_type();
                 }
-                let nresolved_type = resolved_type.clone().unwrap();
+                if let Some(mut rt) = resolved_type {
+                    let nresolved_type = rt.clone();
 
-                if resolved_type.clone().unwrap().is_op() {
-                    resolved_type = Some(resolved_type.unwrap().extract_op_type())
+                    if rt.clone().is_op() {
+                        rt = rt.extract_op_type()
+                    }
+
+                    self.expect_expr(bd.initializer, rt, declared_type.clone());
+                    self.env.define(bd.name.name, nresolved_type, -1)
+                } else {
+                    error!(
+                        Errors::TypeIllegalEmptyType,
+                        (bd.name.value.clone().get_string().unwrap())
+                    );
                 }
-
-                self.expect_expr(
-                    bd.initializer,
-                    resolved_type.expect("Expected type"),
-                    declared_type.clone(),
-                );
-                self.env.define(bd.name.name, nresolved_type, -1)
-
             }
             Statement::Block(b) => {
                 for statement in b.statements {
@@ -73,9 +78,9 @@ impl Typechecker {
                 //self.env.scope.drop_enclosing();
             }
 
-            Statement::Operation(o) => {
+            Statement::Function(o) => {
                 let op_type = o.returnval;
-                
+
                 self.env.define(
                     o.name.value.clone().unwrap().get_string().unwrap(),
                     op_type.clone(),
@@ -90,7 +95,7 @@ impl Typechecker {
                 for param in o.params {
                     //println!("{}", param.name.name);
                     //self.env.scope.define(Entry { name: param.name.name, arity: -1, value: param.name.kind })
-                    self.env.define(param.name.name, param.name.kind, -1)
+                    self.env.define(param.name.name, param.name.value.to_akind(), -1)
                 }
 
                 self.check_statement(Statement::Block(o.body));
@@ -119,9 +124,9 @@ impl Typechecker {
                     condition_type.expect("Expected Type"),
                     AKind::TyBool,
                 );
-                self.check_statement(*i.then_branch.clone());
+                self.check_statement(Statement::Block(*i.then_branch.clone()));
                 if i.else_branch.is_some() {
-                    self.check_statement(*i.else_branch.unwrap().clone())
+                    self.check_statement(Statement::Block(*i.else_branch.unwrap().clone()))
                 }
             }
 
@@ -133,10 +138,7 @@ impl Typechecker {
                 self.expect_expr(
                     r.value,
                     AKind::TyOp(Box::new(value_kind.expect("Expected Type"))),
-                    self.current_op_kind
-                        .clone()
-                        .expect("Expected return type")
-                        
+                    self.current_op_kind.clone().expect("Expected return type"),
                 );
                 self.has_current_op_returned = true;
             }
@@ -147,6 +149,9 @@ impl Typechecker {
 
     fn expect_expr(&mut self, expr: Expr, exprkind: AKind, expected_kind: AKind) {
         let nk: AKind = exprkind.clone();
+
+        //dbg!(nk.clone());
+        //dbg!(expected_kind.clone());
 
         match nk {
             AKind::TyUnknown => {
@@ -165,14 +170,25 @@ impl Typechecker {
             }
         }
         if exprkind.is_op() {
-            println!("asdf");
-            
-            error!(Errors::TypeInvalidType, (expr.get_expr_value().to_string(), expected_kind, exprkind.extract_op_type()));
+            error!(
+                Errors::TypeInvalidReturn,
+                (
+                    expr.get_expr_value().to_string(),
+                    expected_kind.clone(),
+                    exprkind.extract_op_type()
+                )
+            );
         } else {
-            error!(Errors::TypeInvalidType, (expr.get_expr_value().to_string(), expected_kind, exprkind));
+            error!(
+                Errors::TypeInvalidType,
+                (
+                    expr.get_expr_value().to_string(),
+                    expected_kind.clone(),
+                    exprkind.clone()
+                )
+            );
         }
 
-        
         //std::process::exit(1);
     }
 
@@ -188,25 +204,17 @@ impl Typechecker {
                         if !lhstype.clone().unwrap().is_numeric_type()
                             && lhstype.clone().unwrap() != AKind::TyStr
                         {
-                            error_nocode!(
-                                "Expected {:?} to be of type Int, Flt, or Str, but found {:?}",
-                                expr,
-                                lhstype
+                            error!(
+                                Errors::TypeCannotAdd,
+                                (expr.get_expr_value().to_string(), lhstype.clone().unwrap())
                             );
                         }
                     }
-                    TokenType::TkMinus
-                    | TokenType::TkStar
-                    | TokenType::TkSlash
-                    | TokenType::TkCLE
-                    | TokenType::TkCLT
-                    | TokenType::TkCGE
-                    | TokenType::TkCGT => {
+                    TokenType::TkMinus | TokenType::TkStar | TokenType::TkSlash => {
                         if !lhstype.clone().unwrap().is_numeric_type() {
-                            error_nocode!(
-                                "Expected {:?} to be of type Int or Flt, but found {:?}",
-                                expr,
-                                lhstype
+                            error!(
+                                Errors::TypeNotNumeric,
+                                (expr.get_expr_value().to_string(), lhstype.clone().unwrap())
                             );
                         }
                     }
@@ -218,15 +226,16 @@ impl Typechecker {
                     panic!("{:?} and {:?} are of differing types!", lhstype, rhstype);
                 }
 
-                match b.operator.tokentype {
-                    TokenType::TkCLE
-                    | TokenType::TkCLT
-                    | TokenType::TkCGE
-                    | TokenType::TkCGT
-                    | TokenType::TkCEQ
-                    | TokenType::TkCNE => Some(AKind::TyBool),
-                    _ => Some(AKind::TyInt),
-                }
+                lhstype
+                // match b.operator.tokentype {
+                //     TokenType::TkCLE
+                //     | TokenType::TkCLT
+                //     | TokenType::TkCGE
+                //     | TokenType::TkCGT
+                //     | TokenType::TkCEQ
+                //     | TokenType::TkCNE => Some(AKind::TyBool),
+                //     _ => Some(AKind::TyInt),
+                // }
             }
             Expr::Unary(ref u) => {
                 let rhstype = self.resolve_expr(*u.right.clone());
@@ -295,7 +304,23 @@ impl Typechecker {
 
             Expr::Empty => None,
 
-            _ => panic!("Unknown expression type {:?}", expr),
+            Expr::Logical(l) => {
+                let lhstype = self.resolve_expr(*l.left.clone());
+                let rhstype: Option<AKind> = self.resolve_expr(*l.right.clone());
+                if lhstype.clone().unwrap().is_numeric_type()
+                    && rhstype.clone().unwrap().is_numeric_type()
+                {
+                    return Some(AKind::TyBool);
+                } else if lhstype.clone().unwrap() == AKind::TyStr
+                    && rhstype.clone().unwrap() == AKind::TyStr
+                {
+                    return Some(AKind::TyBool);
+                } else {
+                    None
+                }
+            }
+
+            //_ => panic!("Unknown expression type {:?}", expr),
         }
     }
 

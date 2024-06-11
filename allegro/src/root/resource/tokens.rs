@@ -4,8 +4,9 @@ use super::{ast::SymbolValue, environment::AKind};
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TokenType {
     TkKwUse,
-    TkKWOp,
     TkKwLet,
+    TkKwEnd,
+    TkKwVal,
     TkKwPrint,
     TkKwOf,
     TkKwIf,
@@ -37,7 +38,6 @@ pub enum TokenType {
     TkStatementEnd,
     TkAssign,
     TkAssignInfer,
-    TkOpMuteShortHand,
     TkCEQ,
     TkCNE,
     TkCLT,
@@ -65,8 +65,9 @@ impl Token {
     pub fn is_keyword(&self) -> bool {
         match self.tokentype {
             TokenType::TkKwUse
-            | TokenType::TkKWOp
             | TokenType::TkKwLet
+            | TokenType::TkKwEnd
+            | TokenType::TkKwVal
             | TokenType::TkKwPrint
             | TokenType::TkKwOf
             | TokenType::TkKwIf
@@ -87,8 +88,9 @@ impl Token {
     pub fn to_string(&self) -> String {
         let x: String = match self.tokentype {
             TokenType::TkKwUse => "use".to_string(),
-            TokenType::TkKWOp => "op".to_string(),
             TokenType::TkKwLet => "let".to_string(),
+            TokenType::TkKwEnd => "end".to_string(),
+            TokenType::TkKwVal => "val".to_string(),
             TokenType::TkKwPrint => "print".to_string(),
             TokenType::TkKwOf => "of".to_string(),
             TokenType::TkKwIf => "if".to_string(),
@@ -119,10 +121,9 @@ impl Token {
             TokenType::TkPercent => "%".to_string(),
             TokenType::TkLBrace => "{".to_string(),
             TokenType::TkRBrace => "}".to_string(),
-            TokenType::TkStatementEnd => "".to_string(),
+            TokenType::TkStatementEnd => ";".to_string(),
             TokenType::TkAssign => "=".to_string(),
             TokenType::TkAssignInfer => ":=".to_string(),
-            TokenType::TkOpMuteShortHand => ":->".to_string(),
             TokenType::TkCEQ => "==".to_string(),
             TokenType::TkCNE => "!=".to_string(),
             TokenType::TkCLT => "<".to_string(),

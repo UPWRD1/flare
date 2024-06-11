@@ -2,8 +2,8 @@
 //Submit bug reports to https://github.com/UPWRD1/allegro
 
 #include <stdio.h>
+#include <stdbool.h>
 
 void main() {
-    int x = 3;
-    //printf
-}
+    int x = 300000;
+ }

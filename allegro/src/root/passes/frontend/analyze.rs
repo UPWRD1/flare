@@ -61,8 +61,8 @@ impl Analyzer {
                 LxSymbol(sv) => {
                     let tkk = match sv.clone() {
                         SymbolValue::Pair(id) => match id.name.as_str() {
+                            "val" => TokenType::TkKwVal,
                             "let" => TokenType::TkKwLet,
-                            "op" => TokenType::TkKWOp,
                             "print" => TokenType::TkKwPrint,
                             "of" => TokenType::TkKwOf,
                             "if" => TokenType::TkKwIf,
@@ -260,13 +260,7 @@ impl Analyzer {
                     //lit: ":=".to_string()
 
                 }),
-                LxOpMuteShorthand => self.add(Token {
-                    tokentype: TkOpMuteShortHand,
-                    value: None,
-                    location: el.location,
-                    //lit: ":->".to_string()
-
-                }),
+                
                 LxCEQ => self.add(Token {
                     tokentype: TkCEQ,
                     value: None,

@@ -91,7 +91,7 @@ pub struct ScopeTable {
 
 impl ScopeTable {
     pub fn new_parent(&mut self) {
-        println!("Creating environment with parent {:?}", self.entries);
+        //println!("Creating environment with parent {:?}", self.entries);
         let p = self.clone();
         let s = ScopeTable {
             entries: vec![],
@@ -102,7 +102,7 @@ impl ScopeTable {
     }
 
     pub fn drop_enclosing(&mut self) {
-        println!("Dropping environment containing {:?}", self.entries);
+        //println!("Dropping environment containing {:?}", self.entries);
         if self.parent.is_none() {
             panic!("Not Enclosing!");
         } else {
@@ -116,7 +116,7 @@ impl ScopeTable {
     }
 
     pub fn define(&mut self, e: Entry) {
-        println!("Defining {}", e.name);
+        //println!("Defining {}", e.name);
         for i in &self.entries {
             if *i == e {
                 error!(
@@ -164,7 +164,7 @@ impl Environment {
         self.scope.get_akind(name)
     }
 
-    pub fn get_akind_symbol(&mut self, name: &String) -> AKind {
+    pub fn get_akind_symbol(&self, name: &String) -> AKind {
         match self.symboltable.iter().position(|e| &e.name == name) {
             Some(l) => self.symboltable[l].value.clone(),
             None => {
