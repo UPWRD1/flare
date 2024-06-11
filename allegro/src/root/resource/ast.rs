@@ -44,8 +44,9 @@ pub struct UnaryExpr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ValueExpr {
+pub struct ModifyExpr {
     pub name: Token,
+    pub val: Box<Expr>,
 }
 
 
@@ -60,7 +61,7 @@ pub enum Expr {
     ScalarEx(ScalarExpr),
     Logical(LogicalExpr),
     Unary(UnaryExpr),
-    Value(ValueExpr),
+    Modify(ModifyExpr),
     Empty,
 }
 
@@ -78,7 +79,7 @@ impl Expr {
             Self::ScalarEx(l) => l.value.clone(),
             Self::Logical(l) => l.left.clone().get_expr_value(),
             Self::Unary(u) => u.operator.clone(),
-            Self::Value(v) => v.name.clone(),
+            Self::Modify(v) => v.name.clone(),
         }
     }
     /*

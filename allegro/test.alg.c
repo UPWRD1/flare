@@ -5,5 +5,7 @@
 #include <stdbool.h>
 
 void main() {
-    int x = 300000;
+    int x = 3;
+    x
+    x
  }

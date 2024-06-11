@@ -1,6 +1,6 @@
 -- we love comments 
 
-op main: .. of () -> {
-    let x := 3;
-    print x;
+let main: .. of () -> {
+    val x: int = 3;
+    x = x - 3;
 }

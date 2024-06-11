@@ -99,7 +99,7 @@ impl Generator {
                 let mut accum: String = "".to_string();
                 for (count, v) in p.iter().enumerate() {
                     let n = &v.name.name;
-                    let t = v.name.value.to_akind().to_ctype();
+                    let t = v.name.kind.to_ctype();
                     if count == &p.len() - 1 {
                         accum = format!("{accum}{t} {n}");
                     } else {
@@ -157,7 +157,7 @@ impl Generator {
                     Expr::Grouping(g) => self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: Expr::Grouping(g),
                     })),
-                    Expr::Value(v) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Value(v) })),
+                    Expr::Modify(v) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Modify(v) })),
                     Expr::Logical(l) => self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: Expr::Logical(l),
                     })),
@@ -276,7 +276,7 @@ impl Generator {
                         }))
                     )
                 }
-                Expr::Value(v) => {
+                Expr::Modify(v) => {
                     v.name.value.unwrap().get_string().unwrap()
                 }
                 Expr::Empty => "".to_string(),

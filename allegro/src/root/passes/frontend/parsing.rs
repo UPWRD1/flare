@@ -130,7 +130,7 @@ impl Parser {
     fn primary(&mut self) -> Expr {
         let tk = self.peek();
         if self.search(vec![TkSymbol]) {
-            Expr::Value(ValueExpr { name: tk })
+            Expr::Modify(ModifyExpr { name: tk, val: Box::new(self.expression())})
         } else if self.search(vec![TkKwFalse, TkKwTrue]) {
             return Expr::ScalarEx(ScalarExpr { value: tk });
         } else if self.search(vec![TkScalar]) {
@@ -354,7 +354,7 @@ impl Parser {
                         | Expr::Grouping(_)
                         | Expr::ScalarEx(_)
                         | Expr::Unary(_)
-                        | Expr::Value(_)
+                        | Expr::Modify(_)
                         | Expr::Empty => initializer.get_expr_value().value.unwrap().to_akind(),
 
                         Expr::Logical(_) => AKind::TyBool,
@@ -386,50 +386,48 @@ impl Parser {
         }
     }
 
-    fn init_param(&mut self) -> Token {
-        let (name, kind) = self.val_signiture();
+    // fn init_param(&mut self) -> Token {
+    //     let (name, kind) = self.val_signiture();
 
-        Token {
-            tokentype: TkSymbol,
-            value: Some(SymbolValue::Pair(Pair {
-                name: name
-                    .clone()
-                    .value
-                    .unwrap()
-                    .get_string()
-                    .expect("Expected param name"),
-                kind,
-                value: Box::new(SymbolValue::Unknown), //kind: Some(Box::new(kind)),
-                                                       //value: Box::new(SymbolValue::Unknown),
-            })),
-            location: name.location,
-            //lit: name.value.unwrap().get_string().unwrap()
-        }
-    }
+    //     Token {
+    //         tokentype: TkSymbol,
+    //         value: Some(SymbolValue::Pair(Pair {
+    //             name: name
+    //                 .clone()
+    //                 .value
+    //                 .unwrap()
+    //                 .get_string()
+    //                 .expect("Expected param name"),
+    //             kind,
+    //             value: Box::new(SymbolValue::Unknown),
+    //         })),
+    //         location: name.location,
+    //     }
+    // }
 
     fn val_signiture(&mut self) -> (Token, AKind) {
-        self.inspect();
         let name: Token = self.consume(TkSymbol);
-        
-        let kind: AKind = if self.peek().tokentype != TkColon || self.check(TkAssignInfer) {
+
+        let kind: AKind = if self.check(TkAssignInfer) {
             AKind::TyUnknown
         } else {
             self.consume(TkColon);
+            self.inspect();
 
-            let tty = self
-                .consume_vec(vec![
-                    TkType(AKind::TyInt),
-                    TkType(AKind::TyFlt),
-                    TkType(AKind::TyStr),
-                    TkType(AKind::TyBool),
-                    TkType(AKind::TyEof),
-                    TkType(AKind::TyMute),
-                ])
-                .tokentype;
-            match tty {
+            let tty = self.consume_vec(vec![
+                TkType(AKind::TyInt),
+                TkType(AKind::TyFlt),
+                TkType(AKind::TyStr),
+                TkType(AKind::TyBool),
+                TkType(AKind::TyEof),
+                TkType(AKind::TyMute),
+            ]);
+            //dbg!(tty.clone());
+            let k = match tty.tokentype {
                 TkType(t) => t,
                 _ => panic!("Token cannot be type"),
-            }
+            };
+            k
         };
 
         (
@@ -446,47 +444,55 @@ impl Parser {
                     value: Box::new(SymbolValue::Unknown),
                 })),
                 location: name.location,
-                //lit: name.value.unwrap().get_string().unwrap()
             },
             kind,
         )
     }
 
     fn func_decl(&mut self) -> Statement {
-        //self.consume(TkColon);
         let name: Token = self.consume(TkSymbol);
-    
-        //let opreturnkind_tk = self.advance().tokentype;
-        // let opreturnkind = AKind::TyOp(match opreturnkind_tk {
-        //     TkType(t) => Box::new(t),
-        //     _ => panic!("invalid type {opreturnkind_tk:?}"),
-        // });
 
-        let opreturnkind = AKind::TyOp(Box::new(AKind::TyUnknown));
+        self.consume(TkColon);
+
+        let opreturnkind_tk = self.advance().tokentype;
+        let opreturnkind = AKind::TyOp(match opreturnkind_tk {
+            TkType(t) => Box::new(t),
+            _ => panic!("invalid type {opreturnkind_tk:?}"),
+        });
+
+        //let opreturnkind = AKind::TyOp(Box::new(AKind::TyUnknown));
 
         self.consume(TkKwOf);
 
-        //self.consume(TkLparen);
+        self.consume(TkLparen);
 
         let mut params: Vec<BindingDecl> = vec![];
+        if self.current().tokentype != TkRparen {
+            while self.current().tokentype != TkRparen {
+                let nv = self.val_signiture();
+                params.push(BindingDecl {
+                    name: Pair {
+                        name: nv.0.value.clone().unwrap().get_string().unwrap(),
+                        kind: nv.1,
+                        value: Box::new(nv.0.value.unwrap()),
+                    },
+                    initializer: Expr::Empty,
+                });
 
-        while self.peek().tokentype != TkSmallArr {
-            let nv = self.init_param();
-            params.push(BindingDecl {
-                name: Pair {
-                    name: nv.value.clone().unwrap().get_string().unwrap(),
-                    kind: nv.value.clone().unwrap().to_akind(),
-                    value: Box::new(nv.value.unwrap()),
-                },
-                initializer: Expr::Empty,
-            });
-        
-                self.advance();
-            
+                if self.check(TkRparen) {
+                    self.advance();
+
+                    break;
+                } else {
+                    self.advance();
+                }
+            }
         }
+        //self.advance();
+
         //dbg!(params.clone());
 
-        //self.consume(TkRparen);
+        self.consume(TkRparen);
 
         self.consume(TkSmallArr);
 

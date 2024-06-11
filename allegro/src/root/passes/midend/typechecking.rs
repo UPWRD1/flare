@@ -253,7 +253,7 @@ impl Typechecker {
                     _ => panic!("Invalid unary operation {:?}", u.operator),
                 }
             }
-            Expr::Value(v) => Some(
+            Expr::Modify(v) => Some(
                 self.env
                     .get_akind_scoped(v.name.value?.get_string().unwrap()),
             ),

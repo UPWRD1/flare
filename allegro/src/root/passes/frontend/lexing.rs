@@ -87,11 +87,8 @@ impl Lexer {
                 }
                 '-' => {
                     if self.next() == '>' {
-                        //dbg!(self.srccharvec[self.location - 2]);
-                        
-                            self.add(create_lexeme!(LxSmallArr, Nothing, self));
-                            self.advance();
-                        
+                        self.add(create_lexeme!(LxSmallArr, Nothing, self));
+                        self.advance();
                     } else if self.next() == '-' {
                         while self.srccharvec[self.location] != '\n'
                             && self.location < self.srccharvec.len()
@@ -244,7 +241,6 @@ impl Lexer {
             }
             accumulator.push(self.current());
             self.advance();
-           
         }
         if accumulator.contains(&'.') {
             self.add(Lexeme {
@@ -271,7 +267,6 @@ impl Lexer {
 
         self.advance(); //Continue past the initial "
         while (self.current() != '"') && (self.current() != '\n') {
-
             accumulator.push(self.current());
             self.advance();
         }

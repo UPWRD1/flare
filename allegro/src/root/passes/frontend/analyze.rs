@@ -104,7 +104,7 @@ impl Analyzer {
                     {
                         toadd = Token {
                             tokentype: tkk,
-                            value: Some(sv.clone()),
+                            value: None, //Some(sv.clone()),
                             location: el.location,
                             //lit: format!("{} ", sv.clone().get_string().unwrap())
                         };

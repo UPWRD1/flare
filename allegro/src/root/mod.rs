@@ -61,7 +61,7 @@ fn compile_parse(analyzed: Vec<Token>) -> Vec<resource::ast::Statement> {
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
     let ast: Vec<resource::ast::Statement> = parser.supply();
-    //dbg!(ast.clone());
+    dbg!(ast.clone());
     info!("Parsing: OK");
     ast
 }
@@ -70,7 +70,7 @@ fn compile_analyze(cstvec: Vec<resource::lexemes::Lexeme>) -> Vec<resource::toke
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    dbg!(analyzed.clone());
+    //dbg!(analyzed.clone());
     info!("Analyzing: OK");
     analyzed
 }
