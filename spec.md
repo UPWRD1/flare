@@ -81,9 +81,9 @@ print illegal -- Error: unbound pair
 #### Operation Declarations
 
 ```lua
--- Every program starts with 'main'
-let main: int of () ->
---  ^     ^
---  name  return type
-    return 0;
+--     return type             arrow
+--     v                       v
+let f: int of (x: int, y: int) -> return x * y;
+--  ^         ^                   ^
+--  name      parameters          body 
 ```
