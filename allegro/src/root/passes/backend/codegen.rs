@@ -78,7 +78,7 @@ impl Generator {
             //     }
             // }
             SymbolValue::Pair(i) => {
-                let name = format!("{}", i.name);
+                let name = i.name;
                 name
             }
             _ => {

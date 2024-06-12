@@ -1,6 +1,0 @@
-Scalar: raw, immutable "thing". ex: strings, numbers, etc. Empty type (..) is included
-
-Pair: Name and Scalar pair. always typelocked, not immutable unless declared
-
-Operation: A process that consumes a value/scalar(s) and returns a scalar. 
-
