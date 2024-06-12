@@ -1,8 +1,13 @@
-op test = (a: Int) -> Int is {
-    return a * 3;
+-- we love comments 
+
+let printXNumTimes: .. of (x: str, times: int) -> {
+    var current: int = 0;
+    while current < times {
+        print x;
+        current = current + 1
+    }
 }
 
-op main = () -> .. is {
-    val x: Int = 2.5;
-    test(x);
+let main: .. of () -> {
+    printXNumTimes("Hello world!", 4)
 }

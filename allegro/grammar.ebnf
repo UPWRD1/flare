@@ -1,0 +1,19 @@
+# comment
+# = assignment
+# | alternation
+# * zero or more
+# + one  or more
+# ? zero or one
+# [_ - _] range
+# \ escape
+
+digit = ["0"-"9"] # a digit
+alpha = ["a"-"z"] | ["A"-"Z"] # an alphabetic character
+alphanumeric = digit | alpha  # an alphanumeric
+
+identifier = (alpha | "_")+ (alphanumeric)* # eg variable names
+int = "-"? digit+
+flt = "-"? digit+ "." digit+
+bool = "true" | "false"
+str = "\"" alphanumeric* "\""
+type = "int" | "flt" | "bool" | "str"

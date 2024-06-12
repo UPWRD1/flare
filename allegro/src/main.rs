@@ -1,18 +1,19 @@
+extern crate colored;
+
 use std::env;
 
-mod core;
+mod root;
 
 fn main() {
     const VERSION: &str = "0.0.1";
     let prog_args: Vec<String> = env::args().collect();
 
     match prog_args.len() {
-        4 => match prog_args[1].as_str() {
-            "-c" => {
-                let filename = &prog_args[2];
-                let output_filename = &prog_args[3];
-                println!("[i] Compiling {} to {}", filename, output_filename);
-                core::start(filename);
+        3 => match prog_args[1].as_str() {
+            "-c" | "--compile"=> {
+                let filename: &String = &prog_args[2];
+                info!("Compiling {} to {}.c", filename, filename);
+                root::full_compile(filename);
             }
 
             &_ => todo!(),
