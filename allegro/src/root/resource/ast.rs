@@ -15,7 +15,7 @@ pub struct BinExpr {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallExpr {
-    pub callee: Token,
+    pub callee: Pair,
     pub paren: Token,
     pub args: Vec<Expr>,
 }
@@ -27,7 +27,7 @@ pub struct GroupExpr {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScalarExpr {
-    pub value: Token,
+    pub value: Scalar,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,9 +44,8 @@ pub struct UnaryExpr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ModifyExpr {
+pub struct ValueExpr {
     pub name: Token,
-    pub val: Box<Expr>,
 }
 
 
@@ -61,7 +60,7 @@ pub enum Expr {
     ScalarEx(ScalarExpr),
     Logical(LogicalExpr),
     Unary(UnaryExpr),
-    Modify(ModifyExpr),
+    Value(ValueExpr),
     Empty,
 }
 
@@ -70,16 +69,16 @@ impl Expr {
     pub fn get_expr_value(&self) -> Token {
         match self {
             Self::Assign(a) => a.name.clone(),
-            Self::Binary(b) => b.left.clone().get_expr_value(),
-            Self::Call(c) => c.callee.clone(),
+            Self::Binary(b) => b.right.clone().get_expr_value(),
+            Self::Call(c) => Token { tokentype: TokenType::TkSymbol, value: Some(*c.callee.value.clone()), location: 0 },
             Self::Empty => {
                 Token { tokentype: TokenType::TkType(AKind::TyMute), value: Some(SymbolValue::Mute), location: 0 }
             }
             Self::Grouping(g) => g.expression.get_expr_value().clone(),
-            Self::ScalarEx(l) => l.value.clone(),
-            Self::Logical(l) => l.left.clone().get_expr_value(),
+            Self::ScalarEx(l) => Token { tokentype: TokenType::TkScalar, value: Some(SymbolValue::Scalar(l.value.clone())), location: 0 },
+            Self::Logical(l) => l.right.clone().get_expr_value(),
             Self::Unary(u) => u.operator.clone(),
-            Self::Modify(v) => v.name.clone(),
+            Self::Value(v) => v.name.clone(),
         }
     }
     /*
@@ -116,10 +115,10 @@ pub struct ExpressionStmt {
 ///AST Operation Statement
 #[derive(Clone, Debug, PartialEq)]
 pub struct FuncDecl {
-    pub name: Token,
+    pub name: Pair,
     pub params: Vec<BindingDecl>,
-    pub returnval: AKind,
-    pub body: BlockStmt,
+    //pub returnval: AKind,
+    //pub body: BlockStmt,
 }
 
 ///AST If Statement
@@ -151,6 +150,18 @@ pub struct BindingDecl {
     pub initializer: Expr,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReassignStmt {
+    pub name: Pair,
+    pub newval: Expr,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct WhileLoop {
+    pub condition: Expr,
+    pub block: Box<BlockStmt>,
+}
+
 ///Enum representing AST nodes.
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)]
@@ -162,6 +173,9 @@ pub enum Statement {
     Print(PrintStmt),
     Return(ReturnStmt),
     Bind(BindingDecl),
+    MutBind(BindingDecl),
+    While(WhileLoop),
+    ReAssign(ReassignStmt),
     Empty,
 }
 
@@ -188,10 +202,11 @@ impl Scalar {
 }
 
 ///Enum showing different kinds of internal values
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum SymbolValue {
     Scalar(Scalar),
-    Pair(Pair), //name value
+    Pair(Pair),
+    Block(BlockStmt), //name value
     Unknown,
     Mute,
 }
@@ -209,6 +224,21 @@ impl SymbolValue {
             Self::Pair(i) => {
                 i.clone().value.to_akind()
             }
+            Self::Block(b) => {
+                match b.statements.last().unwrap() {
+                    Statement::Block(b) => Self::Block(b.clone()).to_akind(),
+                    Statement::Expression(e) => e.expression.get_expr_value().value.unwrap().to_akind(),
+                    Statement::Function(f) => f.name.kind.clone(),
+                    Statement::If(i) => i.condition.get_expr_value().value.unwrap().to_akind(),
+                    Statement::Print(p) => p.expression.get_expr_value().value.unwrap().to_akind(),
+                    Statement::Return(r) => r.returntype.clone(),
+                    Statement::Bind(b) => b.name.kind.clone(),
+                    Statement::MutBind(m) => m.name.kind.clone(),
+                    Statement::While(w) => Self::Block(*w.block.clone()).to_akind(),
+                    Statement::ReAssign(r) => r.name.kind.clone(),
+                    Statement::Empty => AKind::TyMute,
+                }
+            }
             Self::Mute => AKind::TyMute,
             Self::Unknown => AKind::TyUnknown,
             //_ => panic!("Unknown type! {:?}", self),
@@ -216,9 +246,9 @@ impl SymbolValue {
     }
     
     ///Converts the internal value of a SymbolValue to its string representation, or the name of the pair
-    pub fn get_string(self) -> Option<String> {
+    pub fn get_string(&self) -> Option<String> {
         match self {
-            Self::Pair(p) => Some(p.name),
+            Self::Pair(p) => Some(p.name.clone()),
             Self::Scalar(s) => match s {
                 Scalar::Int(v) => format!("{v}").into(),
                 Scalar::Float(v) => format!("{v}").into(),
@@ -231,10 +261,33 @@ impl SymbolValue {
             _ => panic!("Cannot get string of value {:?}", self),
         }
     }
+
+    pub fn extract_block(&self) -> Option<BlockStmt> {
+        match self {
+            SymbolValue::Scalar(_) |
+            SymbolValue::Pair(_) |
+            SymbolValue::Unknown |
+            SymbolValue::Mute => None,
+            SymbolValue::Block(b) => Some(b.clone()),
+
+        }
+    }
+
+    
+    pub fn extract_scalar(&self) -> Option<Scalar> {
+        match self {
+            SymbolValue::Scalar(s) => Some(s.clone()),
+            SymbolValue::Pair(_) |
+            SymbolValue::Unknown |
+            SymbolValue::Mute |
+            SymbolValue::Block(_) => None,
+
+        }
+    }
 }
 
 ///Recursive struct representing a key/value pair, with type information:
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Pair {
     pub name: String,
     pub kind: AKind,

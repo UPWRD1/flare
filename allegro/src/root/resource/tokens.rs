@@ -5,8 +5,7 @@ use super::{ast::SymbolValue, environment::AKind};
 pub enum TokenType {
     TkKwUse,
     TkKwLet,
-    TkKwEnd,
-    TkKwVal,
+    TkKwVar,
     TkKwPrint,
     TkKwOf,
     TkKwIf,
@@ -66,8 +65,7 @@ impl Token {
         match self.tokentype {
             TokenType::TkKwUse
             | TokenType::TkKwLet
-            | TokenType::TkKwEnd
-            | TokenType::TkKwVal
+            | TokenType::TkKwVar
             | TokenType::TkKwPrint
             | TokenType::TkKwOf
             | TokenType::TkKwIf
@@ -89,8 +87,8 @@ impl Token {
         let x: String = match self.tokentype {
             TokenType::TkKwUse => "use".to_string(),
             TokenType::TkKwLet => "let".to_string(),
-            TokenType::TkKwEnd => "end".to_string(),
-            TokenType::TkKwVal => "val".to_string(),
+            //TokenType::TkKwEnd => "end".to_string(),
+            TokenType::TkKwVar => "val".to_string(),
             TokenType::TkKwPrint => "print".to_string(),
             TokenType::TkKwOf => "of".to_string(),
             TokenType::TkKwIf => "if".to_string(),

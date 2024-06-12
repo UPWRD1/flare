@@ -88,6 +88,7 @@ pub struct Entry {
     pub name: String,
     pub arity: i32,
     pub value: AKind,
+    pub is_mutable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -154,6 +155,19 @@ impl ScopeTable {
             }
         }
     }
+
+    pub fn get_mutability(&mut self, name: String) -> bool {
+        match self.entries.iter().position(|e| e.name == name) {
+            Some(l) => self.entries[l].is_mutable,
+            None => {
+                if self.parent.is_some() {
+                    self.parent.clone().unwrap().get_mutability(name)
+                } else {
+                    panic!("Unknown value binding {}", name)
+                }
+            }
+        }
+    }
 }
 
 impl Environment {
@@ -167,14 +181,18 @@ impl Environment {
         }
     }
 
-    pub fn define(&mut self, name: String, value: AKind, arity: i32) {
-        let e: Entry = Entry { name, arity, value };
+    pub fn define(&mut self, name: String, value: AKind, arity: i32, is_mutable: bool) {
+        let e: Entry = Entry { name, arity, value, is_mutable};
         self.scope.define(e.clone());
         self.symboltable.push(e);
     }
 
     pub fn get_akind_scoped(&mut self, name: String) -> AKind {
         self.scope.get_akind(name)
+    }
+
+    pub fn is_this_mutable(&mut self, name: String) -> bool {
+        self.get_mutability(name)
     }
 
     pub fn get_akind_symbol(&self, name: &String) -> AKind {
@@ -199,6 +217,17 @@ impl Environment {
                 //} else {
                 panic!("Binding {} does not exist in this scope.", name);
                 //}
+            }
+        }
+    }
+
+    pub fn get_mutability(&mut self, name: String) -> bool {
+        match self.symboltable.iter().position(|e| e.name == name) {
+            Some(l) => self.symboltable[l].is_mutable,
+            None => {
+                
+                    panic!("Unknown value binding {}", name)
+                
             }
         }
     }

@@ -1,7 +1,13 @@
 -- we love comments 
 
+let printXNumTimes: .. of (x: str, times: int) -> {
+    var current: int = 0;
+    while current < times {
+        print x;
+        current = current + 1
+    }
+}
+
 let main: .. of () -> {
-    val y := "asdf";
-    val x: int = y;
-    print x;
+    printXNumTimes("Hello world!", 4)
 }

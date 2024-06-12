@@ -4,8 +4,15 @@
 #include <stdio.h>
 #include <stdbool.h>
 
-void main() {
-    char* y = "asdf";
-    char* x = y;
-    printf("%s\n", x);
+void printXNumTimes(char* x, int times) {
+    int current = 0;
+    while (current < times) {
+        printf("%s\n", x);
+        current = current + 1;
+    }
  }
+
+void main() {
+    printXNumTimes("Hello world!", 4);
+ }
+

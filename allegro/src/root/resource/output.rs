@@ -54,7 +54,7 @@ macro_rules! error {
         if $code($($arg)*).get_hint().is_some() {
             eprintln!("Hint: {}", $code($($arg)*).get_hint().unwrap());
         }
-        let c: i32 = (($code as isize) as i32).try_into().unwrap();
+        let c: i32 = $code($($arg)*).discriminant().try_into().unwrap();
         //panic!();
         quit!(c);
     }

@@ -68,6 +68,13 @@ impl Parser {
         self.previous()
     }
 
+    fn retreat(&mut self) -> Token {
+        if !self.is_at_end() {
+            self.curr -= 1;
+        }
+        self.peek()
+    }
+
     fn check(&mut self, kind: TokenType) -> bool {
         if self.is_at_end() {
             return false;
@@ -101,7 +108,10 @@ impl Parser {
 
                 //dbg!(self.tkvec.clone());
             } else {
-                error_noquit!(Errors::SyntaxMissingChar, (dummy.to_string()));
+                error_noquit!(
+                    Errors::SyntaxMissingChar,
+                    (dummy.to_string(), self.current().to_string())
+                );
                 draw_error(&self.tkvec, self.curr);
                 panic!();
             }
@@ -130,12 +140,11 @@ impl Parser {
     fn primary(&mut self) -> Expr {
         let tk = self.peek();
         if self.search(vec![TkSymbol]) {
-            self.advance();
-            Expr::Modify(ModifyExpr { name: tk, val: Box::new(self.expression())})
+            Expr::Value(ValueExpr { name: tk })
         } else if self.search(vec![TkKwFalse, TkKwTrue]) {
-            return Expr::ScalarEx(ScalarExpr { value: tk });
+            return Expr::ScalarEx(ScalarExpr { value: tk.value.unwrap().extract_scalar().unwrap() });
         } else if self.search(vec![TkScalar]) {
-            return Expr::ScalarEx(ScalarExpr { value: tk });
+            return Expr::ScalarEx(ScalarExpr { value: tk.value.unwrap().extract_scalar().unwrap() });
             //value: Token
             //tokentype: tk.tokentype,
             //value: SymbolValue::Identity(
@@ -143,21 +152,23 @@ impl Parser {
             //),
             //kind:
             //location: tk.location,
-        } else if self.search(vec![TkLparen]) {
-            let expr: Expr = self.expression();
-            self.consume(TkRparen);
-            return Expr::Grouping(GroupExpr {
-                expression: Box::new(expr),
-            });
+            // } else if self.search(vec![TkLparen]) {
+            //     let expr: Expr = self.expression();
+            //     self.consume(TkRparen);
+            //     return Expr::Grouping(GroupExpr {
+            //         expression: Box::new(expr),
+            //     });
         } else {
             return Expr::Empty;
         }
     }
 
     fn secondary(&mut self) -> Expr {
+        //dbg!(self.current());
         let expr = self.primary();
         loop {
             if self.search(vec![TkLparen]) {
+                let mut nargs = 3;
                 let mut args: Vec<Expr> = vec![];
                 let paren: Token = if self.search(vec![TkRparen]) {
                     self.previous()
@@ -168,12 +179,17 @@ impl Parser {
                         if !self.search(vec![TkComma]) {
                             break;
                         }
+                        nargs += 3;
                     }
                     self.consume(TkRparen)
                 };
 
                 return Expr::Call(CallExpr {
-                    callee: expr.get_expr_value(),
+                    callee: Pair {
+                        name: self.tkvec[self.curr - nargs].to_string(),
+                        kind: expr.get_expr_value().value.unwrap().to_akind(),
+                        value: Box::new(expr.get_expr_value().value.unwrap()),
+                    },
                     paren,
                     args,
                 });
@@ -308,21 +324,16 @@ impl Parser {
         })
     }
 
-    fn statement(&mut self) -> Statement {
-        if self.search(vec![TkKwPrint]) {
-            self.print_stmt()
-        } else if self.search(vec![TkKwVal]) {
-            return self.val_decl();
-        } else if self.search(vec![TkKwReturn]) {
-            return self.return_stmt();
-        } else if self.search(vec![TkKwUse]) {
-            self.use_statement();
-            return self.expr_stmt();
-        } else if self.search(vec![TkKwIf]) {
-            return self.if_stmt();
-        } else {
-            return self.expr_stmt();
-        }
+    fn while_loop(&mut self) -> Statement {
+        let cond = self.expression();
+        let block = self.block();
+        //dbg!(cond);
+        //todo!();
+
+        Statement::While(WhileLoop {
+            condition: cond,
+            block: Box::new(BlockStmt { statements: block }),
+        })
     }
 
     fn use_statement(&mut self) {
@@ -334,8 +345,8 @@ impl Parser {
     }
 
     fn val_decl(&mut self) -> Statement {
-        let (name, kind) = self.val_signiture();
-        if kind.is_unknown() {
+        let v = self.val_signiture();
+        if v.kind.is_unknown() {
             self.consume(TkAssignInfer);
             let initializer: Expr = self.expression();
             if !self.search(vec![TkStatementEnd]) {
@@ -346,8 +357,8 @@ impl Parser {
             }
             let res = BindingDecl {
                 name: Pair {
-                    name: name.value.unwrap().get_string().unwrap(),
-                    value: Box::new(initializer.get_expr_value().value.unwrap()),
+                    name: v.name,
+                    value: v.value,
                     kind: match initializer {
                         Expr::Assign(_)
                         | Expr::Binary(_)
@@ -355,7 +366,7 @@ impl Parser {
                         | Expr::Grouping(_)
                         | Expr::ScalarEx(_)
                         | Expr::Unary(_)
-                        | Expr::Modify(_)
+                        | Expr::Value(_)
                         | Expr::Empty => initializer.get_expr_value().value.unwrap().to_akind(),
 
                         Expr::Logical(_) => AKind::TyBool,
@@ -376,14 +387,68 @@ impl Parser {
 
             let res = BindingDecl {
                 name: Pair {
-                    name: name.value.unwrap().get_string().unwrap(),
+                    name: v.name,
                     value: Box::new(initializer.get_expr_value().value.unwrap()),
-                    kind,
+                    kind: v.kind,
                 },
                 initializer,
             };
 
             Statement::Bind(res)
+        }
+    }
+
+    fn mut_val_decl(&mut self) -> Statement {
+        let v = self.val_signiture();
+        if v.kind.is_unknown() {
+            self.consume(TkAssignInfer);
+            let initializer: Expr = self.expression();
+            if !self.search(vec![TkStatementEnd]) {
+                error!(
+                    Errors::SyntaxUnexpectedEnd,
+                    ("Unexpected end of value declaration".to_string())
+                );
+            }
+            let res = BindingDecl {
+                name: Pair {
+                    name: v.name,
+                    value: v.value,
+                    kind: match initializer {
+                        Expr::Assign(_)
+                        | Expr::Binary(_)
+                        | Expr::Call(_)
+                        | Expr::Grouping(_)
+                        | Expr::ScalarEx(_)
+                        | Expr::Unary(_)
+                        | Expr::Value(_)
+                        | Expr::Empty => initializer.get_expr_value().value.unwrap().to_akind(),
+
+                        Expr::Logical(_) => AKind::TyBool,
+                    },
+                },
+                initializer,
+            };
+
+            Statement::MutBind(res)
+        } else {
+            self.consume(TkAssign);
+
+            let initializer: Expr = self.expression();
+
+            if !self.search(vec![TkStatementEnd]) {
+                panic!("Unexpected end of value declaration!")
+            }
+
+            let res = BindingDecl {
+                name: Pair {
+                    name: v.name,
+                    value: Box::new(initializer.get_expr_value().value.unwrap()),
+                    kind: v.kind,
+                },
+                initializer,
+            };
+
+            Statement::MutBind(res)
         }
     }
 
@@ -406,15 +471,13 @@ impl Parser {
     //     }
     // }
 
-    fn val_signiture(&mut self) -> (Token, AKind) {
+    fn val_signiture(&mut self) -> Pair {
         let name: Token = self.consume(TkSymbol);
 
         let kind: AKind = if self.check(TkAssignInfer) {
             AKind::TyUnknown
         } else {
             self.consume(TkColon);
-            self.inspect();
-
             let tty = self.consume_vec(vec![
                 TkType(AKind::TyInt),
                 TkType(AKind::TyFlt),
@@ -431,28 +494,73 @@ impl Parser {
             k
         };
 
-        (
-            Token {
-                tokentype: name.clone().tokentype,
-                value: Some(SymbolValue::Pair(Pair {
-                    name: name
-                        .clone()
-                        .value
-                        .unwrap()
-                        .get_string()
-                        .expect("Expected param name"),
-                    kind: kind.clone(),
-                    value: Box::new(SymbolValue::Unknown),
-                })),
-                location: name.location,
+        Pair {
+            name: name
+                .clone()
+                .value
+                .unwrap()
+                .get_string()
+                .expect("Expected param name"),
+            kind: kind.clone(),
+            value: Box::new(SymbolValue::Unknown),
+        }
+    }
+
+    fn reassign(&mut self) -> Statement {
+        let name: Token = self.consume(TkSymbol);
+        self.consume(TkAssign);
+        let newval: Expr = self.expression();
+
+        Statement::ReAssign(ReassignStmt {
+            name: Pair {
+                name: name
+                    .clone()
+                    .value
+                    .unwrap()
+                    .get_string()
+                    .expect("Expected param name"),
+                kind: name.value.unwrap().to_akind(),
+                value: Box::new(newval.get_expr_value().value.unwrap()),
             },
-            kind,
-        )
+            newval,
+        })
+        //panic!()
+    }
+
+    fn statement(&mut self) -> Statement {
+        if self.search(vec![TkSymbol]) {
+            if self.peek().tokentype == TkColon || self.peek().tokentype == TkAssignInfer {
+                self.retreat();
+                return self.val_decl();
+            } else {
+                if self.peek().tokentype == TkAssign {
+                    self.retreat();
+                    self.reassign()
+                } else {
+                    self.expr_stmt()
+                }
+            }
+        } else if self.search(vec![TkKwPrint]) {
+            self.print_stmt()
+        } else if self.search(vec![TkKwVar]) {
+            return self.mut_val_decl();
+        } else if self.search(vec![TkKwReturn]) {
+            return self.return_stmt();
+        } else if self.search(vec![TkKwUse]) {
+            self.use_statement();
+            return self.expr_stmt();
+        } else if self.search(vec![TkKwIf]) {
+            return self.if_stmt();
+        } else if self.search(vec![TkKwWhile]) {
+            return self.while_loop();
+        } else {
+            return self.expr_stmt();
+        }
     }
 
     fn func_decl(&mut self) -> Statement {
         let name: Token = self.consume(TkSymbol);
-
+        
         self.consume(TkColon);
 
         let opreturnkind_tk = self.advance().tokentype;
@@ -472,26 +580,18 @@ impl Parser {
             while self.current().tokentype != TkRparen {
                 let nv = self.val_signiture();
                 params.push(BindingDecl {
-                    name: Pair {
-                        name: nv.0.value.clone().unwrap().get_string().unwrap(),
-                        kind: nv.1,
-                        value: Box::new(nv.0.value.unwrap()),
-                    },
+                    name: nv,
                     initializer: Expr::Empty,
                 });
-
                 if self.check(TkRparen) {
-                    self.advance();
-
+                    //self.advance();
                     break;
                 } else {
-                    self.advance();
+                    self.consume(TkComma);
                 }
             }
         }
         //self.advance();
-
-        //dbg!(params.clone());
 
         self.consume(TkRparen);
 
@@ -504,18 +604,19 @@ impl Parser {
         //}
 
         Statement::Function(FuncDecl {
-            name,
-            params,
-            returnval: opreturnkind,
-            body: BlockStmt {
+            name: Pair { name: name.to_string(), kind: opreturnkind, value: Box::new(SymbolValue::Block(BlockStmt {
                 statements: self.funcblock(),
-            },
+            })) },
+            params,
+            //returnval: opreturnkind,
+            // body: BlockStmt {
+            //     statements: self.funcblock(),
+            // },
         })
     }
 
     fn funcblock(&mut self) -> Vec<Statement> {
         let mut collector: Vec<Statement> = vec![];
-        //self.inspect();
         if self.check(TkKwReturn) {
             collector.push(self.statement());
         } else {

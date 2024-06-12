@@ -43,8 +43,8 @@ fn compile_codegen(checked: Vec<resource::ast::Statement>, e: resource::environm
     let mut generator = codegen::Generator::new(checked.clone(), e);
     generator.generate();
     let generated = generator.supply();
-    println!("{}", generated.clone());
-    info!("Generation: OK");
+    //println!("{}", generated.clone());
+    //info!("Generation: OK");
     generated
 }
 
@@ -52,8 +52,8 @@ fn compile_typecheck(ast: Vec<resource::ast::Statement>) -> (Vec<resource::ast::
     let mut checker = typechecking::Typechecker::new(ast.clone());
     checker.check();
     let (checked, e) = checker.supply();
-    //dbg!(checked.clone());
-    info!("Checking: OK");
+    //dbg!(e.clone());
+    //info!("Checking: OK");
     (checked, e)
 }
 
@@ -61,8 +61,8 @@ fn compile_parse(analyzed: Vec<Token>) -> Vec<resource::ast::Statement> {
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
     let ast: Vec<resource::ast::Statement> = parser.supply();
-    dbg!(ast.clone());
-    info!("Parsing: OK");
+    //dbg!(ast.clone());
+    //info!("Parsing: OK");
     ast
 }
 
@@ -70,8 +70,8 @@ fn compile_analyze(cstvec: Vec<resource::lexemes::Lexeme>) -> Vec<resource::toke
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
-    dbg!(analyzed.clone());
-    info!("Analyzing: OK");
+    //dbg!(analyzed.clone());
+    //info!("Analyzing: OK");
     analyzed
 }
 
@@ -85,7 +85,7 @@ fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
     lxr.lex();
     let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();
     //dbg!(cstvec.clone());
-    info!("Lexing: OK");
+    //info!("Lexing: OK");
     cstvec
 }
 

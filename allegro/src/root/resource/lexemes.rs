@@ -6,7 +6,7 @@ use super::ast::Scalar;
 ///Enum for different types of lexemes
 #[allow(dead_code)]
 //#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LexemeKind {
     LxSymbol(SymbolValue),
     LxScalar(Scalar),
@@ -43,7 +43,7 @@ pub enum LexemeKind {
 }
 
 ///Level 1 Abstraction, represents individual chars as enum
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Lexeme {
     pub kind: LexemeKind,
     //pub value: SymbolValue,

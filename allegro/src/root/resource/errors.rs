@@ -11,7 +11,7 @@ pub enum Errors {
     MissingFile(String) = 102,
 
     SyntaxError = 200,
-    SyntaxMissingChar(String) = 201,
+    SyntaxMissingChar(String, String) = 201,
     SyntaxMissingKeyword(String) = 202,
     SyntaxMissingType(String) = 203,
     SyntaxBadArguments(String, usize, usize) = 204,
@@ -27,12 +27,13 @@ pub enum Errors {
     TypeIllegalEmptyType(String) = 403,
     TypeNotNumeric(String, AKind) = 404,
     TypeCannotAdd(String, AKind) = 405,
+    TypeImmutableReassign(String, AKind) = 406,
 
 }
 
 impl Errors {
-    fn discriminant(&self) -> u8 {
-        unsafe { *(self as *const Self as *const u8) }
+    pub fn discriminant(&self) -> usize {
+        unsafe { *(self as *const Self as *const usize) }
     }
     
     pub fn get_hint(&self) -> Option<String> {
@@ -41,7 +42,7 @@ impl Errors {
             Errors::FatalOs | 
             Errors::MissingFile(_) | 
             Errors::SyntaxError | 
-            Errors::SyntaxMissingChar(_) | 
+            Errors::SyntaxMissingChar(_, _) | 
             Errors::SyntaxMissingKeyword(_) | 
             Errors::SyntaxBadArguments(_, _, _) | 
             Errors::SyntaxUnexpectedEnd(_) | 
@@ -53,9 +54,9 @@ impl Errors {
             Errors::TypeInvalidReturn(_, _, _) | 
             Errors::TypeIllegalEmptyType(_) | 
             Errors::TypeNotNumeric(_, _) | 
+            Errors::TypeImmutableReassign(_, _) |
             Errors::TypeCannotAdd(_, _) => None, 
             Errors::SyntaxMissingType(c) => Some(format!("add: {}", c.clone())),
-
         }
     }
 }
@@ -71,7 +72,7 @@ impl fmt::Display for Errors {
 
 
             Errors::SyntaxError => "Syntax error".to_string(),
-            Errors::SyntaxMissingChar(c) => format!("Expected '{c}'"),
+            Errors::SyntaxMissingChar(c, y) => format!("Expected '{c}', found '{y}'"),
             Errors::SyntaxMissingKeyword(c) => format!("Missing keyword '{c}'"),
             Errors::SyntaxMissingType(_c) => format!("Missing type"),
             Errors::SyntaxBadArguments(name, expected, found) => {
@@ -116,6 +117,7 @@ impl fmt::Display for Errors {
             Errors::TypeCannotAdd(n, f) => {
                 format!("Cannot add {} with operand {n}", f.to_string_pretty())
             }
+            Errors::TypeImmutableReassign(n, t) => format!("{} value '{}' is not mutable", t.to_string_pretty(), n),
         };
         let code: usize = self.discriminant().into();
         write!(f, "{} (error code {})", x, code)

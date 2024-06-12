@@ -48,9 +48,9 @@ impl Generator {
             AKind::TyStr => "%s".to_string(),
             AKind::TyInt => "%d".to_string(),
             AKind::TyFlt => "%f".to_string(),
-            AKind::TyOp(t) => self.gen_cformat_specifier(*t),
+            AKind::TyOp(a) => self.gen_cformat_specifier(a.extract_op_type()),
             AKind::TyBool => "%d".to_string(),
-            _ => panic!("Cannot convert {t:?} to c representation")
+            _ => panic!("Cannot convert {t:?} to c representation"),
         }
     }
 
@@ -68,12 +68,21 @@ impl Generator {
                     }
                 }
             },
+            // SymbolValue::Pair(p) => {
+            //     match p.kind {
+            //         AKind::TyStr |
+            //         AKind::TyInt |
+            //         AKind::TyFlt |
+            //         AKind::TyBool => p.kind.to_ctype(),
+            //         _ => {dbg!(p); panic!()}
+            //     }
+            // }
             SymbolValue::Pair(i) => {
-                let name = format!("{}()", i.name);
+                let name = format!("{}", i.name);
                 name
             }
             _ => {
-                panic!("Unkown type {:?}!", sk)
+                panic!("Unknown type {:?}!", sk)
             }
         }
     }
@@ -82,12 +91,8 @@ impl Generator {
         //println!("{s:?}");
         match s {
             Statement::Bind(vd) => self.env.get_akind_symbol(&vd.name.name).to_ctype(),
-            Statement::Function(o) => self
-                .env
-                .get_akind_symbol(&o.name.value.unwrap().get_string().unwrap())
-                .to_ctype(),
+            Statement::Function(o) => self.env.get_akind_symbol(&o.name.name).to_ctype(),
 
-            
             _ => panic!("Unsupported statement {s:?}"),
         }
     }
@@ -98,7 +103,7 @@ impl Generator {
                 let p = o.params;
                 let mut accum: String = "".to_string();
                 for (count, v) in p.iter().enumerate() {
-                    let n = &v.name.name;
+                    let n = v.name.name.clone();
                     let t = v.name.kind.to_ctype();
                     if count == &p.len() - 1 {
                         accum = format!("{accum}{t} {n}");
@@ -144,10 +149,10 @@ impl Generator {
     fn gen_code(&mut self, el: Statement) -> String {
         //dbg!(self.currentindent);
         match el.clone() {
-            Statement::Bind(vd) => {
+            Statement::Bind(vd) | Statement::MutBind(vd) => {
                 let ckind = self.get_ctype(Statement::Bind(vd.clone()));
                 let cval: String = match vd.initializer.clone() {
-                    Expr::ScalarEx(le) => self.get_cval(le.value.value.unwrap()),
+                    Expr::ScalarEx(le) => self.get_cval(SymbolValue::Scalar(le.value.clone())),
                     Expr::Call(c) => self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: Expr::Call(c),
                     })),
@@ -157,7 +162,9 @@ impl Generator {
                     Expr::Grouping(g) => self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: Expr::Grouping(g),
                     })),
-                    Expr::Modify(v) => self.gen_code(Statement::Expression(ExpressionStmt { expression: Expr::Modify(v) })),
+                    Expr::Value(v) => self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: Expr::Value(v),
+                    })),
                     Expr::Logical(l) => self.gen_code(Statement::Expression(ExpressionStmt {
                         expression: Expr::Logical(l),
                     })),
@@ -169,11 +176,11 @@ impl Generator {
             }
 
             Statement::Function(o) => {
-                let cname: String = o.name.to_string();
+                let cname: String = o.name.name;
                 let ckind: String = self.get_ctype(el.clone());
                 let cparams = self.gen_cparams(el.clone());
-                let b = self.gen_code(Statement::Block(o.body));
-                let x: String = format!("{ckind} {cname}({cparams}) {b}");
+                let b = self.gen_code(Statement::Block(o.name.value.extract_block().unwrap()));
+                let x: String = format!("{ckind} {cname}({cparams}) {b}\n\n");
 
                 x
             }
@@ -188,99 +195,109 @@ impl Generator {
                         })
                     {
                         //println!("{space:0>width$}", space=" ", width=self.currentindent * 4);
-                        accum = format!("{accum}\n{space:>width$}{}", self.gen_code(s), space=" ", width=self.currentindent * 4)
+                        accum = format!(
+                            "{accum}\n{space:>width$}{}",
+                            self.gen_code(s),
+                            space = " ",
+                            width = self.currentindent * 4
+                        )
                     }
                 }
                 self.currentindent -= 1;
-                accum = format!("{accum}\n{space:>width$}}}", space=" ", width=self.currentindent * 4);
+                accum = format!(
+                    "{accum}\n{space:>width$}}}",
+                    space = " ",
+                    width = self.currentindent * 4
+                );
                 accum
             }
 
-            Statement::Expression(e) => match e.expression {
-                Expr::Assign(a) => {
-                    let cvname = a.name.value.clone().unwrap().get_string().unwrap();
-                    let cvtype = self
-                        .env
-                        .get_akind_symbol(&a.name.value.unwrap().get_string().unwrap())
-                        .to_ctype();
-                    let cvval = self.gen_code(Statement::Expression(ExpressionStmt {
-                        expression: *a.value,
-                    }));
-                    format!("{cvtype} {cvname} = {cvval}")
-                }
-                Expr::Binary(b) => {
-                    let cl = self.gen_code(Statement::Expression(ExpressionStmt {
-                        expression: *b.left,
-                    }));
-                    let cr = self.gen_code(Statement::Expression(ExpressionStmt {
-                        expression: *b.right,
-                    }));
-                    let o = self.gen_operator(b.operator);
-
-                    format!("{cl} {o} {cr}")
-                }
-                Expr::Call(c) => {
-                    let name = c.callee.value.unwrap().get_string().unwrap();
-                    let mut argstring = "".to_string();
-                    let mut argcount = 0;
-                    for arg in c.args {
-                        argcount += 1;
-                        if argcount > 1 {
-                            argstring = format!(
-                                "{}, {}",
-                                argstring,
-                                self.gen_code(Statement::Expression(ExpressionStmt {
-                                    expression: arg
-                                }))
-                            )
-                        } else {
-                            argstring = format!(
-                                "{}{}",
-                                argstring,
-                                self.gen_code(Statement::Expression(ExpressionStmt {
-                                    expression: arg
-                                }))
-                            )
-                        }
+            Statement::Expression(e) => {
+                let x = match e.expression {
+                    Expr::Assign(a) => {
+                        let cvname = a.name.value.clone().unwrap().get_string().unwrap();
+                        let cvtype = self
+                            .env
+                            .get_akind_symbol(&a.name.value.unwrap().get_string().unwrap())
+                            .to_ctype();
+                        let cvval = self.gen_code(Statement::Expression(ExpressionStmt {
+                            expression: *a.value,
+                        }));
+                        format!("{cvtype} {cvname} = {cvval}")
                     }
-                    format!("{}({})", name, argstring)
-                    //todo!()
-                }
-                Expr::Grouping(g) => {
-                    let x = format!(
-                        "({})",
-                        self.gen_code(Statement::Expression(ExpressionStmt {
-                            expression: *g.expression
-                        }))
-                    );
-                    x
-                }
-                Expr::ScalarEx(l) => l.value.value.unwrap().get_string().unwrap(),
-                Expr::Logical(l) => {
-                    let cl = self.gen_code(Statement::Expression(ExpressionStmt {
-                        expression: *l.left,
-                    }));
-                    let cr = self.gen_code(Statement::Expression(ExpressionStmt {
-                        expression: *l.right,
-                    }));
-                    let o = self.gen_operator(l.operator);
+                    Expr::Binary(b) => {
+                        let cl = self.gen_code(Statement::Expression(ExpressionStmt {
+                            expression: *b.left,
+                        }));
+                        let cr = self.gen_code(Statement::Expression(ExpressionStmt {
+                            expression: *b.right,
+                        }));
+                        let o = self.gen_operator(b.operator);
 
-                    format!("{cl} {o} {cr}")
-                }
-                Expr::Unary(u) => {
-                    format!(
-                        "{}{}",
-                        self.gen_operator(u.operator),
-                        self.gen_code(Statement::Expression(ExpressionStmt {
-                            expression: *u.right,
-                        }))
-                    )
-                }
-                Expr::Modify(v) => {
-                    v.name.value.unwrap().get_string().unwrap()
-                }
-                Expr::Empty => "".to_string(),
-            },
+                        format!("{cl} {o} {cr}")
+                    }
+                    Expr::Call(c) => {
+                        let name = c.callee.name;
+                        let mut argstring = "".to_string();
+                        let mut argcount = 0;
+                        for arg in c.args {
+                            argcount += 1;
+                            if argcount > 1 {
+                                argstring = format!(
+                                    "{}, {}",
+                                    argstring,
+                                    self.gen_code(Statement::Expression(ExpressionStmt {
+                                        expression: arg
+                                    }))
+                                )
+                            } else {
+                                argstring = format!(
+                                    "{}{}",
+                                    argstring,
+                                    self.gen_code(Statement::Expression(ExpressionStmt {
+                                        expression: arg
+                                    }))
+                                )
+                            }
+                        }
+                        format!("{}({});", name, argstring)
+                        //todo!()
+                    }
+                    Expr::Grouping(g) => {
+                        let x = format!(
+                            "({})",
+                            self.gen_code(Statement::Expression(ExpressionStmt {
+                                expression: *g.expression
+                            }))
+                        );
+                        x
+                    }
+                    Expr::ScalarEx(l) => self.get_cval(SymbolValue::Scalar(l.value)),
+                    Expr::Logical(l) => {
+                        let cl = self.gen_code(Statement::Expression(ExpressionStmt {
+                            expression: *l.left,
+                        }));
+                        let cr = self.gen_code(Statement::Expression(ExpressionStmt {
+                            expression: *l.right,
+                        }));
+                        let o = self.gen_operator(l.operator);
+
+                        format!("{cl} {o} {cr}")
+                    }
+                    Expr::Unary(u) => {
+                        format!(
+                            "{}{}",
+                            self.gen_operator(u.operator),
+                            self.gen_code(Statement::Expression(ExpressionStmt {
+                                expression: *u.right,
+                            }))
+                        )
+                    }
+                    Expr::Value(v) => self.get_cval(v.name.value.unwrap()),
+                    Expr::Empty => "".to_string(),
+                };
+                x
+            }
 
             Statement::Return(r) => {
                 let mut accum = "return".to_string();
@@ -294,10 +311,12 @@ impl Generator {
             }
 
             Statement::Print(p) => match p.expression.get_expr_value().tokentype {
-                TokenType::TkKwTrue => todo!(),
-                TokenType::TkKwFalse => todo!(),
+                //TokenType::TkKwTrue => todo!(),
+                //TokenType::TkKwFalse => todo!(),
                 TokenType::TkSymbol => {
-                    let name = p.expression.get_expr_value().value.unwrap().get_string().unwrap();
+                    let v = p.expression.get_expr_value();
+                    //dbg!(v.clone());
+                    let name = v.clone().to_string();
                     let ty = self.gen_cformat_specifier(self.env.get_akind_symbol(&name));
                     //println!("{:?}", p.expression.get_expr_value().value.unwrap().get_string().unwrap());
                     //panic!();
@@ -316,24 +335,41 @@ impl Generator {
                         //println!("{:?}", p.expression.get_expr_value().value.unwrap().get_string().unwrap());
                         //panic!();
                         format!("printf(\"{}\\n\", {});", ty, val)
-                    },
+                    }
                     _ => panic!("{:?} cannot be printed!", p.expression),
                 },
                 _ => panic!("{:?} cannot be printed!", p.expression),
             },
 
             Statement::If(i) => {
-                
-                let ifex = self.gen_code(Statement::Expression(ExpressionStmt { expression: i.condition }));
+                let ifex = self.gen_code(Statement::Expression(ExpressionStmt {
+                    expression: i.condition,
+                }));
                 let tb = self.gen_code(Statement::Block(*i.then_branch));
                 if let Some(ref ebs) = i.else_branch {
                     let eb = self.gen_code(Statement::Block(*ebs.clone()));
-                    return format!("if ({}) {} else {}", ifex, tb, eb )
-
+                    return format!("if ({}) {} else {}", ifex, tb, eb);
                 } else {
-                    return format!("if ({}) {}", ifex, tb)
-
+                    return format!("if ({}) {}", ifex, tb);
                 }
+            }
+
+            Statement::While(w) => {
+                let c = self.gen_code(Statement::Expression(ExpressionStmt {
+                    expression: w.condition,
+                }));
+                let b = self.gen_code(Statement::Block(*w.block));
+                return format!("while ({}) {}", c, b);
+            }
+
+            Statement::ReAssign(r) => {
+                format!(
+                    "{} = {};",
+                    r.name.name,
+                    self.gen_code(Statement::Expression(ExpressionStmt {
+                        expression: r.newval
+                    }))
+                )
             }
 
             _ => {

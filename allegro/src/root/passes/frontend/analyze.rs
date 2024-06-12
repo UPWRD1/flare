@@ -61,7 +61,7 @@ impl Analyzer {
                 LxSymbol(sv) => {
                     let tkk = match sv.clone() {
                         SymbolValue::Pair(id) => match id.name.as_str() {
-                            "val" => TokenType::TkKwVal,
+                            "var" => TokenType::TkKwVar,
                             "let" => TokenType::TkKwLet,
                             "print" => TokenType::TkKwPrint,
                             "of" => TokenType::TkKwOf,
