@@ -8,6 +8,8 @@ edition = "2021"
 
 [dependencies]
 colored = "2.1.0"
+# inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm17-0"] }
+# llvm-sys = "181.0.0"
 
 
 [profile.release]
