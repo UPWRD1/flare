@@ -1,9 +1,7 @@
 # The Allegro Language
 
+## Abstract
 
-
-
-### Abstract:
 Allegro is a programming language designed to quickly build parallel, multithreaded systems.
 
 ## Syntax
@@ -56,10 +54,6 @@ is -- type comparison
 
 ### Declarations
 
-> Scalar: A concrete "thing", or value; ex integers, floats, strings, etc.
-> 
-> Pair: A key, and it's associated scalar. Typelocked, immutable by default.
-
 #### Pair Declarations
 
 ``` lua
@@ -76,14 +70,73 @@ z: "Hello world!"
 
 illegal: str
 print illegal -- Error: unbound pair
+
+mutable!: 3 -- Mutable pair
+mutable = 4 -- Reassignment
+print mutable -- 4
+
+wrong!: "asdf"
+wrong = 3.0 -- Error: Differing types
 ```
 
-#### Operation Declarations
+For some people, this syntax may seem slightly strange. Why would we use `:` for declaration?
+
+The answer lies in the way Allegro handles types. In Allegro, types are a placeholder, a *promise*. The programmer is promising that whatever value you supply the pair will be of type `x`.
+
+When you assign a value to a pair, the "intrinsic type" of whatever scalar you use becomes the pair's type.
+
+>Essentially, declaring the value of the pair is the same thing as declaring the pair's type.
+
+#### Function Declarations
 
 ```lua
---     return type             arrow
---     v                       v
-let f: int of (x: int, y: int) -> return x * y;
---  ^         ^                   ^
---  name      parameters          body 
+let factorial: int of (x: int) -> 
+    return x + factorial(x - 1); 
+end
+```
+
+>The syntax of function declarations is inspired by mathematical functions, where "f(x)" is read as "f of x".
+
+Notice how the parameter and return value types are declared in the same way as a pair. This is because functions are first-class items in Allegro, which essentially makes them a pair, but with extra steps.
+
+In Allegro, every program starts with a 'main()' function. Here's an example:
+
+```lua
+let factorial: int of (x: int) ->
+    return x + factorial(x - 1)
+end
+
+let main -> 
+    print factorial(5) -- 120
+end
+```
+
+Note how `main()` uses a shorthand. Functions declared this way return the silent type (`..`) and take no parameters.
+
+### Control Flow
+
+#### If/Else
+
+```lua
+if condition do 
+..
+end
+```
+
+```lua
+if condition do 
+    ..
+else do
+    ..
+end
+```
+
+This should be familiar to programmers of any language.
+
+#### While Loop
+
+```lua
+while condition do
+    ..
+end
 ```
