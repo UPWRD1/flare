@@ -18,6 +18,22 @@ The syntax of Allegro has been designed to meet the following goals:
 
 ---
 
+### List of Keywords
+
+```rust
+do
+else
+end
+for
+if
+in
+let
+of
+return
+thru
+while
+```
+
 ### Operators and Comments
 
 ``` lua
@@ -48,6 +64,11 @@ or -- logical or
 
 : -- assignment
 is -- type comparison
+-> -- Definition block start
+do -- Control block start
+end -- end block
+thru -- range operator
+=> -- Function composition
 ```
 
 ---
@@ -71,7 +92,7 @@ z: "Hello world!"
 illegal: str
 print illegal -- Error: unbound pair
 
-mutable!: 3 -- Mutable pair
+mutable: 3! -- Mutable pair
 mutable = 4 -- Reassignment
 print mutable -- 4
 
@@ -90,8 +111,8 @@ When you assign a value to a pair, the "intrinsic type" of whatever scalar you u
 #### Function Declarations
 
 ```lua
-let factorial: int of (x: int) -> 
-    return x + factorial(x - 1); 
+let f: int of (x: int, y: int) ->
+    return x * y
 end
 ```
 
@@ -117,26 +138,21 @@ Functions also support generics:
 
 ```lua
 let factorial: T? of (x: T?) ->
+    
     ...
 end
 ```
 
-#### Type Declarations
+#### Enum, and Type Declarations
 
-Allegro allows for user-created types.
 ```lua
-type MyType: (int, int)
-```
-
-Types support generics as well:
-```lua
-type CustomOption
+enum option [T? of
+    VARIANT1,
+    
+end
 ```
 
 ### Control Flow
-
-These should be familiar to programmers of any language.
-
 
 #### If/Else
 
@@ -178,28 +194,46 @@ for i in 0 thru 10 do
 end
 ```
 
-#### Infinite Loop
-
-While there is no explicit "infinite loop" syntax, it is possible to create one with recursion, or the following:
-
-```ruby
-while true do
-    ...
-end
-
-for i in 0 thru INFINITY do
-    ...
-end
-```
-
 #### Switch
 
 ```ruby
-switch item if
-    case x do ...
-    case y do ...
+match item if
+    x do ...
+    y do ...
     else do ...
 end
 ```
 
-### 
+## Example Program
+
+```lua
+-- Generates first n prime numbers
+use Math
+
+let generatePrime: str of (n:int) ->
+    accum: ""!
+    X: 0!
+    i: 2!
+    flag: false!
+    while X < n do
+        flag = true
+        for j in 2 thru (Math.floor(Math.sqrt(i)) + 1) do
+            if Math.modulo(i, j) == 0 do
+                flag = false
+                break
+            end
+        end
+
+        if flag do
+            accum = "/accum/ /i/"
+            X = X + 1
+        end
+        i = i + 1
+    end
+    return accum
+end
+
+let main -> 
+    print generatePrime(4) -- 2 3 5 7
+end
+```
