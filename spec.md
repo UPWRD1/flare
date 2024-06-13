@@ -113,30 +113,93 @@ end
 
 Note how `main()` uses a shorthand. Functions declared this way return the silent type (`..`) and take no parameters.
 
+Functions also support generics:
+
+```lua
+let factorial: T? of (x: T?) ->
+    ...
+end
+```
+
+#### Type Declarations
+
+Allegro allows for user-created types.
+```lua
+type MyType: (int, int)
+```
+
+Types support generics as well:
+```lua
+type CustomOption
+```
+
 ### Control Flow
+
+These should be familiar to programmers of any language.
+
 
 #### If/Else
 
-```lua
+```ruby
 if condition do 
-..
+    ...
 end
 ```
 
 ```lua
 if condition do 
-    ..
+    ...
 else do
-    ..
+    ...
 end
 ```
 
-This should be familiar to programmers of any language.
 
 #### While Loop
 
 ```lua
 while condition do
-    ..
+    ...
 end
 ```
+
+
+#### For Loop
+
+```lua
+for i in iterable do
+    ...
+end
+```
+
+```lua
+for i in 0 thru 10 do
+    ...
+end
+```
+
+#### Infinite Loop
+
+While there is no explicit "infinite loop" syntax, it is possible to create one with recursion, or the following:
+
+```ruby
+while true do
+    ...
+end
+
+for i in 0 thru INFINITY do
+    ...
+end
+```
+
+#### Switch
+
+```ruby
+switch item if
+    case x do ...
+    case y do ...
+    else do ...
+end
+```
+
+### 
