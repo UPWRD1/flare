@@ -3,7 +3,7 @@ extern crate colored;
 use std::env;
 
 use hime_redist::ast::AstNode;
-use root::passes::frontend::*;
+use root::passes::{self, frontend::*};
 
 mod root;
 
@@ -16,16 +16,22 @@ fn main() {
             "-lc" | "--lcompile" => {
                 let filename: &String = &prog_args[2];
                 info!("Compiling {} to {}.c", filename, filename);
-                root::full_compile(filename);
+                root::legacy_compile(filename);
             }
             "-c" | "--compile" => {
                 let filename: &String = &prog_args[2];
                 let src = std::fs::read_to_string(filename).unwrap();
                 info!("Compiling {} to {}.c", filename, filename);
                 let result = lang::parse_str(&src);
-                let ast = result.get_ast();
-                let root = ast.get_root();
-                print(root, &[]);
+                if result.is_success() {
+                    let ast = result.get_ast();
+                    let root = ast.get_root();
+                    print(root, &[]);
+                } else {
+                    let e = result.errors.errors;
+                    dbg!(e);
+                }
+                
             
             }
 

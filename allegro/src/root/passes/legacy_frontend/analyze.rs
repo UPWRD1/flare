@@ -360,7 +360,7 @@ impl Analyzer {
             match self.tkvec[self.tk_loc].tokentype {
                 TkKwUse => {
                     let to_import = self.next_t().value.unwrap().get_string().unwrap();
-                    let mut nfile = crate::root::compile_import(&to_import);
+                    let mut nfile = crate::root::legacy_compile_import(&to_import);
                     nfile.remove(nfile.len() - 1);
                     self.tkvec.remove(self.tkvec.len() - 1);
 

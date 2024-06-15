@@ -10,52 +10,80 @@ grammar Lang
     }
     terminals
     {
-        WHITE_SPACE -> U+0020 | U+0009 | U+000B | U+000C ;
+        WHITE_SPACE -> U+0020 | U+0009 | U+000B | U+000C | '\n' | '\r';
         SEPARATOR   -> WHITE_SPACE+;
 
-        STATEMENT_END -> ';' | U+000A | (U+000D U+000A);
-
         ALPHA -> [a-z] | [A-Z];
-        DIGIT -> [0-9];
 
         INTEGER     -> [0-9] [0-9]* | '0' ;
         FLOAT        -> INTEGER? '.' INTEGER  (('e' | 'E') ('+' | '-')? INTEGER)?
                     |  INTEGER ('e' | 'E') ('+' | '-')? INTEGER ;
         NUMBER      -> INTEGER | FLOAT ;
 
-        LITERAL -> '"' ( .* - (.* '"' .*) ) '"';
+        STRING -> '"' ( .* - (.* '"' .*) ) '"';
 
-        IDENTIFIER -> ('_' | ALPHA) (ALPHA | '_')* (ALPHA | DIGIT | '_')*;
+        IDENTIFIER -> ('_' | ALPHA) (ALPHA | '_')* (ALPHA | [0-9] | '_')*;
 
         TYPE -> 'int' | 'flt' | 'bool' | 'str' | '..';
+
+        COMPARISON_OP -> '>' | '>=' | '<' | '<=' | '==' | '!=';
+
+        LOGICAL_OP -> 'and' | 'or' | 'not';
+
     }
 rules
   {
-    exp_atom   -> NUMBER^
-              | LITERAL^
-              | IDENTIFIER^
+
+    //statement_end -> ';' | '\n' | '\r' '\n';
+
+    exp_atom   -> NUMBER^ @OnNumber
+              | STRING^ @OnString
+              | IDENTIFIER^ @OnIdentifier
               | '('! exp^ ')'!;
 
     exp_factor -> exp_atom^
-              |  exp_factor '*'^ exp_atom
-              |  exp_factor '/'^ exp_atom ;
+              |  exp_factor '*'^ exp_atom @OnBin
+              |  exp_factor '/'^ exp_atom @OnBin;
     exp_term   -> exp_factor^
-              |  exp_term '+'^ exp_factor
-              |  exp_term '-'^ exp_factor ;
+              |  exp_term '+'^ exp_factor @OnBin
+              |  exp_term '-'^ exp_factor @OnBin;
+
+    exp_cond ->  exp_term COMPARISON_OP^ exp_term | exp_atom^;
+
+    range -> NUMBER 'thru'! NUMBER;
+
     exp        -> exp_term^;
 
-    pair_bind -> IDENTIFIER ':'! exp ;
+    pair_bind -> IDENTIFIER^ ':'! exp @OnBind;
 
-    pair_decl -> IDENTIFIER ':'! TYPE ;
+    pair_decl -> IDENTIFIER^ ':'! TYPE @OnBind;
 
-    param_decl -> '('! (pair_decl ',')* pair_decl ')'! | '('! ')'! ;
+    iterable -> IDENTIFIER | range ;
 
-    function_decl -> 'let'! IDENTIFIER 'of'! param_decl block;
+    for_loop -> 'for'! IDENTIFIER 'in'! iterable block ;
 
-    block -> 'do'! stmt+ 'end'!;
+    while_loop -> 'while'! exp_cond block ;
 
-    stmt -> (exp | pair_bind | function_decl)^ STATEMENT_END | STATEMENT_END!;
+    loop_stmt -> (while_loop | for_loop)^;
 
-    program -> stmt+;
+    if_block -> 'do'! stmt+ ('end'! | 'else'! 'do'! stmt+  'end'!) ;
+
+    if_stmt -> 'if'! exp if_block ;
+
+    print_stmt -> 'print' exp;
+
+    stmt -> (pair_bind | pair_decl | if_stmt | print_stmt | loop_stmt)^ ;
+
+    block -> 'do'! stmt+ 'end'! ;
+
+    param_decl -> IDENTIFIER^ ':'! TYPE ;
+
+    params -> '('! (param_decl ','!)* param_decl ')'! | '('! ')'! ;
+
+    function_decl -> 'let'! IDENTIFIER 'of'! params block;
+
+    decl -> (function_decl)^;
+
+    program -> decl+;
   }
 }

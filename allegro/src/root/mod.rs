@@ -18,18 +18,18 @@ use crate::error;
 use crate::info;
 
 
-pub fn full_compile(filename: &String) {
+pub fn legacy_compile(filename: &String) {
     let now = Instant::now();
 
-    let cstvec = compile_lex(filename);
+    let cstvec = legacy_compile_lex(filename);
 
-    let analyzed: Vec<Token> = compile_analyze(cstvec);
+    let analyzed: Vec<Token> = legacy_compile_analyze(cstvec);
 
-    let ast = compile_parse(analyzed);
+    let ast = legacy_compile_parse(analyzed);
 
     let (checked, e) = compile_typecheck(ast);
 
-    let generated = compile_codegen(checked, e);
+    let generated = legacy_compile_codegen(checked, e);
     
     let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
     let _ = file.write_all(generated.to_string().as_bytes());
@@ -39,7 +39,7 @@ pub fn full_compile(filename: &String) {
 
 }
 
-fn compile_codegen(checked: Vec<legacy_resource::ast::Statement>, e: legacy_resource::environment::Environment) -> String {
+fn legacy_compile_codegen(checked: Vec<legacy_resource::ast::Statement>, e: legacy_resource::environment::Environment) -> String {
     let mut generator = codegen::Generator::new(checked.clone(), e);
     generator.generate();
     let generated = generator.supply();
@@ -57,7 +57,7 @@ fn compile_typecheck(ast: Vec<legacy_resource::ast::Statement>) -> (Vec<legacy_r
     (checked, e)
 }
 
-fn compile_parse(analyzed: Vec<Token>) -> Vec<legacy_resource::ast::Statement> {
+fn legacy_compile_parse(analyzed: Vec<Token>) -> Vec<legacy_resource::ast::Statement> {
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
     let ast: Vec<legacy_resource::ast::Statement> = parser.supply();
@@ -66,7 +66,7 @@ fn compile_parse(analyzed: Vec<Token>) -> Vec<legacy_resource::ast::Statement> {
     ast
 }
 
-fn compile_analyze(cstvec: Vec<legacy_resource::lexemes::Lexeme>) -> Vec<legacy_resource::tokens::Token> {
+fn legacy_compile_analyze(cstvec: Vec<legacy_resource::lexemes::Lexeme>) -> Vec<legacy_resource::tokens::Token> {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
@@ -75,7 +75,7 @@ fn compile_analyze(cstvec: Vec<legacy_resource::lexemes::Lexeme>) -> Vec<legacy_
     analyzed
 }
 
-fn compile_lex(filename: &String) -> Vec<legacy_resource::lexemes::Lexeme> {
+fn legacy_compile_lex(filename: &String) -> Vec<legacy_resource::lexemes::Lexeme> {
     let contents_unsure = &std::fs::read_to_string(filename);
     if contents_unsure.is_err() {
         error!(Errors::MissingFile, (filename.to_string()));
@@ -89,8 +89,8 @@ fn compile_lex(filename: &String) -> Vec<legacy_resource::lexemes::Lexeme> {
     cstvec
 }
 
-pub fn compile_import(filename: &String) -> Vec<Token> {
-    let cstvec = compile_lex(filename);
-    let analyzed: Vec<Token> = compile_analyze(cstvec);
+pub fn legacy_compile_import(filename: &String) -> Vec<Token> {
+    let cstvec = legacy_compile_lex(filename);
+    let analyzed: Vec<Token> = legacy_compile_analyze(cstvec);
     analyzed
 }
