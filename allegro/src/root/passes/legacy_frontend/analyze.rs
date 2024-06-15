@@ -1,4 +1,4 @@
-use crate::root::resource::{
+use crate::root::legacy_resource::{
     ast::{self, Scalar, SymbolValue},
     environment::AKind,
     lexemes::{Lexeme, LexemeKind::*},

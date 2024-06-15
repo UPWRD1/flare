@@ -1,4 +1,4 @@
-use crate::{root::resource::errors::Errors, error};
+use crate::{root::legacy_resource::errors::Errors, error};
 
 ///Enum representing internal types used for typechecking.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

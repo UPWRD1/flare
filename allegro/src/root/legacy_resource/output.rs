@@ -1,5 +1,5 @@
 use super::tokens::Token;
-use crate::{colored::Colorize, root::resource::tokens::TokenType};
+use crate::{colored::Colorize, root::legacy_resource::tokens::TokenType};
 
 
 #[macro_export]

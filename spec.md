@@ -10,7 +10,6 @@ Allegro is a programming language designed to quickly build parallel, multithrea
 
 The syntax of Allegro has been designed to meet the following goals:
 
-
 * Simplicity (especially for beginners): Simple syntax lets beginners pick up the language quickly, and veterans work efficiently.
 * Consistency: Consistent syntax improves DX. Nobody wants to memorize dozens of edge cases, or syntax variations.
 * Readability: Readable code is usable code.
@@ -62,7 +61,7 @@ or -- logical or
 
 -- Other operators:
 
-: -- assignment
+:= -- assignment
 is -- type comparison
 -> -- Definition block start
 do -- Control block start
@@ -123,11 +122,11 @@ Notice how the parameter and return value types are declared in the same way as 
 In Allegro, every program starts with a 'main()' function. Here's an example:
 
 ```lua
-let factorial: int of (x: int) ->
+let factorial: int of (x: int) do
     return x + factorial(x - 1)
 end
 
-let main -> 
+let main do
     print factorial(5) -- 120
 end
 ```
@@ -137,7 +136,7 @@ Note how `main()` uses a shorthand. Functions declared this way return the silen
 Functions also support generics:
 
 ```lua
-let factorial: T? of (x: T?) ->
+let factorial: T? of (x: T?) do
     
     ...
 end
@@ -170,7 +169,6 @@ else do
 end
 ```
 
-
 #### While Loop
 
 ```lua
@@ -201,39 +199,5 @@ match item if
     x do ...
     y do ...
     else do ...
-end
-```
-
-## Example Program
-
-```lua
--- Generates first n prime numbers
-use Math
-
-let generatePrime: str of (n:int) ->
-    accum: ""!
-    X: 0!
-    i: 2!
-    flag: false!
-    while X < n do
-        flag = true
-        for j in 2 thru (Math.floor(Math.sqrt(i)) + 1) do
-            if Math.modulo(i, j) == 0 do
-                flag = false
-                break
-            end
-        end
-
-        if flag do
-            accum = "/accum/ /i/"
-            X = X + 1
-        end
-        i = i + 1
-    end
-    return accum
-end
-
-let main -> 
-    print generatePrime(4) -- 2 3 5 7
 end
 ```

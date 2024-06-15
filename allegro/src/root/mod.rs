@@ -1,18 +1,18 @@
-mod passes;
-mod resource;
+pub mod passes;
+mod legacy_resource;
+
 
 use std::io::Write;
 use std::time::Instant;
 
-
-use passes::frontend::analyze;
-use passes::frontend::lexing;
-use passes::frontend::parsing;
+use passes::legacy_frontend::analyze;
+use passes::legacy_frontend::lexing;
+use passes::legacy_frontend::parsing;
 use passes::midend::typechecking;
 
 use passes::backend::codegen;
-use resource::errors::Errors;
-use resource::tokens::Token;
+use legacy_resource::errors::Errors;
+use legacy_resource::tokens::Token;
 
 use crate::error;
 use crate::info;
@@ -39,7 +39,7 @@ pub fn full_compile(filename: &String) {
 
 }
 
-fn compile_codegen(checked: Vec<resource::ast::Statement>, e: resource::environment::Environment) -> String {
+fn compile_codegen(checked: Vec<legacy_resource::ast::Statement>, e: legacy_resource::environment::Environment) -> String {
     let mut generator = codegen::Generator::new(checked.clone(), e);
     generator.generate();
     let generated = generator.supply();
@@ -48,7 +48,7 @@ fn compile_codegen(checked: Vec<resource::ast::Statement>, e: resource::environm
     generated
 }
 
-fn compile_typecheck(ast: Vec<resource::ast::Statement>) -> (Vec<resource::ast::Statement>, resource::environment::Environment) {
+fn compile_typecheck(ast: Vec<legacy_resource::ast::Statement>) -> (Vec<legacy_resource::ast::Statement>, legacy_resource::environment::Environment) {
     let mut checker = typechecking::Typechecker::new(ast.clone());
     checker.check();
     let (checked, e) = checker.supply();
@@ -57,16 +57,16 @@ fn compile_typecheck(ast: Vec<resource::ast::Statement>) -> (Vec<resource::ast::
     (checked, e)
 }
 
-fn compile_parse(analyzed: Vec<Token>) -> Vec<resource::ast::Statement> {
+fn compile_parse(analyzed: Vec<Token>) -> Vec<legacy_resource::ast::Statement> {
     let mut parser = parsing::Parser::new(analyzed);
     parser.parse();
-    let ast: Vec<resource::ast::Statement> = parser.supply();
+    let ast: Vec<legacy_resource::ast::Statement> = parser.supply();
     //dbg!(ast.clone());
     //info!("Parsing: OK");
     ast
 }
 
-fn compile_analyze(cstvec: Vec<resource::lexemes::Lexeme>) -> Vec<resource::tokens::Token> {
+fn compile_analyze(cstvec: Vec<legacy_resource::lexemes::Lexeme>) -> Vec<legacy_resource::tokens::Token> {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
@@ -75,7 +75,7 @@ fn compile_analyze(cstvec: Vec<resource::lexemes::Lexeme>) -> Vec<resource::toke
     analyzed
 }
 
-fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
+fn compile_lex(filename: &String) -> Vec<legacy_resource::lexemes::Lexeme> {
     let contents_unsure = &std::fs::read_to_string(filename);
     if contents_unsure.is_err() {
         error!(Errors::MissingFile, (filename.to_string()));
@@ -83,7 +83,7 @@ fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
     let contents = contents_unsure.as_ref().unwrap();
     let mut lxr = lexing::Lexer::new(contents.to_string());
     lxr.lex();
-    let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();
+    let cstvec: Vec<legacy_resource::lexemes::Lexeme> = lxr.supply();
     //dbg!(cstvec.clone());
     //info!("Lexing: OK");
     cstvec

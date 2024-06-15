@@ -1,6 +1,6 @@
 use core::panic;
 
-use crate::root::resource::{
+use crate::root::legacy_resource::{
     ast::*,
     environment::{AKind, Environment},
     tokens::{Token, TokenType},

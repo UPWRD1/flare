@@ -1,13 +1,13 @@
 use crate::error;
 use crate::error_nocode;
-use crate::root::resource;
-use crate::root::resource::ast::Expr;
-use crate::root::resource::ast::Statement;
-use crate::root::resource::environment::AKind;
-use crate::root::resource::environment::Environment;
-use crate::root::resource::errors::Errors;
-use crate::root::resource::errors::Errors::*;
-use crate::root::resource::tokens::TokenType;
+use crate::root::legacy_resource;
+use crate::root::legacy_resource::ast::Expr;
+use crate::root::legacy_resource::ast::Statement;
+use crate::root::legacy_resource::environment::AKind;
+use crate::root::legacy_resource::environment::Environment;
+use crate::root::legacy_resource::errors::Errors;
+use crate::root::legacy_resource::errors::Errors::*;
+use crate::root::legacy_resource::tokens::TokenType;
 
 pub struct Typechecker {
     ast: Vec<Statement>,
@@ -385,7 +385,7 @@ impl Typechecker {
         for s in nast.len()..0 {
             let c = &nast[s];
             if *c
-                == Statement::Expression(resource::ast::ExpressionStmt {
+                == Statement::Expression(legacy_resource::ast::ExpressionStmt {
                     expression: Expr::Empty,
                 })
             {

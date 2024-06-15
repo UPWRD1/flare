@@ -1,10 +1,10 @@
-use crate::root::resource::errors::Errors;
-use crate::root::resource::output::draw_error;
+use crate::root::legacy_resource::errors::Errors;
+use crate::root::legacy_resource::output::draw_error;
 use crate::{error, error_noquit, quit};
 
 use crate::{
     info,
-    root::resource::{
+    root::legacy_resource::{
         ast::*,
         environment::AKind,
         tokens::{
