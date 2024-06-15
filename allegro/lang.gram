@@ -4,7 +4,7 @@ grammar Lang
     {
         Axiom = "program"; // Root Rule
         Separator = "SEPARATOR"; // whitespace terminal
-        ParserType = "LR";
+        ParserType = "RNGLR";
         Runtime = "Rust";
         CompilationMode = "Debug";
     }
@@ -50,7 +50,7 @@ rules
 
     exp_cond ->  exp_term COMPARISON_OP^ exp_term | exp_atom^;
 
-    range -> NUMBER 'thru'! NUMBER;
+    range -> NUMBER 'thru'! NUMBER @OnRange;
 
     exp        -> exp_term^;
 
@@ -60,27 +60,27 @@ rules
 
     iterable -> IDENTIFIER | range ;
 
-    for_loop -> 'for'! IDENTIFIER 'in'! iterable block ;
+    for_loop -> 'for'! IDENTIFIER 'in'! iterable block @OnFor;
 
-    while_loop -> 'while'! exp_cond block ;
+    while_loop -> 'while'! exp_cond block @OnWhile;
 
     loop_stmt -> (while_loop | for_loop)^;
 
-    if_block -> 'do'! stmt+ ('end'! | 'else'! 'do'! stmt+  'end'!) ;
+    if_block -> 'do'! stmt+ ('end'! | 'else'! 'do'! stmt+  'end'!);
 
-    if_stmt -> 'if'! exp if_block ;
+    if_stmt -> 'if'! exp if_block  @OnIf;
 
-    print_stmt -> 'print' exp;
+    print_stmt -> 'print' exp  @OnPrint;
 
     stmt -> (pair_bind | pair_decl | if_stmt | print_stmt | loop_stmt)^ ;
 
     block -> 'do'! stmt+ 'end'! ;
 
-    param_decl -> IDENTIFIER^ ':'! TYPE ;
+    param_decl -> IDENTIFIER^ ':'! TYPE  @OnBind;
 
     params -> '('! (param_decl ','!)* param_decl ')'! | '('! ')'! ;
 
-    function_decl -> 'let'! IDENTIFIER 'of'! params block;
+    function_decl -> 'let'! IDENTIFIER 'of'! params block  @OnFunc;
 
     decl -> (function_decl)^;
 

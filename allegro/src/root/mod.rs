@@ -1,6 +1,6 @@
 pub mod passes;
 mod legacy_resource;
-
+mod resource;
 
 use std::io::Write;
 use std::time::Instant;

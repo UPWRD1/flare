@@ -109,51 +109,51 @@ pub const TERMINALS: &[Symbol] = &[
         name: "thru"
     },
     Symbol {
-        id: 0x002F,
+        id: 0x0030,
         name: ":"
     },
     Symbol {
-        id: 0x0031,
+        id: 0x0032,
         name: "for"
     },
     Symbol {
-        id: 0x0032,
+        id: 0x0033,
         name: "in"
     },
     Symbol {
-        id: 0x0033,
+        id: 0x0035,
         name: "while"
     },
     Symbol {
-        id: 0x0034,
+        id: 0x0037,
         name: "do"
     },
     Symbol {
-        id: 0x0036,
+        id: 0x0039,
         name: "end"
     },
     Symbol {
-        id: 0x0037,
+        id: 0x003A,
         name: "else"
     },
     Symbol {
-        id: 0x0039,
+        id: 0x003C,
         name: "if"
     },
     Symbol {
-        id: 0x003A,
+        id: 0x003E,
         name: "print"
     },
     Symbol {
-        id: 0x003C,
+        id: 0x0041,
         name: ","
     },
     Symbol {
-        id: 0x003E,
+        id: 0x0043,
         name: "let"
     },
     Symbol {
-        id: 0x003F,
+        id: 0x0044,
         name: "of"
     }
 ];
@@ -309,10 +309,6 @@ pub const VARIABLES: &[Symbol] = &[
         name: "program"
     },
     Symbol {
-        id: 0x0035,
-        name: "__V53"
-    },
-    Symbol {
         id: 0x0038,
         name: "__V56"
     },
@@ -321,15 +317,19 @@ pub const VARIABLES: &[Symbol] = &[
         name: "__V59"
     },
     Symbol {
-        id: 0x003D,
-        name: "__V61"
-    },
-    Symbol {
         id: 0x0040,
         name: "__V64"
     },
     Symbol {
-        id: 0x0041,
+        id: 0x0042,
+        name: "__V66"
+    },
+    Symbol {
+        id: 0x0046,
+        name: "__V70"
+    },
+    Symbol {
+        id: 0x0047,
         name: "__VAxiom"
     }
 ];
@@ -351,8 +351,20 @@ pub trait Actions {
     fn on_identifier(&mut self, head: Symbol, body: &dyn SemanticBody);
     /// The OnBin semantic action
     fn on_bin(&mut self, head: Symbol, body: &dyn SemanticBody);
+    /// The OnRange semantic action
+    fn on_range(&mut self, head: Symbol, body: &dyn SemanticBody);
     /// The OnBind semantic action
     fn on_bind(&mut self, head: Symbol, body: &dyn SemanticBody);
+    /// The OnFor semantic action
+    fn on_for(&mut self, head: Symbol, body: &dyn SemanticBody);
+    /// The OnWhile semantic action
+    fn on_while(&mut self, head: Symbol, body: &dyn SemanticBody);
+    /// The OnIf semantic action
+    fn on_if(&mut self, head: Symbol, body: &dyn SemanticBody);
+    /// The OnPrint semantic action
+    fn on_print(&mut self, head: Symbol, body: &dyn SemanticBody);
+    /// The OnFunc semantic action
+    fn on_func(&mut self, head: Symbol, body: &dyn SemanticBody);
 }
 
 /// The structure that implements no action
@@ -363,7 +375,13 @@ impl Actions for NoActions {
     fn on_string(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_identifier(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_bin(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
+    fn on_range(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_bind(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
+    fn on_for(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
+    fn on_while(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
+    fn on_if(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
+    fn on_print(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
+    fn on_func(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
 }
 
 /// Parses the specified string with this parser
@@ -399,7 +417,7 @@ pub fn parse_string_with(input: String, actions: &mut dyn Actions) -> ParseResul
 /// Return an `std::io::Error` when reading the stream as UTF-8 fails
 pub fn parse_utf8_stream(input: &mut dyn Read) -> Result<ParseResult<'static, 'static, 'static>, std::io::Error> {
     let text = Text::from_utf8_stream(input).unwrap();
-    parse_text(text, &mut NoActions {})
+    Ok(parse_text(text, &mut NoActions {}))
 }
 
 pub fn parse_utf8_stream_with(input: &mut dyn Read, actions: &mut dyn Actions) -> ParseResult<'static, 'static, 'static> {
@@ -408,8 +426,8 @@ pub fn parse_utf8_stream_with(input: &mut dyn Read, actions: &mut dyn Actions) -
 }
 
 /// Parses the specified text with this parser
-fn parse_text(text: Text, actions: &mut dyn Actions) -> ParseResult<'static, '_, 'static> {
-    parse_text_with(text, TERMINALS, VARIABLES, VIRTUALS, actions)
+fn parse_text(text: Text, actions: &mut dyn Actions) -> ParseResult<'static, 'static, 'static> {
+    parse_text_with(text.clone(), TERMINALS, VARIABLES, VIRTUALS, actions)
 }
 
 /// Parses the specified text with this parser
@@ -425,7 +443,13 @@ fn parse_text_with<'s, 't, 'a>(
         1 => actions.on_string(head, body),
         2 => actions.on_identifier(head, body),
         3 => actions.on_bin(head, body),
-        4 => actions.on_bind(head, body),
+        4 => actions.on_range(head, body),
+        5 => actions.on_bind(head, body),
+        6 => actions.on_for(head, body),
+        7 => actions.on_while(head, body),
+        8 => actions.on_if(head, body),
+        9 => actions.on_print(head, body),
+        10 => actions.on_func(head, body),
         _ => ()
     };
 
