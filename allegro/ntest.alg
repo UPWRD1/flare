@@ -1,1 +1,3 @@
-1 + 3
+let main of () do
+    x: "hello world"
+end

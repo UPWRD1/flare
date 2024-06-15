@@ -24,8 +24,16 @@ const LEXER_AUTOMATON: &[u8] = include_bytes!("lang_lexer.bin");
 
 /// The unique identifier for terminal `SEPARATOR`
 pub const ID_TERMINAL_SEPARATOR: u32 = 0x0004;
+/// The unique identifier for terminal `STATEMENT_END`
+pub const ID_TERMINAL_STATEMENT_END: u32 = 0x0005;
 /// The unique identifier for terminal `NUMBER`
-pub const ID_TERMINAL_NUMBER: u32 = 0x0007;
+pub const ID_TERMINAL_NUMBER: u32 = 0x000A;
+/// The unique identifier for terminal `LITERAL`
+pub const ID_TERMINAL_LITERAL: u32 = 0x000B;
+/// The unique identifier for terminal `IDENTIFIER`
+pub const ID_TERMINAL_IDENTIFIER: u32 = 0x000C;
+/// The unique identifier for terminal `TYPE`
+pub const ID_TERMINAL_TYPE: u32 = 0x000D;
 
 /// The unique identifier for the default context
 pub const CONTEXT_DEFAULT: u16 = 0;
@@ -47,32 +55,72 @@ pub const TERMINALS: &[Symbol] = &[
         name: "SEPARATOR"
     },
     Symbol {
-        id: 0x0007,
+        id: 0x0005,
+        name: "STATEMENT_END"
+    },
+    Symbol {
+        id: 0x000A,
         name: "NUMBER"
     },
     Symbol {
+        id: 0x000B,
+        name: "LITERAL"
+    },
+    Symbol {
+        id: 0x000C,
+        name: "IDENTIFIER"
+    },
+    Symbol {
         id: 0x000D,
+        name: "TYPE"
+    },
+    Symbol {
+        id: 0x0019,
         name: "("
     },
     Symbol {
-        id: 0x000E,
+        id: 0x001A,
         name: ")"
     },
     Symbol {
-        id: 0x000F,
+        id: 0x001B,
         name: "*"
     },
     Symbol {
-        id: 0x0010,
+        id: 0x001C,
         name: "/"
     },
     Symbol {
-        id: 0x0011,
+        id: 0x001D,
         name: "+"
     },
     Symbol {
-        id: 0x0012,
+        id: 0x001E,
         name: "-"
+    },
+    Symbol {
+        id: 0x001F,
+        name: ":"
+    },
+    Symbol {
+        id: 0x0020,
+        name: ","
+    },
+    Symbol {
+        id: 0x0022,
+        name: "let"
+    },
+    Symbol {
+        id: 0x0023,
+        name: "of"
+    },
+    Symbol {
+        id: 0x0024,
+        name: "do"
+    },
+    Symbol {
+        id: 0x0026,
+        name: "end"
     }
 ];
 
@@ -89,15 +137,27 @@ fn new_lexer<'a: 'b, 'b, 'c>(
 const PARSER_AUTOMATON: &[u8] = include_bytes!("lang_parser.bin");
 
 /// The unique identifier for variable `exp_atom`
-pub const ID_VARIABLE_EXP_ATOM: u32 = 0x0008;
+pub const ID_VARIABLE_EXP_ATOM: u32 = 0x000E;
 /// The unique identifier for variable `exp_factor`
-pub const ID_VARIABLE_EXP_FACTOR: u32 = 0x0009;
+pub const ID_VARIABLE_EXP_FACTOR: u32 = 0x000F;
 /// The unique identifier for variable `exp_term`
-pub const ID_VARIABLE_EXP_TERM: u32 = 0x000A;
+pub const ID_VARIABLE_EXP_TERM: u32 = 0x0010;
 /// The unique identifier for variable `exp`
-pub const ID_VARIABLE_EXP: u32 = 0x000B;
+pub const ID_VARIABLE_EXP: u32 = 0x0011;
+/// The unique identifier for variable `pair_bind`
+pub const ID_VARIABLE_PAIR_BIND: u32 = 0x0012;
+/// The unique identifier for variable `pair_decl`
+pub const ID_VARIABLE_PAIR_DECL: u32 = 0x0013;
+/// The unique identifier for variable `param_decl`
+pub const ID_VARIABLE_PARAM_DECL: u32 = 0x0014;
+/// The unique identifier for variable `function_decl`
+pub const ID_VARIABLE_FUNCTION_DECL: u32 = 0x0015;
+/// The unique identifier for variable `block`
+pub const ID_VARIABLE_BLOCK: u32 = 0x0016;
 /// The unique identifier for variable `stmt`
-pub const ID_VARIABLE_STMT: u32 = 0x000C;
+pub const ID_VARIABLE_STMT: u32 = 0x0017;
+/// The unique identifier for variable `program`
+pub const ID_VARIABLE_PROGRAM: u32 = 0x0018;
 
 
 /// The collection of variables matched by this parser
@@ -105,27 +165,63 @@ pub const ID_VARIABLE_STMT: u32 = 0x000C;
 /// so that variable indices in the automaton can be used to retrieve the variables in this table
 pub const VARIABLES: &[Symbol] = &[
     Symbol {
-        id: 0x0008,
+        id: 0x000E,
         name: "exp_atom"
     },
     Symbol {
-        id: 0x0009,
+        id: 0x000F,
         name: "exp_factor"
     },
     Symbol {
-        id: 0x000A,
+        id: 0x0010,
         name: "exp_term"
     },
     Symbol {
-        id: 0x000B,
+        id: 0x0011,
         name: "exp"
     },
     Symbol {
-        id: 0x000C,
-        name: "stmt"
+        id: 0x0012,
+        name: "pair_bind"
     },
     Symbol {
         id: 0x0013,
+        name: "pair_decl"
+    },
+    Symbol {
+        id: 0x0014,
+        name: "param_decl"
+    },
+    Symbol {
+        id: 0x0015,
+        name: "function_decl"
+    },
+    Symbol {
+        id: 0x0016,
+        name: "block"
+    },
+    Symbol {
+        id: 0x0017,
+        name: "stmt"
+    },
+    Symbol {
+        id: 0x0018,
+        name: "program"
+    },
+    Symbol {
+        id: 0x0021,
+        name: "__V33"
+    },
+    Symbol {
+        id: 0x0025,
+        name: "__V37"
+    },
+    Symbol {
+        id: 0x0027,
+        name: "__V39"
+    },
+    Symbol {
+        id: 0x0028,
         name: "__VAxiom"
     }
 ];
@@ -184,12 +280,22 @@ fn parse_text_with<'s, 't, 'a>(
 /// Visitor interface
 pub trait Visitor {
     fn on_terminal_separator(&self, _node: &AstNode) {}
+    fn on_terminal_statement_end(&self, _node: &AstNode) {}
     fn on_terminal_number(&self, _node: &AstNode) {}
+    fn on_terminal_literal(&self, _node: &AstNode) {}
+    fn on_terminal_identifier(&self, _node: &AstNode) {}
+    fn on_terminal_type(&self, _node: &AstNode) {}
     fn on_variable_exp_atom(&self, _node: &AstNode) {}
     fn on_variable_exp_factor(&self, _node: &AstNode) {}
     fn on_variable_exp_term(&self, _node: &AstNode) {}
     fn on_variable_exp(&self, _node: &AstNode) {}
+    fn on_variable_pair_bind(&self, _node: &AstNode) {}
+    fn on_variable_pair_decl(&self, _node: &AstNode) {}
+    fn on_variable_param_decl(&self, _node: &AstNode) {}
+    fn on_variable_function_decl(&self, _node: &AstNode) {}
+    fn on_variable_block(&self, _node: &AstNode) {}
     fn on_variable_stmt(&self, _node: &AstNode) {}
+    fn on_variable_program(&self, _node: &AstNode) {}
 }
 
 /// Walk the AST of a result using a visitor
@@ -207,12 +313,22 @@ pub fn visit_ast_node(node: AstNode, visitor: &dyn Visitor) {
     }
     match node.get_symbol().id {
         0x0004 => visitor.on_terminal_separator(&node),
-        0x0007 => visitor.on_terminal_number(&node),
-        0x0008 => visitor.on_variable_exp_atom(&node),
-        0x0009 => visitor.on_variable_exp_factor(&node),
-        0x000A => visitor.on_variable_exp_term(&node),
-        0x000B => visitor.on_variable_exp(&node),
-        0x000C => visitor.on_variable_stmt(&node),
+        0x0005 => visitor.on_terminal_statement_end(&node),
+        0x000A => visitor.on_terminal_number(&node),
+        0x000B => visitor.on_terminal_literal(&node),
+        0x000C => visitor.on_terminal_identifier(&node),
+        0x000D => visitor.on_terminal_type(&node),
+        0x000E => visitor.on_variable_exp_atom(&node),
+        0x000F => visitor.on_variable_exp_factor(&node),
+        0x0010 => visitor.on_variable_exp_term(&node),
+        0x0011 => visitor.on_variable_exp(&node),
+        0x0012 => visitor.on_variable_pair_bind(&node),
+        0x0013 => visitor.on_variable_pair_decl(&node),
+        0x0014 => visitor.on_variable_param_decl(&node),
+        0x0015 => visitor.on_variable_function_decl(&node),
+        0x0016 => visitor.on_variable_block(&node),
+        0x0017 => visitor.on_variable_stmt(&node),
+        0x0018 => visitor.on_variable_program(&node),
         _ => ()
     };
 }

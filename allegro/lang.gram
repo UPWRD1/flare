@@ -2,33 +2,60 @@ grammar Lang
 {
     options
     {
-        Axiom = "stmt"; // Root Rule
+        Axiom = "program"; // Root Rule
         Separator = "SEPARATOR"; // whitespace terminal
+        ParserType = "LR";
+        Runtime = "Rust";
+        CompilationMode = "Debug";
     }
     terminals
     {
         WHITE_SPACE -> U+0020 | U+0009 | U+000B | U+000C ;
         SEPARATOR   -> WHITE_SPACE+;
 
-        INTEGER     -> [1-9] [0-9]* | '0' ;
-        REAL        -> INTEGER? '.' INTEGER  (('e' | 'E') ('+' | '-')? INTEGER)?
+        STATEMENT_END -> ';' | U+000A | (U+000D U+000A);
+
+        ALPHA -> [a-z] | [A-Z];
+        DIGIT -> [0-9];
+
+        INTEGER     -> [0-9] [0-9]* | '0' ;
+        FLOAT        -> INTEGER? '.' INTEGER  (('e' | 'E') ('+' | '-')? INTEGER)?
                     |  INTEGER ('e' | 'E') ('+' | '-')? INTEGER ;
-        NUMBER      -> INTEGER | REAL ;
+        NUMBER      -> INTEGER | FLOAT ;
+
+        LITERAL -> '"' ( .* - (.* '"' .*) ) '"';
+
+        IDENTIFIER -> ('_' | ALPHA) (ALPHA | '_')* (ALPHA | DIGIT | '_')*;
+
+        TYPE -> 'int' | 'flt' | 'bool' | 'str' | '..';
     }
 rules
   {
-    exp_atom   -> NUMBER
-               | '(' exp ')' ;
-    exp_factor -> exp_atom
-               |  exp_factor '*' exp_atom
-               |  exp_factor '/' exp_atom ;
-    exp_term   -> exp_factor
-               |  exp_term '+' exp_factor
-               |  exp_term '-' exp_factor ;
-    exp        -> exp_term ;
+    exp_atom   -> NUMBER^
+              | LITERAL^
+              | IDENTIFIER^
+              | '('! exp^ ')'!;
 
+    exp_factor -> exp_atom^
+              |  exp_factor '*'^ exp_atom
+              |  exp_factor '/'^ exp_atom ;
+    exp_term   -> exp_factor^
+              |  exp_term '+'^ exp_factor
+              |  exp_term '-'^ exp_factor ;
+    exp        -> exp_term^;
 
-    stmt -> exp;
+    pair_bind -> IDENTIFIER ':'! exp ;
+
+    pair_decl -> IDENTIFIER ':'! TYPE ;
+
+    param_decl -> '('! (pair_decl ',')* pair_decl ')'! | '('! ')'! ;
+
+    function_decl -> 'let'! IDENTIFIER 'of'! param_decl block;
+
+    block -> 'do'! stmt+ 'end'!;
+
+    stmt -> (exp | pair_bind | function_decl)^ STATEMENT_END | STATEMENT_END!;
+
+    program -> stmt+;
   }
-
 }
