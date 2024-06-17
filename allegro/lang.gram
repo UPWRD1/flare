@@ -36,7 +36,10 @@ rules
 
     //statement_end -> ';' | '\n' | '\r' '\n';
 
-    exp_atom   -> NUMBER^ @OnNumber
+    exp_call -> IDENTIFIER^ '('! (exp ','!)* exp ')'! | '('! ')'! ;
+
+    exp_atom   -> exp_call^ @OnCall
+              | NUMBER^ @OnNumber
               | STRING^ @OnString
               | IDENTIFIER^ @OnIdentifier
               | '('! exp^ ')'!;
@@ -52,7 +55,7 @@ rules
 
     range -> NUMBER 'thru'! NUMBER @OnRange;
 
-    exp        -> exp_term^;
+    exp        -> exp_term^; 
 
     pair_bind -> IDENTIFIER^ ':'! exp @OnBind;
 
@@ -72,15 +75,17 @@ rules
 
     print_stmt -> 'print' exp  @OnPrint;
 
-    stmt -> (pair_bind | pair_decl | if_stmt | print_stmt | loop_stmt)^ ;
+    return_stmt -> 'return' exp @OnReturn;
+
+    stmt -> (pair_bind | pair_decl | if_stmt | print_stmt | loop_stmt | return_stmt)^ ;
 
     block -> 'do'! stmt+ 'end'! ;
 
-    param_decl -> IDENTIFIER^ ':'! TYPE  @OnBind;
+    param_decl -> IDENTIFIER^ ':'! TYPE  @OnParam;
 
     params -> '('! (param_decl ','!)* param_decl ')'! | '('! ')'! ;
 
-    function_decl -> 'let'! IDENTIFIER 'of'! params block  @OnFunc;
+    function_decl -> 'let'! IDENTIFIER ':'! TYPE 'of'! params block  @OnFunc;
 
     decl -> (function_decl)^;
 

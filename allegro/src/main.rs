@@ -29,6 +29,8 @@ fn main() {
                     let ast = result.get_ast();
                     let root = ast.get_root();
                     print(root, &[]);
+                    dbg!(translator.funcdecl);
+                    dbg!(translator.valuestack);
                 } else {
                     let e = result.errors.errors;
                     dbg!(e);

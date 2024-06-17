@@ -81,79 +81,83 @@ pub const TERMINALS: &[Symbol] = &[
         name: "LOGICAL_OP"
     },
     Symbol {
-        id: 0x0027,
+        id: 0x0026,
         name: "("
     },
     Symbol {
-        id: 0x0028,
-        name: ")"
-    },
-    Symbol {
-        id: 0x0029,
-        name: "*"
-    },
-    Symbol {
-        id: 0x002B,
-        name: "/"
-    },
-    Symbol {
-        id: 0x002C,
-        name: "+"
-    },
-    Symbol {
-        id: 0x002D,
-        name: "-"
-    },
-    Symbol {
-        id: 0x002E,
-        name: "thru"
-    },
-    Symbol {
-        id: 0x0030,
-        name: ":"
-    },
-    Symbol {
-        id: 0x0032,
-        name: "for"
-    },
-    Symbol {
-        id: 0x0033,
-        name: "in"
-    },
-    Symbol {
-        id: 0x0035,
-        name: "while"
-    },
-    Symbol {
-        id: 0x0037,
-        name: "do"
-    },
-    Symbol {
-        id: 0x0039,
-        name: "end"
-    },
-    Symbol {
-        id: 0x003A,
-        name: "else"
-    },
-    Symbol {
-        id: 0x003C,
-        name: "if"
-    },
-    Symbol {
-        id: 0x003E,
-        name: "print"
-    },
-    Symbol {
-        id: 0x0041,
+        id: 0x0027,
         name: ","
     },
     Symbol {
+        id: 0x0029,
+        name: ")"
+    },
+    Symbol {
+        id: 0x002E,
+        name: "*"
+    },
+    Symbol {
+        id: 0x0030,
+        name: "/"
+    },
+    Symbol {
+        id: 0x0031,
+        name: "+"
+    },
+    Symbol {
+        id: 0x0032,
+        name: "-"
+    },
+    Symbol {
+        id: 0x0033,
+        name: "thru"
+    },
+    Symbol {
+        id: 0x0035,
+        name: ":"
+    },
+    Symbol {
+        id: 0x0037,
+        name: "for"
+    },
+    Symbol {
+        id: 0x0038,
+        name: "in"
+    },
+    Symbol {
+        id: 0x003A,
+        name: "while"
+    },
+    Symbol {
+        id: 0x003C,
+        name: "do"
+    },
+    Symbol {
+        id: 0x003E,
+        name: "end"
+    },
+    Symbol {
+        id: 0x003F,
+        name: "else"
+    },
+    Symbol {
+        id: 0x0041,
+        name: "if"
+    },
+    Symbol {
         id: 0x0043,
+        name: "print"
+    },
+    Symbol {
+        id: 0x0045,
+        name: "return"
+    },
+    Symbol {
+        id: 0x004A,
         name: "let"
     },
     Symbol {
-        id: 0x0044,
+        id: 0x004B,
         name: "of"
     }
 ];
@@ -170,50 +174,54 @@ fn new_lexer<'a: 'b, 'b, 'c>(
 /// Static resource for the serialized parser automaton
 const PARSER_AUTOMATON: &[u8] = include_bytes!("lang_parser.bin");
 
+/// The unique identifier for variable `exp_call`
+pub const ID_VARIABLE_EXP_CALL: u32 = 0x000E;
 /// The unique identifier for variable `exp_atom`
-pub const ID_VARIABLE_EXP_ATOM: u32 = 0x000E;
+pub const ID_VARIABLE_EXP_ATOM: u32 = 0x000F;
 /// The unique identifier for variable `exp_factor`
-pub const ID_VARIABLE_EXP_FACTOR: u32 = 0x000F;
+pub const ID_VARIABLE_EXP_FACTOR: u32 = 0x0010;
 /// The unique identifier for variable `exp_term`
-pub const ID_VARIABLE_EXP_TERM: u32 = 0x0010;
+pub const ID_VARIABLE_EXP_TERM: u32 = 0x0011;
 /// The unique identifier for variable `exp_cond`
-pub const ID_VARIABLE_EXP_COND: u32 = 0x0011;
+pub const ID_VARIABLE_EXP_COND: u32 = 0x0012;
 /// The unique identifier for variable `range`
-pub const ID_VARIABLE_RANGE: u32 = 0x0012;
+pub const ID_VARIABLE_RANGE: u32 = 0x0013;
 /// The unique identifier for variable `exp`
-pub const ID_VARIABLE_EXP: u32 = 0x0013;
+pub const ID_VARIABLE_EXP: u32 = 0x0014;
 /// The unique identifier for variable `pair_bind`
-pub const ID_VARIABLE_PAIR_BIND: u32 = 0x0014;
+pub const ID_VARIABLE_PAIR_BIND: u32 = 0x0015;
 /// The unique identifier for variable `pair_decl`
-pub const ID_VARIABLE_PAIR_DECL: u32 = 0x0015;
+pub const ID_VARIABLE_PAIR_DECL: u32 = 0x0016;
 /// The unique identifier for variable `iterable`
-pub const ID_VARIABLE_ITERABLE: u32 = 0x0016;
+pub const ID_VARIABLE_ITERABLE: u32 = 0x0017;
 /// The unique identifier for variable `for_loop`
-pub const ID_VARIABLE_FOR_LOOP: u32 = 0x0017;
+pub const ID_VARIABLE_FOR_LOOP: u32 = 0x0018;
 /// The unique identifier for variable `while_loop`
-pub const ID_VARIABLE_WHILE_LOOP: u32 = 0x0018;
+pub const ID_VARIABLE_WHILE_LOOP: u32 = 0x0019;
 /// The unique identifier for variable `loop_stmt`
-pub const ID_VARIABLE_LOOP_STMT: u32 = 0x0019;
+pub const ID_VARIABLE_LOOP_STMT: u32 = 0x001A;
 /// The unique identifier for variable `if_block`
-pub const ID_VARIABLE_IF_BLOCK: u32 = 0x001A;
+pub const ID_VARIABLE_IF_BLOCK: u32 = 0x001B;
 /// The unique identifier for variable `if_stmt`
-pub const ID_VARIABLE_IF_STMT: u32 = 0x001B;
+pub const ID_VARIABLE_IF_STMT: u32 = 0x001C;
 /// The unique identifier for variable `print_stmt`
-pub const ID_VARIABLE_PRINT_STMT: u32 = 0x001C;
+pub const ID_VARIABLE_PRINT_STMT: u32 = 0x001D;
+/// The unique identifier for variable `return_stmt`
+pub const ID_VARIABLE_RETURN_STMT: u32 = 0x001E;
 /// The unique identifier for variable `stmt`
-pub const ID_VARIABLE_STMT: u32 = 0x001D;
+pub const ID_VARIABLE_STMT: u32 = 0x001F;
 /// The unique identifier for variable `block`
-pub const ID_VARIABLE_BLOCK: u32 = 0x001E;
+pub const ID_VARIABLE_BLOCK: u32 = 0x0020;
 /// The unique identifier for variable `param_decl`
-pub const ID_VARIABLE_PARAM_DECL: u32 = 0x001F;
+pub const ID_VARIABLE_PARAM_DECL: u32 = 0x0021;
 /// The unique identifier for variable `params`
-pub const ID_VARIABLE_PARAMS: u32 = 0x0020;
+pub const ID_VARIABLE_PARAMS: u32 = 0x0022;
 /// The unique identifier for variable `function_decl`
-pub const ID_VARIABLE_FUNCTION_DECL: u32 = 0x0021;
+pub const ID_VARIABLE_FUNCTION_DECL: u32 = 0x0023;
 /// The unique identifier for variable `decl`
-pub const ID_VARIABLE_DECL: u32 = 0x0022;
+pub const ID_VARIABLE_DECL: u32 = 0x0024;
 /// The unique identifier for variable `program`
-pub const ID_VARIABLE_PROGRAM: u32 = 0x0023;
+pub const ID_VARIABLE_PROGRAM: u32 = 0x0025;
 
 
 /// The collection of variables matched by this parser
@@ -222,114 +230,126 @@ pub const ID_VARIABLE_PROGRAM: u32 = 0x0023;
 pub const VARIABLES: &[Symbol] = &[
     Symbol {
         id: 0x000E,
-        name: "exp_atom"
+        name: "exp_call"
     },
     Symbol {
         id: 0x000F,
-        name: "exp_factor"
+        name: "exp_atom"
     },
     Symbol {
         id: 0x0010,
-        name: "exp_term"
+        name: "exp_factor"
     },
     Symbol {
         id: 0x0011,
-        name: "exp_cond"
+        name: "exp_term"
     },
     Symbol {
         id: 0x0012,
-        name: "range"
+        name: "exp_cond"
     },
     Symbol {
         id: 0x0013,
-        name: "exp"
+        name: "range"
     },
     Symbol {
         id: 0x0014,
-        name: "pair_bind"
+        name: "exp"
     },
     Symbol {
         id: 0x0015,
-        name: "pair_decl"
+        name: "pair_bind"
     },
     Symbol {
         id: 0x0016,
-        name: "iterable"
+        name: "pair_decl"
     },
     Symbol {
         id: 0x0017,
-        name: "for_loop"
+        name: "iterable"
     },
     Symbol {
         id: 0x0018,
-        name: "while_loop"
+        name: "for_loop"
     },
     Symbol {
         id: 0x0019,
-        name: "loop_stmt"
+        name: "while_loop"
     },
     Symbol {
         id: 0x001A,
-        name: "if_block"
+        name: "loop_stmt"
     },
     Symbol {
         id: 0x001B,
-        name: "if_stmt"
+        name: "if_block"
     },
     Symbol {
         id: 0x001C,
-        name: "print_stmt"
+        name: "if_stmt"
     },
     Symbol {
         id: 0x001D,
-        name: "stmt"
+        name: "print_stmt"
     },
     Symbol {
         id: 0x001E,
-        name: "block"
+        name: "return_stmt"
     },
     Symbol {
         id: 0x001F,
-        name: "param_decl"
+        name: "stmt"
     },
     Symbol {
         id: 0x0020,
-        name: "params"
+        name: "block"
     },
     Symbol {
         id: 0x0021,
-        name: "function_decl"
+        name: "param_decl"
     },
     Symbol {
         id: 0x0022,
-        name: "decl"
+        name: "params"
     },
     Symbol {
         id: 0x0023,
+        name: "function_decl"
+    },
+    Symbol {
+        id: 0x0024,
+        name: "decl"
+    },
+    Symbol {
+        id: 0x0025,
         name: "program"
     },
     Symbol {
-        id: 0x0038,
-        name: "__V56"
+        id: 0x0028,
+        name: "__V40"
     },
     Symbol {
-        id: 0x003B,
-        name: "__V59"
+        id: 0x003D,
+        name: "__V61"
     },
     Symbol {
         id: 0x0040,
         name: "__V64"
     },
     Symbol {
-        id: 0x0042,
-        name: "__V66"
-    },
-    Symbol {
-        id: 0x0046,
-        name: "__V70"
-    },
-    Symbol {
         id: 0x0047,
+        name: "__V71"
+    },
+    Symbol {
+        id: 0x0049,
+        name: "__V73"
+    },
+    Symbol {
+        id: 0x004D,
+        name: "__V77"
+    },
+    Symbol {
+        id: 0x004E,
         name: "__VAxiom"
     }
 ];
@@ -343,6 +363,8 @@ pub const VIRTUALS: &[Symbol] = &[
 
 /// Represents a set of semantic actions in this parser
 pub trait Actions {
+    /// The OnCall semantic action
+    fn on_call(&mut self, head: Symbol, body: &dyn SemanticBody);
     /// The OnNumber semantic action
     fn on_number(&mut self, head: Symbol, body: &dyn SemanticBody);
     /// The OnString semantic action
@@ -363,6 +385,10 @@ pub trait Actions {
     fn on_if(&mut self, head: Symbol, body: &dyn SemanticBody);
     /// The OnPrint semantic action
     fn on_print(&mut self, head: Symbol, body: &dyn SemanticBody);
+    /// The OnReturn semantic action
+    fn on_return(&mut self, head: Symbol, body: &dyn SemanticBody);
+    /// The OnParam semantic action
+    fn on_param(&mut self, head: Symbol, body: &dyn SemanticBody);
     /// The OnFunc semantic action
     fn on_func(&mut self, head: Symbol, body: &dyn SemanticBody);
 }
@@ -371,6 +397,7 @@ pub trait Actions {
 pub struct NoActions {}
 
 impl Actions for NoActions {
+    fn on_call(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_number(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_string(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_identifier(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
@@ -381,18 +408,20 @@ impl Actions for NoActions {
     fn on_while(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_if(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_print(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
+    fn on_return(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
+    fn on_param(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
     fn on_func(&mut self, _head: Symbol, _body: &dyn SemanticBody) {}
 }
 
 /// Parses the specified string with this parser
 #[must_use]
-pub fn parse_str(input: &'static str) -> ParseResult<'static, '_, 'static> {
+pub fn parse_str(input: &str) -> ParseResult<'static, '_, 'static> {
     let text = Text::from_str(input);
     parse_text(text, &mut NoActions {})
 }
 
 /// Parses the specified string with this parser
-pub fn parse_str_with<'t>(input: &'static str, actions: &mut dyn Actions) -> ParseResult<'static, 't, 'static> {
+pub fn parse_str_with<'t>(input: &'t str, actions: &mut dyn Actions) -> ParseResult<'static, 't, 'static> {
     let text = Text::from_str(input);
     parse_text(text, actions)
 }
@@ -417,7 +446,7 @@ pub fn parse_string_with(input: String, actions: &mut dyn Actions) -> ParseResul
 /// Return an `std::io::Error` when reading the stream as UTF-8 fails
 pub fn parse_utf8_stream(input: &mut dyn Read) -> Result<ParseResult<'static, 'static, 'static>, std::io::Error> {
     let text = Text::from_utf8_stream(input).unwrap();
-    Ok(parse_text(text, &mut NoActions {}))
+    parse_text(text, &mut NoActions {})
 }
 
 pub fn parse_utf8_stream_with(input: &mut dyn Read, actions: &mut dyn Actions) -> ParseResult<'static, 'static, 'static> {
@@ -426,8 +455,8 @@ pub fn parse_utf8_stream_with(input: &mut dyn Read, actions: &mut dyn Actions) -
 }
 
 /// Parses the specified text with this parser
-fn parse_text(text: Text<'static>, actions: &mut dyn Actions) -> ParseResult<'static, 'static, 'static> {
-    parse_text_with(text.clone(), TERMINALS, VARIABLES, VIRTUALS, actions)
+fn parse_text(text: Text, actions: &mut dyn Actions) -> ParseResult<'static, '_, 'static> {
+    parse_text_with(text, TERMINALS, VARIABLES, VIRTUALS, actions)
 }
 
 /// Parses the specified text with this parser
@@ -439,17 +468,20 @@ fn parse_text_with<'s, 't, 'a>(
     actions: &mut dyn Actions
 ) -> ParseResult<'s, 't, 'a> {
     let mut my_actions = |index: usize, head: Symbol, body: &dyn SemanticBody| match index {
-        0 => actions.on_number(head, body),
-        1 => actions.on_string(head, body),
-        2 => actions.on_identifier(head, body),
-        3 => actions.on_bin(head, body),
-        4 => actions.on_range(head, body),
-        5 => actions.on_bind(head, body),
-        6 => actions.on_for(head, body),
-        7 => actions.on_while(head, body),
-        8 => actions.on_if(head, body),
-        9 => actions.on_print(head, body),
-        10 => actions.on_func(head, body),
+        0 => actions.on_call(head, body),
+        1 => actions.on_number(head, body),
+        2 => actions.on_string(head, body),
+        3 => actions.on_identifier(head, body),
+        4 => actions.on_bin(head, body),
+        5 => actions.on_range(head, body),
+        6 => actions.on_bind(head, body),
+        7 => actions.on_for(head, body),
+        8 => actions.on_while(head, body),
+        9 => actions.on_if(head, body),
+        10 => actions.on_print(head, body),
+        11 => actions.on_return(head, body),
+        12 => actions.on_param(head, body),
+        13 => actions.on_func(head, body),
         _ => ()
     };
 
@@ -473,6 +505,7 @@ pub trait Visitor {
     fn on_terminal_type(&self, _node: &AstNode) {}
     fn on_terminal_comparison_op(&self, _node: &AstNode) {}
     fn on_terminal_logical_op(&self, _node: &AstNode) {}
+    fn on_variable_exp_call(&self, _node: &AstNode) {}
     fn on_variable_exp_atom(&self, _node: &AstNode) {}
     fn on_variable_exp_factor(&self, _node: &AstNode) {}
     fn on_variable_exp_term(&self, _node: &AstNode) {}
@@ -488,6 +521,7 @@ pub trait Visitor {
     fn on_variable_if_block(&self, _node: &AstNode) {}
     fn on_variable_if_stmt(&self, _node: &AstNode) {}
     fn on_variable_print_stmt(&self, _node: &AstNode) {}
+    fn on_variable_return_stmt(&self, _node: &AstNode) {}
     fn on_variable_stmt(&self, _node: &AstNode) {}
     fn on_variable_block(&self, _node: &AstNode) {}
     fn on_variable_param_decl(&self, _node: &AstNode) {}
@@ -518,28 +552,30 @@ pub fn visit_ast_node(node: AstNode, visitor: &dyn Visitor) {
         0x000B => visitor.on_terminal_type(&node),
         0x000C => visitor.on_terminal_comparison_op(&node),
         0x000D => visitor.on_terminal_logical_op(&node),
-        0x000E => visitor.on_variable_exp_atom(&node),
-        0x000F => visitor.on_variable_exp_factor(&node),
-        0x0010 => visitor.on_variable_exp_term(&node),
-        0x0011 => visitor.on_variable_exp_cond(&node),
-        0x0012 => visitor.on_variable_range(&node),
-        0x0013 => visitor.on_variable_exp(&node),
-        0x0014 => visitor.on_variable_pair_bind(&node),
-        0x0015 => visitor.on_variable_pair_decl(&node),
-        0x0016 => visitor.on_variable_iterable(&node),
-        0x0017 => visitor.on_variable_for_loop(&node),
-        0x0018 => visitor.on_variable_while_loop(&node),
-        0x0019 => visitor.on_variable_loop_stmt(&node),
-        0x001A => visitor.on_variable_if_block(&node),
-        0x001B => visitor.on_variable_if_stmt(&node),
-        0x001C => visitor.on_variable_print_stmt(&node),
-        0x001D => visitor.on_variable_stmt(&node),
-        0x001E => visitor.on_variable_block(&node),
-        0x001F => visitor.on_variable_param_decl(&node),
-        0x0020 => visitor.on_variable_params(&node),
-        0x0021 => visitor.on_variable_function_decl(&node),
-        0x0022 => visitor.on_variable_decl(&node),
-        0x0023 => visitor.on_variable_program(&node),
+        0x000E => visitor.on_variable_exp_call(&node),
+        0x000F => visitor.on_variable_exp_atom(&node),
+        0x0010 => visitor.on_variable_exp_factor(&node),
+        0x0011 => visitor.on_variable_exp_term(&node),
+        0x0012 => visitor.on_variable_exp_cond(&node),
+        0x0013 => visitor.on_variable_range(&node),
+        0x0014 => visitor.on_variable_exp(&node),
+        0x0015 => visitor.on_variable_pair_bind(&node),
+        0x0016 => visitor.on_variable_pair_decl(&node),
+        0x0017 => visitor.on_variable_iterable(&node),
+        0x0018 => visitor.on_variable_for_loop(&node),
+        0x0019 => visitor.on_variable_while_loop(&node),
+        0x001A => visitor.on_variable_loop_stmt(&node),
+        0x001B => visitor.on_variable_if_block(&node),
+        0x001C => visitor.on_variable_if_stmt(&node),
+        0x001D => visitor.on_variable_print_stmt(&node),
+        0x001E => visitor.on_variable_return_stmt(&node),
+        0x001F => visitor.on_variable_stmt(&node),
+        0x0020 => visitor.on_variable_block(&node),
+        0x0021 => visitor.on_variable_param_decl(&node),
+        0x0022 => visitor.on_variable_params(&node),
+        0x0023 => visitor.on_variable_function_decl(&node),
+        0x0024 => visitor.on_variable_decl(&node),
+        0x0025 => visitor.on_variable_program(&node),
         _ => ()
     };
 }

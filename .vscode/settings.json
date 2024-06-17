@@ -1,9 +1,12 @@
 {
     "cSpell.words": [
+        "funcdecl",
         "hime",
+        "Itype",
         "redist",
         "Struct",
         "Structs",
-        "Typelocked"
+        "Typelocked",
+        "valuestack"
     ]
 }
