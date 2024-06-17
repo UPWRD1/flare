@@ -12,7 +12,9 @@ impl Translator {
 
 impl Actions for Translator {
     fn on_number(&mut self, head: hime_redist::symbols::Symbol, body: &dyn hime_redist::symbols::SemanticBody) {
-        todo!()
+        dbg!(head);
+        //dbg!(body);
+        panic!()
     }
 
     fn on_string(&mut self, head: hime_redist::symbols::Symbol, body: &dyn hime_redist::symbols::SemanticBody) {

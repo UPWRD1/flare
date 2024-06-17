@@ -4,6 +4,7 @@ use std::env;
 
 use hime_redist::ast::AstNode;
 use root::passes::{self, frontend::*};
+use translate::Translator;
 
 mod root;
 
@@ -22,7 +23,8 @@ fn main() {
                 let filename: &String = &prog_args[2];
                 let src = std::fs::read_to_string(filename).unwrap();
                 info!("Compiling {} to {}.c", filename, filename);
-                let result = lang::parse_str(&src);
+                let mut translator = Translator::new();
+                let result = lang::parse_string_with(src, &mut translator);
                 if result.is_success() {
                     let ast = result.get_ast();
                     let root = ast.get_root();

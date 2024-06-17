@@ -386,13 +386,13 @@ impl Actions for NoActions {
 
 /// Parses the specified string with this parser
 #[must_use]
-pub fn parse_str(input: &str) -> ParseResult<'static, '_, 'static> {
+pub fn parse_str(input: &'static str) -> ParseResult<'static, '_, 'static> {
     let text = Text::from_str(input);
     parse_text(text, &mut NoActions {})
 }
 
 /// Parses the specified string with this parser
-pub fn parse_str_with<'t>(input: &'t str, actions: &mut dyn Actions) -> ParseResult<'static, 't, 'static> {
+pub fn parse_str_with<'t>(input: &'static str, actions: &mut dyn Actions) -> ParseResult<'static, 't, 'static> {
     let text = Text::from_str(input);
     parse_text(text, actions)
 }
@@ -426,7 +426,7 @@ pub fn parse_utf8_stream_with(input: &mut dyn Read, actions: &mut dyn Actions) -
 }
 
 /// Parses the specified text with this parser
-fn parse_text(text: Text, actions: &mut dyn Actions) -> ParseResult<'static, 'static, 'static> {
+fn parse_text(text: Text<'static>, actions: &mut dyn Actions) -> ParseResult<'static, 'static, 'static> {
     parse_text_with(text.clone(), TERMINALS, VARIABLES, VIRTUALS, actions)
 }
 
