@@ -2,7 +2,7 @@ extern crate colored;
 
 use std::env;
 
-use hime_redist::ast::AstNode;
+use hime_redist::{ast::AstNode, symbols::SemanticElementTrait};
 use root::passes::{self, frontend::*};
 use translate::Translator;
 
@@ -24,13 +24,14 @@ fn main() {
                 let src = std::fs::read_to_string(filename).unwrap();
                 info!("Compiling {} to {}.c", filename, filename);
                 let mut translator = Translator::new();
-                let result = lang::parse_string_with(src, &mut translator);
+                let result = lang::parse_string(src);
                 if result.is_success() {
                     let ast = result.get_ast();
                     let root = ast.get_root();
+                    dbg!(&root.clone().child(0).children().iter().map(|c| c.get_value().unwrap_or("none").to_string()).collect::<Vec<String>>());
                     print(root, &[]);
-                    dbg!(translator.funcdecl);
-                    dbg!(translator.valuestack);
+                    //dbg!(translator.funcdecl);
+                    //dbg!(translator.valuestack);
                 } else {
                     let e = result.errors.errors;
                     dbg!(e);
