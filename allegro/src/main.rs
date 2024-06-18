@@ -1,10 +1,8 @@
 extern crate colored;
-
+extern crate lazy_static;
 use std::env;
 
-use hime_redist::{ast::AstNode, symbols::SemanticElementTrait};
-use root::passes::{self, frontend::*};
-use translate::Translator;
+//use parser::*;
 
 mod root;
 
@@ -21,23 +19,7 @@ fn main() {
             }
             "-c" | "--compile" => {
                 let filename: &String = &prog_args[2];
-                let src = std::fs::read_to_string(filename).unwrap();
                 info!("Compiling {} to {}.c", filename, filename);
-                let mut translator = Translator::new();
-                let result = lang::parse_string(src);
-                if result.is_success() {
-                    let ast = result.get_ast();
-                    let root = ast.get_root();
-                    dbg!(&root.clone().child(0).children().iter().map(|c| c.get_value().unwrap_or("none").to_string()).collect::<Vec<String>>());
-                    print(root, &[]);
-                    //dbg!(translator.funcdecl);
-                    //dbg!(translator.valuestack);
-                } else {
-                    let e = result.errors.errors;
-                    dbg!(e);
-                }
-                
-            
             }
 
             &_ => todo!(),
@@ -55,22 +37,3 @@ fn main() {
     }
 }
 
-fn print(node: AstNode, crossings: &[bool]) {
-    let mut i = 0;
-    if !crossings.is_empty() {
-        while i < crossings.len() - 1 {
-            print!("{:}", if crossings[i] { "|   " } else { "    " });
-            i += 1;
-        }
-        print!("├─ ");
-    }
-    println!("{node}");
-    i = 0;
-    let children = node.children();
-    while i < children.len() {
-        let mut child_crossings = crossings.to_owned();
-        child_crossings.push(i < children.len() - 1);
-        print(children.at(i), &child_crossings);
-        i += 1;
-    }
-}

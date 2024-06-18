@@ -78,30 +78,28 @@ thru -- range operator
 
 ``` lua
 -- Bind 'x' to 3
-x: 3 -- types are inferred
+x = 3 -- types are inferred
 print x is int -- true
 
-y: 3.0
+y = 3.0
 print x == y -- false
 -- why? floats and integers are separate types
 
-z: str -- delayed initialization
-z: "Hello world!"
+z = str -- delayed initialization
+z = "Hello world!"
 
-illegal: str
+illegal = str
 print illegal -- Error: unbound pair
 
-mutable: 3! -- Mutable pair
+mutable! = 3 -- Mutable pair
 mutable = 4 -- Reassignment
 print mutable -- 4
 
-wrong!: "asdf"
+wrong! = "asdf"
 wrong = 3.0 -- Error: Differing types
 ```
 
-For some people, this syntax may seem slightly strange. Why would we use `:` for declaration?
-
-The answer lies in the way Allegro handles types. In Allegro, types are a placeholder, a *promise*. The programmer is promising that whatever value you supply the pair will be of type `x`.
+ In Allegro, types are a placeholder, a *promise*. The programmer is promising that whatever value you supply the pair will be of type `x`.
 
 When you assign a value to a pair, the "intrinsic type" of whatever scalar you use becomes the pair's type.
 
@@ -110,9 +108,7 @@ When you assign a value to a pair, the "intrinsic type" of whatever scalar you u
 #### Function Declarations
 
 ```lua
-let f: int of (x: int, y: int) ->
-    return x * y
-end
+let f: int of (x: int, y: int) = return x * y
 ```
 
 >The syntax of function declarations is inspired by mathematical functions, where "f(x)" is read as "f of x".
@@ -122,13 +118,11 @@ Notice how the parameter and return value types are declared in the same way as 
 In Allegro, every program starts with a 'main()' function. Here's an example:
 
 ```lua
-let factorial: int of (x: int) do
-    return x + factorial(x - 1)
-end
+let factorial: int of (x: int) = return x + factorial(x - 1)
 
-let main do
+
+let main =
     print factorial(5) -- 120
-end
 ```
 
 Note how `main()` uses a shorthand. Functions declared this way return the silent type (`..`) and take no parameters.
@@ -136,18 +130,34 @@ Note how `main()` uses a shorthand. Functions declared this way return the silen
 Functions also support generics:
 
 ```lua
-let factorial: T? of (x: T?) do
-    
-    ...
-end
+let factorial: T? of (x: T) = return x + factorial(x - 1)
+
+let main = 
+    print factorial(4) -- 24
+    print factorial(4.0) -- 24.0
+
 ```
 
-#### Enum, and Type Declarations
+Functions can extend types, both user created and inbuilt. Here, `mul_each()` operates on a mutable `Array` type. We also see an example of anonymous generics and property restrictions.
+```lua
+let mul_each of x: ? for Array[?]! where ? is Numeric =
+    self.apply(fn of el -> el = el * x)
+
+let main =
+    my_array = [1, 2, 3]! -- declare mutable variable
+    my_array.mul_each(2) -- [2, 4, 6]
+```
+
+That's some safe code!
+
+#### Enum, Type, and Property Declarations
+
+Enumerations serve as a composite type.
 
 ```lua
-enum option [T? of
-    VARIANT1,
-    
+Option<?> = enum of
+    Some(?),
+    None
 end
 ```
 

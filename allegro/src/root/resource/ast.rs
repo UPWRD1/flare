@@ -1,10 +1,18 @@
-#[derive(Debug, Clone)]
+use std::{fmt::{Display, Error}, str::FromStr};
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Default)]
 pub enum Itype {
-    Mute,
+    #[default] Mute,
     Int(Option<i32>),
     Flt(Option<f32>),
     Str(Option<String>),
     Bool(Option<bool>),
+}
+
+impl Display for Itype {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
 }
 
 pub trait ToItype {
@@ -43,11 +51,36 @@ impl ToItype for String {
     }
 }
 
+
+impl FromStr for Itype {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.parse::<i32>().is_ok() {
+            return Ok(Itype::Int(Some(s.parse::<i32>().unwrap())));
+        } else if s.parse::<f32>().is_ok() {
+            return Ok(Itype::Flt(Some(s.parse::<f32>().unwrap())));
+        } else if s.parse::<bool>().is_ok() {
+            return Ok(Itype::Bool(Some(s.parse::<bool>().unwrap())));
+        } else {
+            return match s {
+                "int" => Ok(Itype::Int(None)),
+                "flt" => Ok(Itype::Flt(None)),
+                "str" => Ok(Itype::Bool(None)),
+                "bool" => Ok(Itype::Str(None)),
+                _ => Ok(Itype::Str(Some(s.to_string()))),
+            };
+        }
+    }
+}
+
+
 impl ToItype for bool {
     fn to_itype(&self) -> Itype {
         Itype::Bool(Some(*self))
     }
 }
+
 
 #[derive(Debug, Clone)]
 pub enum BinOp {
@@ -69,10 +102,12 @@ impl BinOp {
     }
 }
 
+
 #[derive(Debug, Clone)]
 pub enum UnOp {
     Neg,
 }
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Binary {
@@ -91,6 +126,8 @@ pub enum Expr {
         params: Vec<Expr>,
     }
 }
+
+
 #[derive(Debug, Clone)]
 pub enum Statement {
     Bind {
