@@ -108,7 +108,8 @@ When you assign a value to a pair, the "intrinsic type" of whatever scalar you u
 #### Function Declarations
 
 ```lua
-let f: int of (x: int, y: int) = return x * y
+let f: int of (x: int, y: int) = 
+    return x * y
 ```
 
 >The syntax of function declarations is inspired by mathematical functions, where "f(x)" is read as "f of x".
@@ -118,7 +119,8 @@ Notice how the parameter and return value types are declared in the same way as 
 In Allegro, every program starts with a 'main()' function. Here's an example:
 
 ```lua
-let factorial: int of (x: int) = return x + factorial(x - 1)
+let factorial: int of (x: int) = 
+    return x + factorial(x - 1)
 
 
 let main =
@@ -130,7 +132,8 @@ Note how `main()` uses a shorthand. Functions declared this way return the silen
 Functions also support generics:
 
 ```lua
-let factorial: T? of (x: T) = return x + factorial(x - 1)
+let factorial: T? of (x: T) = 
+    return x + factorial(x - 1)
 
 let main = 
     print factorial(4) -- 24
@@ -141,7 +144,7 @@ let main =
 Functions can extend types, both user created and inbuilt. Here, `mul_each()` operates on a mutable `Array` type. We also see an example of anonymous generics and property restrictions.
 ```lua
 let mul_each of x: ? for Array[?]! where ? is Numeric =
-    self.apply(fn of el -> el = el * x)
+    self.apply(fn of el -> el * x)
 
 let main =
     my_array = [1, 2, 3]! -- declare mutable variable
@@ -150,15 +153,44 @@ let main =
 
 That's some safe code!
 
-#### Enum, Type, and Property Declarations
+#### Type, Enum, and Property Declarations
 
-Enumerations serve as a composite type.
+You can create your own types using `type`:
 
-```lua
-Option<?> = enum of
+```rust
+type Point2D = (flt, flt)
+```
+
+The `for` keyword lets you implement custom behavior for a type:
+
+```rust
+let new of x: flt, y: flt for Point2D = 
+    Point2D(x, y)
+```
+
+Enumerations let you represent one of several values. Here's an implementation of Rust's `Option` type:
+
+```rust
+type Option<?> = enum of
     Some(?),
     None
+```
+
+Properties are like interfaces or traits. You can use them to describe custom types. Here is the implementation of the Numeric property for our `Point2D` type:
+
+```lua
+do Numeric for Point2D
+    let add of rhs: Point2D = 
+        Point2D.new(self.0 + rhs.0, self.1 + rhs.1)
+    ... 
 end
+```
+
+
+Alternatively, we can change our definition, and have the property implemented for us:
+
+```rust
+type Point2D = (flt, flt) with Numeric
 ```
 
 ### Control Flow
