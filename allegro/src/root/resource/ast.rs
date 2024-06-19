@@ -9,6 +9,99 @@ pub enum Itype {
     Bool(Option<bool>),
 }
 
+impl std::ops::Add for Itype {
+    type Output = Itype;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match self {
+            Itype::Int(v) => {
+                match rhs {
+                    Itype::Int(u) => Itype::Int(Some(v.unwrap() + u.unwrap())),
+                    _ => todo!(),
+                }
+            },
+            Itype::Flt(v) => {
+                match rhs {
+                    Itype::Flt(u) => Itype::Flt(Some(v.unwrap() + u.unwrap())),
+                    _ => todo!(),
+                }
+            },
+
+            _ => todo!(),
+        }
+    }
+}
+
+impl std::ops::Sub for Itype {
+    type Output = Itype;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        match self {
+            Itype::Int(v) => {
+                match rhs {
+                    Itype::Int(u) => Itype::Int(Some(v.unwrap() - u.unwrap())),
+                    _ => todo!(),
+                }
+            },
+            Itype::Flt(v) => {
+                match rhs {
+                    Itype::Flt(u) => Itype::Flt(Some(v.unwrap() - u.unwrap())),
+                    _ => todo!(),
+                }
+            },
+
+            _ => todo!(),
+        }
+    }
+}
+
+impl std::ops::Mul for Itype {
+    type Output = Itype;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        match self {
+            Itype::Int(v) => {
+                match rhs {
+                    Itype::Int(u) => Itype::Int(Some(v.unwrap() * u.unwrap())),
+                    _ => todo!(),
+                }
+            },
+            Itype::Flt(v) => {
+                match rhs {
+                    Itype::Flt(u) => Itype::Flt(Some(v.unwrap() * u.unwrap())),
+                    _ => todo!(),
+                }
+            },
+
+            _ => todo!(),
+        }
+    }
+}
+
+impl std::ops::Div for Itype {
+    type Output = Itype;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        match self {
+            Itype::Int(v) => {
+                match rhs {
+                    Itype::Int(u) => Itype::Int(Some(v.unwrap() / u.unwrap())),
+                    _ => todo!(),
+                }
+            },
+            Itype::Flt(v) => {
+                match rhs {
+                    Itype::Flt(u) => Itype::Flt(Some(v.unwrap() / u.unwrap())),
+                    _ => todo!(),
+                }
+            },
+
+            _ => todo!(),
+        }
+    }
+}
+
+
 impl Display for Itype {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()

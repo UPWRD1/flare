@@ -1,7 +1,12 @@
 extern crate colored;
 extern crate lazy_static;
-use std::env;
+use std::{env, fs};
 
+use logos::Logos;
+use root::resource::tk::Tk;
+
+
+extern crate logos;
 //use parser::*;
 
 mod root;
@@ -20,6 +25,13 @@ fn main() {
             "-c" | "--compile" => {
                 let filename: &String = &prog_args[2];
                 info!("Compiling {} to {}.c", filename, filename);
+                let src = fs::read_to_string(filename).unwrap();
+                let mut lex = Tk::lexer(&src);
+                for i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
+                    let a = lex.next().unwrap().unwrap();
+                    println!("{a:?}");
+                }
+                //dbg!(lex);
             }
 
             &_ => todo!(),
@@ -36,4 +48,3 @@ fn main() {
         }
     }
 }
-

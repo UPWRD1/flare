@@ -1,0 +1,9 @@
+! root = Program
+
+Program = FuncDecl*
+
+FuncDecl = @TkKwLet @TkSymbol @TkKwOf ParamList (@TkKwFor Type)? (@TkKwWhere GenericType @TkKwIs @TkSymbol)? @TkAssign Statement* 
+
+Statement = VarDecl
+
+VarDecl = @TkSymbol @TkAssign Expr

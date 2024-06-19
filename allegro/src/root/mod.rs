@@ -1,6 +1,6 @@
 pub mod passes;
-mod legacy_resource;
-mod resource;
+pub mod legacy_resource;
+pub mod resource;
 
 use std::io::Write;
 use std::time::Instant;
@@ -16,7 +16,6 @@ use legacy_resource::tokens::Token;
 
 use crate::error;
 use crate::info;
-
 
 pub fn legacy_compile(filename: &String) {
     let now = Instant::now();

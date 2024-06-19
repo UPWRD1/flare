@@ -91,11 +91,11 @@ z = "Hello world!"
 illegal = str
 print illegal -- Error: unbound pair
 
-mutable! = 3 -- Mutable pair
+mutable = !3 -- Mutable pair
 mutable = 4 -- Reassignment
 print mutable -- 4
 
-wrong! = "asdf"
+wrong = !"asdf"
 wrong = 3.0 -- Error: Differing types
 ```
 
@@ -108,18 +108,18 @@ When you assign a value to a pair, the "intrinsic type" of whatever scalar you u
 #### Function Declarations
 
 ```lua
-let f: int of (x: int, y: int) = 
+let f of (x: int, y: int) = 
     return x * y
 ```
 
 >The syntax of function declarations is inspired by mathematical functions, where "f(x)" is read as "f of x".
 
-Notice how the parameter and return value types are declared in the same way as a pair. This is because functions are first-class items in Allegro, which essentially makes them a pair, but with extra steps.
+Notice how the parameter and return value types are declared similarly to a pair. This is because functions are first-class items in Allegro, which essentially makes them a pair, but with extra steps.
 
 In Allegro, every program starts with a 'main()' function. Here's an example:
 
 ```lua
-let factorial: int of (x: int) = 
+let factorial of (x: int) = 
     return x + factorial(x - 1)
 
 
@@ -129,29 +129,39 @@ let main =
 
 Note how `main()` uses a shorthand. Functions declared this way return the silent type (`..`) and take no parameters.
 
-Functions also support generics:
-
+Functions can extend types, both user created and inbuilt. 
 ```lua
-let factorial: T? of (x: T) = 
-    return x + factorial(x - 1)
+let mul_each of x: int for !Array[int] =
+    self.apply(fn of el -> el * x)
 
-let main = 
-    print factorial(4) -- 24
-    print factorial(4.0) -- 24.0
-
+let main =
+    my_array = ![1, 2, 3] -- declare mutable variable
+    my_array.mul_each(2) -- [2, 4, 6]
 ```
 
-Functions can extend types, both user created and inbuilt. Here, `mul_each()` operates on a mutable `Array` type. We also see an example of anonymous generics and property restrictions.
+Here, `mul_each()` operates on a mutable `Array` type. However, we have a problem. What if we want to use either an `Array[flt]` or an `Array[int]`? Let's modify our program to use generics:
+
 ```lua
-let mul_each of x: ? for Array[?]! where ? is Numeric =
+let mul_each of x: ?T for !Array[?T] =
+    self.apply(fn of el -> el * x)
+
+let main =
+    my_array = ![1, 2, 3] -- declare mutable variable
+    my_array.mul_each(2) -- [2, 4, 6]
+```
+
+If we try this code, we get an error. That's because the compiler doesn't know if `?T` can be multiplied. For example, `?T` could be a `str`, or `bool`! Trying to multiply certain types could lead to runtime errors or undefined behavior.
+
+Thankfully, there's a solution. We can restrict `?T` to types have the `Numeric` property (which we'll cover next) like so:
+ 
+```lua
+let mul_each of x: ?T for !Array[?T] where ?T is Numeric =
     self.apply(fn of el -> el * x)
 
 let main =
     my_array = [1, 2, 3]! -- declare mutable variable
     my_array.mul_each(2) -- [2, 4, 6]
 ```
-
-That's some safe code!
 
 #### Type, Enum, and Property Declarations
 
@@ -168,7 +178,7 @@ let new of x: flt, y: flt for Point2D =
     Point2D(x, y)
 ```
 
-Enumerations let you represent one of several values. Here's an implementation of Rust's `Option` type:
+*Enumerations* let you represent one of several values. Here's an implementation of Rust's `Option` type:
 
 ```rust
 type Option<?> = enum of
@@ -176,21 +186,26 @@ type Option<?> = enum of
     None
 ```
 
-Properties are like interfaces or traits. You can use them to describe custom types. Here is the implementation of the Numeric property for our `Point2D` type:
+*Objects* are like structs. They contain fields of a certain type.
+
+*Properties* are like interfaces or traits. You can use them to describe custom types through *idioms*. Here's the definition of `Numeric` from earlier
 
 ```lua
-do Numeric for Point2D
-    let add of rhs: Point2D = 
-        Point2D.new(self.0 + rhs.0, self.1 + rhs.1)
-    ... 
-end
+prop Numeric =
+    add(rhs) for Self,
+    sub(rhs) for Self,
+    mul(rhs) for Self,
+    div(rhs) for Self,
+    ...
+
 ```
 
+We can implement `Numeric` for our `Point2D` type through:
 
-Alternatively, we can change our definition, and have the property implemented for us:
-
-```rust
-type Point2D = (flt, flt) with Numeric
+```lua
+let Numeric.add of rhs for Point2D = 
+    Point2D.new(self.0 + rhs.0, self.1 + rhs.1)
+... -- Implementation continues
 ```
 
 ### Control Flow
@@ -234,12 +249,12 @@ for i in 0 thru 10 do
 end
 ```
 
-#### Switch
+#### Match Statement
 
 ```ruby
 match item if
-    x then ...
-    y then ...
-    else then ...
+    0 thru 9 then IO.out("Less than 10")
+    13 then IO.out("Uh oh... unlucky 13")
+    else then IO.out("Other Number")
 end
 ```
