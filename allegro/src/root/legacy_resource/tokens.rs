@@ -54,14 +54,14 @@ pub enum TokenType {
 
 ///Level 2 abstraction, represents a "cleaned up" version of the lexemes, eg. keywords are now seperated from symbols
 #[derive(Clone, Debug, PartialEq)]
-pub struct Token {
+pub struct LegacyToken {
     pub tokentype: TokenType,
     pub value: Option<SymbolValue>,
     pub location: usize,
     // pub lit: String,
 }
 
-impl Token {
+impl LegacyToken {
     pub fn is_keyword(&self) -> bool {
         match self.tokentype {
             TokenType::TkKwUse

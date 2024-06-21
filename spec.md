@@ -1,6 +1,12 @@
 # The Allegro Language
 
-## Abstract
+## Introduction
+
+> ...Because if it’s boring
+> in a different way, that’ll be interesting too.
+> That’s what I say.
+> -- John Ashbery, The Short Answer
+
 
 Allegro is a programming language designed to quickly build parallel, multithreaded systems.
 

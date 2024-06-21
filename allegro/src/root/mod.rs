@@ -12,7 +12,8 @@ use passes::midend::typechecking;
 
 use passes::backend::codegen;
 use legacy_resource::errors::Errors;
-use legacy_resource::tokens::Token;
+use legacy_resource::tokens::LegacyToken;
+
 
 use crate::error;
 use crate::info;
@@ -22,7 +23,7 @@ pub fn legacy_compile(filename: &String) {
 
     let cstvec = legacy_compile_lex(filename);
 
-    let analyzed: Vec<Token> = legacy_compile_analyze(cstvec);
+    let analyzed: Vec<LegacyToken> = legacy_compile_analyze(cstvec);
 
     let ast = legacy_compile_parse(analyzed);
 
@@ -56,8 +57,8 @@ fn compile_typecheck(ast: Vec<legacy_resource::ast::Statement>) -> (Vec<legacy_r
     (checked, e)
 }
 
-fn legacy_compile_parse(analyzed: Vec<Token>) -> Vec<legacy_resource::ast::Statement> {
-    let mut parser = parsing::Parser::new(analyzed);
+fn legacy_compile_parse(analyzed: Vec<LegacyToken>) -> Vec<legacy_resource::ast::Statement> {
+    let mut parser = passes::legacy_frontend::parsing::Parser::new(analyzed);
     parser.parse();
     let ast: Vec<legacy_resource::ast::Statement> = parser.supply();
     //dbg!(ast.clone());
@@ -65,7 +66,7 @@ fn legacy_compile_parse(analyzed: Vec<Token>) -> Vec<legacy_resource::ast::State
     ast
 }
 
-fn legacy_compile_analyze(cstvec: Vec<legacy_resource::lexemes::Lexeme>) -> Vec<legacy_resource::tokens::Token> {
+fn legacy_compile_analyze(cstvec: Vec<legacy_resource::lexemes::Lexeme>) -> Vec<legacy_resource::tokens::LegacyToken> {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
     let analyzed = analyzer.supply();
@@ -88,8 +89,8 @@ fn legacy_compile_lex(filename: &String) -> Vec<legacy_resource::lexemes::Lexeme
     cstvec
 }
 
-pub fn legacy_compile_import(filename: &String) -> Vec<Token> {
+pub fn legacy_compile_import(filename: &String) -> Vec<LegacyToken> {
     let cstvec = legacy_compile_lex(filename);
-    let analyzed: Vec<Token> = legacy_compile_analyze(cstvec);
+    let analyzed: Vec<LegacyToken> = legacy_compile_analyze(cstvec);
     analyzed
 }

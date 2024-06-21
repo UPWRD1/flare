@@ -1,22 +1,22 @@
-use super::{environment::AKind, tokens::{Token, TokenType}};
+use super::{environment::AKind, tokens::{LegacyToken, TokenType}};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AssignExpr {
-    pub name: Token,
+    pub name: LegacyToken,
     pub value: Box<Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BinExpr {
     pub left: Box<Expr>,
-    pub operator: Token,
+    pub operator: LegacyToken,
     pub right: Box<Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CallExpr {
     pub callee: Pair,
-    pub paren: Token,
+    pub paren: LegacyToken,
     pub args: Vec<Expr>,
 }
 
@@ -33,19 +33,19 @@ pub struct ScalarExpr {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogicalExpr {
     pub left: Box<Expr>,
-    pub operator: Token,
+    pub operator: LegacyToken,
     pub right: Box<Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnaryExpr {
-    pub operator: Token,
+    pub operator: LegacyToken,
     pub right: Box<Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValueExpr {
-    pub name: Token,
+    pub name: LegacyToken,
 }
 
 
@@ -66,16 +66,16 @@ pub enum Expr {
 
 impl Expr {
     ///Gets the token of the expressions
-    pub fn get_expr_value(&self) -> Token {
+    pub fn get_expr_value(&self) -> LegacyToken {
         match self {
             Self::Assign(a) => a.name.clone(),
             Self::Binary(b) => b.right.clone().get_expr_value(),
-            Self::Call(c) => Token { tokentype: TokenType::TkSymbol, value: Some(*c.callee.value.clone()), location: 0 },
+            Self::Call(c) => LegacyToken { tokentype: TokenType::TkSymbol, value: Some(*c.callee.value.clone()), location: 0 },
             Self::Empty => {
-                Token { tokentype: TokenType::TkType(AKind::TyMute), value: Some(SymbolValue::Mute), location: 0 }
+                LegacyToken { tokentype: TokenType::TkType(AKind::TyMute), value: Some(SymbolValue::Mute), location: 0 }
             }
             Self::Grouping(g) => g.expression.get_expr_value().clone(),
-            Self::ScalarEx(l) => Token { tokentype: TokenType::TkScalar, value: Some(SymbolValue::Scalar(l.value.clone())), location: 0 },
+            Self::ScalarEx(l) => LegacyToken { tokentype: TokenType::TkScalar, value: Some(SymbolValue::Scalar(l.value.clone())), location: 0 },
             Self::Logical(l) => l.right.clone().get_expr_value(),
             Self::Unary(u) => u.operator.clone(),
             Self::Value(v) => v.name.clone(),

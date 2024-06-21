@@ -8,21 +8,21 @@ use crate::{
         ast::*,
         environment::AKind,
         tokens::{
-            Token,
+            LegacyToken,
             TokenType::{self, *},
         },
     },
 };
 
 pub struct Parser {
-    pub tkvec: Vec<Token>,
+    pub tkvec: Vec<LegacyToken>,
     pub curr: usize,
     pub ast: Vec<Statement>,
     pub new_stmts: Vec<Statement>,
 }
 
 impl Parser {
-    pub fn new(tkvec: Vec<Token>) -> Self {
+    pub fn new(tkvec: Vec<LegacyToken>) -> Self {
         Parser {
             tkvec,
             curr: 0,
@@ -31,11 +31,11 @@ impl Parser {
         }
     }
 
-    fn peek(&mut self) -> Token {
+    fn peek(&mut self) -> LegacyToken {
         if self.curr < self.tkvec.len() {
             self.tkvec.get(self.curr).unwrap().clone()
         } else {
-            Token {
+            LegacyToken {
                 tokentype: TkEof,
                 value: None,
                 location: self.curr,
@@ -49,11 +49,11 @@ impl Parser {
         println!("{:?}", self.tkvec[self.curr].tokentype)
     }
 
-    fn previous(&mut self) -> Token {
+    fn previous(&mut self) -> LegacyToken {
         self.tkvec.get(self.curr - 1).unwrap().clone()
     }
 
-    fn current(&self) -> Token {
+    fn current(&self) -> LegacyToken {
         self.tkvec.get(self.curr).unwrap().clone()
     }
 
@@ -61,14 +61,14 @@ impl Parser {
         self.peek().tokentype == TokenType::TkEof
     }
 
-    fn advance(&mut self) -> Token {
+    fn advance(&mut self) -> LegacyToken {
         if !self.is_at_end() {
             self.curr += 1;
         }
         self.previous()
     }
 
-    fn retreat(&mut self) -> Token {
+    fn retreat(&mut self) -> LegacyToken {
         if !self.is_at_end() {
             self.curr -= 1;
         }
@@ -92,11 +92,11 @@ impl Parser {
         false
     }
 
-    fn consume(&mut self, kind: TokenType) -> Token {
+    fn consume(&mut self, kind: TokenType) -> LegacyToken {
         if self.check(kind.clone()) {
             self.advance()
         } else {
-            let dummy: Token = Token {
+            let dummy: LegacyToken = LegacyToken {
                 tokentype: kind.clone(),
                 value: None,
                 location: self.curr,
@@ -120,7 +120,7 @@ impl Parser {
         }
     }
 
-    fn consume_vec(&mut self, kinds: Vec<TokenType>) -> Token {
+    fn consume_vec(&mut self, kinds: Vec<TokenType>) -> LegacyToken {
         for kind in kinds.clone() {
             if self.check(kind) {
                 return self.advance();
@@ -145,7 +145,7 @@ impl Parser {
             return Expr::ScalarEx(ScalarExpr { value: tk.value.unwrap().extract_scalar().unwrap() });
         } else if self.search(vec![TkScalar]) {
             return Expr::ScalarEx(ScalarExpr { value: tk.value.unwrap().extract_scalar().unwrap() });
-            //value: Token
+            //value: LegacyToken
             //tokentype: tk.tokentype,
             //value: SymbolValue::Identity(
             //Ident { name: None, kind: Some(AKind::TyStr), value: SymbolValue::Str())
@@ -170,7 +170,7 @@ impl Parser {
             if self.search(vec![TkLparen]) {
                 let mut nargs = 3;
                 let mut args: Vec<Expr> = vec![];
-                let paren: Token = if self.search(vec![TkRparen]) {
+                let paren: LegacyToken = if self.search(vec![TkRparen]) {
                     self.previous()
                 } else {
                     loop {
@@ -202,7 +202,7 @@ impl Parser {
 
     fn unary_expr(&mut self) -> Expr {
         if self.search(vec![TkMinus]) {
-            let operator: Token = self.previous();
+            let operator: LegacyToken = self.previous();
             //println!("{:?}", operator);
             self.advance();
             //println!("{:?}", self.previous());
@@ -219,7 +219,7 @@ impl Parser {
     fn factor_expr(&mut self) -> Expr {
         let mut expr: Expr = self.unary_expr();
         while self.search(vec![TkStar, TkSlash]) {
-            let operator: Token = self.previous();
+            let operator: LegacyToken = self.previous();
             let right: Expr = self.unary_expr();
             expr = Expr::Binary(BinExpr {
                 left: Box::new(expr),
@@ -234,7 +234,7 @@ impl Parser {
     fn term_expr(&mut self) -> Expr {
         let mut expr: Expr = self.factor_expr();
         while self.search(vec![TkMinus, TkPlus]) {
-            let operator: Token = self.previous();
+            let operator: LegacyToken = self.previous();
             let right: Expr = self.factor_expr();
             expr = Expr::Binary(BinExpr {
                 left: Box::new(expr),
@@ -249,7 +249,7 @@ impl Parser {
     fn comparison_expr(&mut self) -> Expr {
         let mut expr = self.term_expr();
         while self.search(vec![TkCGT, TkCGE, TkCLT, TkCLE, TkCEQ, TkCNE]) {
-            let operator: Token = self.previous();
+            let operator: LegacyToken = self.previous();
             let right: Expr = self.term_expr();
             expr = Expr::Logical(LogicalExpr {
                 left: Box::new(expr),
@@ -265,7 +265,7 @@ impl Parser {
         let mut expr: Expr = self.comparison_expr();
 
         while self.search(vec![TkCNE, TkCEQ]) {
-            let operator: Token = self.previous();
+            let operator: LegacyToken = self.previous();
             let right: Expr = self.comparison_expr();
             expr = Expr::Binary(BinExpr {
                 left: Box::new(expr),
@@ -452,10 +452,10 @@ impl Parser {
         }
     }
 
-    // fn init_param(&mut self) -> Token {
+    // fn init_param(&mut self) -> LegacyToken {
     //     let (name, kind) = self.val_signiture();
 
-    //     Token {
+    //     LegacyToken {
     //         tokentype: TkSymbol,
     //         value: Some(SymbolValue::Pair(Pair {
     //             name: name
@@ -472,7 +472,7 @@ impl Parser {
     // }
 
     fn val_signiture(&mut self) -> Pair {
-        let name: Token = self.consume(TkSymbol);
+        let name: LegacyToken = self.consume(TkSymbol);
 
         let kind: AKind = if self.check(TkAssignInfer) {
             AKind::TyUnknown
@@ -507,7 +507,7 @@ impl Parser {
     }
 
     fn reassign(&mut self) -> Statement {
-        let name: Token = self.consume(TkSymbol);
+        let name: LegacyToken = self.consume(TkSymbol);
         self.consume(TkAssign);
         let newval: Expr = self.expression();
 
@@ -559,7 +559,7 @@ impl Parser {
     }
 
     fn func_decl(&mut self) -> Statement {
-        let name: Token = self.consume(TkSymbol);
+        let name: LegacyToken = self.consume(TkSymbol);
         
         self.consume(TkColon);
 

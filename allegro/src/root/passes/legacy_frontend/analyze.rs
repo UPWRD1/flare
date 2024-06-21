@@ -3,14 +3,14 @@ use crate::root::legacy_resource::{
     environment::AKind,
     lexemes::{Lexeme, LexemeKind::*},
     tokens::{
-        Token,
+        LegacyToken,
         TokenType::{self, *},
     },
 };
 
 pub struct Analyzer {
     lexvec: Vec<Lexeme>,
-    tkvec: Vec<Token>,
+    tkvec: Vec<LegacyToken>,
     lx_loc: usize,
     tk_loc: usize,
 }
@@ -37,11 +37,11 @@ impl Analyzer {
         }
     }
 
-    fn add(&mut self, t: Token) {
+    fn add(&mut self, t: LegacyToken) {
         self.tkvec.push(t);
     }
 
-    fn next_t(&mut self) -> Token {
+    fn next_t(&mut self) -> LegacyToken {
         self.tkvec[self.tk_loc + 1].clone()
     }
 
@@ -89,9 +89,9 @@ impl Analyzer {
 
                         _ => panic!("How did you get here?"),
                     };
-                    let toadd: Token;
+                    let toadd: LegacyToken;
                     if tkk == TokenType::TkSymbol {
-                        toadd = Token {
+                        toadd = LegacyToken {
                             tokentype: tkk,
                             value: Some(sv.clone()),
                             location: el.location,
@@ -102,7 +102,7 @@ impl Analyzer {
                         || tkk == TokenType::TkType(AKind::TyStr)
                         || tkk == TokenType::TkType(AKind::TyBool)
                     {
-                        toadd = Token {
+                        toadd = LegacyToken {
                             tokentype: tkk,
                             value: None, //Some(sv.clone()),
                             location: el.location,
@@ -110,14 +110,14 @@ impl Analyzer {
                         };
                     } else if tkk == TokenType::TkScalar {
                         if <ast::SymbolValue as Clone>::clone(sv).get_string().unwrap() == "true" {
-                            toadd = Token {
+                            toadd = LegacyToken {
                                 tokentype: tkk,
                                 value: Some(SymbolValue::Scalar(Scalar::Bool(true))),
                                 location: el.location,
                                 //lit: format!("{} ", sv.clone().get_string().unwrap())
                             }
                         } else {
-                            toadd = Token {
+                            toadd = LegacyToken {
                                 tokentype: tkk,
                                 value: Some(SymbolValue::Scalar(Scalar::Bool(false))),
                                 location: el.location,
@@ -125,7 +125,7 @@ impl Analyzer {
                             }
                         }
                     } else {
-                        toadd = Token {
+                        toadd = LegacyToken {
                             tokentype: tkk,
                             value: None,
                             location: el.location,
@@ -135,7 +135,7 @@ impl Analyzer {
                     self.add(toadd)
                 }
                 LxScalar(s) => {
-                    self.add(Token {
+                    self.add(LegacyToken {
                         tokentype: TokenType::TkScalar,
                         value: Some(SymbolValue::Scalar(s.clone())),
                         //kind: Some(AKind::TyStr),
@@ -144,68 +144,68 @@ impl Analyzer {
                     });
                 }
 
-                LxPlus => self.add(Token {
+                LxPlus => self.add(LegacyToken {
                     tokentype: TkPlus,
                     value: None,
                     location: el.location,
                     //lit: "+".to_string()
                 }),
-                LxMinus => self.add(Token {
+                LxMinus => self.add(LegacyToken {
                     tokentype: TkMinus,
                     value: None,
                     location: el.location,
                     //lit: "-".to_string()
                 }),
-                LxStar => self.add(Token {
+                LxStar => self.add(LegacyToken {
                     tokentype: TkStar,
                     value: None,
                     location: el.location,
                     //lit: "*".to_string()
 
                 }),
-                LxSlash => self.add(Token {
+                LxSlash => self.add(LegacyToken {
                     tokentype: TkSlash,
                     value: None,
                     location: el.location,
                     //lit: "/".to_string()
 
                 }),
-                LxLparen => self.add(Token {
+                LxLparen => self.add(LegacyToken {
                     tokentype: TkLparen,
                     value: None,
                     location: el.location,
                     //lit: "(".to_string()
 
                 }),
-                LxRparen => self.add(Token {
+                LxRparen => self.add(LegacyToken {
                     tokentype: TkRparen,
                     value: None,
                     location: el.location,
                     //lit: ") ".to_string()
 
                 }),
-                LxSmallArr => self.add(Token {
+                LxSmallArr => self.add(LegacyToken {
                     tokentype: TkSmallArr,
                     value: None,
                     location: el.location,
                     //lit: "-> ".to_string()
 
                 }),
-                LxBigArr => self.add(Token {
+                LxBigArr => self.add(LegacyToken {
                     tokentype: TkBigArr,
                     value: None,
                     location: el.location,
                     //lit: "=>".to_string()
 
                 }),
-                LxPipe => self.add(Token {
+                LxPipe => self.add(LegacyToken {
                     tokentype: TkPipe,
                     value: None,
                     location: el.location,
                     //lit: "|".to_string()
 
                 }),
-                LxPercent => self.add(Token {
+                LxPercent => self.add(LegacyToken {
                     tokentype: TkPercent,
                     value: None,
                     location: el.location,
@@ -213,7 +213,7 @@ impl Analyzer {
 
                 }),
                 LxDoubleDot => {
-                    let toadd: Token = Token {
+                    let toadd: LegacyToken = LegacyToken {
                         tokentype: TkType(AKind::TyMute),
                         value: Some(SymbolValue::Mute),
                         location: el.location,
@@ -222,13 +222,13 @@ impl Analyzer {
                     };
                     self.add(toadd)
                 }
-                LxLBrace => self.add(Token {
+                LxLBrace => self.add(LegacyToken {
                     tokentype: TkLBrace,
                     value: None,
                     location: el.location,
                     //lit: "{".to_string()
                 }),
-                LxRBrace => self.add(Token {
+                LxRBrace => self.add(LegacyToken {
                     tokentype: TkRBrace,
                     value: None,
                     location: el.location,
@@ -237,7 +237,7 @@ impl Analyzer {
                 }),
                 LxStatementEnd => {
                     if self.lx_loc != 0 && self.lexvec[self.lx_loc - 1].kind != LxLBrace {
-                        self.add(Token {
+                        self.add(LegacyToken {
                             tokentype: TkStatementEnd,
                             value: None,
                             location: el.location,
@@ -246,14 +246,14 @@ impl Analyzer {
                         })
                     }
                 }
-                LxEqual => self.add(Token {
+                LxEqual => self.add(LegacyToken {
                     tokentype: TkAssign,
                     value: None,
                     location: el.location,
                     //lit: "=".to_string()
 
                 }),
-                LxAssignInfer => self.add(Token {
+                LxAssignInfer => self.add(LegacyToken {
                     tokentype: TkAssignInfer,
                     value: None,
                     location: el.location,
@@ -261,77 +261,77 @@ impl Analyzer {
 
                 }),
                 
-                LxCEQ => self.add(Token {
+                LxCEQ => self.add(LegacyToken {
                     tokentype: TkCEQ,
                     value: None,
                     location: el.location,
                     //lit: "==".to_string()
 
                 }),
-                LxCNE => self.add(Token {
+                LxCNE => self.add(LegacyToken {
                     tokentype: TkCNE,
                     value: None,
                     location: el.location,
                     //lit: "!=".to_string()
 
                 }),
-                LxCLT => self.add(Token {
+                LxCLT => self.add(LegacyToken {
                     tokentype: TkCLT,
                     value: None,
                     location: el.location,
                     //lit: "<".to_string()
 
                 }),
-                LxCLE => self.add(Token {
+                LxCLE => self.add(LegacyToken {
                     tokentype: TkCLE,
                     value: None,
                     location: el.location,
                     //lit: "<=".to_string()
 
                 }),
-                LxCGT => self.add(Token {
+                LxCGT => self.add(LegacyToken {
                     tokentype: TkCGT,
                     value: None,
                     location: el.location,
                     //lit: ">".to_string()
 
                 }),
-                LxCGE => self.add(Token {
+                LxCGE => self.add(LegacyToken {
                     tokentype: TkCGE,
                     value: None,
                     location: el.location,
                     //lit: ">=".to_string()
 
                 }),
-                LxAnd => self.add(Token {
+                LxAnd => self.add(LegacyToken {
                     tokentype: TkAnd,
                     value: None,
                     location: el.location,
                     //lit: "&&".to_string()
 
                 }),
-                LxOr => self.add(Token {
+                LxOr => self.add(LegacyToken {
                     tokentype: TkOr,
                     value: None,
                     location: el.location,
                     //lit: "||".to_string()
 
                 }),
-                LxComma => self.add(Token {
+                LxComma => self.add(LegacyToken {
                     tokentype: TkComma,
                     value: None,
                     location: el.location,
                     //lit: ",".to_string()
 
                 }),
-                LxColon => self.add(Token {
+                LxColon => self.add(LegacyToken {
                     tokentype: TkColon,
                     value: None,
                     location: el.location,
                     //lit: ": ".to_string()
 
                 }),
-                LxDot => self.add(Token {
+                LxDot => self.add(LegacyToken {
                     tokentype: TkDot,
                     value: None,
                     location: el.location,
@@ -341,7 +341,7 @@ impl Analyzer {
                 Err => {
                     panic!("uh oh")
                 }
-                Eof => self.add(Token {
+                Eof => self.add(LegacyToken {
                     tokentype: TokenType::TkEof,
                     value: None,
                     location: el.location,
@@ -354,8 +354,8 @@ impl Analyzer {
         }
     }
 
-    fn import_pass(&mut self) -> Vec<Token> {
-        let tv: Vec<Token> = self.tkvec.clone();
+    fn import_pass(&mut self) -> Vec<LegacyToken> {
+        let tv: Vec<LegacyToken> = self.tkvec.clone();
         while self.tk_loc < tv.len() {
             match self.tkvec[self.tk_loc].tokentype {
                 TkKwUse => {
@@ -376,7 +376,7 @@ impl Analyzer {
         self.tkvec.clone()
     }
 
-    pub fn supply(&mut self) -> Vec<Token> {
+    pub fn supply(&mut self) -> Vec<LegacyToken> {
         self.tkvec.clone()
     }
 }

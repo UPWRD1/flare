@@ -1,10 +1,11 @@
 extern crate colored;
 extern crate lazy_static;
-use std::{env, fs};
+use std::{env, fs, io::ErrorKind};
 
 use logos::Logos;
-use root::resource::tk::Tk;
+use root::{passes::parser, resource::{ast, tk::Tk}};
 
+extern crate pomelo;
 
 extern crate logos;
 //use parser::*;
@@ -27,10 +28,20 @@ fn main() {
                 info!("Compiling {} to {}.c", filename, filename);
                 let src = fs::read_to_string(filename).unwrap();
                 let mut lex = Tk::lexer(&src);
+                let mut parser = parser::Parser::new(ast::Program::new());
+                if lex.clone().last() != Some(Ok(Tk::TkStatementEnd)) {
+                    error_nocode!("Missing last newline in file: '{filename}'");
+                }
                 for i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
                     let a = lex.next().unwrap().unwrap();
+                    let token = a.translate();
                     println!("{a:?}");
+
+                    parser.parse(token).map_err(|_| ErrorKind::InvalidInput).unwrap();
                 }
+
+                let prg = parser.end_of_input().map_err(|_| ErrorKind::InvalidInput).unwrap();
+                println!("{:#?}", prg);
                 //dbg!(lex);
             }
 

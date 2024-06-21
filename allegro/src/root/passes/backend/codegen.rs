@@ -3,7 +3,7 @@ use core::panic;
 use crate::root::legacy_resource::{
     ast::*,
     environment::{AKind, Environment},
-    tokens::{Token, TokenType},
+    tokens::{LegacyToken, TokenType},
 };
 
 #[derive(Debug, Clone)]
@@ -117,7 +117,7 @@ impl Generator {
         }
     }
 
-    fn gen_operator(&mut self, o: Token) -> String {
+    fn gen_operator(&mut self, o: LegacyToken) -> String {
         match o.tokentype {
             TokenType::TkPlus => "+".to_string(),
             TokenType::TkMinus => "-".to_string(),

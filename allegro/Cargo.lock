@@ -9,6 +9,7 @@ dependencies = [
  "colored",
  "lazy_static",
  "logos",
+ "pomelo",
 ]
 
 [[package]]
@@ -60,7 +61,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex-syntax",
- "syn",
+ "syn 2.0.66",
 ]
 
 [[package]]
@@ -70,6 +71,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c2a69b3eb68d5bd595107c9ee58d7e07fe2bb5e360cc85b0f084dedac80de0a"
 dependencies = [
  "logos-codegen",
+]
+
+[[package]]
+name = "pomelo"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76dd249f63dbbc68c8caa9b5fd16b32c7ba5da56df93d40a9552c91ebfd2a1cd"
+dependencies = [
+ "pomelo-impl",
+]
+
+[[package]]
+name = "pomelo-impl"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "597c3287a549da151aca6ada2795ecde089c7527bd5093114e8e0e1c3f0e52b1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -95,6 +116,17 @@ name = "regex-syntax"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
+
+[[package]]
+name = "syn"
+version = "1.0.109"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
 
 [[package]]
 name = "syn"
