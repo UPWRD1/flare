@@ -1,6 +1,8 @@
-5853
+5857
+51/workspaces/allegro/site/dist/Vector 1.82491b26.svg1718987886667667534 0
+31/workspaces/allegro/site/assets1718987767423668290 1
 40/workspaces/allegro/site/dist/index.html1718987731571668517 0
-34/workspaces/allegro/site/style.css1718987682743668827 0
+34/workspaces/allegro/site/style.css1718988028851666633 0
 33/workspaces/allegro/site/index.js1718987673835668883 0
 63/workspaces/allegro/site/node_modules/semver/functions/parse.js1718987676747668865 0
 68/workspaces/allegro/site/node_modules/semver/functions/prerelease.js1718987676799668864 0
@@ -97,7 +99,7 @@
 70/workspaces/allegro/site/node_modules/css-tree/lib/syntax/node/Rule.js1718987679751668845 0
 79/workspaces/allegro/site/node_modules/css-tree/lib/syntax/node/AtrulePrelude.js1718987679231668849 0
 62/workspaces/allegro/site/node_modules/css-tree/lib/syntax/node1718987679811668845 1
-35/workspaces/allegro/site/index.html1718987698959668724 0
+35/workspaces/allegro/site/index.html1718988039415666566 0
 67/workspaces/allegro/site/node_modules/css-tree/lib/syntax/create.js1718987679475668847 0
 73/workspaces/allegro/site/node_modules/css-tree/lib/syntax/pseudo/index.js1718987679699668846 0
 64/workspaces/allegro/site/node_modules/css-tree/lib/syntax/pseudo1718987679699668846 1
@@ -1940,6 +1942,7 @@
 61/workspaces/allegro/site/node_modules/parse-json/package.json1718987675787668871 0
 111/workspaces/allegro/site/node_modules/@parcel/optimizer-svgo/node_modules/csso/lib/restructure/prepare/index.js1718987677939668857 0
 74/workspaces/allegro/site/node_modules/caniuse-lite/data/features/dialog.js1718987679667668846 0
+48/workspaces/allegro/site/dist/index.3a01df49.css1718987939959667196 0
 88/workspaces/allegro/site/node_modules/caniuse-lite/data/features/css-display-contents.js1718987679055668850 0
 92/workspaces/allegro/site/node_modules/caniuse-lite/data/features/mdn-text-decoration-line.js1718987679943668844 0
 68/workspaces/allegro/site/node_modules/@parcel/node-resolver-core/lib1718987675903668870 1
@@ -5814,6 +5817,7 @@
 69/workspaces/allegro/site/node_modules/caniuse-lite/data/regions/MN.js1718987679963668844 0
 64/workspaces/allegro/site/node_modules/js-yaml/lib/schema/core.js1718987675811668870 0
 59/workspaces/allegro/site/node_modules/js-yaml/lib/loader.js1718987676815668864 0
+52/workspaces/allegro/site/dist/index.3a01df49.css.map1718987939959667196 0
 85/workspaces/allegro/site/node_modules/@parcel/transformer-posthtml/lib/loadPlugins.js1718987675799668871 0
 58/workspaces/allegro/site/node_modules/js-yaml/package.json1718987677007668863 0
 58/workspaces/allegro/site/node_modules/js-yaml/CHANGELOG.md1718987677019668863 0
