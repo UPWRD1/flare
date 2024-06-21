@@ -32,7 +32,7 @@ fn main() {
                 if lex.clone().last() != Some(Ok(Tk::TkStatementEnd)) {
                     error_nocode!("Missing last newline in file: '{filename}'");
                 }
-                for i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
+                for _ in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
                     let a = lex.next().unwrap().unwrap();
                     let token = a.translate();
                     println!("{a:?}");
