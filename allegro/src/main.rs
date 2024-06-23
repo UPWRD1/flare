@@ -3,7 +3,10 @@ extern crate lazy_static;
 use std::{env, fs, io::ErrorKind};
 
 use logos::Logos;
-use root::{passes::parser, resource::{ast, tk::Tk}};
+use root::{
+    passes::parser,
+    resource::{ast, tk::Tk},
+};
 
 extern crate pomelo;
 
@@ -29,18 +32,24 @@ fn main() {
                 let src = fs::read_to_string(filename).unwrap();
                 let mut lex = Tk::lexer(&src);
                 let mut parser = parser::Parser::new(ast::Program::new());
-                if lex.clone().last() != Some(Ok(Tk::TkStatementEnd)) {
-                    error_nocode!("Missing last newline in file: '{filename}'");
-                }
+                // if lex.clone().last()
+                //     != Some(Ok(Tk::TkStatementEnd((
+                //         src.lines().collect::<Vec<&str>>().len(),
+                //         0,
+                //     ))))
+                // {
+                //     error_nocode!("Missing last newline in file: '{filename}'");
+                // }
                 for _ in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
                     let a = lex.next().unwrap().unwrap();
-                    let token = a.translate();
-                    println!("{a:?}");
-
-                    parser.parse(token).map_err(|_| ErrorKind::InvalidInput).unwrap();
+                    let token = a.translate(&mut lex.clone());
+                    //println!("{a:?} '{}'", lex.slice());
+                    let _ = parser.parse(token.clone()).inspect_err(|e| a.syntax_error(lex.clone(), e));
                 }
 
-                let prg = parser.end_of_input().map_err(|_| ErrorKind::InvalidInput).unwrap();
+                let prg = parser
+                    .end_of_input()
+                    .unwrap().1;
                 println!("{:#?}", prg);
                 //dbg!(lex);
             }
@@ -59,3 +68,5 @@ fn main() {
         }
     }
 }
+
+

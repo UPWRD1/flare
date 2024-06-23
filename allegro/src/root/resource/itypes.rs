@@ -1,4 +1,3 @@
-use std::fmt::Display;
 use std::str::FromStr;
 use std::fmt::Error;
 
@@ -103,11 +102,11 @@ impl std::ops::Div for Itype {
     }
 }
 
-impl Display for Itype {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
+// impl Display for Itype {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         todo!()
+//     }
+// }
 
 pub trait ToItype {
     fn to_itype(&self) -> Itype;

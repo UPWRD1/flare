@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use passes::legacy_frontend::analyze;
 use passes::legacy_frontend::lexing;
-use passes::legacy_frontend::parsing;
+//use passes::legacy_frontend::parsing;
 use passes::midend::typechecking;
 
 use passes::backend::codegen;

@@ -5,7 +5,7 @@ pomelo! {
     %include {
         use crate::root::resource::ast::*;
     }
-    %token #[derive(Debug)] pub enum Token {};
+    %token #[derive(Debug, Clone)] pub enum Token {};
     %extra_argument Program;
     %type Ident String;
     %type Vtype VTypeKind;
@@ -37,17 +37,12 @@ pomelo! {
     decl_list ::= decl_list decl;
 
     decl ::= f_decl(f) { extra.add_function(f); }
+    decl ::= StatementEnd;
 
-    //f_decl ::= Let Ident(name) Of arg_list?(args) for_clause(t)Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
+    f_decl ::= Let Ident(name) Of arg_list?(args) For Ident(t) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, Some(t)) }
     f_decl ::= Let Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
     f_decl ::= Let Ident(name) Assign stmt_list(code) { Function::new(name, vec![], code, None) }
-    f_decl ::= Fn Of arg_list?(args) Arrow stmt_list(code) {
-        use std::hash::Hasher;
-        let mut h = std::hash::DefaultHasher::new();
-        let args = args.clone().unwrap_or_else(Vec::new);
-        h.write(args.clone().iter().map(|f| f.name.chars().collect::<Vec<char>>()[0] as u8).collect::<Vec<u8>>().as_slice());
-        let hashval = h.finish();
-        Function::new(format!("anon_{}", hashval), args, code, None) }
+    
 
     // for_clause ::= For type_decl(t) {t}
     
@@ -81,9 +76,10 @@ pomelo! {
     //expr ::= Number(n) { Expr::Number(n) }
     //expr ::= String(s) { Expr::String(s) }
     expr ::= Ident(n) { Expr::Variable(n) }
-    expr ::= Bang? Question? Scalar(s) { Expr::Scalar(s) }
+    expr ::= Bang? Scalar(s) { Expr::Scalar(s) }
 
-    expr ::= Ident(n) LParen expr_list?(es) RParen { Expr::Call(n, es.unwrap_or(Vec::new())) }
+    expr ::= Ident(n) LParen expr_list?(es) RParen { Expr::Call {name: n, on: None, args: es.unwrap_or(Vec::new())} }
+    expr ::= Ident(c) Dot Ident(n) LParen expr_list?(es) RParen { Expr::Call {name: n, on: Some(c), args: es.unwrap_or(Vec::new())} }
     expr ::= LParen expr(e) RParen { e }
 
     expr ::= expr(a) Plus expr(b) { Expr::BinaryOp(BinOp::Plus, Box::new((a, b))) }
@@ -103,11 +99,32 @@ pomelo! {
     expr ::= expr(a) Greater expr(b) { Expr::BinaryOp(BinOp::Greater, Box::new((a, b))) }
     expr ::= expr(a) LessEq expr(b) { Expr::BinaryOp(BinOp::LessEq, Box::new((a, b))) }
     expr ::= expr(a) GreaterEq expr(b) { Expr::BinaryOp(BinOp::GreaterEq, Box::new((a, b))) }
-
     expr ::= Ident(n) Assign expr(b) { Expr::Assign(Variable::new(n, b)) }
+
+    // closures
+    expr ::= Fn Of arg_list(args) Arrow expr(e) {
+        use std::hash::Hasher;
+        let mut h = std::hash::DefaultHasher::new();
+        let args = args.clone();
+        let v1 = args.clone().iter().enumerate().map(|(loc, f)| (f.name.chars().collect::<Vec<char>>()[loc] as u8)).collect::<Vec<u8>>();
+        let mut v2_temp = args.clone();
+        v2_temp.reverse();
+        let v2 = v2_temp.iter().enumerate().map(|(loc, f)| (f.value.to_string().chars().collect::<Vec<char>>()[loc] as u8)).collect::<Vec<u8>>();
+        h.write(v1.as_slice());
+        let hashval = h.finish();
+        let name = format!("r_{}", hashval);
+        Expr::FnExpr(name, args, Box::new(e)) }
 
     expr_list ::= expr(e) { vec![e] }
     expr_list ::= expr_list(mut es) Comma expr(e) { es.push(e); es }
+
+    expr ::= LBracket expr_list(es) RBracket {Expr::Array(es)}
+
+    %error String;
+
+    %syntax_error {
+        Err(format!("{:?}", token.unwrap()))
+    }
 }
 
 pub use parser::*;
