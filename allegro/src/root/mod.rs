@@ -69,10 +69,9 @@ fn legacy_compile_parse(analyzed: Vec<LegacyToken>) -> Vec<legacy_resource::ast:
 fn legacy_compile_analyze(cstvec: Vec<legacy_resource::lexemes::Lexeme>) -> Vec<legacy_resource::tokens::LegacyToken> {
     let mut analyzer = analyze::Analyzer::new(cstvec);
     analyzer.analyze();
-    let analyzed = analyzer.supply();
+    return analyzer.supply()
     //dbg!(analyzed.clone());
     //info!("Analyzing: OK");
-    analyzed
 }
 
 fn legacy_compile_lex(filename: &String) -> Vec<legacy_resource::lexemes::Lexeme> {

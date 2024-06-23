@@ -1,6 +1,5 @@
 use std::str::FromStr;
 use logos::{Lexer, Logos};
-use logos::Skip;
 use super::{ast::VTypeKind, itypes::Itype};
 
 use crate::error_nocode;
@@ -100,6 +99,11 @@ pub enum Tk {
     TkLbracket((usize, usize)),
     #[token("]", word_callback)]
     TkRbracket((usize, usize)),
+    #[token("{", word_callback)]
+    TkLBrace((usize, usize)),
+    #[token("}", word_callback)]
+    TkRBrace((usize, usize)),
+
     #[token("=", word_callback)]
     TkAssign((usize, usize)),
     #[token("==", word_callback)]
@@ -148,6 +152,8 @@ impl Tk {
             Tk::TkRparen(_) => Token::RParen,
             Tk::TkLbracket(_) => Token::LBracket,
             Tk::TkRbracket(_) => Token::RBracket,
+            Tk::TkLBrace(_) => Token::LBrace,
+            Tk::TkRBrace(_) => Token::RBrace,
             Tk::TkAssign(_) => Token::Assign,
             Tk::TkCEQ(_) => Token::Equal,
             Tk::TkCLT(_) => Token::Less,
@@ -161,10 +167,10 @@ impl Tk {
             Tk::TkKwDo(_) => Token::Do,
             Tk::TkKwEnd(_) => Token::End,
             Tk::TkSemicolon(_) | Tk::TkStatementEnd(_) => Token::StatementEnd,
-            Tk::TkKwInt(_) => Token::Vtype(VTypeKind::Int),
-            Tk::TkKwFlt(_) => Token::Vtype(VTypeKind::Flt),
-            Tk::TkKwStr(_) => Token::Vtype(VTypeKind::Str),
-            Tk::TkKwBool(_) => Token::Vtype(VTypeKind::Bool),
+            Tk::TkKwInt(_) => Token::Vtk(VTypeKind::Int),
+            Tk::TkKwFlt(_) => Token::Vtk(VTypeKind::Flt),
+            Tk::TkKwStr(_) => Token::Vtk(VTypeKind::Str),
+            Tk::TkKwBool(_) => Token::Vtk(VTypeKind::Bool),
             _ => panic!("{:?}", self),
 
         }
@@ -210,6 +216,8 @@ impl Tk {
             | Tk::TkRparen((line, column))
             | Tk::TkLbracket((line, column))
             | Tk::TkRbracket((line, column))
+            | Tk::TkLBrace((line, column))
+            | Tk::TkRBrace((line, column))
             | Tk::TkAssign((line, column))
             | Tk::TkCEQ((line, column))
             | Tk::TkCLT((line, column))

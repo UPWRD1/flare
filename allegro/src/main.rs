@@ -1,6 +1,6 @@
 extern crate colored;
 extern crate lazy_static;
-use std::{env, fs, io::ErrorKind};
+use std::{env, fs};
 
 use logos::Logos;
 use root::{
@@ -46,10 +46,9 @@ fn main() {
                     //println!("{a:?} '{}'", lex.slice());
                     let _ = parser.parse(token.clone()).inspect_err(|e| a.syntax_error(lex.clone(), e));
                 }
-
                 let prg = parser
                     .end_of_input()
-                    .unwrap().1;
+                    .unwrap();
                 println!("{:#?}", prg);
                 //dbg!(lex);
             }

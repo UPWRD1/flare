@@ -8,7 +8,7 @@ pomelo! {
     %token #[derive(Debug, Clone)] pub enum Token {};
     %extra_argument Program;
     %type Ident String;
-    %type Vtype VTypeKind;
+    %type Vtk VTypeKind;
     %type Scalar crate::root::resource::itypes::Itype;
     %type Pair Pair;
     %type expr Expr;
@@ -17,6 +17,7 @@ pomelo! {
     %type block Vec<Stmt>;
     %type stmt_list Vec<Stmt>;
     %type arg_list Vec<Pair>;
+    %type type_decl VType;
     %type f_decl Function;
     %type v_decl Variable;
 
@@ -39,21 +40,22 @@ pomelo! {
     decl ::= f_decl(f) { extra.add_function(f); }
     decl ::= StatementEnd;
 
-    f_decl ::= Let Ident(name) Of arg_list?(args) For Ident(t) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, Some(t)) }
+    f_decl ::= Let Ident(name) Of arg_list?(args) For type_decl(t) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, Some(t)) }
     f_decl ::= Let Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
     f_decl ::= Let Ident(name) Assign stmt_list(code) { Function::new(name, vec![], code, None) }
     
 
-    // for_clause ::= For type_decl(t) {t}
     
-    // type_decl ::= Ident(n) {VType}
-    // type_decl ::= Bang Ident(n) {n}
-    // type_decl ::= Question Ident(n) {n}
-    // type_decl ::= Bang Question Ident(n) {n}
+    type_decl ::= Ident(n) {VType::new(VTypeKind::Custom(n), false) }
+    type_decl ::= Bang Ident(n) {VType::new(VTypeKind::Custom(n), true) }
+    type_decl ::= Question Ident(n) {VType::new(VTypeKind::Generic(n), false) }
+    type_decl ::= Bang Question Ident(n) {VType::new(VTypeKind::Generic(n), true) }
+    type_decl ::= Vtk(t) {VType::new(t, false)}
+    type_decl ::= Ident(n) LBrace type_decl(t) RBrace {VType::new(VTypeKind::Generic(n), false) }
+    type_decl ::= Bang Ident(n) LBrace type_decl(t) RBrace {VType::new(VTypeKind::Generic(n), true) }
 
-    
-    arg_list ::= Ident(n) Colon Vtype(t) { vec![Pair {name: n, value: t}] }
-    arg_list ::= arg_list(mut args) Comma Ident(n) Colon Bang? Question? Vtype(v) { args.push(Pair {name: n, value: v}); args }
+    arg_list ::= Ident(n) Colon type_decl(t) { vec![Pair {name: n, value: t}] }
+    arg_list ::= arg_list(mut args) Comma Ident(n) Colon type_decl(v) { args.push(Pair {name: n, value: v}); args }
 
     block ::= Do stmt_list(ss) End { ss }
 
@@ -109,7 +111,7 @@ pomelo! {
         let v1 = args.clone().iter().enumerate().map(|(loc, f)| (f.name.chars().collect::<Vec<char>>()[loc] as u8)).collect::<Vec<u8>>();
         let mut v2_temp = args.clone();
         v2_temp.reverse();
-        let v2 = v2_temp.iter().enumerate().map(|(loc, f)| (f.value.to_string().chars().collect::<Vec<char>>()[loc] as u8)).collect::<Vec<u8>>();
+        let v2 = v2_temp.iter().enumerate().map(|(loc, f)| (f.value.kind.to_string().chars().collect::<Vec<char>>()[loc] as u8)).collect::<Vec<u8>>();
         h.write(v1.as_slice());
         let hashval = h.finish();
         let name = format!("r_{}", hashval);

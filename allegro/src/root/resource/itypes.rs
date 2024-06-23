@@ -108,41 +108,41 @@ impl std::ops::Div for Itype {
 //     }
 // }
 
-pub trait ToItype {
-    fn to_itype(&self) -> Itype;
-}
+// pub trait ToItype {
+//     fn to_itype(&self) -> Itype;
+// }
 
-impl ToItype for i32 {
-    fn to_itype(&self) -> Itype {
-        Itype::Int(Some(*self))
-    }
-}
+// impl ToItype for i32 {
+//     fn to_itype(&self) -> Itype {
+//         Itype::Int(Some(*self))
+//     }
+// }
 
-impl ToItype for f32 {
-    fn to_itype(&self) -> Itype {
-        Itype::Flt(Some(*self))
-    }
-}
+// impl ToItype for f32 {
+//     fn to_itype(&self) -> Itype {
+//         Itype::Flt(Some(*self))
+//     }
+// }
 
-impl ToItype for String {
-    fn to_itype(&self) -> Itype {
-        if self.parse::<i32>().is_ok() {
-            return Itype::Int(Some(self.parse::<i32>().unwrap()));
-        } else if self.parse::<f32>().is_ok() {
-            return Itype::Flt(Some(self.parse::<f32>().unwrap()));
-        } else if self.parse::<bool>().is_ok() {
-            return Itype::Bool(Some(self.parse::<bool>().unwrap()));
-        } else {
-            return match self.as_str() {
-                "int" => Itype::Int(None),
-                "flt" => Itype::Flt(None),
-                "str" => Itype::Bool(None),
-                "bool" => Itype::Str(None),
-                _ => Itype::Str(Some(self.clone())),
-            };
-        }
-    }
-}
+// impl ToItype for String {
+//     fn to_itype(&self) -> Itype {
+//         if self.parse::<i32>().is_ok() {
+//             return Itype::Int(Some(self.parse::<i32>().unwrap()));
+//         } else if self.parse::<f32>().is_ok() {
+//             return Itype::Flt(Some(self.parse::<f32>().unwrap()));
+//         } else if self.parse::<bool>().is_ok() {
+//             return Itype::Bool(Some(self.parse::<bool>().unwrap()));
+//         } else {
+//             return match self.as_str() {
+//                 "int" => Itype::Int(None),
+//                 "flt" => Itype::Flt(None),
+//                 "str" => Itype::Bool(None),
+//                 "bool" => Itype::Str(None),
+//                 _ => Itype::Str(Some(self.clone())),
+//             };
+//         }
+//     }
+// }
 
 impl FromStr for Itype {
     type Err = Error;
@@ -166,8 +166,8 @@ impl FromStr for Itype {
     }
 }
 
-impl ToItype for bool {
-    fn to_itype(&self) -> Itype {
-        Itype::Bool(Some(*self))
-    }
-}
+// impl ToItype for bool {
+//     fn to_itype(&self) -> Itype {
+//         Itype::Bool(Some(*self))
+//     }
+// }

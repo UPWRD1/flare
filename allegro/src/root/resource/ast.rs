@@ -3,6 +3,7 @@ use std::fmt::Display;
 use super::itypes::Itype;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum BinOp {
     Plus, Minus,
     Mult, Div,
@@ -24,7 +25,7 @@ pub enum VTypeKind {
     Str,
     Bool,
     Custom(String),
-    Generic(GenericType),
+    Generic(String),
     Unknown,
 }
 
@@ -36,27 +37,33 @@ impl Display for VTypeKind {
             VTypeKind::Str => "str",
             VTypeKind::Bool => "bool",
             VTypeKind::Custom(c) => &c,
-            VTypeKind::Generic(g) => &g.name,
+            VTypeKind::Generic(g) => &g,
             VTypeKind::Unknown => "unknown",
         })
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct VType {
-    kind: VTypeKind,
+    pub kind: VTypeKind,
     is_mut: bool,
 }
 
-#[derive(Debug, Clone)]
-pub struct GenericType {
-    name: String,
-    restrictions: Vec<String>, // placeholder
+impl VType {
+    pub fn new(kind: VTypeKind, is_mut: bool) -> Self {
+        VType {
+            kind,
+            is_mut,
+        }
+    }
 }
+
+
 
 #[derive(Debug, Clone)]
 pub struct Pair {
     pub name: String,
-    pub value: VTypeKind
+    pub value: VType,
 }
 
 #[derive(Debug)]
@@ -87,7 +94,7 @@ pub enum Stmt {
 #[derive(Debug)]
 pub struct Function {
     name: Pair,
-    extends: Option<String>,
+    extends: Option<VType>,
     args: Vec<Pair>,
     code: Stmt,
 }
@@ -104,9 +111,9 @@ pub struct Program {
 }
 
 impl Function {
-    pub fn new(name: String, args: Vec<Pair>, code: Vec<Stmt>, extends: Option<String>) -> Function {
+    pub fn new(name: String, args: Vec<Pair>, code: Vec<Stmt>, extends: Option<VType>) -> Function {
         Function {
-            name: Pair { name, value: VTypeKind::Unknown }, extends, args, code: Stmt::Block(code)
+            name: Pair { name, value: VType::new(VTypeKind::Unknown, false) }, extends, args, code: Stmt::Block(code)
         }
     }
 }
@@ -128,20 +135,4 @@ impl Program {
     pub fn add_function(&mut self, f: Function) {
         self.funcs.push(f);
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Loc {
-    row: usize,
-    col: usize,
-}
-
-#[macro_export]
-macro_rules! loc {
-    ($x: expr, $y:expr) => {
-        Loc {
-            row: $x,
-            col: $y,
-        }
-    };
 }
