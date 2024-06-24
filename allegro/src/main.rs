@@ -1,10 +1,10 @@
 extern crate colored;
 extern crate lazy_static;
-use std::{env, fs};
+use std::{env, fs, io::Write, time::Instant};
 
 use logos::Logos;
 use root::{
-    passes::parser,
+    passes::{backend::codegen::generate_code, parser},
     resource::{ast, tk::Tk},
 };
 
@@ -27,8 +27,10 @@ fn main() {
                 root::legacy_compile(filename);
             }
             "-c" | "--compile" => {
+                let now = Instant::now();
+
                 let filename: &String = &prog_args[2];
-                info!("Compiling {} to {}.c", filename, filename);
+                //info!("Compiling {} to {}.c", filename, filename);
                 let src = fs::read_to_string(filename).unwrap();
                 let mut lex = Tk::lexer(&src);
                 let mut parser = parser::Parser::new(ast::Program::new());
@@ -48,8 +50,18 @@ fn main() {
                 }
                 let prg = parser
                     .end_of_input()
-                    .unwrap();
-                println!("{:#?}", prg);
+                    .unwrap().1;
+                //println!("{:#}", prg);
+
+                let end = generate_code(prg);
+                let nend = end.strip_prefix("\"").unwrap().strip_suffix('\"').unwrap().replace("\\n", "\n");
+                let mut file = std::fs::File::create(format!("{}.ll", filename)).expect("Could not create file");
+                let _ = file.write_all(nend.as_bytes());
+            
+                let elapsed = now.elapsed();
+                info!("Compiled {} in {:.2?}", filename, elapsed);
+                
+                println!("{}", nend);
                 //dbg!(lex);
             }
 
@@ -67,5 +79,6 @@ fn main() {
         }
     }
 }
+
 
 

@@ -5,7 +5,7 @@ use std::fmt::Error;
 pub enum Itype {
     #[default] Mute,
     Int(Option<i32>),
-    Flt(Option<f32>),
+    Flt(Option<f64>),
     Str(Option<String>),
     Bool(Option<bool>),
 }
@@ -118,7 +118,7 @@ impl std::ops::Div for Itype {
 //     }
 // }
 
-// impl ToItype for f32 {
+// impl ToItype for f64 {
 //     fn to_itype(&self) -> Itype {
 //         Itype::Flt(Some(*self))
 //     }
@@ -128,8 +128,8 @@ impl std::ops::Div for Itype {
 //     fn to_itype(&self) -> Itype {
 //         if self.parse::<i32>().is_ok() {
 //             return Itype::Int(Some(self.parse::<i32>().unwrap()));
-//         } else if self.parse::<f32>().is_ok() {
-//             return Itype::Flt(Some(self.parse::<f32>().unwrap()));
+//         } else if self.parse::<f64>().is_ok() {
+//             return Itype::Flt(Some(self.parse::<f64>().unwrap()));
 //         } else if self.parse::<bool>().is_ok() {
 //             return Itype::Bool(Some(self.parse::<bool>().unwrap()));
 //         } else {
@@ -150,8 +150,8 @@ impl FromStr for Itype {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.parse::<i32>().is_ok() {
             return Ok(Itype::Int(Some(s.parse::<i32>().unwrap())));
-        } else if s.parse::<f32>().is_ok() {
-            return Ok(Itype::Flt(Some(s.parse::<f32>().unwrap())));
+        } else if s.parse::<f64>().is_ok() {
+            return Ok(Itype::Flt(Some(s.parse::<f64>().unwrap())));
         } else if s.parse::<bool>().is_ok() {
             return Ok(Itype::Bool(Some(s.parse::<bool>().unwrap())));
         } else {

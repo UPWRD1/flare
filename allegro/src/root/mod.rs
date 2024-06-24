@@ -10,7 +10,7 @@ use passes::legacy_frontend::lexing;
 //use passes::legacy_frontend::parsing;
 use passes::midend::typechecking;
 
-use passes::backend::codegen;
+use passes::legacy_backend::codegen;
 use legacy_resource::errors::Errors;
 use legacy_resource::tokens::LegacyToken;
 

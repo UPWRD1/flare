@@ -101,7 +101,7 @@ pomelo! {
     expr ::= expr(a) Greater expr(b) { Expr::BinaryOp(BinOp::Greater, Box::new((a, b))) }
     expr ::= expr(a) LessEq expr(b) { Expr::BinaryOp(BinOp::LessEq, Box::new((a, b))) }
     expr ::= expr(a) GreaterEq expr(b) { Expr::BinaryOp(BinOp::GreaterEq, Box::new((a, b))) }
-    expr ::= Ident(n) Assign expr(b) { Expr::Assign(Variable::new(n, b)) }
+    expr ::= expr(a) Assign expr(b) { Expr::BinaryOp(BinOp::Assign, Box::new((a, b))) }
 
     // closures
     expr ::= Fn Of arg_list(args) Arrow expr(e) {

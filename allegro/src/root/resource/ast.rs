@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use super::itypes::Itype;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
 #[allow(dead_code)]
 pub enum BinOp {
     Plus, Minus,
@@ -13,7 +13,23 @@ pub enum BinOp {
     Assign,
 }
 
-#[derive(Debug)]
+impl BinOp {
+    pub fn to_char(&self) -> char {
+        match self {
+            BinOp::Plus => '+',
+            BinOp::Minus => '-',
+            BinOp::Mult => '*',
+            BinOp::Div => '/',
+            BinOp::Equal => '=',
+            BinOp::Less => '<',
+            BinOp::Greater => '>',
+
+            _ => todo!(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum UnaOp {
     Neg, Not
 }
@@ -66,7 +82,7 @@ pub struct Pair {
     pub value: VType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Scalar(Itype),
     Array(Vec<Expr>),
@@ -74,11 +90,11 @@ pub enum Expr {
     BinaryOp(BinOp, Box<(Expr, Expr)>),
     UnaryOp(UnaOp, Box<Expr>),
     Call {name: String, on: Option<String>, args: Vec<Expr>},
-    Assign(Variable),
+    //Assign(Variable),
     FnExpr(String, Vec<Pair>, Box<Expr>)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
     Block(Vec<Stmt>),
@@ -91,21 +107,21 @@ pub enum Stmt {
     Continue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
-    name: Pair,
-    extends: Option<VType>,
-    args: Vec<Pair>,
-    code: Stmt,
+    pub name: Pair,
+    pub extends: Option<VType>,
+    pub args: Vec<Pair>,
+    pub code: Stmt,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable {
-    name: String,
-    ini: Box<Expr>,
+    pub name: String,
+    pub ini: Box<Expr>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Program {
     pub funcs: Vec<Function>,
 }
