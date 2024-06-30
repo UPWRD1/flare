@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 //use inkwell::basic_block::BasicBlock;
-use inkwell::builder::Builder;
+use inkwell::builder::{Builder, BuilderError};
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::BasicMetadataTypeEnum;
 use inkwell::values::{
-     AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue };
+     AnyValue, AnyValueEnum, AsValueRef, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, InstructionValue, PointerValue };
 use inkwell::FloatPredicate;
 
 use crate::root::resource::ast::{self, BinOp, Expr, Function, Stmt};
@@ -134,12 +134,16 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                     let var = match self
                         .variables
                         .get(var_name.as_str()) {
-                            Some(v) => v
-                            None => PointerValue::,
+                            Some(v) => *v,
+                            None => {
+                                let t = var_val.clone().as_value_ref();
+                                let y = unsafe {  PointerValue::new(t) };
+                                y
+                            },
                         };
 
                     self.builder
-                        .build_store::<BasicValueEnum>(*var, var_val.try_into().unwrap())
+                        .build_store::<BasicValueEnum>(var, var_val.try_into().unwrap())
                         .unwrap();
 
                     Ok(var_val)
@@ -370,24 +374,23 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
     }
 
-    fn compile_statement(&mut self, st: Stmt) -> Result<AnyValueEnum<'ctx>, &'static str> {
+    fn compile_statement(&mut self, st: Stmt) -> Result<InstructionValue<'ctx>, BuilderError> {
         match st {
-            Stmt::Expr(e) => self.compile_expr(e),
+            Stmt::Expr(e) =>  todo!(), //Ok(self)self.compile_expr(e),
             Stmt::Block(b) => {
                 for s in b {
                      return self.compile_statement(s)
                 }
-                return Ok(AnyValueEnum::IntValue(
-                    self.context
-                        .i32_type()
-                        .const_int(0, false),
-                ))
+                todo!()
+                //self.builder.v;
+                //return self.builder.build_int
             }
             Stmt::If(_, _) => todo!(),
             Stmt::While(_, _) => todo!(),
             Stmt::ForEach(_, _, _) => todo!(),
             Stmt::ForRange(_, _, _, _) => todo!(),
-            Stmt::Return(_) => todo!(),
+
+            Stmt::Return(r) => self.builder.build_return(Some(self.compile_expr(r).unwrap().into())),
             Stmt::Break => todo!(),
             Stmt::Continue => todo!(),
         }
@@ -448,7 +451,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         // compile body
         let body = self.compile_statement(self.function.code.clone()).unwrap();
 
-        self.builder.build_return(Some(&body.into_int_value().as_basic_value_enum())).unwrap();
 
         // return the whole thing after verification and optimization
         if function.verify(true) {
@@ -491,7 +493,7 @@ pub fn generate_code(prg: ast::Program) -> String {
         accum = format!(
             "{}{}",
             accum,
-            Compiler::compile(&context, &builder, &module, &f).unwrap().to_string()
+            Compiler::compile(&context, &builder, &module, &f).expect("failed").to_string()
         );
     }
     accum

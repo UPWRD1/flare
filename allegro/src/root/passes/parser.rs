@@ -40,9 +40,9 @@ pomelo! {
     decl ::= f_decl(f) { extra.add_function(f); }
     decl ::= StatementEnd;
 
-    f_decl ::= Let Ident(name) Of arg_list?(args) For type_decl(t) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, Some(t)) }
-    f_decl ::= Let Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
-    f_decl ::= Let Ident(name) Assign stmt_list(code) { Function::new(name, vec![], code, None) }
+    f_decl ::= Let Ident(name) Of arg_list?(args) For type_decl(t) Assign block(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, Some(t)) }
+    f_decl ::= Let Ident(name) Of arg_list?(args) Assign block(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
+    f_decl ::= Let Ident(name) Assign block(code) { Function::new(name, vec![], code, None) }
     
 
     
