@@ -2,7 +2,7 @@ use std::str::FromStr;
 use logos::{Lexer, Logos};
 use super::{ast::VTypeKind, itypes::Itype};
 
-use crate::error_nocode;
+//use crate::error_nocode;
 use crate::root::passes::parser::*;
 
 fn newline_callback(lex: &mut Lexer<Tk>) -> (usize, usize) {
@@ -56,6 +56,9 @@ pub enum Tk {
     TkKwFor((usize, usize)),
     #[token("in", word_callback)]
     TkKwIn((usize, usize)),
+    #[token("thru", word_callback)]
+    TkKwThru((usize, usize)),
+
     #[token("return", word_callback)]
     TkKwReturn((usize, usize)),
     #[token("and", word_callback)]
@@ -68,9 +71,10 @@ pub enum Tk {
     TkKwInt((usize, usize)),
     #[token("flt", word_callback)]
     TkKwFlt((usize, usize)),
-    
     #[token("str", word_callback)]
     TkKwStr((usize, usize)),
+    #[token("Fn", word_callback)]
+    TkKwFnTy((usize, usize)),
     #[token("bool", word_callback)]
     TkKwBool((usize, usize)),
     #[regex("([a-zA-Z]|_)+[a-zA-Z0-9]*", priority=3, callback=word_callback)]
@@ -122,6 +126,9 @@ pub enum Tk {
     TkColon((usize, usize)),
     #[token(".", word_callback)]
     TkDot((usize, usize)),
+    #[token("@", word_callback)]
+    TkAt((usize, usize)),
+
 }
 
 impl Tk {
@@ -171,6 +178,10 @@ impl Tk {
             Tk::TkKwFlt(_) => Token::Vtk(VTypeKind::Flt),
             Tk::TkKwStr(_) => Token::Vtk(VTypeKind::Str),
             Tk::TkKwBool(_) => Token::Vtk(VTypeKind::Bool),
+            Tk::TkKwFnTy(_) => Token::Vtk(VTypeKind::Fn),
+            Tk::TkAt(_) => Token::Generic,
+            Tk::TkKwThru(_) => Token::Thru,
+
             _ => panic!("{:?}", self),
 
         }
@@ -203,6 +214,7 @@ impl Tk {
             | Tk::TkKwFlt((line, column))
             | Tk::TkKwStr((line, column))
             | Tk::TkKwBool((line, column))
+            | Tk::TkKwFnTy((line, column))
             | Tk::TkSymbol((line, column))
             | Tk::TkScalar((line, column))
             | Tk::TkArr((line, column))
@@ -226,8 +238,10 @@ impl Tk {
             | Tk::TkCGE((line, column))
             | Tk::TkComma((line, column))
             | Tk::TkColon((line, column))
+            | Tk::TkAt((line, column))
+            | Tk::TkKwThru((line, column))
             | Tk::TkDot((line, column)) => {
-                error_nocode!("Syntax error at {line}:{:?} with token {e}", lex.source().char_indices().collect::<Vec<(usize, char)>>()[column - 1]);
+                eprintln!("Syntax error at {line}:{:?} with token {e}", lex.source().char_indices().collect::<Vec<(usize, char)>>()[column - 1]);
             }
         }
     }

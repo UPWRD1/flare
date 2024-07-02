@@ -1,6 +1,6 @@
 extern crate colored;
 extern crate lazy_static;
-use std::{env, fs, io::Write, time::Instant};
+use std::{env, fs, time::Instant};
 
 use logos::Logos;
 use root::{
@@ -23,8 +23,8 @@ fn main() {
         3 => match prog_args[1].as_str() {
             "-lc" | "--lcompile" => {
                 let filename: &String = &prog_args[2];
-                info!("Compiling {} to {}.c", filename, filename);
-                root::legacy_compile(filename);
+                println!("Compiling {} to {}.c", filename, filename);
+                //root::legacy_compile(filename);
             }
             "-c" | "--compile" => {
                 let now = Instant::now();
@@ -51,17 +51,17 @@ fn main() {
                 let prg = parser
                     .end_of_input()
                     .unwrap().1;
-                //println!("{:#}", prg);
+                println!("{:#?}", prg);
 
                 let end = generate_code(prg);
-                let nend = end.strip_prefix("\"").unwrap().strip_suffix('\"').unwrap().replace("\\n", "\n");
-                let mut file = std::fs::File::create(format!("{}.ll", filename)).expect("Could not create file");
-                let _ = file.write_all(nend.as_bytes());
+                //let nend = end.strip_prefix("\"").unwrap().strip_suffix('\"').unwrap().replace("\\n", "\n");
+                //let mut file = std::fs::File::create(format!("{}.ll", filename)).expect("Could not create file");
+                //let _ = file.write_all(nend.as_bytes());
             
                 let elapsed = now.elapsed();
-                info!("Compiled {} in {:.2?}", filename, elapsed);
+                println!("Compiled {} in {:.2?}", filename, elapsed);
                 
-                println!("{}", nend);
+                println!("{}", end);
                 //dbg!(lex);
             }
 

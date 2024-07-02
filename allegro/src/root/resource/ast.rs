@@ -5,33 +5,41 @@ use super::itypes::Itype;
 #[derive(Debug, PartialEq, PartialOrd, Clone)]
 #[allow(dead_code)]
 pub enum BinOp {
-    Plus, Minus,
-    Mult, Div,
-    Equal, NotEqual,
-    And, Or,
-    Less, Greater, LessEq, GreaterEq,
+    Plus,
+    Minus,
+    Mult,
+    Div,
+    Equal,
+    NotEqual,
+    And,
+    Or,
+    Less,
+    Greater,
+    LessEq,
+    GreaterEq,
     Assign,
 }
 
-impl BinOp {
-    pub fn to_char(&self) -> char {
-        match self {
-            BinOp::Plus => '+',
-            BinOp::Minus => '-',
-            BinOp::Mult => '*',
-            BinOp::Div => '/',
-            BinOp::Equal => '=',
-            BinOp::Less => '<',
-            BinOp::Greater => '>',
+// impl BinOp {
+//     pub fn to_char(&self) -> char {
+//         match self {
+//             BinOp::Plus => '+',
+//             BinOp::Minus => '-',
+//             BinOp::Mult => '*',
+//             BinOp::Div => '/',
+//             BinOp::Equal => '=',
+//             BinOp::Less => '<',
+//             BinOp::Greater => '>',
 
-            _ => todo!(),
-        }
-    }
-}
+//             _ => todo!(),
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone)]
 pub enum UnaOp {
-    Neg, Not
+    Neg,
+    Not,
 }
 
 #[derive(Debug, Clone)]
@@ -40,22 +48,31 @@ pub enum VTypeKind {
     Flt,
     Str,
     Bool,
+    Fn,
     Custom(String),
     Generic(String),
+    Container(Box<VType>),
     Unknown,
 }
 
 impl Display for VTypeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            VTypeKind::Int => "int",
-            VTypeKind::Flt => "flt",
-            VTypeKind::Str => "str",
-            VTypeKind::Bool => "bool",
-            VTypeKind::Custom(c) => &c,
-            VTypeKind::Generic(g) => &g,
-            VTypeKind::Unknown => "unknown",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                VTypeKind::Int => "int",
+                VTypeKind::Flt => "flt",
+                VTypeKind::Str => "str",
+                VTypeKind::Bool => "bool",
+                VTypeKind::Fn => "Fn",
+                VTypeKind::Custom(c) => &c,
+                VTypeKind::Generic(g) => &g,
+                VTypeKind::Container(_c) => "array",
+
+                VTypeKind::Unknown => "unknown",
+            }
+        )
     }
 }
 
@@ -67,14 +84,9 @@ pub struct VType {
 
 impl VType {
     pub fn new(kind: VTypeKind, is_mut: bool) -> Self {
-        VType {
-            kind,
-            is_mut,
-        }
+        VType { kind, is_mut }
     }
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct Pair {
@@ -84,14 +96,20 @@ pub struct Pair {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    Range(Box<Expr>, Box<Expr>),
     Scalar(Itype),
     Array(Vec<Expr>),
     Variable(String),
     BinaryOp(BinOp, Box<(Expr, Expr)>),
     UnaryOp(UnaOp, Box<Expr>),
-    Call {name: String, on: Option<String>, args: Vec<Expr>},
+    Call {
+        name: String,
+        on: Option<String>,
+        args: Vec<Expr>,
+    },
     //Assign(Variable),
-    FnExpr(String, Vec<Pair>, Box<Expr>)
+    FnExpr(String, Vec<Pair>, Box<Expr>),
+    IfExpr(Box<Expr>, Box<Expr>, Box<Expr>)
 }
 
 #[derive(Debug, Clone)]
@@ -101,7 +119,7 @@ pub enum Stmt {
     If(Expr, Box<(Stmt, Option<Stmt>)>),
     While(Expr, Box<Stmt>),
     ForEach(String, String, Box<Stmt>),
-    ForRange(String, Itype, Itype, Box<Stmt>),
+    ForRange(String, Expr, Box<Stmt>),
     Return(Expr),
     Break,
     Continue,
@@ -111,6 +129,7 @@ pub enum Stmt {
 pub struct Function {
     pub name: Pair,
     pub extends: Option<VType>,
+    pub rtype: VType,
     pub args: Vec<Pair>,
     pub code: Stmt,
 }
@@ -128,8 +147,54 @@ pub struct Program {
 
 impl Function {
     pub fn new(name: String, args: Vec<Pair>, code: Vec<Stmt>, extends: Option<VType>) -> Function {
-        Function {
-            name: Pair { name, value: VType::new(VTypeKind::Unknown, false) }, extends, args, code: Stmt::Block(code)
+        if extends.is_none() {
+            Function {
+                name: Pair {
+                    name,
+                    value: VType::new(VTypeKind::Fn, false),
+                },
+                extends,
+                rtype: VType {
+                    kind: VTypeKind::Unknown,
+                    is_mut: false,
+                },
+                args,
+                code: Stmt::Block(code),
+            }
+        } else {
+            Function {
+                name: Pair {
+                    name,
+                    value: VType::new(VTypeKind::Fn, false),
+                },
+                extends: extends.clone(),
+                rtype: extends.unwrap(),
+                args,
+                code: Stmt::Block(code),
+            }
+        }
+    }
+
+    pub fn new_rt(
+        name: String,
+        args: Vec<Pair>,
+        code: Vec<Stmt>,
+        extends: Option<VType>,
+        rtype: VType,
+    ) -> Function {
+        if extends.is_none() {
+            Function {
+                name: Pair {
+                    name,
+                    value: VType::new(VTypeKind::Fn, false),
+                },
+                extends,
+                rtype,
+                args,
+                code: Stmt::Block(code),
+            }
+        } else {
+            panic!("Extension function cannot return a type other than its parent")
         }
     }
 }
@@ -137,16 +202,15 @@ impl Function {
 impl Variable {
     pub fn new(name: String, ini: Expr) -> Variable {
         Variable {
-            name, ini: Box::new(ini)
+            name,
+            ini: Box::new(ini),
         }
     }
 }
 
 impl Program {
     pub fn new() -> Program {
-        Program {
-            funcs: Vec::new(),
-        }
+        Program { funcs: Vec::new() }
     }
     pub fn add_function(&mut self, f: Function) {
         self.funcs.push(f);

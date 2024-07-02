@@ -40,12 +40,15 @@ pomelo! {
     decl ::= f_decl(f) { extra.add_function(f); }
     decl ::= StatementEnd;
 
-    f_decl ::= Let Ident(name) Of arg_list?(args) For type_decl(t) Assign block(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, Some(t)) }
-    f_decl ::= Let Ident(name) Of arg_list?(args) Assign block(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
-    f_decl ::= Let Ident(name) Assign block(code) { Function::new(name, vec![], code, None) }
-    
+    f_decl ::= Let Ident(name) Of arg_list?(args) For type_decl(t) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, Some(t)) }
+    f_decl ::= Let Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
+    f_decl ::= Let Ident(name) Assign stmt_list(code) { Function::new(name, vec![], code, None) }
 
-    
+    f_decl ::= Let Vtk(r) Ident(name) Of arg_list?(args) For type_decl(t) Assign stmt_list(code) { Function::new_rt(name, args.unwrap_or_else(Vec::new), code, Some(t), VType::new(r, false)) }
+    f_decl ::= Let Vtk(r) Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new_rt(name, args.unwrap_or_else(Vec::new), code, None, VType::new(r, false)) }
+    f_decl ::= Let Vtk(r) Ident(name) Assign stmt_list(code) { Function::new_rt(name, vec![], code, None, VType::new(r, false)) }
+
+
     type_decl ::= Ident(n) {VType::new(VTypeKind::Custom(n), false) }
     type_decl ::= Bang Ident(n) {VType::new(VTypeKind::Custom(n), true) }
     type_decl ::= Question Ident(n) {VType::new(VTypeKind::Generic(n), false) }
@@ -53,6 +56,7 @@ pomelo! {
     type_decl ::= Vtk(t) {VType::new(t, false)}
     type_decl ::= Ident(n) LBrace type_decl(t) RBrace {VType::new(VTypeKind::Generic(n), false) }
     type_decl ::= Bang Ident(n) LBrace type_decl(t) RBrace {VType::new(VTypeKind::Generic(n), true) }
+    type_decl ::= Ident(n) Generic type_decl(m) {VType::new(VTypeKind::Container(Box::new(m)), false) }
 
     arg_list ::= Ident(n) Colon type_decl(t) { vec![Pair {name: n, value: t}] }
     arg_list ::= arg_list(mut args) Comma Ident(n) Colon type_decl(v) { args.push(Pair {name: n, value: v}); args }
@@ -64,14 +68,14 @@ pomelo! {
 
     stmt ::= block(ss) { Stmt::Block(ss) }
 
-    stmt ::= If expr(e) block(s1) [Else] { Stmt::If(e, Box::new((Stmt::Block(s1), None))) }
-    stmt ::= If expr(e) block(s1) Else block(s2) {Stmt::If(e, Box::new((Stmt::Block(s1), Some(Stmt::Block(s2)))))  }
+    //stmt ::= If expr(e) block(s1) [Else] { Stmt::If(e, Box::new((Stmt::Block(s1), None))) }
+    //stmt ::= If expr(e) block(s1) Else block(s2) {Stmt::If(e, Box::new((Stmt::Block(s1), Some(Stmt::Block(s2)))))  }
     stmt ::= While  expr(e) block(s) { Stmt::While(e, Box::new(Stmt::Block(s))) }
     stmt ::= Return expr(e) StatementEnd { Stmt::Return(e) }
     stmt ::= Break  { Stmt::Break }
     stmt ::= Continue  {Stmt::Continue }
     stmt ::= For Ident(i) In Ident(j) block(s) {Stmt::ForEach(i, j, Box::new(Stmt::Block(s)))}
-    stmt ::= For Ident(i) In Scalar(b) Thru Scalar(t) block(s) {Stmt::ForRange(i, b, t, Box::new(Stmt::Block(s)))}
+    stmt ::= For Ident(i) In expr(b) Thru expr(t) block(s) {Stmt::ForRange(i, Expr::Range(Box::new(b), Box::new(t)), Box::new(Stmt::Block(s)))}
     stmt ::= expr(e) StatementEnd {Stmt::Expr(e) }
 
 
@@ -111,21 +115,28 @@ pomelo! {
         let v1 = args.clone().iter().enumerate().map(|(loc, f)| (f.name.chars().collect::<Vec<char>>()[loc] as u8)).collect::<Vec<u8>>();
         let mut v2_temp = args.clone();
         v2_temp.reverse();
+
         let v2 = v2_temp.iter().enumerate().map(|(loc, f)| (f.value.kind.to_string().chars().collect::<Vec<char>>()[loc] as u8)).collect::<Vec<u8>>();
-        h.write(v1.as_slice());
+        let v3: Vec<u8> = v1.iter().zip(v2.iter()).map(|(&x1, &x2)| x1 ^ x2).collect();
+
+        h.write(v3.as_slice());
         let hashval = h.finish();
         let name = format!("r_{}", hashval);
         Expr::FnExpr(name, args, Box::new(e)) }
+    // Array
+    expr ::= LBracket expr_list(es) RBracket {Expr::Array(es)}
+    expr ::= LBracket RBracket {Expr::Array(vec![])}
+
+    // If-expr
+    expr ::= If expr(e) StatementEnd? Do StatementEnd? expr(f) StatementEnd? Else StatementEnd? expr(g) {Expr::IfExpr(Box::new(e), Box::new(f), Box::new(g))}
 
     expr_list ::= expr(e) { vec![e] }
     expr_list ::= expr_list(mut es) Comma expr(e) { es.push(e); es }
 
-    expr ::= LBracket expr_list(es) RBracket {Expr::Array(es)}
-
     %error String;
 
     %syntax_error {
-        Err(format!("{:?}", token.unwrap()))
+        Err(format!("{:#?}", token))
     }
 }
 
