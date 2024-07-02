@@ -171,3 +171,15 @@ impl FromStr for Itype {
 //         Itype::Bool(Some(*self))
 //     }
 // }
+
+impl ToString for Itype {
+    fn to_string(&self) -> String {
+        match self {
+            Itype::Mute => todo!(),
+            Itype::Int(v) => if v.is_some() {v.unwrap().to_string()} else {"Int".to_string()},
+            Itype::Flt(v) => if v.is_some() {v.unwrap().to_string()} else {"Flt".to_string()},
+            Itype::Str(v) => if v.is_some() {<Option<String> as Clone>::clone(&v).unwrap().to_string()} else {"Str".to_string()},
+            Itype::Bool(v) => if v.is_some() {v.unwrap().to_string()} else {"Bool".to_string()},
+        }
+    }
+}

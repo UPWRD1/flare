@@ -112,6 +112,15 @@ pub enum Expr {
     IfExpr(Box<Expr>, Box<Expr>, Box<Expr>)
 }
 
+impl ToString for Expr {
+    fn to_string(&self) -> String {
+        match self {
+            Expr::Variable(s) => s.to_string(),
+            _ => panic!("Cannot get string of expr {self:?}")
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),

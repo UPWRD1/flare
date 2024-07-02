@@ -4,7 +4,7 @@ use std::{env, fs, time::Instant};
 
 use logos::Logos;
 use root::{
-    passes::{backend::codegen::generate_code, parser},
+    passes::{ midend::typechecking::Environment, parser},
     resource::{ast, tk::Tk},
 };
 
@@ -53,7 +53,8 @@ fn main() {
                     .unwrap().1;
                 println!("{:#?}", prg);
 
-                let end = generate_code(prg);
+                let mut tc = root::passes::midend::typechecking::TypeChecker {env: Environment::new()};
+                tc.check(prg);
                 //let nend = end.strip_prefix("\"").unwrap().strip_suffix('\"').unwrap().replace("\\n", "\n");
                 //let mut file = std::fs::File::create(format!("{}.ll", filename)).expect("Could not create file");
                 //let _ = file.write_all(nend.as_bytes());
@@ -61,7 +62,7 @@ fn main() {
                 let elapsed = now.elapsed();
                 println!("Compiled {} in {:.2?}", filename, elapsed);
                 
-                println!("{}", end);
+                //println!("{}", end);
                 //dbg!(lex);
             }
 
