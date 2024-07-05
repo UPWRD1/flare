@@ -77,9 +77,9 @@ pub enum Tk {
     TkKwFnTy((usize, usize)),
     #[token("bool", word_callback)]
     TkKwBool((usize, usize)),
-    #[regex("([a-zA-Z]|_)+[a-zA-Z0-9]*", priority=3, callback=word_callback)]
+    #[regex("([a-zA-Z]|_)+[a-zA-Z0-9]*", priority=2, callback=word_callback)]
     TkSymbol((usize, usize)),
-    #[regex("[0-9]+|true|false|\"*\"", priority=2, callback=word_callback)]
+    #[regex("[0-9]+|[0-9]+.[0-9]+|true|false|\"[a-zA-Z0-9]*\"", priority=3, callback=word_callback)]
     TkScalar((usize, usize)),
     #[token("->", word_callback)]
     TkArr((usize, usize)),
@@ -139,10 +139,10 @@ impl Tk {
             Tk::TkKwFn(_) => Token::Fn,
             Tk::TkKwIf(_) => Token::If,
             Tk::TkKwElse(_) => Token::Else,
-            Tk::TkKwWhile (_) => Token::While,
-            Tk::TkKwFor(_) => Token::For,
-            Tk::TkKwIn(_) => Token::In,
-            Tk::TkKwReturn(_) => Token::Return,
+            //Tk::TkKwWhile (_) => Token::While,
+            //Tk::TkKwFor(_) => Token::For,
+            //Tk::TkKwIn(_) => Token::In,
+            //Tk::TkKwReturn(_) => Token::Return,
             Tk::TkKwAnd(_) => Token::And,
             Tk::TkKwOr(_) => Token::Or,
             Tk::TkKwNot(_) => Token::Not,
@@ -168,11 +168,11 @@ impl Tk {
             Tk::TkCGT(_) => Token::Greater,
             Tk::TkCGE(_) => Token::GreaterEq,
             Tk::TkComma(_) => Token::Comma,
-            Tk::TkDot(_) => Token::Dot,
-            Tk::TkColon(_) => Token::Colon,
+            //Tk::TkDot(_) => Token::Dot,
+            //Tk::TkColon(_) => Token::Colon,
             Tk::TkComment => todo!(),
             Tk::TkKwDo(_) => Token::Do,
-            Tk::TkKwEnd(_) => Token::End,
+            //Tk::TkKwEnd(_) => Token::End,
             Tk::TkSemicolon(_) | Tk::TkStatementEnd(_) => Token::StatementEnd,
             Tk::TkKwInt(_) => Token::Vtk(VTypeKind::Int),
             Tk::TkKwFlt(_) => Token::Vtk(VTypeKind::Flt),
@@ -180,7 +180,7 @@ impl Tk {
             Tk::TkKwBool(_) => Token::Vtk(VTypeKind::Bool),
             Tk::TkKwFnTy(_) => Token::Vtk(VTypeKind::Fn),
             Tk::TkAt(_) => Token::Generic,
-            Tk::TkKwThru(_) => Token::Thru,
+            //Tk::TkKwThru(_) => Token::Thru,
 
             _ => panic!("{:?}", self),
 

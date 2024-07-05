@@ -36,13 +36,13 @@ pub enum BinOp {
 //     }
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaOp {
     Neg,
     Not,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VTypeKind {
     Int,
     Flt,
@@ -53,6 +53,15 @@ pub enum VTypeKind {
     Generic(String),
     Container(Box<VType>),
     Unknown,
+}
+
+impl VTypeKind {
+    pub fn is_unknown(&self) -> bool {
+        match self {
+            VTypeKind::Unknown => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for VTypeKind {
@@ -76,7 +85,7 @@ impl Display for VTypeKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VType {
     pub kind: VTypeKind,
     is_mut: bool,
@@ -88,13 +97,13 @@ impl VType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Pair {
     pub name: String,
     pub value: VType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Range(Box<Expr>, Box<Expr>),
     Scalar(Itype),
@@ -140,7 +149,7 @@ pub struct Function {
     pub extends: Option<VType>,
     pub rtype: VType,
     pub args: Vec<Pair>,
-    pub code: Stmt,
+    pub code: Vec<Stmt>,
 }
 
 #[derive(Debug, Clone)]
@@ -168,7 +177,7 @@ impl Function {
                     is_mut: false,
                 },
                 args,
-                code: Stmt::Block(code),
+                code: code,
             }
         } else {
             Function {
@@ -179,7 +188,7 @@ impl Function {
                 extends: extends.clone(),
                 rtype: extends.unwrap(),
                 args,
-                code: Stmt::Block(code),
+                code: code,
             }
         }
     }
@@ -200,7 +209,7 @@ impl Function {
                 extends,
                 rtype,
                 args,
-                code: Stmt::Block(code),
+                code: code,
             }
         } else {
             panic!("Extension function cannot return a type other than its parent")

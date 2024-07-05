@@ -13,6 +13,7 @@ pomelo! {
     %type Pair Pair;
     %type expr Expr;
     %type expr_list Vec<Expr>;
+    %type call_list Vec<Expr>;
     %type stmt Stmt;
     %type block Vec<Stmt>;
     %type stmt_list Vec<Stmt>;
@@ -44,10 +45,6 @@ pomelo! {
     f_decl ::= Let Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
     f_decl ::= Let Ident(name) Assign stmt_list(code) { Function::new(name, vec![], code, None) }
 
-    f_decl ::= Let Vtk(r) Ident(name) Of arg_list?(args) For type_decl(t) Assign stmt_list(code) { Function::new_rt(name, args.unwrap_or_else(Vec::new), code, Some(t), VType::new(r, false)) }
-    f_decl ::= Let Vtk(r) Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new_rt(name, args.unwrap_or_else(Vec::new), code, None, VType::new(r, false)) }
-    f_decl ::= Let Vtk(r) Ident(name) Assign stmt_list(code) { Function::new_rt(name, vec![], code, None, VType::new(r, false)) }
-
 
     type_decl ::= Ident(n) {VType::new(VTypeKind::Custom(n), false) }
     type_decl ::= Bang Ident(n) {VType::new(VTypeKind::Custom(n), true) }
@@ -58,34 +55,38 @@ pomelo! {
     type_decl ::= Bang Ident(n) LBrace type_decl(t) RBrace {VType::new(VTypeKind::Generic(n), true) }
     type_decl ::= Ident(n) Generic type_decl(m) {VType::new(VTypeKind::Container(Box::new(m)), false) }
 
-    arg_list ::= Ident(n) Colon type_decl(t) { vec![Pair {name: n, value: t}] }
-    arg_list ::= arg_list(mut args) Comma Ident(n) Colon type_decl(v) { args.push(Pair {name: n, value: v}); args }
+    arg_list ::= Ident(n) { vec![Pair {name: n, value: VType::new(VTypeKind::Unknown, false)}] }
+    arg_list ::= arg_list(mut args) Comma Ident(n) { args.push(Pair {name: n, value: VType::new(VTypeKind::Unknown, false)}); args }
 
-    block ::= Do stmt_list(ss) End { ss }
+    //block ::= Do stmt_list(ss) End { ss }
 
     stmt_list ::= StatementEnd? stmt(s) { vec![s] }
     stmt_list ::= stmt_list(mut ss) stmt(s) { ss.push(s); ss }
 
-    stmt ::= block(ss) { Stmt::Block(ss) }
+    //stmt ::= block(ss) { Stmt::Block(ss) }
 
     //stmt ::= If expr(e) block(s1) [Else] { Stmt::If(e, Box::new((Stmt::Block(s1), None))) }
     //stmt ::= If expr(e) block(s1) Else block(s2) {Stmt::If(e, Box::new((Stmt::Block(s1), Some(Stmt::Block(s2)))))  }
-    stmt ::= While  expr(e) block(s) { Stmt::While(e, Box::new(Stmt::Block(s))) }
-    stmt ::= Return expr(e) StatementEnd { Stmt::Return(e) }
-    stmt ::= Break  { Stmt::Break }
-    stmt ::= Continue  {Stmt::Continue }
-    stmt ::= For Ident(i) In Ident(j) block(s) {Stmt::ForEach(i, j, Box::new(Stmt::Block(s)))}
-    stmt ::= For Ident(i) In expr(b) Thru expr(t) block(s) {Stmt::ForRange(i, Expr::Range(Box::new(b), Box::new(t)), Box::new(Stmt::Block(s)))}
+    //stmt ::= While  expr(e) block(s) { Stmt::While(e, Box::new(Stmt::Block(s))) }
+    //stmt ::= Return expr(e) StatementEnd { Stmt::Return(e) }
+    //stmt ::= Break  { Stmt::Break }
+    //stmt ::= Continue  {Stmt::Continue }
+    //stmt ::= For Ident(i) In Ident(j) block(s) {Stmt::ForEach(i, j, Box::new(Stmt::Block(s)))}
+    //stmt ::= For Ident(i) In expr(b) Thru expr(t) block(s) {Stmt::ForRange(i, Expr::Range(Box::new(b), Box::new(t)), Box::new(Stmt::Block(s)))}
     stmt ::= expr(e) StatementEnd {Stmt::Expr(e) }
+
+
+    //expr_list ::= StatementEnd? expr(s) { vec![s] }
+    //expr_list ::= expr_list(mut ss) expr(s) { ss.push(s); ss }
 
 
     //expr ::= Number(n) { Expr::Number(n) }
     //expr ::= String(s) { Expr::String(s) }
     expr ::= Ident(n) { Expr::Variable(n) }
-    expr ::= Bang? Scalar(s) { Expr::Scalar(s) }
+    expr ::= Scalar(s) { Expr::Scalar(s) }
 
-    expr ::= Ident(n) LParen expr_list?(es) RParen { Expr::Call {name: n, on: None, args: es.unwrap_or(Vec::new())} }
-    expr ::= Ident(c) Dot Ident(n) LParen expr_list?(es) RParen { Expr::Call {name: n, on: Some(c), args: es.unwrap_or(Vec::new())} }
+    expr ::= Ident(n) LParen call_list?(es) RParen { Expr::Call {name: n, on: None, args: es.unwrap_or(Vec::new())} }
+    //expr ::= Ident(c) Dot Ident(n) LParen expr?(es) RParen { Expr::Call {name: n, on: Some(c), args: es.unwrap_or(Vec::new())} }
     expr ::= LParen expr(e) RParen { e }
 
     expr ::= expr(a) Plus expr(b) { Expr::BinaryOp(BinOp::Plus, Box::new((a, b))) }
@@ -124,14 +125,14 @@ pomelo! {
         let name = format!("r_{}", hashval);
         Expr::FnExpr(name, args, Box::new(e)) }
     // Array
-    expr ::= LBracket expr_list(es) RBracket {Expr::Array(es)}
+    expr ::= LBracket call_list(es) RBracket {Expr::Array(es)}
     expr ::= LBracket RBracket {Expr::Array(vec![])}
 
     // If-expr
-    expr ::= If expr(e) StatementEnd? Do StatementEnd? expr(f) StatementEnd? Else StatementEnd? expr(g) {Expr::IfExpr(Box::new(e), Box::new(f), Box::new(g))}
+   expr ::= If expr(e) StatementEnd? Do StatementEnd? expr(f) StatementEnd? Else StatementEnd? expr(g) {Expr::IfExpr(Box::new(e), Box::new(f), Box::new(g))}
 
-    expr_list ::= expr(e) { vec![e] }
-    expr_list ::= expr_list(mut es) Comma expr(e) { es.push(e); es }
+    call_list ::= expr(e) { vec![e] }
+    call_list ::= call_list(mut es) Comma expr(e) { es.push(e); es }
 
     %error String;
 
