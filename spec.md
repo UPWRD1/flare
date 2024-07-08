@@ -114,7 +114,7 @@ When you assign a value to a pair, the "intrinsic type" of whatever scalar you u
 #### Function Declarations
 
 ```lua
-let f of (x: int, y: int) = 
+let f of x, y = 
     return x * y
 ```
 
@@ -125,7 +125,7 @@ Notice how the parameter and return value types are declared similarly to a pair
 In Allegro, every program starts with a 'main()' function. Here's an example:
 
 ```lua
-let factorial of (x: int) = 
+let factorial of x = 
     return x + factorial(x - 1)
 
 

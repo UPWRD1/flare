@@ -1,5 +1,6 @@
-let f of x =
-    x + 2
+let factorial of x = 
+    x + factorial(x - 1)
 
-let main of x =
-    f("asdf")
+let main =
+    y = "asdf"
+    factorial(y)

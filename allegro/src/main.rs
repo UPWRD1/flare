@@ -4,7 +4,7 @@ use std::{env, fs, time::Instant};
 
 use logos::Logos;
 use root::{
-    passes::{midend::typechecking::{infer_types, Substitution}, parser},
+    passes::{midend::typechecking::*, parser},
     resource::{ast, tk::Tk},
 };
 
@@ -53,19 +53,12 @@ fn main() {
                     .unwrap().1;
                 //println!("{:#?}", prg);
 
-               let mut master_subs: Vec<Substitution> = vec![];
-                for f in prg.funcs {
-                    for s in f.code {
-                        let mut subs = match s {
-                            ast::Stmt::Expr(e) => infer_types(&e),
-                            _ => todo!(),
-                        };
-                        master_subs.append(&mut subs)
-                    }
+                let mut checker = TypeChecker::new();
+                match checker.infer_program(&prg) {
+                    Ok(_) => println!("Type inference successful"),
+                    Err(e) => panic!("Type inference error: {:?}", e),
                 }
-
-                dbg!(master_subs);
-
+            
                 //let nend = end.strip_prefix("\"").unwrap().strip_suffix('\"').unwrap().replace("\\n", "\n");
                 //let mut file = std::fs::File::create(format!("{}.ll", filename)).expect("Could not create file");
                 //let _ = file.write_all(nend.as_bytes());

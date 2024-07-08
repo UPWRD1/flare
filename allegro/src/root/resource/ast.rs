@@ -105,7 +105,7 @@ pub struct Pair {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Range(Box<Expr>, Box<Expr>),
+    //Range(Box<Expr>, Box<Expr>),
     Scalar(Itype),
     Array(Vec<Expr>),
     Variable(String),
@@ -118,7 +118,7 @@ pub enum Expr {
     },
     //Assign(Variable),
     FnExpr(String, Vec<Pair>, Box<Expr>),
-    IfExpr(Box<Expr>, Box<Expr>, Box<Expr>)
+    IfExpr(Box<Expr>, Box<Expr>, Box<Expr>),
 }
 
 impl ToString for Expr {
@@ -133,14 +133,14 @@ impl ToString for Expr {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Expr(Expr),
-    Block(Vec<Stmt>),
-    If(Expr, Box<(Stmt, Option<Stmt>)>),
-    While(Expr, Box<Stmt>),
-    ForEach(String, String, Box<Stmt>),
-    ForRange(String, Expr, Box<Stmt>),
-    Return(Expr),
-    Break,
-    Continue,
+    // Block(Vec<Stmt>),
+    // If(Expr, Box<(Stmt, Option<Stmt>)>),
+    // While(Expr, Box<Stmt>),
+    // ForEach(String, String, Box<Stmt>),
+    // ForRange(String, Expr, Box<Stmt>),
+    // Return(Expr),
+    // Break,
+    // Continue,
 }
 
 #[derive(Debug, Clone)]
