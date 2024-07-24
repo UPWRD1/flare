@@ -52,6 +52,7 @@ pub enum VTypeKind {
     Custom(String),
     Generic(String),
     Container(Box<VType>),
+    Enum(Box<VType>, Vec<VType>),
     Unknown,
 }
 
@@ -78,7 +79,7 @@ impl Display for VTypeKind {
                 VTypeKind::Custom(c) => &c,
                 VTypeKind::Generic(g) => &g,
                 VTypeKind::Container(_c) => "array",
-
+                VTypeKind::Enum(_n, _t) => "enum",
                 VTypeKind::Unknown => "unknown",
             }
         )
@@ -143,13 +144,25 @@ pub enum Stmt {
     // Continue,
 }
 
+impl Stmt {
+    pub fn stmt_list_to_expr(l: Vec<Stmt>) -> Vec<Expr> {
+        let mut nl: Vec<Expr> = vec![];
+        for s in l {
+            match s {
+                Stmt::Expr(e) => nl.push(e),
+            }
+        }
+        nl
+    }
+
+}
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: Pair,
     pub extends: Option<VType>,
     pub rtype: VType,
     pub args: Vec<Pair>,
-    pub code: Vec<Stmt>,
+    pub code: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -164,7 +177,7 @@ pub struct Program {
 }
 
 impl Function {
-    pub fn new(name: String, args: Vec<Pair>, code: Vec<Stmt>, extends: Option<VType>) -> Function {
+    pub fn new(name: String, args: Vec<Pair>, code: Vec<Expr>, extends: Option<VType>) -> Function {
         if extends.is_none() {
             Function {
                 name: Pair {
@@ -196,7 +209,7 @@ impl Function {
     pub fn new_rt(
         name: String,
         args: Vec<Pair>,
-        code: Vec<Stmt>,
+        code: Vec<Expr>,
         extends: Option<VType>,
         rtype: VType,
     ) -> Function {
@@ -228,7 +241,7 @@ impl Variable {
 
 impl Program {
     pub fn new() -> Program {
-        Program { funcs: Vec::new() }
+        Program { funcs: Vec::new()}
     }
     pub fn add_function(&mut self, f: Function) {
         self.funcs.push(f);

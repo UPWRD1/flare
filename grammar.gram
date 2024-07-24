@@ -1,0 +1,24 @@
+// Comments are cool
+// + 1 or more
+// * 0 or more
+// ? 0 or 1
+// | Alternation
+// () Grouping
+// = Assignment
+// , Concatenation
+
+ALPHA = "a..Z"
+DIGIT = "0..9"
+ALPHANUMERIC = ALPHA | DIGIT
+
+IDENTIFIER = (ALPHA | '_')+, (ALPHANUMERIC | '_')*
+
+PROGRAM = (USE_CLAUSE | FN_DECL)*
+
+FN_DECL = "let", IDENTIFIER, PARAMS?, FOR_CLAUSE?, WHERE_CLAUSE?, '=', STATEMENT+
+
+PARAMS = 
+
+STATEMENT = (EXPR)
+
+EXPR = IDENTIFIER | 

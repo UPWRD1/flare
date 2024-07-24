@@ -12,12 +12,12 @@ pomelo! {
     %type Scalar crate::root::resource::itypes::Itype;
     %type Pair Pair;
     %type expr Expr;
-    %type expr_list Vec<Expr>;
-    %type call_list Vec<Expr>;
     %type stmt Stmt;
-    %type block Vec<Stmt>;
     %type stmt_list Vec<Stmt>;
+    %type call_list Vec<Expr>;
+    %type block Vec<Stmt>;
     %type arg_list Vec<Pair>;
+    %type type_list Vec<VType>;
     %type type_decl VType;
     %type f_decl Function;
     %type v_decl Variable;
@@ -41,10 +41,9 @@ pomelo! {
     decl ::= f_decl(f) { extra.add_function(f); }
     decl ::= StatementEnd;
 
-    f_decl ::= Let Ident(name) Of arg_list?(args) For type_decl(t) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, Some(t)) }
-    f_decl ::= Let Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), code, None) }
-    f_decl ::= Let Ident(name) Assign stmt_list(code) { Function::new(name, vec![], code, None) }
-
+    f_decl ::= Let Ident(name) Of arg_list?(args) For type_decl(t) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), Stmt::stmt_list_to_expr(code), Some(t)) }
+    f_decl ::= Let Ident(name) Of arg_list?(args) Assign stmt_list(code) { Function::new(name, args.unwrap_or_else(Vec::new), Stmt::stmt_list_to_expr(code), None) }
+    f_decl ::= Let Ident(name) Assign stmt_list(code) { Function::new(name, vec![], Stmt::stmt_list_to_expr(code), None) }
 
     type_decl ::= Ident(n) {VType::new(VTypeKind::Custom(n), false) }
     type_decl ::= Bang Ident(n) {VType::new(VTypeKind::Custom(n), true) }
@@ -55,12 +54,13 @@ pomelo! {
     type_decl ::= Bang Ident(n) LBrace type_decl(t) RBrace {VType::new(VTypeKind::Generic(n), true) }
     type_decl ::= Ident(n) Generic type_decl(m) {VType::new(VTypeKind::Container(Box::new(m)), false) }
 
+    arg_list ::= Ident(n) Colon type_decl(t) { vec![Pair {name: n, value: t}] }
+    arg_list ::= arg_list(mut args) Comma Ident(n) Colon type_decl(t) { args.push(Pair {name: n, value: t}); args }
     arg_list ::= Ident(n) { vec![Pair {name: n, value: VType::new(VTypeKind::Unknown, false)}] }
     arg_list ::= arg_list(mut args) Comma Ident(n) { args.push(Pair {name: n, value: VType::new(VTypeKind::Unknown, false)}); args }
 
     //block ::= Do stmt_list(ss) End { ss }
-
-    stmt_list ::= StatementEnd? stmt(s) { vec![s] }
+    stmt_list ::= StatementEnd? stmt(s)  { vec![s] }
     stmt_list ::= stmt_list(mut ss) stmt(s) { ss.push(s); ss }
 
     //stmt ::= block(ss) { Stmt::Block(ss) }
@@ -74,6 +74,7 @@ pomelo! {
     //stmt ::= For Ident(i) In Ident(j) block(s) {Stmt::ForEach(i, j, Box::new(Stmt::Block(s)))}
     //stmt ::= For Ident(i) In expr(b) Thru expr(t) block(s) {Stmt::ForRange(i, Expr::Range(Box::new(b), Box::new(t)), Box::new(Stmt::Block(s)))}
     stmt ::= expr(e) StatementEnd {Stmt::Expr(e) }
+    //stmt ::= StatementEnd? {Stmt::Expr(e) }
 
 
     //expr_list ::= StatementEnd? expr(s) { vec![s] }
@@ -86,7 +87,7 @@ pomelo! {
     expr ::= Scalar(s) { Expr::Scalar(s) }
 
     expr ::= Ident(n) LParen call_list?(es) RParen { Expr::Call {name: n, on: None, args: es.unwrap_or(Vec::new())} }
-    //expr ::= Ident(c) Dot Ident(n) LParen expr?(es) RParen { Expr::Call {name: n, on: Some(c), args: es.unwrap_or(Vec::new())} }
+    expr ::= Ident(c) Dot Ident(n) LParen call_list?(es) RParen { Expr::Call {name: n, on: Some(c), args: es.unwrap_or(Vec::new())} }
     expr ::= LParen expr(e) RParen { e }
 
     expr ::= expr(a) Plus expr(b) { Expr::BinaryOp(BinOp::Plus, Box::new((a, b))) }
@@ -137,7 +138,7 @@ pomelo! {
     %error String;
 
     %syntax_error {
-        Err(format!("{:#?}", token))
+        Err(format!("{:#?}", token.unwrap()))
     }
 }
 

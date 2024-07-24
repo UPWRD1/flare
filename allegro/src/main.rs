@@ -45,7 +45,7 @@ fn main() {
                 for _ in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
                     let a = lex.next().unwrap().unwrap();
                     let token = a.translate(&mut lex.clone());
-                    //println!("{a:?} '{}'", lex.slice());
+                    println!("{a:?} '{}'", lex.slice());
                     let _ = parser.parse(token.clone()).inspect_err(|e| a.syntax_error(lex.clone(), e));
                 }
                 let prg = parser
@@ -54,10 +54,8 @@ fn main() {
                 //println!("{:#?}", prg);
 
                 let mut checker = TypeChecker::new();
-                match checker.infer_program(&prg) {
-                    Ok(_) => println!("Type inference successful"),
-                    Err(e) => panic!("Type inference error: {:?}", e),
-                }
+                //checker.infer_program(&prg);
+            
             
                 //let nend = end.strip_prefix("\"").unwrap().strip_suffix('\"').unwrap().replace("\\n", "\n");
                 //let mut file = std::fs::File::create(format!("{}.ll", filename)).expect("Could not create file");
@@ -84,6 +82,7 @@ fn main() {
         }
     }
 }
+
 
 
 

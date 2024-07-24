@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::root::resource::{ast::{Expr, Function, Program, Stmt}, itypes::Itype};
+use crate::root::resource::{ast::{Expr, Function, Program}, itypes::Itype};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
@@ -28,17 +28,38 @@ impl Type {
 #[derive(Debug, Clone)]
 pub struct TypeError(String);
 
+#[derive(Debug, Clone)]
+pub struct Environment {
+    pub items: HashMap<String, Type>,
+    pub name: String,
+}
+
 pub struct TypeChecker {
-    env: HashMap<String, Type>,
+    pub env: Vec<Environment>,
+    current_env: usize,
     next_var: usize,
 }
 
 impl TypeChecker {
     pub fn new() -> Self {
         TypeChecker {
-            env: HashMap::new(),
+            env: vec![Environment {name: "CORE".to_string(), items: HashMap::new()}],
             next_var: 0,
+            current_env: 0,
         }
+    }
+
+    fn current(&mut self) -> HashMap<String, Type> {
+        self.env[self.current_env].clone().items
+    }
+
+    fn new_scope(&mut self, name: String) {
+        self.env.push(Environment {name, items: HashMap::new()});
+        self.current_env = self.env.len() - 1;
+    }
+
+    fn close_scope(&mut self) {
+        self.current_env = 0;
     }
 
     fn new_var(&mut self) -> Type {
@@ -47,61 +68,75 @@ impl TypeChecker {
         var
     }
 
-    fn infer(&mut self, expr: &Expr) -> Result<Type, TypeError> {
+    fn get_var(&mut self, var: Type) -> Type {
+        match var {
+            Type::Var(i) => {
+                let name = self.var_to_vname(i);
+                let val = self.current().get(&name).unwrap().clone();
+                self.get_var(val)
+            },
+            _ => return var,
+        }
+    }
+
+    fn infer(&mut self, expr: &Expr) -> Type {
+        dbg!(self.env.clone());
+
         let t = match expr {
             Expr::Variable(name) => self
-                .env
-                .get(name)
+                .current().get(name)
                 .cloned()
-                .ok_or(TypeError(format!("Unknown variable: {}", name))),
+                .expect(&format!("Unknown variable: {}", name)),
             Expr::Scalar(s) => match s {
                 crate::root::resource::itypes::Itype::Mute => todo!(),
-                crate::root::resource::itypes::Itype::Int(_) => Ok(Type::Int),
-                crate::root::resource::itypes::Itype::Flt(_) => Ok(Type::Flt),
-                crate::root::resource::itypes::Itype::Str(_) => Ok(Type::Str),
-                crate::root::resource::itypes::Itype::Bool(_) => Ok(Type::Bool),
+                crate::root::resource::itypes::Itype::Int(_) => Type::Int,
+                crate::root::resource::itypes::Itype::Flt(_) => Type::Flt,
+                crate::root::resource::itypes::Itype::Str(_) => Type::Str,
+                crate::root::resource::itypes::Itype::Bool(_) => Type::Bool,
             },
             Expr::BinaryOp(op, args) => match op {
                 crate::root::resource::ast::BinOp::Assign => {
                     let (lhs, rhs) = *args.clone();
-                    let rhs_type = self.infer(&rhs)?;
-                    if let Some(var_type) = self.env.clone().get(&lhs.to_string()) {
-                        self.unify(var_type, &rhs_type)?;
+                    let rhs_type = self.infer(&rhs);
+                    if let Some(var_type) = self.current().clone().get(&lhs.to_string()) {
+                        self.unify(var_type, &rhs_type);
                     } else {
-                        self.env.insert(lhs.to_string().clone(), rhs_type.clone());
+                        self.env[self.current_env].items
+                        .insert(lhs.to_string().clone(), rhs_type.clone());
                     }
-                    Ok(rhs_type)
+                    rhs_type
                 }
                 _ => {
                     let (lhs, rhs) = *args.clone();
-                    let lhs_type = self.infer(&lhs)?;
-                    let rhs_type = self.infer(&rhs)?;
-
-                    self.unify(&lhs_type, &rhs_type)?;
-                    Ok(lhs_type)
+                    let lhs_type = self.infer(&lhs);
+                    let rhs_type = self.infer(&rhs);
+                    // if !((lhs_type == Type::Int && rhs_type == Type::Int) || (lhs_type == Type::Flt && rhs_type == Type::Flt)) {
+                    //     panic!("Binary operation cannot be applied between {:?} and {:?}", lhs_type, rhs_type)
+                    // }
+                    self.unify(&lhs_type, &rhs_type);
+                    lhs_type
                 }
             },
             Expr::Call { name, on:_, args } => {
-                let func_type = self
-                    .env
-                    .get(name)
+                let func_type = 
+                self.env[self.current_env].items.get(name)
                     .cloned()
-                    .ok_or(TypeError(format!("Unknown function: {}", name)))?;
+                    .ok_or(TypeError(format!("Unknown function: {}", name)));
                 match func_type {
-                    Type::Fn(arg_types, ret_type) => {
+                    Ok(Type::Fn(arg_types, ret_type)) => {
                         if arg_types.len() != args.len() {
-                            return Err(TypeError(format!(
+                            panic!(
                                 "Function {} called with incorrect number of arguments",
                                 name
-                            )));
+                            )
                         }
                         for (arg_type, arg_expr) in arg_types.iter().zip(args) {
-                            let inferred_arg_type = self.infer(arg_expr)?;
-                            self.unify(arg_type, &inferred_arg_type)?;
+                            let inferred_arg_type = self.infer(arg_expr);
+                            self.unify(arg_type, &inferred_arg_type);
                         }
-                        Ok(*ret_type)
+                        *ret_type
                     }
-                    _ => Err(TypeError(format!("{} is not a function", name))),
+                    _ => panic!("{} is not a function", name)
                 }
             }
             _ => todo!(),
@@ -109,57 +144,53 @@ impl TypeChecker {
         return t
     }
 
-    fn unify(&mut self, t1: &Type, t2: &Type) -> Result<(), TypeError> {
-        dbg!(self.env.clone());
+    fn unify(&mut self, t1: &Type, t2: &Type) -> (){
 
         match (t1, t2) {
-            (Type::Int, Type::Int) => Ok(()),
-            (Type::Flt, Type::Flt) => Ok(()),
+            (Type::Int, Type::Int) => (),
+            (Type::Flt, Type::Flt) => (),
 
-            (Type::Str, Type::Str) => Ok(()),
-            (Type::Bool, Type::Bool) => Ok(()),
+            (Type::Str, Type::Str) => (),
+            (Type::Bool, Type::Bool) => (),
 
             (Type::Var(n), t) | (t, Type::Var(n)) => {
-                self.env.insert(format!("t{}", n), t.clone());
-                Ok(())
+                self.env[self.current_env].items.insert(format!("t{}", n), t.clone());
             }
             (Type::Fn(arg1, ret1), Type::Fn(arg2, ret2)) => {
                 if arg1.len() != arg2.len() {
-                    return Err(TypeError(format!(
+                    panic!(
                         "Cannot unify functions with different arities: {:?} and {:?}",
                         t1, t2
-                    )));
+                    )
                 }
                 for (a1, a2) in arg1.iter().zip(arg2) {
-                    self.unify(a1, a2)?;
+                    self.unify(a1, a2);
                 }
                 self.unify(ret1, ret2)
             }
-            (t1, t2) => Err(TypeError(format!(
+            (t1, t2) => panic!(
                 "Cannot unify types: {:?} and {:?}",
                 t1, t2
-            ))),
+            )
         }
     }
 
-    fn infer_function(&mut self, func: &Function) -> Result<(), TypeError> {
+    fn infer_function(&mut self, func: &Function) {
         let mut arg_types = Vec::new();
+        self.new_scope(func.name.name.clone());
         for arg in &func.args {
             let arg_type = self.new_var();
-            self.env.insert(arg.clone().name, arg_type.clone());
+            self.env[self.current_env].items.insert(arg.clone().name, arg_type.clone());
             arg_types.push(arg_type);
         }
         let mut ret_type: Type = self.new_var();
-        self.env.insert(func.name.clone().name, Type::Fn(arg_types.clone(), Box::new(ret_type.clone())));
-        for stmt in &func.code {
-            ret_type = match stmt {
-                Stmt::Expr(e) => self.infer(e)?,
-                _ => todo!(),
-            };
+        self.env[self.current_env].items.insert(func.name.clone().name, Type::Fn(arg_types.clone(), Box::new(ret_type.clone())));
+        for expr in &func.code {
+            ret_type = self.infer(expr);
         }
         let func_type = Type::Fn(arg_types, Box::new(ret_type));
-        self.env.insert(func.name.clone().name, func_type);
-        Ok(())
+        self.env[self.current_env].items.insert(func.name.clone().name, func_type);
+        self.close_scope();
     }
 
     fn var_to_vname(&mut self, t: usize) -> String {
@@ -167,12 +198,12 @@ impl TypeChecker {
     }
 
 
-    pub fn infer_program(&mut self, program: &Program) -> Result<HashMap<String, Type>, TypeError> {
+    pub fn infer_program(&mut self, program: &Program) -> HashMap<String, Type> {
         for func in &program.funcs {
-            self.infer_function(func)?;
+            self.infer_function(func);
         }
         dbg!(self.env.clone());
-        Ok(self.env.clone())
+        self.current().clone()
     }
 
 }

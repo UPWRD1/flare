@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 use logos::{Lexer, Logos};
 use super::{ast::VTypeKind, itypes::Itype};
 
@@ -140,7 +140,7 @@ impl Tk {
             Tk::TkKwIf(_) => Token::If,
             Tk::TkKwElse(_) => Token::Else,
             //Tk::TkKwWhile (_) => Token::While,
-            //Tk::TkKwFor(_) => Token::For,
+            Tk::TkKwFor(_) => Token::For,
             //Tk::TkKwIn(_) => Token::In,
             //Tk::TkKwReturn(_) => Token::Return,
             Tk::TkKwAnd(_) => Token::And,
@@ -168,8 +168,8 @@ impl Tk {
             Tk::TkCGT(_) => Token::Greater,
             Tk::TkCGE(_) => Token::GreaterEq,
             Tk::TkComma(_) => Token::Comma,
-            //Tk::TkDot(_) => Token::Dot,
-            //Tk::TkColon(_) => Token::Colon,
+            Tk::TkDot(_) => Token::Dot,
+            Tk::TkColon(_) => Token::Colon,
             Tk::TkComment => todo!(),
             Tk::TkKwDo(_) => Token::Do,
             //Tk::TkKwEnd(_) => Token::End,
@@ -241,7 +241,7 @@ impl Tk {
             | Tk::TkAt((line, column))
             | Tk::TkKwThru((line, column))
             | Tk::TkDot((line, column)) => {
-                eprintln!("Syntax error at {line}:{:?} with token {e}", lex.source().char_indices().collect::<Vec<(usize, char)>>()[column - 1]);
+                eprintln!("Syntax error at {line}:{column} with token {}",  e);
             }
         }
     }

@@ -167,4 +167,106 @@ let mul_each of x: ?T for !Array[?T] where ?T is Numeric =
 let main =
     my_array = ![1, 2, 3] -- declare mutable variable
     my_array.mul_each(2) -- [2, 4, 6]
-``
+```
+
+#### Type, Enum, and Property Declarations
+
+You can create your own types using `type`:
+
+```rust
+type Point2D = (flt, flt)
+```
+
+The `for` keyword lets you implement custom behavior for a type:
+
+```rust
+let new of x: flt, y: flt for Point2D = 
+    Point2D(x, y)
+```
+
+*Enumerations* let you represent one of several values. Here's an implementation of Rust's `Option` type:
+
+```rust
+type Option<?> = enum of
+    Some(?),
+    None
+```
+
+*Objects* are like structs. They contain fields of a certain type.
+
+type Person = obj of
+    name: str,
+    age: int,
+    height: flt,
+    id: CustomType
+
+*Properties* are like interfaces or traits. You can use them to describe custom types through *idioms*. Here's the definition of `Numeric` from earlier
+
+```lua
+prop Numeric =
+    add(rhs) for Self,
+    sub(rhs) for Self,
+    mul(rhs) for Self,
+    div(rhs) for Self,
+    ...
+
+```
+
+We can implement `Numeric` for our `Point2D` type through:
+
+```lua
+let Numeric.add of rhs for Point2D = 
+    Point2D.new(self.0 + rhs.0, self.1 + rhs.1)
+... -- Implementation continues
+```
+
+### Control Flow
+
+#### If/Else
+
+```ruby
+if condition do 
+    ...
+end
+```
+
+```lua
+if condition do 
+    ...
+else do
+    ...
+end
+```
+
+#### While Loop
+
+```lua
+while condition do
+    ...
+end
+```
+
+
+#### For Loop
+
+```lua
+for i in iterable do
+    ...
+end
+```
+
+```lua
+for i in 0 thru 10 do
+    ...
+end
+```
+
+#### Match Statement
+
+```ruby
+match item if
+    0 thru 9 then IO.out("Less than 10")
+    13 then IO.out("Uh oh... unlucky 13")
+    else then IO.out("Other Number")
+end
+```
