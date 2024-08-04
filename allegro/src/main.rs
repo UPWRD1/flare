@@ -8,7 +8,6 @@ use root::{
     resource::{ast, tk::Tk},
 };
 
-extern crate pomelo;
 
 extern crate logos;
 //use parser::*;
@@ -33,7 +32,6 @@ fn main() {
                 //info!("Compiling {} to {}.c", filename, filename);
                 let src = fs::read_to_string(filename).unwrap();
                 let mut lex = Tk::lexer(&src);
-                let mut parser = parser::Parser::new(ast::Program::new());
                 // if lex.clone().last()
                 //     != Some(Ok(Tk::TkStatementEnd((
                 //         src.lines().collect::<Vec<&str>>().len(),
@@ -42,21 +40,13 @@ fn main() {
                 // {
                 //     error_nocode!("Missing last newline in file: '{filename}'");
                 // }
+                let mut tokens: Vec<Tk> = vec![];
                 for _ in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
                     let a = lex.next().unwrap().unwrap();
-                    let token = a.translate(&mut lex.clone());
                     println!("{a:?} '{}'", lex.slice());
-                    let _ = parser.parse(token.clone()).inspect_err(|e| a.syntax_error(lex.clone(), e));
+                    tokens.push(a)
                 }
-                let prg = parser
-                    .end_of_input()
-                    .unwrap().1;
-                //println!("{:#?}", prg);
-
-                let mut checker = TypeChecker::new();
-                //checker.infer_program(&prg);
-            
-            
+                
                 //let nend = end.strip_prefix("\"").unwrap().strip_suffix('\"').unwrap().replace("\\n", "\n");
                 //let mut file = std::fs::File::create(format!("{}.ll", filename)).expect("Could not create file");
                 //let _ = file.write_all(nend.as_bytes());

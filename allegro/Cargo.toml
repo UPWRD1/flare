@@ -7,7 +7,7 @@ edition = "2021"
 colored = "2.1.0"
 lazy_static = "1.4.0"
 logos = "0.14.0"
-pomelo = "0.1.5"
+#pomelo = "0.1.5"
 
 [profile.release]
 opt-level = 3

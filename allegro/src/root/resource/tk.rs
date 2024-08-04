@@ -3,7 +3,6 @@ use logos::{Lexer, Logos};
 use super::{ast::VTypeKind, itypes::Itype};
 
 //use crate::error_nocode;
-use crate::root::passes::parser::*;
 
 fn newline_callback(lex: &mut Lexer<Tk>) -> (usize, usize) {
     lex.extras.0 += 1;
@@ -132,61 +131,61 @@ pub enum Tk {
 }
 
 impl Tk {
-    pub fn translate(&self, lex: &mut Lexer<Tk>) -> Token {
-        match self {
-            Tk::TkKwLet(_) => Token::Let,
-            Tk::TkKwOf(_) => Token::Of,
-            Tk::TkKwFn(_) => Token::Fn,
-            Tk::TkKwIf(_) => Token::If,
-            Tk::TkKwElse(_) => Token::Else,
-            //Tk::TkKwWhile (_) => Token::While,
-            Tk::TkKwFor(_) => Token::For,
-            //Tk::TkKwIn(_) => Token::In,
-            //Tk::TkKwReturn(_) => Token::Return,
-            Tk::TkKwAnd(_) => Token::And,
-            Tk::TkKwOr(_) => Token::Or,
-            Tk::TkKwNot(_) => Token::Not,
-            Tk::TkSymbol(_) => Token::Ident(lex.slice().to_string()),
-            Tk::TkScalar(_) => Token::Scalar(Itype::from_str(lex.slice()).unwrap()),
-            Tk::TkArr(_) => Token::Arrow,
-            Tk::TkBang(_) => Token::Bang,
-            Tk::TkQuestion(_) => Token::Question,
-            Tk::TkPlus(_) => Token::Plus,
-            Tk::TkMinus(_) => Token::Minus,
-            Tk::TkStar(_) => Token::Mult,
-            Tk::TkSlash(_) => Token::Div,
-            Tk::TkLparen(_) => Token::LParen,
-            Tk::TkRparen(_) => Token::RParen,
-            Tk::TkLbracket(_) => Token::LBracket,
-            Tk::TkRbracket(_) => Token::RBracket,
-            Tk::TkLBrace(_) => Token::LBrace,
-            Tk::TkRBrace(_) => Token::RBrace,
-            Tk::TkAssign(_) => Token::Assign,
-            Tk::TkCEQ(_) => Token::Equal,
-            Tk::TkCLT(_) => Token::Less,
-            Tk::TkCLE(_) => Token::LessEq,
-            Tk::TkCGT(_) => Token::Greater,
-            Tk::TkCGE(_) => Token::GreaterEq,
-            Tk::TkComma(_) => Token::Comma,
-            Tk::TkDot(_) => Token::Dot,
-            Tk::TkColon(_) => Token::Colon,
-            Tk::TkComment => todo!(),
-            Tk::TkKwDo(_) => Token::Do,
-            //Tk::TkKwEnd(_) => Token::End,
-            Tk::TkSemicolon(_) | Tk::TkStatementEnd(_) => Token::StatementEnd,
-            Tk::TkKwInt(_) => Token::Vtk(VTypeKind::Int),
-            Tk::TkKwFlt(_) => Token::Vtk(VTypeKind::Flt),
-            Tk::TkKwStr(_) => Token::Vtk(VTypeKind::Str),
-            Tk::TkKwBool(_) => Token::Vtk(VTypeKind::Bool),
-            Tk::TkKwFnTy(_) => Token::Vtk(VTypeKind::Fn),
-            Tk::TkAt(_) => Token::Generic,
-            //Tk::TkKwThru(_) => Token::Thru,
+    // pub fn translate(&self, lex: &mut Lexer<Tk>) -> Token {
+    //     match self {
+    //         Tk::TkKwLet(_) => Token::Let,
+    //         Tk::TkKwOf(_) => Token::Of,
+    //         Tk::TkKwFn(_) => Token::Fn,
+    //         Tk::TkKwIf(_) => Token::If,
+    //         Tk::TkKwElse(_) => Token::Else,
+    //         //Tk::TkKwWhile (_) => Token::While,
+    //         Tk::TkKwFor(_) => Token::For,
+    //         //Tk::TkKwIn(_) => Token::In,
+    //         //Tk::TkKwReturn(_) => Token::Return,
+    //         Tk::TkKwAnd(_) => Token::And,
+    //         Tk::TkKwOr(_) => Token::Or,
+    //         Tk::TkKwNot(_) => Token::Not,
+    //         Tk::TkSymbol(_) => Token::Ident(lex.slice().to_string()),
+    //         Tk::TkScalar(_) => Token::Scalar(Itype::from_str(lex.slice()).unwrap()),
+    //         Tk::TkArr(_) => Token::Arrow,
+    //         Tk::TkBang(_) => Token::Bang,
+    //         Tk::TkQuestion(_) => Token::Question,
+    //         Tk::TkPlus(_) => Token::Plus,
+    //         Tk::TkMinus(_) => Token::Minus,
+    //         Tk::TkStar(_) => Token::Mult,
+    //         Tk::TkSlash(_) => Token::Div,
+    //         Tk::TkLparen(_) => Token::LParen,
+    //         Tk::TkRparen(_) => Token::RParen,
+    //         Tk::TkLbracket(_) => Token::LBracket,
+    //         Tk::TkRbracket(_) => Token::RBracket,
+    //         Tk::TkLBrace(_) => Token::LBrace,
+    //         Tk::TkRBrace(_) => Token::RBrace,
+    //         Tk::TkAssign(_) => Token::Assign,
+    //         Tk::TkCEQ(_) => Token::Equal,
+    //         Tk::TkCLT(_) => Token::Less,
+    //         Tk::TkCLE(_) => Token::LessEq,
+    //         Tk::TkCGT(_) => Token::Greater,
+    //         Tk::TkCGE(_) => Token::GreaterEq,
+    //         Tk::TkComma(_) => Token::Comma,
+    //         Tk::TkDot(_) => Token::Dot,
+    //         Tk::TkColon(_) => Token::Colon,
+    //         Tk::TkComment => todo!(),
+    //         Tk::TkKwDo(_) => Token::Do,
+    //         //Tk::TkKwEnd(_) => Token::End,
+    //         Tk::TkSemicolon(_) | Tk::TkStatementEnd(_) => Token::StatementEnd,
+    //         Tk::TkKwInt(_) => Token::Vtk(VTypeKind::Int),
+    //         Tk::TkKwFlt(_) => Token::Vtk(VTypeKind::Flt),
+    //         Tk::TkKwStr(_) => Token::Vtk(VTypeKind::Str),
+    //         Tk::TkKwBool(_) => Token::Vtk(VTypeKind::Bool),
+    //         Tk::TkKwFnTy(_) => Token::Vtk(VTypeKind::Fn),
+    //         Tk::TkAt(_) => Token::Generic,
+    //         //Tk::TkKwThru(_) => Token::Thru,
 
-            _ => panic!("{:?}", self),
+    //         _ => panic!("{:?}", self),
 
-        }
-        //todo!()
-    }
+    //     }
+    //     //todo!()
+    // }
 
     pub fn syntax_error(self, lex: logos::Lexer<Tk>, e: &String) {
         match self {
