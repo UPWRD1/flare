@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::root::resource::{ast::{Expr, Function, Program}, itypes::Itype};
+use crate::root::resource::{oldast::{Expr, Function, Program}, itypes::Itype};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
@@ -95,7 +95,7 @@ impl TypeChecker {
                 crate::root::resource::itypes::Itype::Bool(_) => Type::Bool,
             },
             Expr::BinaryOp(op, args) => match op {
-                crate::root::resource::ast::BinOp::Assign => {
+                crate::root::resource::oldast::BinOp::Assign => {
                     let (lhs, rhs) = *args.clone();
                     let rhs_type = self.infer(&rhs);
                     if let Some(var_type) = self.current().clone().get(&lhs.to_string()) {

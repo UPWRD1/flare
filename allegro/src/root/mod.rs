@@ -1,95 +1,94 @@
 pub mod passes;
-// pub mod legacy_resource;
+use std::{collections::HashSet, fs};
+
+use logos::Logos;
+use resource::ast::{Expr, Module, Program, SymbolTableEntry};
 pub mod resource;
 
-// use std::io::Write;
-// use std::time::Instant;
+use crate::root::resource::tk::{Tk, Token};
 
-// use passes::legacy_frontend::analyze;
-// use passes::legacy_frontend::lexing;
-// //use passes::legacy_frontend::parsing;
-// use passes::legacy_midend::typechecking;
+pub fn compile_filename(filename: &String) -> Module {
+    let src = fs::read_to_string(filename).unwrap();
+    let mut lex = Tk::lexer(&src);
+    // if lex.clone().last()
+    //     != Some(Ok(Tk::TkStatementEnd((
+    //         src.lines().collect::<Vec<&str>>().len(),
+    //         0,
+    //     ))))
+    // {
+    //     error_nocode!("Missing last newline in file: '{filename}'");
+    // }
+    let mut tokens: Vec<Token> = vec![];
+    for i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
+        let a = lex.next().unwrap().unwrap();
+        println!("{i} {a:?} '{}'", lex.slice());
+        tokens.push(Token::new(a, lex.slice().to_string()))
+    }
 
-// use passes::legacy_backend::codegen;
-// use legacy_resource::errors::Errors;
-// use legacy_resource::tokens::LegacyToken;
+    use passes::parser::parse;
+    parse(tokens)
+}
 
+pub fn get_dependencies(mut p: Program) -> Program {
+    let m = p.modules.first().unwrap();
+    for a in m.body.clone() {
+        match a {
+            resource::ast::Ast::WithClause { include } => {
+                let to_compile = include.first().unwrap().get_symbol_name();
+                let tc = format!(
+                    "{}/{}.alg",
+                    std::env::current_dir().unwrap().to_string_lossy(),
+                    to_compile
+                );
+                let dep_ast = compile_filename(&tc);
+                let mut dep_p = get_dependencies(Program { modules: vec![dep_ast], dependencies: vec![] });
+                p.dependencies.push(tc);
+                p.dependencies.append(&mut dep_p.dependencies);
+                dbg!(p.dependencies.clone());
 
-// use crate::error;
-// use crate::info;
+            }
+            _ => continue,
+        }
+    }
+    p
+}
 
-// pub fn legacy_compile(filename: &String) {
-//     let now = Instant::now();
+pub fn gen_table(
+    p: Module,
+    mut table: HashSet<SymbolTableEntry>,
+) -> (Module, HashSet<SymbolTableEntry>) {
+    for c in p.body {
+        match c {
+            resource::ast::Ast::FnDef { name, args, body } => {
+                table.insert(SymbolTableEntry {
+                    rawname: name,
+                    value: resource::ast::ASTType::Fn,
+                    version: 1,
+                });
+                for e in body {}
+            }
+            resource::ast::Ast::WithClause { include } => todo!(),
+        }
+    }
+    todo!()
+}
 
-//     let cstvec = legacy_compile_lex(filename);
-
-//     let analyzed: Vec<LegacyToken> = legacy_compile_analyze(cstvec);
-
-//     let ast = legacy_compile_parse(analyzed);
-
-//     let (checked, e) = compile_typecheck(ast);
-
-//     let generated = legacy_compile_codegen(checked, e);
-    
-//     let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
-//     let _ = file.write_all(generated.to_string().as_bytes());
-
-//     let elapsed = now.elapsed();
-//     info!("Compiled {} in {:.2?}", filename, elapsed);
-
-// }
-
-// fn legacy_compile_codegen(checked: Vec<legacy_resource::ast::Statement>, e: legacy_resource::environment::Environment) -> String {
-//     let mut generator = codegen::Generator::new(checked.clone(), e);
-//     generator.generate();
-//     let generated = generator.supply();
-//     //println!("{}", generated.clone());
-//     //info!("Generation: OK");
-//     generated
-// }
-
-// fn compile_typecheck(ast: Vec<legacy_resource::ast::Statement>) -> (Vec<legacy_resource::ast::Statement>, legacy_resource::environment::Environment) {
-//     let mut checker = typechecking::Typechecker::new(ast.clone());
-//     checker.check();
-//     let (checked, e) = checker.supply();
-//     //dbg!(e.clone());
-//     //info!("Checking: OK");
-//     (checked, e)
-// }
-
-// fn legacy_compile_parse(analyzed: Vec<LegacyToken>) -> Vec<legacy_resource::ast::Statement> {
-//     let mut parser = passes::legacy_frontend::parsing::Parser::new(analyzed);
-//     parser.parse();
-//     let ast: Vec<legacy_resource::ast::Statement> = parser.supply();
-//     //dbg!(ast.clone());
-//     //info!("Parsing: OK");
-//     ast
-// }
-
-// fn legacy_compile_analyze(cstvec: Vec<legacy_resource::lexemes::Lexeme>) -> Vec<legacy_resource::tokens::LegacyToken> {
-//     let mut analyzer = analyze::Analyzer::new(cstvec);
-//     analyzer.analyze();
-//     return analyzer.supply()
-//     //dbg!(analyzed.clone());
-//     //info!("Analyzing: OK");
-// }
-
-// fn legacy_compile_lex(filename: &String) -> Vec<legacy_resource::lexemes::Lexeme> {
-//     let contents_unsure = &std::fs::read_to_string(filename);
-//     if contents_unsure.is_err() {
-//         error!(Errors::MissingFile, (filename.to_string()));
-//     };
-//     let contents = contents_unsure.as_ref().unwrap();
-//     let mut lxr = lexing::Lexer::new(contents.to_string());
-//     lxr.lex();
-//     let cstvec: Vec<legacy_resource::lexemes::Lexeme> = lxr.supply();
-//     //dbg!(cstvec.clone());
-//     //info!("Lexing: OK");
-//     cstvec
-// }
-
-// pub fn legacy_compile_import(filename: &String) -> Vec<LegacyToken> {
-//     let cstvec = legacy_compile_lex(filename);
-//     let analyzed: Vec<LegacyToken> = legacy_compile_analyze(cstvec);
-//     analyzed
-// }
+fn table_expr(e: Expr, mut table: HashSet<SymbolTableEntry>) {
+    match e {
+        Expr::Assignment { name, value } => todo!(),
+        Expr::MutableAssignment { name, value } => todo!(),
+        Expr::Closure { args, body } => todo!(),
+        Expr::Return { value } => todo!(),
+        Expr::Int(_) => todo!(),
+        Expr::Flt(_) => todo!(),
+        Expr::Str(_) => todo!(),
+        Expr::Bool(_) => todo!(),
+        Expr::Symbol(_) => todo!(),
+        Expr::Call {
+            name,
+            args,
+            namespace,
+        } => todo!(),
+        _ => todo!(),
+    }
+}

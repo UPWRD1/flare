@@ -1,18 +1,16 @@
 extern crate colored;
 extern crate lazy_static;
-use std::{env, fs, time::Instant};
+extern crate peg;
+extern crate serde_json;
 
-use logos::Logos;
-use root::{
-    passes::{midend::typechecking::*, parser},
-    resource::{ast, tk::Tk},
-};
+use std::{collections::{HashMap, HashSet}, env, time::Instant};
 
+use root::resource::ast::{Program, SymbolTableEntry};
 
 extern crate logos;
 //use parser::*;
 
-mod root;
+pub mod root;
 
 fn main() {
     const VERSION: &str = "0.0.1";
@@ -20,42 +18,21 @@ fn main() {
 
     match prog_args.len() {
         3 => match prog_args[1].as_str() {
-            "-lc" | "--lcompile" => {
-                let filename: &String = &prog_args[2];
-                println!("Compiling {} to {}.c", filename, filename);
-                //root::legacy_compile(filename);
-            }
             "-c" | "--compile" => {
                 let now = Instant::now();
 
                 let filename: &String = &prog_args[2];
-                //info!("Compiling {} to {}.c", filename, filename);
-                let src = fs::read_to_string(filename).unwrap();
-                let mut lex = Tk::lexer(&src);
-                // if lex.clone().last()
-                //     != Some(Ok(Tk::TkStatementEnd((
-                //         src.lines().collect::<Vec<&str>>().len(),
-                //         0,
-                //     ))))
-                // {
-                //     error_nocode!("Missing last newline in file: '{filename}'");
-                // }
-                let mut tokens: Vec<Tk> = vec![];
-                for _ in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
-                    let a = lex.next().unwrap().unwrap();
-                    println!("{a:?} '{}'", lex.slice());
-                    tokens.push(a)
-                }
+                let mut p = Program { modules: vec![], dependencies: vec![] };
+                let root_ast = root::compile_filename(filename);
+                p.modules.push(root_ast.clone());
                 
-                //let nend = end.strip_prefix("\"").unwrap().strip_suffix('\"').unwrap().replace("\\n", "\n");
-                //let mut file = std::fs::File::create(format!("{}.ll", filename)).expect("Could not create file");
-                //let _ = file.write_all(nend.as_bytes());
-            
+                let new_p = root::get_dependencies(p.clone());
+                dbg!(new_p.clone());
+                let mut table: HashSet<SymbolTableEntry> = HashSet::new();
+                let j = serde_json::to_string(&p).unwrap();
+
                 let elapsed = now.elapsed();
                 println!("Compiled {} in {:.2?}", filename, elapsed);
-                
-                //println!("{}", end);
-                //dbg!(lex);
             }
 
             &_ => todo!(),
@@ -72,7 +49,3 @@ fn main() {
         }
     }
 }
-
-
-
-
