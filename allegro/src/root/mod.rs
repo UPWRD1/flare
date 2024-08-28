@@ -1,8 +1,8 @@
 pub mod passes;
-use std::{collections::HashSet, fs};
+use std::fs;
 
 use logos::Logos;
-use resource::ast::{Expr, Module, Program, SymbolTableEntry};
+use resource::ast::{Module, Program};
 pub mod resource;
 
 use crate::root::resource::tk::{Tk, Token};
@@ -44,6 +44,7 @@ pub fn get_dependencies(mut p: Program) -> Program {
                 let mut dep_p = get_dependencies(Program { modules: vec![dep_ast], dependencies: vec![] });
                 p.dependencies.push(tc);
                 p.dependencies.append(&mut dep_p.dependencies);
+                p.modules.append(&mut dep_p.modules);
                 dbg!(p.dependencies.clone());
 
             }
@@ -51,44 +52,4 @@ pub fn get_dependencies(mut p: Program) -> Program {
         }
     }
     p
-}
-
-pub fn gen_table(
-    p: Module,
-    mut table: HashSet<SymbolTableEntry>,
-) -> (Module, HashSet<SymbolTableEntry>) {
-    for c in p.body {
-        match c {
-            resource::ast::Ast::FnDef { name, args, body } => {
-                table.insert(SymbolTableEntry {
-                    rawname: name,
-                    value: resource::ast::ASTType::Fn,
-                    version: 1,
-                });
-                for e in body {}
-            }
-            resource::ast::Ast::WithClause { include } => todo!(),
-        }
-    }
-    todo!()
-}
-
-fn table_expr(e: Expr, mut table: HashSet<SymbolTableEntry>) {
-    match e {
-        Expr::Assignment { name, value } => todo!(),
-        Expr::MutableAssignment { name, value } => todo!(),
-        Expr::Closure { args, body } => todo!(),
-        Expr::Return { value } => todo!(),
-        Expr::Int(_) => todo!(),
-        Expr::Flt(_) => todo!(),
-        Expr::Str(_) => todo!(),
-        Expr::Bool(_) => todo!(),
-        Expr::Symbol(_) => todo!(),
-        Expr::Call {
-            name,
-            args,
-            namespace,
-        } => todo!(),
-        _ => todo!(),
-    }
 }

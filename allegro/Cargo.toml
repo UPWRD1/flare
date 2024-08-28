@@ -5,6 +5,10 @@ edition = "2021"
 
 [dependencies]
 colored = "2.1.0"
+cranelift = "0.110.2"
+cranelift-jit = "0.110.2"
+cranelift-module = "0.110.2"
+cranelift-native = "0.110.2"
 lazy_static = "1.4.0"
 logos = "0.14.0"
 peg = "0.8.4"

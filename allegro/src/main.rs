@@ -3,9 +3,10 @@ extern crate lazy_static;
 extern crate peg;
 extern crate serde_json;
 
-use std::{collections::{HashMap, HashSet}, env, time::Instant};
+use std::{env, time::Instant};
+//use std::collections::{HashMap, HashSet}
 
-use root::resource::ast::{Program, SymbolTableEntry};
+use root::{passes::midend::typechecking::Typechecker, resource::ast::Program,};
 
 extern crate logos;
 //use parser::*;
@@ -28,9 +29,10 @@ fn main() {
                 
                 let new_p = root::get_dependencies(p.clone());
                 dbg!(new_p.clone());
-                let mut table: HashSet<SymbolTableEntry> = HashSet::new();
-                let j = serde_json::to_string(&p).unwrap();
-
+                let mut t = Typechecker::new();
+                t.check(new_p);
+                dbg!(t);
+                //let mut table: SymbolTable = SymbolTable::new();
                 let elapsed = now.elapsed();
                 println!("Compiled {} in {:.2?}", filename, elapsed);
             }

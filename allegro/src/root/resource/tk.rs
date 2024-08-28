@@ -17,11 +17,17 @@ pub enum Tk {
     TkKwWith,
     #[token("let")]
     TkKwLet,
+    #[token("def")]
+    TkKwDef,
+    #[token("where")]
+    TkKwWhere,
+    #[token("is")]
+    TkKwIs,
     #[token("do")]
     TkKwDo,
     #[token("end")]
     TkKwEnd,
-    #[token("print")]
+    #[token("devprint")]
     TkKwPrint,
     #[token("of")]
     TkKwOf,
@@ -31,6 +37,8 @@ pub enum Tk {
     TkKwMut,
     #[token("if")]
     TkKwIf,
+    #[token("then")]
+    TkKwThen,
     #[token("else")]
     TkKwElse,
     #[token("while")]
@@ -59,6 +67,12 @@ pub enum Tk {
     TkKwFnTy,
     #[token("bool")]
     TkKwBool,
+    #[token("type")]
+    TkKwType,
+    #[token("struct")]
+    TkKwStruct,
+    #[token("enum")]
+    TkKwEnum,
     #[regex("([a-zA-Z]|_)+[a-zA-Z0-9]*", priority=2)]
     TkSymbol,
     //|true|false|\"[a-zA-Z0-9]*\"
@@ -116,6 +130,8 @@ pub enum Tk {
     TkComma,
     #[token(":")]
     TkColon,
+    #[token("::")]
+    TkDoubleColon,
     #[token(".")]
     TkDot,
     #[token("@")]
