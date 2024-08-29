@@ -31,7 +31,7 @@ fn main() {
                 dbg!(new_p.clone());
                 let mut t = Typechecker::new();
                 t.check(new_p);
-                dbg!(t);
+                //dbg!(t);
                 //let mut table: SymbolTable = SymbolTable::new();
                 let elapsed = now.elapsed();
                 println!("Compiled {} in {:.2?}", filename, elapsed);

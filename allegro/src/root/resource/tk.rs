@@ -65,6 +65,8 @@ pub enum Tk {
     TkKwStr,
     #[token("Fn")]
     TkKwFnTy,
+    #[token("naught")]
+    TkKwNaught,
     #[token("bool")]
     TkKwBool,
     #[token("type")]

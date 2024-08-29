@@ -41,26 +41,34 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule typedef() -> crate::root::resource::ast::Ast
         = [Token { kind: Tk::TkKwType, .. }] [Token { kind: Tk::TkSymbol, lit: name }] [Token { kind: Tk::TkAssign, .. }] [Token { kind: Tk::TkKwStruct, .. }] [Token { kind: Tk::TkKwOf, .. }] m: memberlist() { crate::root::resource::ast::Ast::Record { name: name.to_string(), members: m }}
 
-    rule memberlist() -> Vec<(String, crate::root::resource::ast::ASTType)>
+    rule memberlist() -> Vec<(String, crate::root::resource::ast::SymbolType)>
         = v: ([Token { kind: Tk::TkSymbol, lit: name }] [Token { kind: Tk::TkColon, .. }] a: atype() {(name.to_string(), a)}) ** [Token { kind: Tk::TkComma, .. }]
 
     rule defblock() -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwDef, .. }] [Token { kind: Tk::TkSymbol, lit: name }] [Token { kind: Tk::TkAssign, .. }] f: funcdef() * { crate::root::resource::ast::Ast::TypeDef { name: name.to_string(), funcs: f }}
+        = [Token { kind: Tk::TkKwDef, .. }] [Token { kind: Tk::TkSymbol, lit: name }] [Token { kind: Tk::TkAssign, .. }] f: funcdef() * [Token { kind: Tk::TkKwEnd, lit: name }] { crate::root::resource::ast::Ast::TypeDef { name: name.to_string(), funcs: f }}
 
     rule with_clause() -> crate::root::resource::ast::Ast
         = [Token { kind: Tk::TkKwWith, .. }] s: namespace() {crate::root::resource::ast::Ast::WithClause { include: s }}
 
     rule funcdef() -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] args: func_args() limits: where_limit() [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, limits: limits, body: body } }
+        = [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] args: func_args() r: func_ret_type() limits: where_limit() [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: r, limits: limits, body: body } }
+        / [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body: body } }
 
-    rule func_args() -> Option<Vec<String>> =
-        ([Token { kind: Tk::TkKwOf, .. }] l: func_args_list() {l})?
+    rule func_ret_type() -> crate::root::resource::ast::SymbolType
+        = [Token { kind: Tk::TkArr, .. }] r: atype() {r}
+
+    rule func_args() -> Option<Vec<(String, crate::root::resource::ast::SymbolType)>> 
+        = ([Token { kind: Tk::TkKwOf, .. }] l: func_args_list() {l})?
 
     rule where_limit() -> Option<Vec<crate::root::resource::ast::FnArgLimit>> =
         (([Token { kind: Tk::TkKwWhere, .. }] n: [n if n.kind == Tk::TkSymbol] [Token { kind: Tk::TkKwIs, .. }] l: [l if l.kind == Tk::TkSymbol] {crate::root::resource::ast::FnArgLimit {name: n.lit.clone(), limit: l.lit.clone()}}) ** [Token { kind: Tk::TkComma, .. }])?
 
-    rule func_args_list() -> Vec<String>
-        = t: [t if t.kind == Tk::TkSymbol] ** [Token { kind: Tk::TkComma, .. }] {let mut v = vec![]; for i in t {v.push(i.lit.clone())}; return v}
+    rule func_args_list() -> Vec<(String, crate::root::resource::ast::SymbolType)>
+        = a: type_arg() ** [Token { kind: Tk::TkComma, .. }] {a}
+        / t: [t if t.kind == Tk::TkSymbol] ** [Token { kind: Tk::TkComma, .. }] {let mut v = vec![]; for i in t {v.push((i.lit.clone(), crate::root::resource::ast::SymbolType::Unknown  ))}; return v}
+    
+    rule type_arg() -> (String, crate::root::resource::ast::SymbolType)
+    = t: [t if t.kind == Tk::TkSymbol] [Token { kind: Tk::TkColon, .. }] k: atype() {(t.lit.clone(), k)}
 
     rule expr() -> crate::root::resource::ast::Expr
         = assignment()
@@ -146,13 +154,15 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule simplesymbol() -> crate::root::resource::ast::Expr
         = [Token { kind: Tk::TkSymbol, lit: n }] { crate::root::resource::ast::Expr::Symbol(n.to_string())}
 
-    rule atype() -> crate::root::resource::ast::ASTType
-        = [Token { kind: Tk::TkKwInt, .. }] {crate::root::resource::ast::ASTType::Int}
-        / [Token { kind: Tk::TkKwFlt, .. }] {crate::root::resource::ast::ASTType::Flt}
-        / [Token { kind: Tk::TkKwStr, .. }] {crate::root::resource::ast::ASTType::Str}
-        / [Token { kind: Tk::TkKwBool, .. }] {crate::root::resource::ast::ASTType::Bool}
-        / [Token { kind: Tk::TkKwFnTy, .. }] {crate::root::resource::ast::ASTType::Fn}
-        / s: simplesymbol() {crate::root::resource::ast::ASTType::Custom(s.get_symbol_name())}
+    rule atype() -> crate::root::resource::ast::SymbolType
+        = [Token { kind: Tk::TkKwInt, .. }] {crate::root::resource::ast::SymbolType::Int}
+        / [Token { kind: Tk::TkKwFlt, .. }] {crate::root::resource::ast::SymbolType::Flt}
+        / [Token { kind: Tk::TkKwStr, .. }] {crate::root::resource::ast::SymbolType::Str}
+        / [Token { kind: Tk::TkKwBool, .. }] {crate::root::resource::ast::SymbolType::Bool}
+        / [Token { kind: Tk::TkKwFnTy, .. }] {crate::root::resource::ast::SymbolType::Fn}
+        / [Token { kind: Tk::TkKwNaught, .. }] {crate::root::resource::ast::SymbolType::Naught}
+
+        / s: simplesymbol() {crate::root::resource::ast::SymbolType::Generic(s.get_symbol_name())}
 
     rule namespace() -> Vec<crate::root::resource::ast::Expr>
         = simplesymbol() ** [Token { kind: Tk::TkDoubleColon, .. }] 
