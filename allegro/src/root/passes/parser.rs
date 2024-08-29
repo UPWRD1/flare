@@ -159,7 +159,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / [Token { kind: Tk::TkKwFlt, .. }] {crate::root::resource::ast::SymbolType::Flt}
         / [Token { kind: Tk::TkKwStr, .. }] {crate::root::resource::ast::SymbolType::Str}
         / [Token { kind: Tk::TkKwBool, .. }] {crate::root::resource::ast::SymbolType::Bool}
-        / [Token { kind: Tk::TkKwFnTy, .. }] {crate::root::resource::ast::SymbolType::Fn}
+        / [Token { kind: Tk::TkKwFnTy, .. }] {crate::root::resource::ast::SymbolType::Fn(vec![], crate::root::resource::ast::SymbolType::Unknown.into())}
         / [Token { kind: Tk::TkKwNaught, .. }] {crate::root::resource::ast::SymbolType::Naught}
 
         / s: simplesymbol() {crate::root::resource::ast::SymbolType::Generic(s.get_symbol_name())}

@@ -1,8 +1,7 @@
 use logos::Logos;
-use serde::{Deserialize, Serialize};
 
 ///Enum for type of token
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Logos, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Logos)]
 #[logos(skip r"[\t\f\n]+")] // Ignore this regex pattern between tokens
 pub enum Tk {
     #[regex(" ", logos::skip)]

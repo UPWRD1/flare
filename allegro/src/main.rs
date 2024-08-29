@@ -1,12 +1,11 @@
 extern crate colored;
 extern crate lazy_static;
 extern crate peg;
-extern crate serde_json;
 
 use std::{env, time::Instant};
 //use std::collections::{HashMap, HashSet}
 
-use root::{passes::midend::typechecking::Typechecker, resource::ast::Program,};
+use root::resource::ast::Program;
 
 extern crate logos;
 //use parser::*;
@@ -29,8 +28,8 @@ fn main() {
                 
                 let new_p = root::get_dependencies(p.clone());
                 dbg!(new_p.clone());
-                let mut t = Typechecker::new();
-                t.check(new_p);
+                //let mut t = Typechecker::new();
+                //t.check(new_p);
                 //dbg!(t);
                 //let mut table: SymbolTable = SymbolTable::new();
                 let elapsed = now.elapsed();
