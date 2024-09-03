@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -113,6 +113,8 @@ impl Expr {
             _ => panic!()
         }
     }
+
+    
 }
 
 
@@ -125,42 +127,25 @@ pub struct SymbolTable {
 
 #[derive(Debug, Clone)]
 pub struct SymbolTableScope {
-    entries: Vec<SymbolTableEntry>
+    entries: Vec<SymbolTableEntry>,
+    pub closed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SymbolTableEntry {
     pub rawname: String,
-    pub kind: SymbolTableEntryKind,
+    pub kind: SymbolType,
 }
 
 impl SymbolTableEntry {
-    pub fn new(n: String, k: SymbolTableEntryKind) -> Self {
+    pub fn new(n: String, k: SymbolType) -> Self {
         Self {
             rawname: n,
             kind: k
         }
     }
 }
-#[derive(Debug, Clone, PartialEq)]
-pub enum SymbolTableEntryKind {
-    Variable(SymbolType),
-    MutVariable(SymbolType),
-    Fn {
-        args: Vec<SymbolType>,
-        ret: SymbolType,
-    }
-}
 
-impl SymbolTableEntryKind {
-    pub fn get_t(&self) -> SymbolType {
-        match self {
-            Self::Variable(a) => a.clone(),
-            Self::MutVariable(a) => a.clone(),
-            Self::Fn {ret, ..} => ret.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub enum SymbolType {
@@ -169,30 +154,25 @@ pub enum SymbolType {
     Str,
     Bool,
     Expr,
-    Fn(Vec<RcType>, RcType),
+    Fn(Vec<SymbolType>, Box<SymbolType>),
     Naught,
     Unknown,
     Generic(String),
-    Struct(Vec<(String, SymbolType)>)
+    Obj(Vec<(String, SymbolType)>)
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
-pub struct RcType {
-    pub inner: Rc<SymbolType>,
-}
-
-impl From<SymbolType> for RcType {
-    fn from(src: SymbolType) -> RcType {
-        RcType {
-            inner: Rc::new(src),
-        }
-    }
-}
 
 impl SymbolType {
     pub fn is_unknown(&self) -> bool {
         match self {
             SymbolType::Unknown => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_naught(&self) -> bool {
+        match self {
+            SymbolType::Naught => true,
             _ => false,
         }
     }
@@ -210,6 +190,55 @@ impl SymbolType {
             _ => panic!("{self:?} is not a generic")
         }
     }
+
+    pub fn is_str(&self) -> bool {
+        match self {
+            SymbolType::Str => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_int(&self) -> bool {
+        match self {
+            SymbolType::Int => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_flt(&self) -> bool {
+        match self {
+            SymbolType::Flt => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_bool(&self) -> bool {
+        match self {
+            SymbolType::Bool => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_fn(&self) -> bool {
+        match self {
+            SymbolType::Fn(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn get_args(&self) -> Vec<SymbolType> {
+        match self {
+            SymbolType::Fn(args, ..) => args.clone(),
+            _ => panic!("{self:?} is not a function"),
+        }
+    }
+
+    pub fn get_rt(&self) -> SymbolType {
+        match self {
+            SymbolType::Fn(_, ret) => *ret.clone(),
+            _ => panic!("{self:?} is not a function"),
+        }
+    }
 }
 
 impl SymbolTable {
@@ -219,34 +248,33 @@ impl SymbolTable {
 
     pub fn open_scope(&mut self) {
         self.top += 1;
-        self.scopes.push(SymbolTableScope { entries: vec![] })
+        self.scopes.push(SymbolTableScope { entries: vec![], closed: false})
     } 
 
     pub fn pop_scope(&mut self) {
+        self.scopes[self.top].closed = true;
         self.top -= 1;
     }
 
-    pub fn insert(&mut self, s: SymbolTableEntry) {
-        //dbg!(self.clone());
-        self.scopes[self.top - 1].entries.push(s);
-    }
-
-    pub fn update(&mut self, s: SymbolTableEntry) {
-        for i in self.top..0 {
-            let cs = &self.scopes[i];
-            for mut j in &cs.entries {
-                if j.rawname == s.rawname {
-                    j = &s
-                }
+    pub fn insert(&mut self, s: SymbolTableEntry)  {
+        dbg!(s.clone());
+        for i in self.scopes.len()..0 {
+            let t = &mut self.scopes[i];
+            if !t.closed {
+                t.entries.push(s.clone());
+                break
             }
         }
+        
     }
 
     pub fn get(&mut self, n: String) -> Option<SymbolTableEntry> {
         for i in &self.scopes {
-            for j in &i.entries {
-                if j.rawname == n {
-                    return Some(j.clone())
+            if !i.closed {
+                for j in &i.entries {
+                    if j.rawname == n {
+                        return Some(j.clone())
+                    }
                 }
             }
         }
