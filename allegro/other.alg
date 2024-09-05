@@ -1,2 +1,2 @@
-let myFunc of param = 
-    return param * 2
+let myFunc of param: T -> T = 
+    param * 2

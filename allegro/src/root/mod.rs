@@ -10,23 +10,16 @@ use crate::root::resource::tk::{Tk, Token};
 pub fn compile_filename(filename: &String) -> Module {
     let src = fs::read_to_string(filename).unwrap();
     let mut lex = Tk::lexer(&src);
-    // if lex.clone().last()
-    //     != Some(Ok(Tk::TkStatementEnd((
-    //         src.lines().collect::<Vec<&str>>().len(),
-    //         0,
-    //     ))))
-    // {
-    //     error_nocode!("Missing last newline in file: '{filename}'");
-    // }
+
     let mut tokens: Vec<Token> = vec![];
-    for i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
+    for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a = lex.next().unwrap().unwrap();
-        println!("{i} {a:?} '{}'", lex.slice());
+        //println!("{i} {a:?} '{}'", lex.slice());
         tokens.push(Token::new(a, lex.slice().to_string()))
     }
 
     use passes::parser::parse;
-    parse(tokens)
+    parse(tokens)   
 }
 
 pub fn get_dependencies(mut p: Program) -> Program {

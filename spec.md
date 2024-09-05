@@ -114,7 +114,7 @@ When you assign a value to a pair, the "intrinsic type" of whatever scalar you u
 #### Function Declarations
 
 ```lua
-let f of x, y = 
+let f of x: int, y: int -> int = 
     return x * y
 ```
 
@@ -133,7 +133,7 @@ let main =
     print factorial(5) -- 120
 ```
 
-Note how `main()` uses a shorthand. Functions declared this way return the silent type (`..`) and take no parameters.
+Note how `main()` uses a shorthand. Functions declared this way return the unit type `naught` and take no parameters.
 
 Functions can extend types, both user created and inbuilt. 
 ```lua

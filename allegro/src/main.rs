@@ -5,7 +5,7 @@ extern crate peg;
 use std::{env, time::Instant};
 //use std::collections::{HashMap, HashSet}
 
-use root::{passes::midend::typechecking::Typechecker, resource::ast::Program};
+use root::resource::ast::{Program, TypedProgram};
 
 extern crate logos;
 //use parser::*;
@@ -25,13 +25,10 @@ fn main() {
                 let mut p = Program { modules: vec![], dependencies: vec![] };
                 let root_ast = root::compile_filename(filename);
                 p.modules.push(root_ast.clone());
-                
-                let new_p = root::get_dependencies(p.clone());
+                //dbg!(p.clone());
+                let new_p: TypedProgram = root::get_dependencies(p.clone()).clone().into();
                 dbg!(new_p.clone());
-                let mut t = Typechecker::new();
-                t.check(new_p);
-                //dbg!(t);
-                //let mut table: SymbolTable = SymbolTable::new();
+
                 let elapsed = now.elapsed();
                 println!("Compiled {} in {:.2?}", filename, elapsed);
             }

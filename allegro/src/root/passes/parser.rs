@@ -51,7 +51,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         = [Token { kind: Tk::TkKwWith, .. }] s: namespace() {crate::root::resource::ast::Ast::WithClause { include: s }}
 
     rule funcdef() -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] args: func_args() r: func_ret_type() limits: where_limit() [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: r, limits: limits, body: body } }
+        = [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] args: func_args() r: func_ret_type()? limits: where_limit() [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::ast::SymbolType::Generic(format!("{:x}", name.clone().encode_utf16().sum::<u16>()))}, limits: limits, body: body } }
         / [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body: body } }
 
     rule func_ret_type() -> crate::root::resource::ast::SymbolType
@@ -65,10 +65,17 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
 
     rule func_args_list() -> Vec<(String, crate::root::resource::ast::SymbolType)>
         = a: type_arg() ** [Token { kind: Tk::TkComma, .. }] {a}
-        / t: [t if t.kind == Tk::TkSymbol] ** [Token { kind: Tk::TkComma, .. }] {let mut v = vec![]; for i in t {v.push((i.lit.clone(), crate::root::resource::ast::SymbolType::Unknown  ))}; return v}
+
+        // a: type_arg() ** [Token { kind: Tk::TkComma, .. }] {a}
     
     rule type_arg() -> (String, crate::root::resource::ast::SymbolType)
-    = t: [t if t.kind == Tk::TkSymbol] [Token { kind: Tk::TkColon, .. }] k: atype() {(t.lit.clone(), k)}
+        = t: [t if t.kind == Tk::TkSymbol] k: arg_type()? {let r = if k.is_some() {k.unwrap()} else {crate::root::resource::ast::SymbolType::Generic(format!("{:x}",t.lit.clone().encode_utf16().sum::<u16>()))}; return (t.lit.clone(), r)}
+
+    rule arg_type() -> crate::root::resource::ast::SymbolType
+        = [Token { kind: Tk::TkColon, .. }] k: atype() {k}
+
+    // rule untyped_arg() -> (String, crate::root::resource::ast::SymbolType)
+    //     = t: [t if t.kind == Tk::TkSymbol]  {(t.lit.clone(), crate::root::resource::ast::SymbolType::Generic(t.lit.clone().encode_utf16().sum::<u16>().to_string()))}
 
     rule expr() -> crate::root::resource::ast::Expr
         = assignment()
@@ -82,7 +89,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / [Token { kind: Tk::TkKwMut, .. }] n: symbol() [Token { kind: Tk::TkAssign, .. }] v: expr()  { crate::root::resource::ast::Expr::MutableAssignment { name: Box::new(n), value: Box::new(v) } }
 
     rule closure() -> crate::root::resource::ast::Expr
-        = [Token { kind: Tk::TkKwFn, .. }] args: func_args() [Token { kind: Tk::TkArr, .. }] body: expr()+ { crate::root::resource::ast::Expr::Closure { args: if args.is_some() {args.unwrap()} else {vec![]}, body: body } }
+        = [Token { kind: Tk::TkKwFn, .. }] args: func_args() [Token { kind: Tk::TkArr, .. }] body: expr()+ { crate::root::resource::ast::Expr::Closure { args: args.unwrap(), body: body } }
 
     rule r#return() -> crate::root::resource::ast::Expr
         = [Token { kind: Tk::TkKwReturn, .. }] v: expr() { crate::root::resource::ast::Expr::Return { value: Box::new(v) } }
@@ -131,8 +138,8 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule ifexpr() -> crate::root::resource::ast::Expr
         = [Token { kind: Tk::TkKwIf, .. }] c: expr() [Token { kind: Tk::TkKwThen, .. }] t: expr() e: else_branch() {crate::root::resource::ast::Expr::If { condition: Box::new(c), then: Box::new(t), otherwise: e }}
 
-    rule else_branch() -> Option<Box<crate::root::resource::ast::Expr>>
-        = ([Token { kind: Tk::TkKwElse, .. }] o: expr() {Box::new(o)})?
+    rule else_branch() -> Box<crate::root::resource::ast::Expr>
+        = ([Token { kind: Tk::TkKwElse, .. }] o: expr() {Box::new(o)})
 
     rule intrinsic() -> crate::root::resource::ast::Expr
         = [Token { kind: Tk::TkFlt, lit: n }] { crate::root::resource::ast::Expr::Flt(n.parse().unwrap() )}

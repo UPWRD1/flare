@@ -1,6 +1,5 @@
-let g of x: int -> int =
-	x * 3
-
-let main = 	
-	f = "s"
-	a = g(f)
+let factorial of x = 	
+	if x == 0 then 
+		return 1 
+	else
+		return n * factorial(n - 1)
