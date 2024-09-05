@@ -1,3 +1,4 @@
+#![warn(clippy::pedantic)]
 extern crate colored;
 extern crate lazy_static;
 extern crate peg;
@@ -5,7 +6,7 @@ extern crate peg;
 use std::{env, time::Instant};
 //use std::collections::{HashMap, HashSet}
 
-use root::resource::ast::{Program, TypedProgram};
+use root::{passes::midend::typechecking::TypedProgram, resource::ast::Program};
 
 extern crate logos;
 //use parser::*;
@@ -30,14 +31,14 @@ fn main() {
                 dbg!(new_p.clone());
 
                 let elapsed = now.elapsed();
-                println!("Compiled {} in {:.2?}", filename, elapsed);
+                println!("Compiled {filename} in {elapsed:.2?}");
             }
 
             &_ => todo!(),
         },
         2 => match prog_args[1].as_str() {
             "--help" | "-h" => {
-                println!("Allegro v{}", VERSION)
+                println!("Allegro v{VERSION}");
             }
             &_ => todo!(),
         },

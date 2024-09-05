@@ -15,11 +15,11 @@ pub fn compile_filename(filename: &String) -> Module {
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a = lex.next().unwrap().unwrap();
         //println!("{i} {a:?} '{}'", lex.slice());
-        tokens.push(Token::new(a, lex.slice().to_string()))
+        tokens.push(Token::new(a, lex.slice().to_string()));
     }
 
     use passes::parser::parse;
-    parse(tokens)   
+    parse(&tokens)   
 }
 
 pub fn get_dependencies(mut p: Program) -> Program {

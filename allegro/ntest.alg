@@ -1,5 +1,8 @@
-let factorial of x = 	
+let factorial of x: int = 	
 	if x == 0 then 
-		return 1 
+		1 
 	else
-		return n * factorial(n - 1)
+		x * factorial(x - 1)
+
+let main =
+	a = factorial(3)

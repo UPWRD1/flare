@@ -51,8 +51,8 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         = [Token { kind: Tk::TkKwWith, .. }] s: namespace() {crate::root::resource::ast::Ast::WithClause { include: s }}
 
     rule funcdef() -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] args: func_args() r: func_ret_type()? limits: where_limit() [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::ast::SymbolType::Generic(format!("{:x}", name.clone().encode_utf16().sum::<u16>()))}, limits: limits, body: body } }
-        / [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body: body } }
+        = [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] args: func_args() r: func_ret_type()? limits: where_limit() [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::ast::SymbolType::Generic(format!("{:x}", name.clone().encode_utf16().sum::<u16>()))}, limits, body } }
+        / [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name }] [Token { kind: Tk::TkAssign, .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body } }
 
     rule func_ret_type() -> crate::root::resource::ast::SymbolType
         = [Token { kind: Tk::TkArr, .. }] r: atype() {r}
@@ -89,7 +89,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / [Token { kind: Tk::TkKwMut, .. }] n: symbol() [Token { kind: Tk::TkAssign, .. }] v: expr()  { crate::root::resource::ast::Expr::MutableAssignment { name: Box::new(n), value: Box::new(v) } }
 
     rule closure() -> crate::root::resource::ast::Expr
-        = [Token { kind: Tk::TkKwFn, .. }] args: func_args() [Token { kind: Tk::TkArr, .. }] body: expr()+ { crate::root::resource::ast::Expr::Closure { args: args.unwrap(), body: body } }
+        = [Token { kind: Tk::TkKwFn, .. }] args: func_args() [Token { kind: Tk::TkArr, .. }] body: expr()+ { crate::root::resource::ast::Expr::Closure { args: args.unwrap(), body } }
 
     rule r#return() -> crate::root::resource::ast::Expr
         = [Token { kind: Tk::TkKwReturn, .. }] v: expr() { crate::root::resource::ast::Expr::Return { value: Box::new(v) } }
@@ -149,7 +149,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / [Token { kind: Tk::TkTrue, lit: n }] { crate::root::resource::ast::Expr::Bool(true)}
 
     rule call() -> crate::root::resource::ast::Expr
-        = name: symbol() [Token { kind: Tk::TkLparen, .. }] args: call_list() [Token { kind: Tk::TkRparen, .. }] { crate::root::resource::ast::Expr::Call { name: Box::new(name), args: args, namespace: vec![]}}
+        = name: symbol() [Token { kind: Tk::TkLparen, .. }] args: call_list() [Token { kind: Tk::TkRparen, .. }] { crate::root::resource::ast::Expr::Call { name: Box::new(name), args, namespace: vec![]}}
         // parent: namespace() [Token { kind: Tk::TkLparen, .. }] args: call_list() [Token { kind: Tk::TkRparen, .. }] { crate::root::resource::ast::Expr::Call { name: Box::new(parent.get(0).unwrap().clone()), args: args, namespace: parent}}
     
     rule call_list() -> Vec<crate::root::resource::ast::Expr>
@@ -186,7 +186,7 @@ use crate::root::resource::{
     tk::{Tk, Token},
 };
 
-pub fn parse(tokens: Vec<Token>) -> Module {
-    let p = program(&SliceByRef(&tokens[..])).unwrap();
+pub fn parse(tokens: &[Token]) -> Module {
+    let p = program(&SliceByRef(&tokens)).unwrap();
     p
 }
