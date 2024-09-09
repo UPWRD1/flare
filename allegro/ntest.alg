@@ -1,8 +1,14 @@
-let factorial of x: int = 	
-	if x == 0 then 
-		1 
-	else
-		x * factorial(x - 1)
+type Result = enum of
+    Ok(int),
+    Err(int)
 
-let main =
-	a = factorial(3)
+def Result =
+    let is_ok of x: Result -> bool =
+        true
+
+    let is_err of x -> bool =
+        false
+end
+
+let main  = 
+	a = Ok(3)

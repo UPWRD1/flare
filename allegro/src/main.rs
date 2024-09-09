@@ -27,7 +27,8 @@ fn main() {
                 let root_ast = root::compile_filename(filename);
                 p.modules.push(root_ast.clone());
                 //dbg!(p.clone());
-                let new_p: TypedProgram = root::get_dependencies(p.clone()).clone().into();
+                let np = root::get_dependencies(p.clone());
+                let new_p: TypedProgram = np.clone().into();
                 dbg!(new_p.clone());
 
                 let elapsed = now.elapsed();

@@ -1,3 +1,13 @@
+use std::hash::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
+
+pub fn calculate_hash<T: Hash>(t: &String) -> String {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    format!("{:x}", s.finish())
+}
+
 #[derive(Debug, Clone)]
 pub struct Program {
     pub modules: Vec<Module>,
@@ -18,12 +28,16 @@ pub enum Ast {
         limits: Option<Vec<FnArgLimit>>,
         body: Vec<Expr>,
     },
-    Record {
+    Struct {
         name: String,
         members: Vec<(String, SymbolType)>,
     },
-    TypeDef {
+    Enum {
         name: String,
+        members: Vec<SymbolType>,
+    },
+    TypeDef {
+        name: SymbolType,
         funcs: Vec<Self>,
     },
     WithClause {
@@ -87,24 +101,25 @@ pub enum Expr {
     Return {
         value: Box<Expr>,
     },
-
     If {
         condition: Box<Expr>,
         then: Box<Expr>,
         otherwise: Box<Expr>,
     },
-
     // Atomics
     Int(i32),
     Flt(f32),
     Str(String),
     Bool(bool),
     Symbol(String),
+    StructInstance {
+        name: Box<Expr>,
+        fields: Vec<Expr>,
+    },
     FieldAccess(Vec<Expr>),
     Call {
         name: Box<Expr>,
         args: Vec<Expr>,
-        namespace: Vec<Expr>,
     },
 }
 
@@ -112,6 +127,13 @@ impl Expr {
     pub fn get_symbol_name(&self) -> String {
         match self {
             Expr::Symbol(s) => s.to_string(),
+            _ => panic!(),
+        }
+    }
+
+    pub fn get_assignment(&self) -> (String, Self) {
+        match self {
+            Expr::Assignment { name, value } => (name.get_symbol_name(), *value.clone()),
             _ => panic!(),
         }
     }
@@ -128,7 +150,10 @@ pub enum SymbolType {
     Naught,
     Unknown,
     Generic(String),
+    Custom(String, Vec<Self>),
     Obj(Vec<(String, Self)>),
+    Enum(Vec<Self>),
+    Variant(String, Vec<Self>),
 }
 
 impl SymbolType {
@@ -167,6 +192,24 @@ impl SymbolType {
         matches!(self, Self::Bool)
     }
 
+    pub fn is_custom(&self) -> bool {
+        matches!(self, Self::Custom(..))
+    }
+
+    pub fn get_custom_name(&self) -> String {
+        match self {
+            Self::Custom(v, ..) => v.to_string(),
+            _ => panic!("{self:?} is not a custom type"),
+        }
+    }
+
+    pub fn get_custom_generics(&self) -> Vec<Self> {
+        match self {
+            Self::Custom(_, v) => v.clone(),
+            _ => panic!("{self:?} is not a custom type"),
+        }
+    }
+
     pub fn is_fn(&self) -> bool {
         matches!(self, Self::Fn(..))
     }
@@ -178,6 +221,24 @@ impl SymbolType {
         }
     }
 
+    pub fn extract(&self) -> Self {
+        match self {
+            SymbolType::Int
+            | SymbolType::Flt
+            | SymbolType::Str
+            | SymbolType::Naught
+            | SymbolType::Generic(..)
+            | SymbolType::Obj(_)
+            | SymbolType::Enum(_)
+            | SymbolType::Variant(_, _)
+            | SymbolType::Bool => self.clone(),
+            SymbolType::Mut(t) => t.extract(),
+            SymbolType::Fn(_, t) => t.extract(),
+            SymbolType::Unknown => panic!(),
+            SymbolType::Custom(_, _) => todo!(),
+        }
+    }
+    #[must_use]
     pub fn get_rt(&self) -> Self {
         match self {
             Self::Fn(_, ret) => *ret.clone(),
@@ -196,6 +257,46 @@ impl SymbolType {
         }
     }
 
+    pub fn is_obj(&self) -> bool {
+        matches!(self, Self::Obj(..))
+    }
+
+    pub fn get_members(&self) -> Vec<(String, Self)> {
+        match self {
+            SymbolType::Obj(v) => v.clone(),
+            _ => panic!("{self:?} is not an object"),
+        }
+    }
+
+    pub fn is_enum(&self) -> bool {
+        matches!(self, Self::Enum(..))
+    }
+
+    pub fn get_variants(&self) -> Vec<Self> {
+        match self {
+            SymbolType::Enum(v) => v.clone(),
+            _ => panic!("{self:?} is not an enum"),
+        }
+    }
+
+    pub fn is_variant(&self) -> bool {
+        matches!(self, Self::Variant(..))
+    }
+
+    pub fn get_variant_name(&self) -> String {
+        match self {
+            SymbolType::Variant(n, ..) => n.clone(),
+            _ => panic!("{self:?} is not a variant"),
+        }
+    }
+
+    pub fn get_variant_members(&self) -> Vec<Self> {
+        match self {
+            SymbolType::Variant(_, v) => v.clone(),
+            _ => panic!("{self:?} is not a variant"),
+        }
+    }
+
     pub fn get_raw(&self) -> Self {
         match self {
             Self::Naught | Self::Unknown | Self::Int | Self::Flt | Self::Str | Self::Bool => {
@@ -204,20 +305,66 @@ impl SymbolType {
             Self::Mut(t) => t.clone().get_raw(),
             Self::Fn(_, t) => t.clone().get_raw(),
             Self::Generic(_) => self.clone(),
-            Self::Obj(_) => todo!(),
+            Self::Custom(..) => panic!("Custom type here!"),
+            Self::Obj(_) | Self::Variant(..) => todo!(),
+            Self::Enum(..) => todo!(),
         }
     }
 
-    pub fn compare(&self, rhs: Self) -> bool {
-        let r = rhs.get_raw();
+    pub fn compare(&self, rhs: &Self) -> bool {
+        //println!("{:?} vs {:?}", self, rhs);
+        let r = rhs.clone(); //.get_raw();
         match self {
             Self::Int => r.is_int() || r.is_generic() || r.is_unknown(),
             Self::Flt => r.is_flt() || r.is_generic() || r.is_unknown(),
             Self::Str => r.is_str() || r.is_generic() || r.is_unknown(),
-            Self::Bool => r.is_bool() || rhs.is_generic() || rhs.is_unknown(),
-            Self::Mut(t) | Self::Fn(_, t) => t.compare(rhs),
+            Self::Bool => r.is_bool() || r.is_generic() || r.is_unknown(),
+            Self::Mut(t) | Self::Fn(_, t) => t.compare(&r),
             Self::Naught | Self::Unknown | Self::Generic(_) => true,
             Self::Obj(_) => todo!(),
+            Self::Custom(name, v) => {
+                if r.get_variant_name() == *name {
+                    for arg in v.iter().enumerate() {
+                        let g = rhs.get_custom_generics();
+                        if *arg.1 == g[arg.0] {
+                            continue;
+                        } else {
+                            return false;
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            Self::Variant(..) => r.is_enum() && r.get_variants().contains(self),
+            Self::Enum(v) => {
+                if r.is_fn() && r.get_rt().is_variant() {
+                    for var in v {
+                        if !var.get_variant_members().is_empty()
+                            && !r.get_rt().get_variant_members().is_empty()
+                        {
+                            for varg in var.get_variant_members().iter().enumerate() {
+                                if varg
+                                    .1
+                                    .compare(&r.get_rt().get_variant_members()[varg.0])
+                                {
+                                    continue;
+                                } else {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    true
+                } else if r.is_enum() {
+                    r.get_members() == self.get_members()
+                } else{
+                
+                    false
+                }
+                
+            }
         }
     }
 }

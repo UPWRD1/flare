@@ -14,7 +14,7 @@ pub fn compile_filename(filename: &String) -> Module {
     let mut tokens: Vec<Token> = vec![];
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a = lex.next().unwrap().unwrap();
-        //println!("{i} {a:?} '{}'", lex.slice());
+        //println!("{_i} {a:?} '{}'", lex.slice());
         tokens.push(Token::new(a, lex.slice().to_string()));
     }
 
@@ -38,7 +38,7 @@ pub fn get_dependencies(mut p: Program) -> Program {
                 p.dependencies.push(tc);
                 p.dependencies.append(&mut dep_p.dependencies);
                 p.modules.append(&mut dep_p.modules);
-                dbg!(p.dependencies.clone());
+                //dbg!(p.dependencies.clone());
 
             }
             _ => continue,
