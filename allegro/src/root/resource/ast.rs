@@ -2,6 +2,8 @@ use std::hash::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 
+use serde::Deserialize;
+use serde::Serialize;
 use thin_vec::ThinVec;
 
 pub fn calculate_hash<T: Hash>(t: &String) -> String {
@@ -46,13 +48,13 @@ pub enum Ast {
         include: Vec<Expr>,
     },
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnArgLimit {
     pub name: String,
     pub limit: String,
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum LogicOp {
     CEQ,
     CLT,
@@ -61,7 +63,7 @@ pub enum LogicOp {
     CGE,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
     BinAdd {
         l: Box<Expr>,
@@ -141,7 +143,7 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum SymbolType {
     Int,
     Flt,

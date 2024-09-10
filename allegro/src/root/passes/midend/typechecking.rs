@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
+use crate::root::resource::ast::{Ast, Expr, FnArgLimit, Module, Program, SymbolType};
 use recursive::recursive;
+use serde::{Deserialize, Serialize};
 use thin_vec::ThinVec;
 
-use crate::root::resource::ast::{Ast, Expr, FnArgLimit, Module, Program, SymbolType};
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Typechecker {
-    pub s: SymbolTable,
-    pub currentfunc: String,
+    pub symbol_table: SymbolTable,
+    pub current_func: String,
 }
 
 impl Default for Typechecker {
@@ -20,8 +20,8 @@ impl Default for Typechecker {
 impl Typechecker {
     pub fn new() -> Self {
         Typechecker {
-            s: SymbolTable::new(),
-            currentfunc: String::new(),
+            symbol_table: SymbolTable::new(),
+            current_func: String::new(),
         }
     }
 
@@ -30,27 +30,27 @@ impl Typechecker {
         //println!("tc : {:?} vs {:?}", lt, rt);
         //dbg!(self.clone());
         if lt.is_generic() {
-            self.s.redefine(&lt.get_generic_name(), rt);
+            self.symbol_table.redefine(&lt.get_generic_name(), rt);
             return true;
         }
         if rt.is_generic() {
-            self.s.redefine(&rt.get_generic_name(), &lt);
+            self.symbol_table.redefine(&rt.get_generic_name(), &lt);
             return true;
         }
         if lt.is_custom() {
-            let nlt = self.s.get(lt.get_custom_name());
+            let nlt = self.symbol_table.get(lt.get_custom_name());
             //dbg!(nlt.clone());
-            return self.compare_ty(&nlt, rt)
+            return self.compare_ty(&nlt, rt);
         }
         if rt.is_custom() {
-            let nrt = self.s.get(rt.get_custom_name());
-            return self.compare_ty(lt, &nrt)
+            let nrt = self.symbol_table.get(rt.get_custom_name());
+            return self.compare_ty(lt, &nrt);
         }
         if lt.is_variant() && !lt.get_variant_members().iter().all(|x| !x.is_generic()) {
             let mut newt: Vec<SymbolType> = vec![];
             for t in lt.get_variant_members() {
                 if t.is_generic() {
-                    newt.push(self.s.get(t.get_generic_name()))
+                    newt.push(self.symbol_table.get(t.get_generic_name()))
                 } else {
                     newt.push(t)
                 }
@@ -62,7 +62,7 @@ impl Typechecker {
             let mut newt: Vec<SymbolType> = vec![];
             for t in rt.get_variant_members() {
                 if t.is_generic() {
-                    newt.push(self.s.get(t.get_generic_name()))
+                    newt.push(self.symbol_table.get(t.get_generic_name()))
                 } else {
                     newt.push(t)
                 }
@@ -77,15 +77,15 @@ impl Typechecker {
                 for variant in variants.iter().enumerate() {
                     //println!("vtc: {:?} vs {:?}", variant.1, &rvt[variant.0]);
                     if self.compare_ty(&variant.1, &rvt[variant.0]) {
-                        continue
+                        continue;
                     } else {
-                        return false
+                        return false;
                     }
                 }
-                return true
+                return true;
             }
-            
-            return false
+
+            return false;
         }
         lt.compare(rt)
     }
@@ -98,7 +98,7 @@ impl Typechecker {
             Expr::Flt(_) => SymbolType::Flt,
             Expr::Str(_) => SymbolType::Str,
             Expr::Bool(_) => SymbolType::Bool,
-            Expr::Symbol(t) => self.s.get(t.clone()),
+            Expr::Symbol(t) => self.symbol_table.get(t.clone()),
             Expr::BinAdd { l, r }
             | Expr::BinSub { l, r }
             | Expr::BinMul { l, r }
@@ -123,19 +123,19 @@ impl Typechecker {
             Expr::Assignment { name, value } => {
                 //let lt = self.synth_type(*name.clone());
                 let rt = self.synth_type(&*value);
-                self.s.set(name.get_symbol_name(), &rt);
+                self.symbol_table.set(name.get_symbol_name(), &rt);
                 rt
             }
             Expr::MutableAssignment { name, value } => {
                 //let lt = self.synth_type(*name.clone());
                 let rt = SymbolType::Mut(Box::new(self.synth_type(&*value)));
-                self.s.set(name.get_symbol_name(), &rt.clone());
+                self.symbol_table.set(name.get_symbol_name(), &rt.clone());
                 rt
             }
             Expr::Closure { args, body } => {
-                self.s.new_scope();
+                self.symbol_table.new_scope();
                 for a in args.clone() {
-                    self.s.set(a.0.clone(), &a.1.clone());
+                    self.symbol_table.set(a.0.clone(), &a.1.clone());
                 }
                 let mut x: SymbolType = SymbolType::Naught;
                 for e in body {
@@ -143,10 +143,7 @@ impl Typechecker {
                 }
                 SymbolType::Fn(args.iter().map(|a| a.1.clone()).collect(), Box::new(x))
             }
-            Expr::Call {
-                name,
-                args,
-            } => {
+            Expr::Call { name, args } => {
                 let callee = self.synth_type(&*name);
                 if callee.is_fn() {
                     //dbg!(name.clone());
@@ -155,24 +152,24 @@ impl Typechecker {
                         for (i, e) in cargs.into_iter().enumerate() {
                             let arg = self.synth_type(&args[i]);
                             if self.compare_ty(&e, &arg) {
-                                continue
+                                continue;
                             } else {
                                 panic!("invalid type on argument, expected {e:?}, found {arg:?}")
                             }
                         }
-                        let fin = self.s.get(name.get_symbol_name()).get_rt();
+                        let fin = self.symbol_table.get(name.get_symbol_name()).get_rt();
                         if fin.is_variant() {
                             let mut newt: Vec<SymbolType> = vec![];
                             for t in fin.get_variant_members() {
                                 if t.is_generic() {
-                                    newt.push(self.s.get(t.get_generic_name()))
+                                    newt.push(self.symbol_table.get(t.get_generic_name()))
                                 } else {
                                     newt.push(t)
                                 }
                             }
                             SymbolType::Variant(fin.get_variant_name(), newt.into())
                         } else {
-                            return fin
+                            return fin;
                         }
                     } else {
                         panic!(
@@ -189,7 +186,7 @@ impl Typechecker {
 
             Expr::Return { value } => {
                 let vt = self.synth_type(&*value);
-                let fnt = self.s.get(self.currentfunc.clone());
+                let fnt = self.symbol_table.get(self.current_func.clone());
                 if self.compare_ty(&fnt, &vt) {
                     vt
                 } else {
@@ -224,13 +221,13 @@ impl Typechecker {
                         (x.0, self.synth_type(&x.1).extract())
                     })
                     .collect();
-                let dt = self.s.get(name.get_symbol_name());
+                let dt = self.symbol_table.get(name.get_symbol_name());
                 if dt.is_obj() {
                     let v = dt.get_members();
                     if v.len() == f.len() {
                         for i in v.iter().enumerate() {
                             let fv = &f[i.0];
-                            if !i.1.1.compare(&fv.1) {
+                            if !i.1 .1.compare(&fv.1) {
                                 panic!("{name:?} is not instantiated correctly!")
                             }
                         }
@@ -248,7 +245,7 @@ impl Typechecker {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolTable {
     pub entries: HashMap<String, SymbolType>,
     pub parent: Box<Option<Self>>,
@@ -343,7 +340,6 @@ impl SymbolTable {
             }
         } else {
             self.entries.insert(name, newt);
-            
         }
     }
 
@@ -383,7 +379,7 @@ pub trait Typecheck<T> {
     fn convert(value: &T, t: &mut Typechecker) -> Self;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedProgram {
     pub modules: Vec<TypedModule>,
     pub dependencies: Vec<String>,
@@ -392,7 +388,7 @@ pub struct TypedProgram {
 impl From<Program> for TypedProgram {
     fn from(value: Program) -> Self {
         let mut t = Typechecker::new();
-        t.s.new_scope();
+        t.symbol_table.new_scope();
         let mut vtm: Vec<TypedModule> = vec![];
         let mut vmr = value.modules;
         vmr.reverse();
@@ -407,7 +403,7 @@ impl From<Program> for TypedProgram {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedModule {
     pub body: Vec<TypedAst>,
 }
@@ -423,7 +419,7 @@ impl Typecheck<Module> for TypedModule {
         Self { body: b }
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TypedAst {
     FnDef {
         name: String,
@@ -446,7 +442,7 @@ pub enum TypedAst {
     },
     WithClause {
         include: Vec<String>,
-    },    
+    },
 }
 
 impl Typecheck<Ast> for TypedAst {
@@ -462,36 +458,33 @@ impl Typecheck<Ast> for TypedAst {
                 limits,
                 body,
             } => {
-                t.s.set(
+                t.symbol_table.set(
                     name.clone(),
                     &SymbolType::Fn(
                         args.clone().iter().map(|a| a.1.clone()).collect(),
                         Box::new(rettype.clone()),
                     ),
                 );
-                t.s.new_scope();
+                t.symbol_table.new_scope();
                 for a in args {
-                    t.s.set(a.0.clone(), &a.1);
+                    t.symbol_table.set(a.0.clone(), &a.1);
                 }
-                t.currentfunc.clone_from(&name);
-                let b: Vec<TypedExpr> = body
-                    .iter()
-                    .map(|e| TypedExpr::convert(e, t))
-                    .collect();
+                t.current_func.clone_from(&name);
+                let b: Vec<TypedExpr> = body.iter().map(|e| TypedExpr::convert(e, t)).collect();
                 let mut nrt = rettype.clone();
                 if rettype.is_generic() {
-                    nrt = b.last().unwrap().t.clone().unwrap();
+                    nrt = b.last().unwrap().exprtype.clone().unwrap();
                 }
                 let mut nargs: Vec<(String, SymbolType)> = vec![];
 
                 for i in args.clone() {
                     if i.1.is_generic() {
-                        nargs.push((i.0, t.s.get(i.1.get_generic_name())));
+                        nargs.push((i.0, t.symbol_table.get(i.1.get_generic_name())));
                     } else {
                         nargs.push(i);
                     }
                 }
-                t.s.redefine(
+                t.symbol_table.redefine(
                     name,
                     &SymbolType::Fn(
                         nargs.clone().iter().map(|a| a.1.clone()).collect(),
@@ -499,10 +492,10 @@ impl Typecheck<Ast> for TypedAst {
                     ),
                 );
 
-                t.s.pop_scope();
+                t.symbol_table.pop_scope();
 
-                if !t.compare_ty(rettype, &b.last().unwrap().t.clone().unwrap()) {
-                    panic!("Return type was not equal to the last expression in function body; {:?} vs {:?}", rettype, &b.last().unwrap().t.clone().unwrap())
+                if !t.compare_ty(rettype, &b.last().unwrap().exprtype.clone().unwrap()) {
+                    panic!("Return type was not equal to the last expression in function body; {:?} vs {:?}", rettype, &b.last().unwrap().exprtype.clone().unwrap())
                 }
                 Self::FnDef {
                     name: name.clone(),
@@ -516,11 +509,15 @@ impl Typecheck<Ast> for TypedAst {
                 include: include.iter().map(|e| e.get_symbol_name()).collect(),
             },
             Ast::Struct { name, members } => {
-                t.s.set(name.clone(), &SymbolType::Obj(members.clone()));
-                Self::Struct { name: name.to_string(), members: members.to_vec() }
+                t.symbol_table
+                    .set(name.clone(), &SymbolType::Obj(members.clone()));
+                Self::Struct {
+                    name: name.to_string(),
+                    members: members.to_vec(),
+                }
             }
 
-            Ast::Enum { name,  members } => {
+            Ast::Enum { name, members } => {
                 let mut gc = 0;
                 for m in members.clone() {
                     let mm = m.get_variant_members();
@@ -530,29 +527,38 @@ impl Typecheck<Ast> for TypedAst {
                         }
                     }
                 }
-                t.s.set(name.clone(), &SymbolType::Enum(gc, members.clone()));
+                t.symbol_table
+                    .set(name.clone(), &SymbolType::Enum(gc, members.clone()));
 
                 for m in members.clone() {
                     let mm = m.get_variant_members();
                     for mg in mm {
                         if mg.is_generic() {
-                            t.s.set(mg.get_generic_name(), &SymbolType::Unknown)
+                            t.symbol_table
+                                .set(mg.get_generic_name(), &SymbolType::Unknown)
                         }
                     }
-                    t.s.set(
+                    t.symbol_table.set(
                         m.get_variant_name(),
-                        &SymbolType::Fn(m.get_variant_members().into(), Box::new(SymbolType::Enum(gc, members.clone()))),
+                        &SymbolType::Fn(
+                            m.get_variant_members().into(),
+                            Box::new(SymbolType::Enum(gc, members.clone())),
+                        ),
                     );
-                    
                 }
-                
-                Self::Enum { name: name.to_string(), members: members.to_vec() }
+
+                Self::Enum {
+                    name: name.to_string(),
+                    members: members.to_vec(),
+                }
             }
             Ast::TypeDef { name, funcs } => {
                 // && t.s.get(name.get_custom_name()).compare(name)
                 //t.compare_ty(t.s.get(name.get_custom_name()), name)
-                let gett = &t.s.get(name.get_custom_name());
-                if t.s.entries.contains_key(&name.get_custom_name()) &&  t.compare_ty(gett, name) {
+                let gett = &t.symbol_table.get(name.get_custom_name());
+                if t.symbol_table.entries.contains_key(&name.get_custom_name())
+                    && t.compare_ty(gett, name)
+                {
                     let mut nfuncs: ThinVec<TypedAst> = vec![].into();
                     // TODO Why does this stackoverflow?
                     for f in funcs {
@@ -560,27 +566,29 @@ impl Typecheck<Ast> for TypedAst {
                         let res = Self::convert(&f, t);
                         nfuncs.push(res);
                     }
-                    return Self::TypeDef { name: name.clone(), funcs: nfuncs.to_vec() }
+                    return Self::TypeDef {
+                        name: name.clone(),
+                        funcs: nfuncs.to_vec(),
+                    };
                 } else {
                     panic!("Cannot define implementation for undefined type {name:?}")
                 }
-                
             }
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedExpr {
     pub e: Expr,
-    pub t: Option<SymbolType>,
+    pub exprtype: Option<SymbolType>,
 }
 
 impl Typecheck<Expr> for TypedExpr {
     fn convert(value: &Expr, t: &mut Typechecker) -> Self {
         Self {
             e: value.clone(),
-            t: Some(t.synth_type(value)),
+            exprtype: Some(t.synth_type(value)),
         }
     }
 }

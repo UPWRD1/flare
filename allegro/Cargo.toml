@@ -9,7 +9,9 @@ lazy_static = "1.4.0"
 logos = "0.14.0"
 peg = "0.8.4"
 recursive = "0.1.1"
-thin-vec = "0.2.13"
+serde = {version = "1.0.210", features = ["derive"]}
+serde_json = "1.0.128"
+thin-vec = {version = "0.2.13", features = ["serde"]}
 
 [profile.release]
 opt-level = 3

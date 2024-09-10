@@ -3,7 +3,7 @@ extern crate colored;
 extern crate lazy_static;
 extern crate peg;
 
-use std::{env, time::Instant};
+use std::{env, fs, time::Instant};
 //use std::collections::{HashMap, HashSet}
 
 use root::{passes::midend::typechecking::TypedProgram, resource::ast::Program};
@@ -29,7 +29,12 @@ fn main() {
                 //dbg!(p.clone());
                 let np = root::get_dependencies(p.clone());
                 let new_p: TypedProgram = np.clone().into();
-                dbg!(new_p.clone());
+                //dbg!(new_p.clone());
+
+                let serialized = serde_json::to_string(&new_p).unwrap();
+                fs::write("/workspaces/allegro/allegro/asdf.json", serialized).expect("Unable to write file");
+
+
 
                 let elapsed = now.elapsed();
                 println!("Compiled {filename} in {elapsed:.2?}");
