@@ -1,295 +1,396 @@
-use super::{environment::AKind, tokens::{Token, TokenType}};
+use std::hash::DefaultHasher;
+use std::hash::Hash;
+use std::hash::Hasher;
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct AssignExpr {
-    pub name: Token,
-    pub value: Box<Expr>,
+use serde::Deserialize;
+use serde::Serialize;
+use thin_vec::ThinVec;
+
+pub fn calculate_hash<T: Hash>(t: &String) -> String {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    format!("{:x}", s.finish())
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct BinExpr {
-    pub left: Box<Expr>,
-    pub operator: Token,
-    pub right: Box<Expr>,
+#[derive(Debug, Clone)]
+pub struct Program {
+    pub modules: Vec<Module>,
+    pub dependencies: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct CallExpr {
-    pub callee: Pair,
-    pub paren: Token,
-    pub args: Vec<Expr>,
+#[derive(Debug, Clone)]
+pub struct Module {
+    pub body: Vec<Ast>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct GroupExpr {
-    pub expression: Box<Expr>,
+#[derive(Debug, Clone)]
+pub enum Ast {
+    FnDef {
+        name: String,
+        rettype: SymbolType,
+        args: ThinVec<(String, SymbolType)>,
+        limits: Option<Vec<FnArgLimit>>,
+        body: Vec<Expr>,
+    },
+    Struct {
+        name: String,
+        members: ThinVec<(String, SymbolType)>,
+    },
+    Enum {
+        name: String,
+        members: ThinVec<SymbolType>,
+    },
+    TypeDef {
+        name: SymbolType,
+        funcs: ThinVec<Self>,
+    },
+    WithClause {
+        include: Vec<Expr>,
+    },
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FnArgLimit {
+    pub name: String,
+    pub limit: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct ScalarExpr {
-    pub value: Scalar,
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub enum LogicOp {
+    CEQ,
+    CLT,
+    CLE,
+    CGT,
+    CGE,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct LogicalExpr {
-    pub left: Box<Expr>,
-    pub operator: Token,
-    pub right: Box<Expr>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct UnaryExpr {
-    pub operator: Token,
-    pub right: Box<Expr>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ValueExpr {
-    pub name: Token,
-}
-
-
-///Enum representing expression types
-#[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
-    Assign(AssignExpr),
-    Binary(BinExpr),
-    Call(CallExpr),
-    Grouping(GroupExpr),
-    ScalarEx(ScalarExpr),
-    Logical(LogicalExpr),
-    Unary(UnaryExpr),
-    Value(ValueExpr),
-    Empty,
+    BinAdd {
+        l: Box<Expr>,
+        r: Box<Expr>,
+    },
+    BinSub {
+        l: Box<Expr>,
+        r: Box<Expr>,
+    },
+    BinMul {
+        l: Box<Expr>,
+        r: Box<Expr>,
+    },
+    BinDiv {
+        l: Box<Expr>,
+        r: Box<Expr>,
+    },
+    Logical {
+        l: Box<Expr>,
+        op: LogicOp,
+        r: Box<Expr>,
+    },
+    Assignment {
+        name: Box<Expr>,
+        value: Box<Expr>,
+    },
+    MutableAssignment {
+        name: Box<Expr>,
+        value: Box<Expr>,
+    },
+    Closure {
+        args: Vec<(String, SymbolType)>,
+        body: Vec<Expr>,
+    },
+    Composition {
+        l: Box<Expr>,
+        r: Box<Expr>,
+    },
+    Return {
+        value: Box<Expr>,
+    },
+    If {
+        condition: Box<Expr>,
+        then: Box<Expr>,
+        otherwise: Box<Expr>,
+    },
+    // Atomics
+    Int(i32),
+    Flt(f32),
+    Str(String),
+    Bool(bool),
+    Symbol(String),
+    StructInstance {
+        name: Box<Expr>,
+        fields: Vec<Expr>,
+    },
+    FieldAccess(Vec<Expr>),
+    Call {
+        name: Box<Expr>,
+        args: Vec<Expr>,
+    },
 }
 
 impl Expr {
-    ///Gets the token of the expressions
-    pub fn get_expr_value(&self) -> Token {
+    pub fn get_symbol_name(&self) -> String {
         match self {
-            Self::Assign(a) => a.name.clone(),
-            Self::Binary(b) => b.right.clone().get_expr_value(),
-            Self::Call(c) => Token { tokentype: TokenType::TkSymbol, value: Some(*c.callee.value.clone()), location: 0 },
-            Self::Empty => {
-                Token { tokentype: TokenType::TkType(AKind::TyMute), value: Some(SymbolValue::Mute), location: 0 }
-            }
-            Self::Grouping(g) => g.expression.get_expr_value().clone(),
-            Self::ScalarEx(l) => Token { tokentype: TokenType::TkScalar, value: Some(SymbolValue::Scalar(l.value.clone())), location: 0 },
-            Self::Logical(l) => l.right.clone().get_expr_value(),
-            Self::Unary(u) => u.operator.clone(),
-            Self::Value(v) => v.name.clone(),
+            Expr::Symbol(s) => s.to_string(),
+            _ => panic!(),
         }
     }
-    /*
-    pub fn get_expr_type(&mut self) -> Option<AKind> {
+
+    pub fn get_assignment(&self) -> (String, Self) {
         match self {
-            Self::Assign(a) => Some(a.kind.clone()),
-            Self::Binary(b) => b.left.clone().get_expr_type(),
-            Self::Call(c) => c.callee.get_expr_type(),
-            Self::Empty => {
-                panic!("Cannot get value of empty expression!")
-            }
-            Self::Grouping(g) => g.expression.get_expr_type().clone(),
-            Self::Literal(l) => l.value.value.clone(),
-            Self::Logical(l) => l.left.get_expr_type().clone(),
-            Self::Unary(u) => u.right.get_expr_type().clone(),
-            Self::Value(v) => v.name.kind.clone(),
-        }
-    }
-     */
-}
-
-///AST Block Statement
-#[derive(Clone, Debug, PartialEq)]
-pub struct BlockStmt {
-    pub statements: Vec<Statement>,
-}
-
-///AST Expression Wrapper
-#[derive(Clone, Debug, PartialEq)]
-pub struct ExpressionStmt {
-    pub expression: Expr,
-}
-
-///AST Operation Statement
-#[derive(Clone, Debug, PartialEq)]
-pub struct FuncDecl {
-    pub name: Pair,
-    pub params: Vec<BindingDecl>,
-    //pub returnval: AKind,
-    //pub body: BlockStmt,
-}
-
-///AST If Statement
-#[derive(Clone, Debug, PartialEq)]
-pub struct IfStmt {
-    pub condition: Expr,
-    pub then_branch: Box<BlockStmt>,
-    pub else_branch: Option<Box<BlockStmt>>,
-}
-
-//#[deprecated(since = "0.0.0", note = "PrintStmt may be replaced by standard library features")]
-///AST Print Statement
-#[derive(Clone, Debug, PartialEq)]
-pub struct PrintStmt {
-    pub expression: Expr,
-}
-
-///AST Return Statement
-#[derive(Clone, Debug, PartialEq)]
-pub struct ReturnStmt {
-    pub value: Expr,
-    pub returntype: AKind,
-}
-
-///AST Binding Declaration
-#[derive(Clone, Debug, PartialEq)]
-pub struct BindingDecl {
-    pub name: Pair,
-    pub initializer: Expr,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ReassignStmt {
-    pub name: Pair,
-    pub newval: Expr,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct WhileLoop {
-    pub condition: Expr,
-    pub block: Box<BlockStmt>,
-}
-
-///Enum representing AST nodes.
-#[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)]
-pub enum Statement {
-    Block(BlockStmt),
-    Expression(ExpressionStmt),
-    Function(FuncDecl),
-    If(IfStmt),
-    Print(PrintStmt),
-    Return(ReturnStmt),
-    Bind(BindingDecl),
-    MutBind(BindingDecl),
-    While(WhileLoop),
-    ReAssign(ReassignStmt),
-    Empty,
-}
-
-///Enum representing different scalar types
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
-pub enum Scalar {
-    Str(String),
-    Int(i32),
-    Float(f32),
-    Bool(bool),
-}
-
-impl Scalar {
-    ///Converts a Scalar to its equivalent AKind representation
-    #[allow(dead_code)]
-    pub fn to_akind(&self) -> AKind {
-        match self {
-            Self::Bool(_) => AKind::TyBool,
-            Self::Float(_) => AKind::TyFlt,
-            Self::Int(_) => AKind::TyInt,
-            Self::Str(_) => AKind::TyStr,
+            Expr::Assignment { name, value } => (name.get_symbol_name(), *value.clone()),
+            _ => panic!(),
         }
     }
 }
 
-///Enum showing different kinds of internal values
-#[derive(Clone, Debug, PartialEq)]
-pub enum SymbolValue {
-    Scalar(Scalar),
-    Pair(Pair),
-    Block(BlockStmt), //name value
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub enum SymbolType {
+    Int,
+    Flt,
+    Str,
+    Bool,
+    Mut(Box<Self>),
+    Fn(ThinVec<Self>, Box<Self>),
+    Naught,
     Unknown,
-    Mute,
+    Generic(String),
+    Custom(String, ThinVec<Self>),
+    Obj(ThinVec<(String, Self)>),
+    Enum(usize, ThinVec<Self>),
+    Variant(String, ThinVec<Self>),
 }
 
-impl SymbolValue {
-    ///Converts a SymbolValue to its equivalent AKind representation
-    pub fn to_akind(&self) -> AKind {
+impl SymbolType {
+    pub fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+
+    pub fn is_naught(&self) -> bool {
+        matches!(self, Self::Naught)
+    }
+
+    pub fn is_generic(&self) -> bool {
+        matches!(self, Self::Generic(_))
+    }
+
+    pub fn get_generic_name(&self) -> String {
         match self {
-            Self::Scalar(s) => match s {
-                Scalar::Bool(_) => AKind::TyBool,
-                Scalar::Float(_) => AKind::TyFlt,
-                Scalar::Int(_) => AKind::TyInt,
-                Scalar::Str(_) => AKind::TyStr,
-            },
-            Self::Pair(i) => {
-                i.clone().value.to_akind()
+            SymbolType::Generic(n) => n.to_string(),
+            _ => panic!("{self:?} is not a generic"),
+        }
+    }
+
+    pub fn is_str(&self) -> bool {
+        matches!(self, Self::Str)
+    }
+
+    pub fn is_int(&self) -> bool {
+        matches!(self, Self::Int)
+    }
+
+    pub fn is_flt(&self) -> bool {
+        matches!(self, Self::Flt)
+    }
+
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Self::Bool)
+    }
+
+    pub fn is_custom(&self) -> bool {
+        matches!(self, Self::Custom(..))
+    }
+
+    pub fn get_custom_name(&self) -> String {
+        match self {
+            Self::Custom(v, ..) => v.to_string(),
+            _ => panic!("{self:?} is not a custom type"),
+        }
+    }
+
+    pub fn get_custom_generics(&self) -> ThinVec<Self> {
+        match self {
+            Self::Custom(_, v) => v.clone(),
+            _ => panic!("{self:?} is not a custom type"),
+        }
+    }
+
+    pub fn is_fn(&self) -> bool {
+        matches!(self, Self::Fn(..))
+    }
+
+    pub fn get_args(&self) -> ThinVec<Self> {
+        match self {
+            SymbolType::Fn(args, ..) => args.clone(),
+            _ => panic!("{self:?} is not a function"),
+        }
+    }
+
+    pub fn extract(&self) -> Self {
+        match self {
+            SymbolType::Int
+            | SymbolType::Flt
+            | SymbolType::Str
+            | SymbolType::Naught
+            | SymbolType::Generic(..)
+            | SymbolType::Obj(_)
+            | SymbolType::Enum(..)
+            | SymbolType::Variant(_, _)
+            | SymbolType::Bool => self.clone(),
+            SymbolType::Mut(t) => t.extract(),
+            SymbolType::Fn(_, t) => t.extract(),
+            SymbolType::Unknown => panic!(),
+            SymbolType::Custom(_, _) => todo!(),
+        }
+    }
+    #[must_use]
+    pub fn get_rt(&self) -> Self {
+        match self {
+            Self::Fn(_, ret) => *ret.clone(),
+            _ => panic!("{self:?} is not a function"),
+        }
+    }
+
+    pub fn is_mut(&self) -> bool {
+        matches!(self, Self::Mut(_))
+    }
+
+    pub fn get_mut(&self) -> Self {
+        match self {
+            SymbolType::Mut(v) => *v.clone(),
+            _ => panic!("{self:?} is not mutable"),
+        }
+    }
+
+    pub fn is_obj(&self) -> bool {
+        matches!(self, Self::Obj(..))
+    }
+
+    pub fn get_members(&self) -> ThinVec<(String, Self)> {
+        match self {
+            SymbolType::Obj(v) => v.clone(),
+            _ => panic!("{self:?} is not an object"),
+        }
+    }
+
+    pub fn is_enum(&self) -> bool {
+        matches!(self, Self::Enum(..))
+    }
+
+    pub fn get_variants(&self) -> ThinVec<Self> {
+        match self {
+            SymbolType::Enum(_,v) => v.clone(),
+            _ => panic!("{self:?} is not an enum"),
+        }
+    }
+
+    pub fn get_generic_count(&self) -> usize {
+        match self {
+            SymbolType::Enum(c, ..) => c.clone(),
+            _ => panic!("{self:?} is not an enum"),
+        }
+    }
+
+    pub fn is_variant(&self) -> bool {
+        matches!(self, Self::Variant(..))
+    }
+
+    pub fn get_variant_name(&self) -> String {
+        match self {
+            SymbolType::Variant(n, ..) => n.clone(),
+            _ => panic!("{self:?} is not a variant"),
+        }
+    }
+
+    pub fn get_variant_members(&self) -> ThinVec<Self> {
+        match self {
+            SymbolType::Variant(_, v) => v.clone(),
+            _ => panic!("{self:?} is not a variant"),
+        }
+    }
+
+    pub fn get_raw(&self) -> Self {
+        match self {
+            Self::Naught | Self::Unknown | Self::Int | Self::Flt | Self::Str | Self::Bool => {
+                self.clone()
             }
-            Self::Block(b) => {
-                match b.statements.last().unwrap() {
-                    Statement::Block(b) => Self::Block(b.clone()).to_akind(),
-                    Statement::Expression(e) => e.expression.get_expr_value().value.unwrap().to_akind(),
-                    Statement::Function(f) => f.name.kind.clone(),
-                    Statement::If(i) => i.condition.get_expr_value().value.unwrap().to_akind(),
-                    Statement::Print(p) => p.expression.get_expr_value().value.unwrap().to_akind(),
-                    Statement::Return(r) => r.returntype.clone(),
-                    Statement::Bind(b) => b.name.kind.clone(),
-                    Statement::MutBind(m) => m.name.kind.clone(),
-                    Statement::While(w) => Self::Block(*w.block.clone()).to_akind(),
-                    Statement::ReAssign(r) => r.name.kind.clone(),
-                    Statement::Empty => AKind::TyMute,
+            Self::Mut(t) => t.clone().get_raw(),
+            Self::Fn(_, t) => t.clone().get_raw(),
+            Self::Generic(_) => self.clone(),
+            Self::Custom(..) => panic!("Custom type here!"),
+            Self::Obj(_) | Self::Variant(..) => todo!(),
+            Self::Enum(..) => todo!(),
+        }
+    }
+
+    pub fn compare(&self, rhs: &Self) -> bool {
+        //println!("{:?} vs {:?}", self, rhs);
+        let r = rhs.clone(); //.get_raw();
+        match self {
+            Self::Int => r.is_int() || r.is_generic() || r.is_unknown(),
+            Self::Flt => r.is_flt() || r.is_generic() || r.is_unknown(),
+            Self::Str => r.is_str() || r.is_generic() || r.is_unknown(),
+            Self::Bool => r.is_bool() || r.is_generic() || r.is_unknown(),
+            Self::Mut(t) | Self::Fn(_, t) => t.compare(&r),
+            Self::Naught | Self::Unknown | Self::Generic(_) => true,
+            Self::Obj(m) => {
+                if r.is_obj() {
+                    for e in r.get_members().iter().enumerate() {
+                        if m[e.0].1.compare(&e.1.1) {
+                            continue
+                        } else {
+                            return false
+                        }
+                    }
+                    return true
+                } else {
+                    return false
+                }
+            },
+            Self::Custom(name, v) => {
+                if r.get_variant_name() == *name {
+                    for arg in v.iter().enumerate() {
+                        let g = rhs.get_custom_generics();
+                        if *arg.1 == g[arg.0] {
+                            continue;
+                        } else {
+                            return false;
+                        }
+                    }
+                    true
+                } else if r.is_enum() {
+                    r.get_generic_count() == v.len()
+                } else {
+                    false
                 }
             }
-            Self::Mute => AKind::TyMute,
-            Self::Unknown => AKind::TyUnknown,
-            //_ => panic!("Unknown type! {:?}", self),
-        }
-    }
-    
-    ///Converts the internal value of a SymbolValue to its string representation, or the name of the pair
-    pub fn get_string(&self) -> Option<String> {
-        match self {
-            Self::Pair(p) => Some(p.name.clone()),
-            Self::Scalar(s) => match s {
-                Scalar::Int(v) => format!("{v}").into(),
-                Scalar::Float(v) => format!("{v}").into(),
-                Scalar::Str(v) => v.to_string().into(),
-                Scalar::Bool(v) => format!("{v}").into(),
-            },
-            Self::Mute => {
-                Some("()".to_string())
+            Self::Variant(..) => r.is_enum() && r.get_variants().contains(self) || r.is_variant() && r == *self,
+            Self::Enum(_, v) => {
+                if r.is_fn() && r.get_rt().is_variant() {
+                    for var in v {
+                        if !var.get_variant_members().is_empty()
+                            && !r.get_rt().get_variant_members().is_empty()
+                        {
+                            for varg in var.get_variant_members().iter().enumerate() {
+                                if varg
+                                    .1
+                                    .compare(&r.get_rt().get_variant_members()[varg.0])
+                                {
+                                    continue;
+                                } else {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    true
+                } else if r.is_enum() {
+                    r.get_variants() == self.get_variants()
+                } else{
+                
+                    false
+                }
+                
             }
-            _ => panic!("Cannot get string of value {:?}", self),
         }
     }
-
-    pub fn extract_block(&self) -> Option<BlockStmt> {
-        match self {
-            SymbolValue::Scalar(_) |
-            SymbolValue::Pair(_) |
-            SymbolValue::Unknown |
-            SymbolValue::Mute => None,
-            SymbolValue::Block(b) => Some(b.clone()),
-
-        }
-    }
-
-    
-    pub fn extract_scalar(&self) -> Option<Scalar> {
-        match self {
-            SymbolValue::Scalar(s) => Some(s.clone()),
-            SymbolValue::Pair(_) |
-            SymbolValue::Unknown |
-            SymbolValue::Mute |
-            SymbolValue::Block(_) => None,
-
-        }
-    }
-}
-
-///Recursive struct representing a key/value pair, with type information:
-#[derive(Clone, Debug, PartialEq)]
-pub struct Pair {
-    pub name: String,
-    pub kind: AKind,
-    pub value: Box<SymbolValue>,
 }

@@ -1,8 +1,17 @@
+#![warn(clippy::pedantic)]
 extern crate colored;
+extern crate lazy_static;
+extern crate peg;
 
-use std::env;
+use std::{env, fs, time::Instant};
+//use std::collections::{HashMap, HashSet}
 
-mod root;
+use root::{passes::midend::typechecking::TypedProgram, resource::ast::Program};
+
+extern crate logos;
+//use parser::*;
+
+pub mod root;
 
 fn main() {
     const VERSION: &str = "0.0.1";
@@ -10,19 +19,34 @@ fn main() {
 
     match prog_args.len() {
         3 => match prog_args[1].as_str() {
-            "-c" | "--compile"=> {
+            "-c" | "--compile" => {
+                let now = Instant::now();
+
                 let filename: &String = &prog_args[2];
-                info!("Compiling {} to {}.c", filename, filename);
-                root::full_compile(filename);
+                let mut p = Program { modules: vec![], dependencies: vec![] };
+                let root_ast = root::compile_filename(filename);
+                p.modules.push(root_ast.clone());
+                //dbg!(p.clone());
+                let np = root::get_dependencies(p.clone());
+                let new_p: TypedProgram = np.clone().into();
+                //dbg!(new_p.clone());
+
+                let serialized = serde_json::to_string(&new_p).unwrap();
+                fs::write("/workspaces/allegro/allegro/asdf.json", serialized).expect("Unable to write file");
+
+
+
+                let elapsed = now.elapsed();
+                println!("Compiled {filename} in {elapsed:.2?}");
             }
 
             &_ => todo!(),
         },
         2 => match prog_args[1].as_str() {
             "--help" | "-h" => {
-                println!("Allegro v{}", VERSION)
+                println!("Allegro v{VERSION}");
             }
-            &_ => todo!()
+            &_ => todo!(),
         },
 
         _ => {

@@ -1,5 +1,5 @@
-use super::tokens::Token;
-use crate::{colored::Colorize, root::resource::tokens::TokenType};
+use super::tokens::LegacyToken;
+use crate::{colored::Colorize, root::legacy_resource::tokens::TokenType};
 
 
 #[macro_export]
@@ -112,14 +112,14 @@ macro_rules! info {
     }
 }
 
-pub fn draw_error(tkvec: &Vec<Token>, start: usize) {
+pub fn draw_error(tkvec: &Vec<LegacyToken>, start: usize) {
     //let mut accum = format!("{}", "...".to_string().black());
     let mut accum = format!("");
 
     let mut linestart = 0;
     let mut lineend = 0;
-    let mut s: Vec<Token> = tkvec.clone()[0..start].to_vec();
-    let e: Vec<Token> = tkvec.clone()[start..tkvec.len()].to_vec();
+    let mut s: Vec<LegacyToken> = tkvec.clone()[0..start].to_vec();
+    let e: Vec<LegacyToken> = tkvec.clone()[start..tkvec.len()].to_vec();
     s.reverse();
     for (i, _t) in s.iter().enumerate() {
         if tkvec.get(i).unwrap().tokentype == TokenType::TkStatementEnd || tkvec.get(i).unwrap().tokentype == TokenType::TkLBrace{

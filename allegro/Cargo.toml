@@ -1,6 +1,3 @@
-[workspace]
-exclude = ["tests"]
-
 [package]
 name = "allegro"
 version = "0.1.0"
@@ -8,13 +5,18 @@ edition = "2021"
 
 [dependencies]
 colored = "2.1.0"
-
+lazy_static = "1.4.0"
+logos = "0.14.0"
+peg = "0.8.4"
+recursive = "0.1.1"
+serde = {version = "1.0.210", features = ["derive"]}
+serde_json = "1.0.128"
+thin-vec = {version = "0.2.13", features = ["serde"]}
 
 [profile.release]
 opt-level = 3
 strip = "symbols"
-lto = "fat"
-codegen_units = 1
+lto = "thin"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

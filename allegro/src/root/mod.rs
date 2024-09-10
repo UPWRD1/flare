@@ -1,96 +1,48 @@
-mod passes;
-mod resource;
+pub mod passes;
+use std::fs;
 
-use std::io::Write;
-use std::time::Instant;
+use logos::Logos;
+use resource::ast::{Module, Program};
+pub mod resource;
 
+use crate::root::resource::tk::{Tk, Token};
 
-use passes::frontend::analyze;
-use passes::frontend::lexing;
-use passes::frontend::parsing;
-use passes::midend::typechecking;
+pub fn compile_filename(filename: &String) -> Module {
+    let src = fs::read_to_string(filename).unwrap();
+    let mut lex = Tk::lexer(&src);
 
-use passes::backend::codegen;
-use resource::errors::Errors;
-use resource::tokens::Token;
+    let mut tokens: Vec<Token> = vec![];
+    for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
+        let a = lex.next().unwrap().unwrap();
+        //println!("{_i} {a:?} '{}'", lex.slice());
+        tokens.push(Token::new(a, lex.slice().to_string()));
+    }
 
-use crate::error;
-use crate::info;
-
-
-pub fn full_compile(filename: &String) {
-    let now = Instant::now();
-
-    let cstvec = compile_lex(filename);
-
-    let analyzed: Vec<Token> = compile_analyze(cstvec);
-
-    let ast = compile_parse(analyzed);
-
-    let (checked, e) = compile_typecheck(ast);
-
-    let generated = compile_codegen(checked, e);
-    
-    let mut file = std::fs::File::create(format!("{}.c", filename)).expect("Could not create file");
-    let _ = file.write_all(generated.to_string().as_bytes());
-
-    let elapsed = now.elapsed();
-    info!("Compiled {} in {:.2?}", filename, elapsed);
-
+    use passes::parser::parse;
+    parse(&tokens)   
 }
 
-fn compile_codegen(checked: Vec<resource::ast::Statement>, e: resource::environment::Environment) -> String {
-    let mut generator = codegen::Generator::new(checked.clone(), e);
-    generator.generate();
-    let generated = generator.supply();
-    //println!("{}", generated.clone());
-    //info!("Generation: OK");
-    generated
-}
+pub fn get_dependencies(mut p: Program) -> Program {
+    let m = p.modules.first().unwrap();
+    for a in m.body.clone() {
+        match a {
+            resource::ast::Ast::WithClause { include } => {
+                let to_compile = include.first().unwrap().get_symbol_name();
+                let tc = format!(
+                    "{}/{}.alg",
+                    std::env::current_dir().unwrap().to_string_lossy(),
+                    to_compile
+                );
+                let dep_ast = compile_filename(&tc);
+                let mut dep_p = get_dependencies(Program { modules: vec![dep_ast], dependencies: vec![] });
+                p.dependencies.push(tc);
+                p.dependencies.append(&mut dep_p.dependencies);
+                p.modules.append(&mut dep_p.modules);
+                //dbg!(p.dependencies.clone());
 
-fn compile_typecheck(ast: Vec<resource::ast::Statement>) -> (Vec<resource::ast::Statement>, resource::environment::Environment) {
-    let mut checker = typechecking::Typechecker::new(ast.clone());
-    checker.check();
-    let (checked, e) = checker.supply();
-    //dbg!(e.clone());
-    //info!("Checking: OK");
-    (checked, e)
-}
-
-fn compile_parse(analyzed: Vec<Token>) -> Vec<resource::ast::Statement> {
-    let mut parser = parsing::Parser::new(analyzed);
-    parser.parse();
-    let ast: Vec<resource::ast::Statement> = parser.supply();
-    //dbg!(ast.clone());
-    //info!("Parsing: OK");
-    ast
-}
-
-fn compile_analyze(cstvec: Vec<resource::lexemes::Lexeme>) -> Vec<resource::tokens::Token> {
-    let mut analyzer = analyze::Analyzer::new(cstvec);
-    analyzer.analyze();
-    let analyzed = analyzer.supply();
-    //dbg!(analyzed.clone());
-    //info!("Analyzing: OK");
-    analyzed
-}
-
-fn compile_lex(filename: &String) -> Vec<resource::lexemes::Lexeme> {
-    let contents_unsure = &std::fs::read_to_string(filename);
-    if contents_unsure.is_err() {
-        error!(Errors::MissingFile, (filename.to_string()));
-    };
-    let contents = contents_unsure.as_ref().unwrap();
-    let mut lxr = lexing::Lexer::new(contents.to_string());
-    lxr.lex();
-    let cstvec: Vec<resource::lexemes::Lexeme> = lxr.supply();
-    //dbg!(cstvec.clone());
-    //info!("Lexing: OK");
-    cstvec
-}
-
-pub fn compile_import(filename: &String) -> Vec<Token> {
-    let cstvec = compile_lex(filename);
-    let analyzed: Vec<Token> = compile_analyze(cstvec);
-    analyzed
+            }
+            _ => continue,
+        }
+    }
+    p
 }
