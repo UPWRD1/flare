@@ -3,11 +3,11 @@ type Result = enum of
     Err(int)
 
 def Result =
-    let is_ok of x: Result -> bool =
-        true
+    let is_ok of x -> bool =
+        x == Ok
 
     let is_err of x -> bool =
-        false
+        x == Err
 end
 
 let main  = 

@@ -29,7 +29,7 @@ fn main() {
                 //dbg!(p.clone());
                 let np = root::get_dependencies(p.clone());
                 let new_p: TypedProgram = np.clone().into();
-                dbg!(new_p.clone());
+                //dbg!(new_p.clone());
 
                 let elapsed = now.elapsed();
                 println!("Compiled {filename} in {elapsed:.2?}");

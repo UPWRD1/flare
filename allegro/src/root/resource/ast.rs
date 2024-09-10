@@ -2,6 +2,8 @@ use std::hash::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 
+use thin_vec::ThinVec;
+
 pub fn calculate_hash<T: Hash>(t: &String) -> String {
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
@@ -24,21 +26,21 @@ pub enum Ast {
     FnDef {
         name: String,
         rettype: SymbolType,
-        args: Vec<(String, SymbolType)>,
+        args: ThinVec<(String, SymbolType)>,
         limits: Option<Vec<FnArgLimit>>,
         body: Vec<Expr>,
     },
     Struct {
         name: String,
-        members: Vec<(String, SymbolType)>,
+        members: ThinVec<(String, SymbolType)>,
     },
     Enum {
         name: String,
-        members: Vec<SymbolType>,
+        members: ThinVec<SymbolType>,
     },
     TypeDef {
         name: SymbolType,
-        funcs: Vec<Self>,
+        funcs: ThinVec<Self>,
     },
     WithClause {
         include: Vec<Expr>,

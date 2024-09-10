@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-trace::init_depth_var!();
+use recursive::recursive;
+use thin_vec::ThinVec;
 
 use crate::root::resource::ast::{Ast, Expr, FnArgLimit, Module, Program, SymbolType};
 
@@ -24,8 +25,9 @@ impl Typechecker {
         }
     }
 
+    #[recursive]
     pub fn compare_ty(&mut self, lt: &SymbolType, rt: &SymbolType) -> bool {
-        println!("{:?} vs {:?}", lt, rt);
+        //println!("{:?} vs {:?}", lt, rt);
         //dbg!(self.clone());
         if lt.is_generic() {
             self.s.redefine(&lt.get_generic_name(), rt);
@@ -81,6 +83,7 @@ impl Typechecker {
         lt.compare(rt)
     }
 
+    #[recursive]
     pub fn synth_type(&mut self, e: &Expr) -> SymbolType {
         //dbg!(self.clone());
         match e {
@@ -258,18 +261,24 @@ impl SymbolTable {
         }
     }
 
+    #[recursive]
     pub fn get(&mut self, name: String) -> SymbolType {
-        //dbg!(self.clone());
+        //println!("get {:?}",name);
         let x = self.entries.get(&name);
         if x.is_none() {
             if self.parent.is_some() {
                 self.parent.clone().unwrap().get(name)
             } else {
-                panic!("Undefined binding: {}", name)
+                if name.starts_with("?_") {
+                    SymbolType::Unknown
+                } else {
+                    panic!("Undefined binding: {}", name)
+                }
             }
         } else {
             let res = x.unwrap().clone();
             if res.is_generic() {
+                //dbg!(res.get_generic_name().clone());
                 if self.entries.contains_key(&res.get_generic_name()) {
                     self.get(res.get_generic_name())
                 } else {
@@ -285,8 +294,10 @@ impl SymbolTable {
         }
     }
 
+    #[recursive]
     pub fn handle_custom(&mut self, t: SymbolType) -> SymbolType {
         if t.is_custom() {
+            //println!("handling {:?}", t);
             let a = self.get(t.get_custom_name());
             match a {
                 SymbolType::Generic(v) => self.get(v),
@@ -312,6 +323,7 @@ impl SymbolTable {
         }
     }
 
+    #[inline]
     pub fn set(&mut self, name: String, t: &SymbolType) {
         //dbg!(self.clone());
         let newt = self.handle_custom(t.clone());
@@ -324,9 +336,11 @@ impl SymbolTable {
             }
         } else {
             self.entries.insert(name, newt);
+            
         }
     }
 
+    #[recursive]
     pub fn redefine(&mut self, name: &String, t: &SymbolType) {
         let x = self.entries.get(name);
         if x.is_none() {
@@ -335,8 +349,8 @@ impl SymbolTable {
                 m.redefine(name, t);
                 self.parent = Box::new(Some(m));
             } else {
-                self.entries.insert(name.clone(), t.clone());
-                //panic!("Undefined binding: {}", name)
+                //self.entries.insert(name.clone(), t.clone());
+                panic!("Undefined binding: {}", name)
             }
         } else {
             //dbg!(self.clone());
@@ -396,7 +410,7 @@ impl Typecheck<Module> for TypedModule {
         let mut b: Vec<TypedAst> = vec![];
         for a in &value.body {
             let ta = TypedAst::convert(&a, t);
-            dbg!(t.clone());
+            //dbg!(t.clone());
             b.push(ta)
         }
         Self { body: b }
@@ -429,7 +443,7 @@ pub enum TypedAst {
 }
 
 impl Typecheck<Ast> for TypedAst {
-    //#[trace]
+    #[recursive]
     fn convert(value: &Ast, t: &mut Typechecker) -> Self {
         //dbg!(t.clone());
 
@@ -511,7 +525,7 @@ impl Typecheck<Ast> for TypedAst {
                     }
                     t.s.set(
                         m.get_variant_name(),
-                        &SymbolType::Fn(m.get_variant_members(), Box::new(SymbolType::Variant(m.get_variant_name(), m.get_variant_members()))),
+                        &SymbolType::Fn(m.get_variant_members(), Box::new(SymbolType::Enum(members.to_vec()))),
                     );
                     
                 }
@@ -520,16 +534,14 @@ impl Typecheck<Ast> for TypedAst {
             Ast::TypeDef { name, funcs } => {
                 // && t.s.get(name.get_custom_name()).compare(name.clone()) 
                 if t.s.entries.contains_key(&name.get_custom_name()) {
-                    let mut nfuncs: Vec<TypedAst> = vec![];
+                    let mut nfuncs: ThinVec<TypedAst> = vec![].into();
                     // TODO Why does this stackoverflow?
-                    
-                        for f in funcs {
-                            let res = Self::convert(&f.clone(), &mut t.clone());
-                            nfuncs.push(res);
-                        }
-                    
-                    
-                    Self::TypeDef { name: name.clone(), funcs: nfuncs }
+                    for f in funcs {
+                        //dbg!(f.clone());
+                        let res = Self::convert(&f, t);
+                        nfuncs.push(res);
+                    }
+                    return Self::TypeDef { name: name.clone(), funcs: nfuncs.to_vec() }
                 } else {
                     panic!("Cannot define implementation for undefined type {name:?}")
                 }
