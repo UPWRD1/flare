@@ -1,14 +1,5 @@
-type Result = enum of
-    Ok(int),
-    Err(int)
+with result
 
-def Result =
-    let is_ok of x -> bool =
-        x == Ok
-
-    let is_err of x -> bool =
-        x == Err
-end
-
-let main  = 
+let main = 
 	a = Ok(3)
+	is_ok(a)

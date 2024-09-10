@@ -27,7 +27,7 @@ impl Typechecker {
 
     #[recursive]
     pub fn compare_ty(&mut self, lt: &SymbolType, rt: &SymbolType) -> bool {
-        //println!("{:?} vs {:?}", lt, rt);
+        //println!("tc : {:?} vs {:?}", lt, rt);
         //dbg!(self.clone());
         if lt.is_generic() {
             self.s.redefine(&lt.get_generic_name(), rt);
@@ -39,6 +39,7 @@ impl Typechecker {
         }
         if lt.is_custom() {
             let nlt = self.s.get(lt.get_custom_name());
+            //dbg!(nlt.clone());
             return self.compare_ty(&nlt, rt)
         }
         if rt.is_custom() {
@@ -54,7 +55,7 @@ impl Typechecker {
                     newt.push(t)
                 }
             }
-            let fin = SymbolType::Variant(lt.get_variant_name(), newt);
+            let fin = SymbolType::Variant(lt.get_variant_name(), newt.into());
             return self.compare_ty(&fin, rt);
         }
         if rt.is_variant() && !rt.get_variant_members().iter().all(|x| !x.is_generic()) {
@@ -66,18 +67,24 @@ impl Typechecker {
                     newt.push(t)
                 }
             }
-            let fin = SymbolType::Variant(rt.get_variant_name(), newt);
+            let fin = SymbolType::Variant(rt.get_variant_name(), newt.into());
             return self.compare_ty(lt, &fin);
         }
         if lt.is_enum() {
-            let variants = lt.get_variants();
-            for variant in variants {
-                if self.compare_ty(&variant, rt) {
-                    return true
-                } else {
-                    continue
+            if rt.is_enum() {
+                let variants = lt.get_variants();
+                let rvt = rt.get_variants();
+                for variant in variants.iter().enumerate() {
+                    //println!("vtc: {:?} vs {:?}", variant.1, &rvt[variant.0]);
+                    if self.compare_ty(&variant.1, &rvt[variant.0]) {
+                        continue
+                    } else {
+                        return false
+                    }
                 }
+                return true
             }
+            
             return false
         }
         lt.compare(rt)
@@ -143,7 +150,7 @@ impl Typechecker {
                 let callee = self.synth_type(&*name);
                 if callee.is_fn() {
                     //dbg!(name.clone());
-                    let cargs: Vec<SymbolType> = callee.get_args();
+                    let cargs: Vec<SymbolType> = callee.get_args().to_vec();
                     if cargs.len() == args.len() {
                         for (i, e) in cargs.into_iter().enumerate() {
                             let arg = self.synth_type(&args[i]);
@@ -163,7 +170,7 @@ impl Typechecker {
                                     newt.push(t)
                                 }
                             }
-                            SymbolType::Variant(fin.get_variant_name(), newt)
+                            SymbolType::Variant(fin.get_variant_name(), newt.into())
                         } else {
                             return fin
                         }
@@ -231,7 +238,7 @@ impl Typechecker {
                         panic!("{name:?} is not instantiated correctly!")
                     }
 
-                    return SymbolType::Obj(f);
+                    return SymbolType::Obj(f.into());
                 } else {
                     panic!("{name:?} is not an object!")
                 }
@@ -310,14 +317,14 @@ impl SymbolTable {
                 nargs.push(self.handle_custom(a))
             }
             let nrt = self.handle_custom(t.get_rt());
-            SymbolType::Fn(nargs, Box::new(nrt))
+            SymbolType::Fn(nargs.into(), Box::new(nrt))
         } else if t.is_obj() {
             let members = t.get_members();
             let mut nm: Vec<(String, SymbolType)> = vec![];
             for m in members {
                 nm.push((m.0, self.handle_custom(m.1)));
             }
-            SymbolType::Obj(nm)
+            SymbolType::Obj(nm.into())
         } else {
             t
         }
@@ -509,13 +516,22 @@ impl Typecheck<Ast> for TypedAst {
                 include: include.iter().map(|e| e.get_symbol_name()).collect(),
             },
             Ast::Struct { name, members } => {
-                t.s.set(name.clone(), &SymbolType::Obj(members.to_vec()));
-                //dbg!(members.clone());
+                t.s.set(name.clone(), &SymbolType::Obj(members.clone()));
                 Self::Struct { name: name.to_string(), members: members.to_vec() }
             }
 
-            Ast::Enum { name, members } => {
-                t.s.set(name.clone(), &SymbolType::Enum(members.to_vec()));
+            Ast::Enum { name,  members } => {
+                let mut gc = 0;
+                for m in members.clone() {
+                    let mm = m.get_variant_members();
+                    for mg in mm {
+                        if mg.is_generic() {
+                            gc += 1;
+                        }
+                    }
+                }
+                t.s.set(name.clone(), &SymbolType::Enum(gc, members.clone()));
+
                 for m in members.clone() {
                     let mm = m.get_variant_members();
                     for mg in mm {
@@ -525,15 +541,18 @@ impl Typecheck<Ast> for TypedAst {
                     }
                     t.s.set(
                         m.get_variant_name(),
-                        &SymbolType::Fn(m.get_variant_members(), Box::new(SymbolType::Enum(members.to_vec()))),
+                        &SymbolType::Fn(m.get_variant_members().into(), Box::new(SymbolType::Enum(gc, members.clone()))),
                     );
                     
                 }
+                
                 Self::Enum { name: name.to_string(), members: members.to_vec() }
             }
             Ast::TypeDef { name, funcs } => {
-                // && t.s.get(name.get_custom_name()).compare(name.clone()) 
-                if t.s.entries.contains_key(&name.get_custom_name()) {
+                // && t.s.get(name.get_custom_name()).compare(name)
+                //t.compare_ty(t.s.get(name.get_custom_name()), name)
+                let gett = &t.s.get(name.get_custom_name());
+                if t.s.entries.contains_key(&name.get_custom_name()) &&  t.compare_ty(gett, name) {
                     let mut nfuncs: ThinVec<TypedAst> = vec![].into();
                     // TODO Why does this stackoverflow?
                     for f in funcs {

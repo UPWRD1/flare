@@ -148,14 +148,14 @@ pub enum SymbolType {
     Str,
     Bool,
     Mut(Box<Self>),
-    Fn(Vec<Self>, Box<Self>),
+    Fn(ThinVec<Self>, Box<Self>),
     Naught,
     Unknown,
     Generic(String),
-    Custom(String, Vec<Self>),
-    Obj(Vec<(String, Self)>),
-    Enum(Vec<Self>),
-    Variant(String, Vec<Self>),
+    Custom(String, ThinVec<Self>),
+    Obj(ThinVec<(String, Self)>),
+    Enum(usize, ThinVec<Self>),
+    Variant(String, ThinVec<Self>),
 }
 
 impl SymbolType {
@@ -205,7 +205,7 @@ impl SymbolType {
         }
     }
 
-    pub fn get_custom_generics(&self) -> Vec<Self> {
+    pub fn get_custom_generics(&self) -> ThinVec<Self> {
         match self {
             Self::Custom(_, v) => v.clone(),
             _ => panic!("{self:?} is not a custom type"),
@@ -216,7 +216,7 @@ impl SymbolType {
         matches!(self, Self::Fn(..))
     }
 
-    pub fn get_args(&self) -> Vec<Self> {
+    pub fn get_args(&self) -> ThinVec<Self> {
         match self {
             SymbolType::Fn(args, ..) => args.clone(),
             _ => panic!("{self:?} is not a function"),
@@ -231,7 +231,7 @@ impl SymbolType {
             | SymbolType::Naught
             | SymbolType::Generic(..)
             | SymbolType::Obj(_)
-            | SymbolType::Enum(_)
+            | SymbolType::Enum(..)
             | SymbolType::Variant(_, _)
             | SymbolType::Bool => self.clone(),
             SymbolType::Mut(t) => t.extract(),
@@ -263,7 +263,7 @@ impl SymbolType {
         matches!(self, Self::Obj(..))
     }
 
-    pub fn get_members(&self) -> Vec<(String, Self)> {
+    pub fn get_members(&self) -> ThinVec<(String, Self)> {
         match self {
             SymbolType::Obj(v) => v.clone(),
             _ => panic!("{self:?} is not an object"),
@@ -274,9 +274,16 @@ impl SymbolType {
         matches!(self, Self::Enum(..))
     }
 
-    pub fn get_variants(&self) -> Vec<Self> {
+    pub fn get_variants(&self) -> ThinVec<Self> {
         match self {
-            SymbolType::Enum(v) => v.clone(),
+            SymbolType::Enum(_,v) => v.clone(),
+            _ => panic!("{self:?} is not an enum"),
+        }
+    }
+
+    pub fn get_generic_count(&self) -> usize {
+        match self {
+            SymbolType::Enum(c, ..) => c.clone(),
             _ => panic!("{self:?} is not an enum"),
         }
     }
@@ -292,7 +299,7 @@ impl SymbolType {
         }
     }
 
-    pub fn get_variant_members(&self) -> Vec<Self> {
+    pub fn get_variant_members(&self) -> ThinVec<Self> {
         match self {
             SymbolType::Variant(_, v) => v.clone(),
             _ => panic!("{self:?} is not a variant"),
@@ -323,7 +330,20 @@ impl SymbolType {
             Self::Bool => r.is_bool() || r.is_generic() || r.is_unknown(),
             Self::Mut(t) | Self::Fn(_, t) => t.compare(&r),
             Self::Naught | Self::Unknown | Self::Generic(_) => true,
-            Self::Obj(_) => todo!(),
+            Self::Obj(m) => {
+                if r.is_obj() {
+                    for e in r.get_members().iter().enumerate() {
+                        if m[e.0].1.compare(&e.1.1) {
+                            continue
+                        } else {
+                            return false
+                        }
+                    }
+                    return true
+                } else {
+                    return false
+                }
+            },
             Self::Custom(name, v) => {
                 if r.get_variant_name() == *name {
                     for arg in v.iter().enumerate() {
@@ -335,12 +355,14 @@ impl SymbolType {
                         }
                     }
                     true
+                } else if r.is_enum() {
+                    r.get_generic_count() == v.len()
                 } else {
                     false
                 }
             }
-            Self::Variant(..) => r.is_enum() && r.get_variants().contains(self),
-            Self::Enum(v) => {
+            Self::Variant(..) => r.is_enum() && r.get_variants().contains(self) || r.is_variant() && r == *self,
+            Self::Enum(_, v) => {
                 if r.is_fn() && r.get_rt().is_variant() {
                     for var in v {
                         if !var.get_variant_members().is_empty()
@@ -360,7 +382,7 @@ impl SymbolType {
                     }
                     true
                 } else if r.is_enum() {
-                    r.get_members() == self.get_members()
+                    r.get_variants() == self.get_variants()
                 } else{
                 
                     false
