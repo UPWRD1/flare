@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use trace::trace;
-
 trace::init_depth_var!();
 
 use crate::root::resource::ast::{Ast, Expr, FnArgLimit, Module, Program, SymbolType};
@@ -398,6 +396,7 @@ impl Typecheck<Module> for TypedModule {
         let mut b: Vec<TypedAst> = vec![];
         for a in &value.body {
             let ta = TypedAst::convert(&a, t);
+            dbg!(t.clone());
             b.push(ta)
         }
         Self { body: b }
@@ -523,9 +522,13 @@ impl Typecheck<Ast> for TypedAst {
                 if t.s.entries.contains_key(&name.get_custom_name()) {
                     let mut nfuncs: Vec<TypedAst> = vec![];
                     // TODO Why does this stackoverflow?
-                    // for f in funcs {
-                    //     Self::convert(f, t);
-                    // }
+                    
+                        for f in funcs {
+                            let res = Self::convert(&f.clone(), &mut t.clone());
+                            nfuncs.push(res);
+                        }
+                    
+                    
                     Self::TypeDef { name: name.clone(), funcs: nfuncs }
                 } else {
                     panic!("Cannot define implementation for undefined type {name:?}")
