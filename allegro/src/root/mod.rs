@@ -2,6 +2,7 @@ pub mod passes;
 use std::fs;
 
 use logos::Logos;
+use passes::midend::typechecking::TypedProgram;
 use resource::ast::{Module, Program};
 pub mod resource;
 
@@ -14,7 +15,7 @@ pub fn compile_filename(filename: &String) -> Module {
     let mut tokens: Vec<Token> = vec![];
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a = lex.next().unwrap().unwrap();
-        //println!("{_i} {a:?} '{}'", lex.slice());
+        println!("{_i} {a:?} '{}'", lex.slice());
         tokens.push(Token::new(a, lex.slice().to_string()));
     }
 
@@ -45,4 +46,22 @@ pub fn get_dependencies(mut p: Program) -> Program {
         }
     }
     p
+}
+
+pub fn compile_typecheck(filename: &String) -> TypedProgram {
+    let mut p = Program { modules: vec![], dependencies: vec![] };
+    let root_ast = compile_filename(filename);
+    p.modules.push(root_ast.clone());
+    //dbg!(p.clone());
+    let np = get_dependencies(p.clone());
+    let new_p: TypedProgram = np.clone().into();
+    new_p
+}
+
+pub fn compile_json(filename: &String) -> String {
+    let new_p = compile_typecheck(filename);
+    //dbg!(new_p.clone());
+
+    let serialized = serde_json::to_string(&new_p).unwrap();
+    serialized
 }

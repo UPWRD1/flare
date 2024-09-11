@@ -25,18 +25,32 @@ impl Typechecker {
         }
     }
 
-    #[recursive]
+    #[inline(always)]
     pub fn compare_ty(&mut self, lt: &SymbolType, rt: &SymbolType) -> bool {
         //println!("tc : {:?} vs {:?}", lt, rt);
         //dbg!(self.clone());
         if lt.is_generic() {
-            self.symbol_table.redefine(&lt.get_generic_name(), rt);
-            return true;
+            if lt == rt {
+                return true
+            }
+            if self.symbol_table.has(&lt.get_generic_name()) {
+                let new = self.symbol_table.get(lt.get_generic_name());
+                return self.compare_ty(&new, rt)
+            } else {
+                self.symbol_table.redefine(&lt.get_generic_name(), rt);
+            }
+            //let new = self.symbol_table.get(lt.get_generic_name());
+            //return self.compare_ty(lt, rt)
         }
-        if rt.is_generic() {
-            self.symbol_table.redefine(&rt.get_generic_name(), &lt);
-            return true;
-        }
+        // if rt.is_generic() {
+            
+        //     if self.symbol_table.has(&rt.get_generic_name()) {
+        //         let new = self.symbol_table.get(rt.get_generic_name());
+        //         return self.compare_ty(lt, &new)
+        //     } else {
+        //         self.symbol_table.redefine(&rt.get_generic_name(), lt);
+        //     }
+        // }
         if lt.is_custom() {
             let nlt = self.symbol_table.get(lt.get_custom_name());
             //dbg!(nlt.clone());
@@ -105,6 +119,8 @@ impl Typechecker {
             | Expr::BinDiv { l, r } => {
                 let lt = self.synth_type(&*l);
                 let rt = self.synth_type(&*r);
+                dbg!(lt.clone());
+                dbg!(rt.clone());
                 if self.compare_ty(&lt, &rt) {
                     lt
                 } else {
@@ -154,6 +170,7 @@ impl Typechecker {
                             if self.compare_ty(&e, &arg) {
                                 continue;
                             } else {
+                                
                                 panic!("invalid type on argument, expected {e:?}, found {arg:?}")
                             }
                         }
@@ -265,40 +282,76 @@ impl SymbolTable {
         }
     }
 
-    #[recursive]
+    //#[recursive]
     pub fn get(&mut self, name: String) -> SymbolType {
-        //println!("get {:?}",name);
+        //println!("get {:?}", name);
         let x = self.entries.get(&name);
         if x.is_none() {
             if self.parent.is_some() {
                 self.parent.clone().unwrap().get(name)
             } else {
                 if name.starts_with("?_") {
-                    SymbolType::Unknown
+                    //todo!();
+                    SymbolType::Generic(name)
                 } else {
                     panic!("Undefined binding: {}", name)
                 }
             }
         } else {
             let res = x.unwrap().clone();
+            // if res.is_generic() {
+            //     dbg!(res.get_generic_name().clone());
+            //     dbg!(self.clone());
+            //     if self.has(&res.get_generic_name()) {
+            //         self.get(res.get_generic_name())
+            //     } else {
+            //         //res
+            //         panic!("invalid generic type {:?}", name)
+            //     }
+            // } else {
+                res
+            //}
+        }
+    }
+
+    pub fn has(&mut self, name: &String) -> bool {
+        //println!("has {:?}", name);
+        let x = self.entries.get(name);
+        if x.is_none() {
+            if self.parent.is_some() {
+                self.parent.clone().unwrap().has(name)
+            } else {
+                false
+            }
+        } else {
+            let res = x.unwrap().clone();
             if res.is_generic() {
                 //dbg!(res.get_generic_name().clone());
                 if self.entries.contains_key(&res.get_generic_name()) {
-                    self.get(res.get_generic_name())
+                    true
                 } else {
-                    self.set(
-                        res.get_generic_name(),
-                        &SymbolType::Mut(Box::new(SymbolType::Unknown)),
-                    );
-                    SymbolType::Unknown
+                    false
                 }
             } else {
-                res
+                true
             }
         }
     }
 
-    #[recursive]
+    /*
+    else if t.is_generic() {
+            if self.entries.contains_key(&t.get_generic_name()) {
+                self.get(t.get_generic_name())
+            } else {
+                self.set(
+                    t.get_generic_name(),
+                    &SymbolType::Mut(Box::new(SymbolType::Unknown)),
+                );
+                SymbolType::Unknown
+            }
+        }
+     */
+    //#[recursive]
     pub fn handle_custom(&mut self, t: SymbolType) -> SymbolType {
         if t.is_custom() {
             //println!("handling {:?}", t);
@@ -308,7 +361,16 @@ impl SymbolTable {
                 SymbolType::Custom(v, _) => self.get(v),
                 _ => a,
             }
-        } else if t.is_fn() {
+        } 
+        else if t.is_generic() {
+            //println!("handling {:?}", t);
+
+            self.get(t.get_generic_name())
+               
+            
+        } 
+        else if t.is_fn() {
+            //println!("handling {:?}", t);
             let mut nargs: Vec<SymbolType> = vec![];
             for a in t.get_args() {
                 nargs.push(self.handle_custom(a))
@@ -316,6 +378,7 @@ impl SymbolTable {
             let nrt = self.handle_custom(t.get_rt());
             SymbolType::Fn(nargs.into(), Box::new(nrt))
         } else if t.is_obj() {
+            //println!("handling {:?}", t);
             let members = t.get_members();
             let mut nm: Vec<(String, SymbolType)> = vec![];
             for m in members {
@@ -327,24 +390,27 @@ impl SymbolTable {
         }
     }
 
-    #[inline]
+    //#[inline]
     pub fn set(&mut self, name: String, t: &SymbolType) {
         //dbg!(self.clone());
         let newt = self.handle_custom(t.clone());
-        //println!("set {} to {:?}", name, newt);
         if self.entries.contains_key(&name) {
             if self.get(name.clone()).is_mut() {
+                //println!("set {} to {:?}", name, newt);
                 self.entries.insert(name, SymbolType::Mut(Box::new(newt)));
             } else {
                 panic!("Cannot redefine immutable value {name}")
             }
         } else {
+            //println!("set {} to {:?}", name, newt);
             self.entries.insert(name, newt);
         }
     }
 
-    #[recursive]
+   // #[recursive]
     pub fn redefine(&mut self, name: &String, t: &SymbolType) {
+        //println!("redefine {} to {:?}", name, t);
+
         let x = self.entries.get(name);
         if x.is_none() {
             if self.parent.is_some() {
@@ -352,23 +418,26 @@ impl SymbolTable {
                 m.redefine(name, t);
                 self.parent = Box::new(Some(m));
             } else {
-                //self.entries.insert(name.clone(), t.clone());
-                panic!("Undefined binding: {}", name)
+                if name.starts_with("?_") {
+                    self.entries.insert(name.clone(), t.clone());
+                } else {
+                    panic!("Undefined binding: {}", name)
+                }
             }
         } else {
-            //dbg!(self.clone());
-            //println!("redefine {} to {:?}", name, t);
             self.entries.insert(name.clone(), t.clone());
         }
     }
 
     pub fn new_scope(&mut self) {
+        //println!("open scope");
         let temp = self.clone();
         self.parent = Box::new(Some(temp));
         self.entries = HashMap::new();
     }
 
     pub fn pop_scope(&mut self) {
+        //println!("close scope");
         let temp = self.parent.clone().unwrap();
         self.entries = temp.entries;
         self.parent = temp.parent;
@@ -396,6 +465,7 @@ impl From<Program> for TypedProgram {
             let tm = TypedModule::convert(&m, &mut t);
             vtm.push(tm);
         }
+        dbg!(t);
         Self {
             modules: vtm,
             dependencies: value.dependencies,
@@ -556,7 +626,7 @@ impl Typecheck<Ast> for TypedAst {
                 // && t.s.get(name.get_custom_name()).compare(name)
                 //t.compare_ty(t.s.get(name.get_custom_name()), name)
                 let gett = &t.symbol_table.get(name.get_custom_name());
-                if t.symbol_table.entries.contains_key(&name.get_custom_name())
+                if t.symbol_table.has(&name.get_custom_name())
                     && t.compare_ty(gett, name)
                 {
                     let mut nfuncs: ThinVec<TypedAst> = vec![].into();

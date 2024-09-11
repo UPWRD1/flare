@@ -51,7 +51,7 @@ pub enum Ast {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnArgLimit {
     pub name: String,
-    pub limit: String,
+    pub limit: SymbolType,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
