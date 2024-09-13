@@ -47,11 +47,29 @@ pub enum Ast {
     WithClause {
         include: Vec<Expr>,
     },
+
+    Propdef {
+        p: Property
+    }
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FnArgLimit {
     pub name: String,
     pub limit: SymbolType,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Property {
+    pub name: String,
+    pub req: Vec<FnSignature>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FnSignature {
+    pub name: String,
+    pub rettype: SymbolType,
+    pub args: ThinVec<SymbolType>,
+    pub limits: Option<Vec<FnArgLimit>>,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -158,6 +176,7 @@ pub enum SymbolType {
     Obj(ThinVec<(String, Self)>),
     Enum(usize, ThinVec<Self>),
     Variant(String, ThinVec<Self>),
+    Property,
 }
 
 impl SymbolType {
@@ -239,7 +258,7 @@ impl SymbolType {
             SymbolType::Mut(t) => t.extract(),
             SymbolType::Fn(_, t) => t.extract(),
             SymbolType::Unknown => panic!(),
-            SymbolType::Custom(_, _) => todo!(),
+            _ => todo!(),
         }
     }
     #[must_use]
@@ -318,7 +337,7 @@ impl SymbolType {
             Self::Generic(_) => self.clone(),
             Self::Custom(..) => panic!("Custom type here!"),
             Self::Obj(_) | Self::Variant(..) => todo!(),
-            Self::Enum(..) => todo!(),
+            _ => todo!(),
         }
     }
 
@@ -391,6 +410,7 @@ impl SymbolType {
                 }
                 
             }
+            Self::Property => panic!("Cannot compare properties")
         }
     }
 }

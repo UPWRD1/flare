@@ -1,0 +1,1 @@
+{"modules":[{"body":[{"FnDef":{"name":"main","rettype":"Int","args":[],"limits":[],"body":[{"e":{"Assignment":{"name":{"Symbol":"a"},"value":{"Int":3}}},"exprtype":"Int"}]}}]}],"dependencies":[]}

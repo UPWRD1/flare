@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::root::resource::ast::{Ast, Expr, FnArgLimit, Module, Program, SymbolType};
+use crate::root::resource::ast::{Ast, Expr, FnArgLimit, Module, Program, Property, SymbolType};
 use recursive::recursive;
 use serde::{Deserialize, Serialize};
 use thin_vec::ThinVec;
@@ -119,8 +119,8 @@ impl Typechecker {
             | Expr::BinDiv { l, r } => {
                 let lt = self.synth_type(&*l);
                 let rt = self.synth_type(&*r);
-                dbg!(lt.clone());
-                dbg!(rt.clone());
+                //dbg!(lt.clone());
+                //dbg!(rt.clone());
                 if self.compare_ty(&lt, &rt) {
                     lt
                 } else {
@@ -218,8 +218,12 @@ impl Typechecker {
             } => {
                 let cond_type = self.synth_type(&*condition);
                 if cond_type.is_bool() {
+                    self.symbol_table.new_scope();
                     let tt = self.synth_type(&*then);
+                    self.symbol_table.pop_scope();
+                    self.symbol_table.new_scope();
                     let ot = self.synth_type(&*otherwise);
+                    self.symbol_table.pop_scope();
 
                     if tt.compare(&ot) {
                         tt
@@ -465,7 +469,7 @@ impl From<Program> for TypedProgram {
             let tm = TypedModule::convert(&m, &mut t);
             vtm.push(tm);
         }
-        dbg!(t);
+        //dbg!(t);
         Self {
             modules: vtm,
             dependencies: value.dependencies,
@@ -513,10 +517,12 @@ pub enum TypedAst {
     WithClause {
         include: Vec<String>,
     },
+    Propdef {
+        p: Property
+    }
 }
 
 impl Typecheck<Ast> for TypedAst {
-    #[recursive]
     fn convert(value: &Ast, t: &mut Typechecker) -> Self {
         //dbg!(t.clone());
 
@@ -644,6 +650,16 @@ impl Typecheck<Ast> for TypedAst {
                     panic!("Cannot define implementation for undefined type {name:?}")
                 }
             }
+
+            Ast::Propdef {p:_} => {
+                todo!()
+                // t.symbol_table.set(p.name, &SymbolType::Property);
+                // for f in &p.req {
+                //     t.symbol_table.set()
+                // }
+                // return Self::Propdef {p: p.clone()}
+            }
+            // _ => todo!()
         }
     }
 }

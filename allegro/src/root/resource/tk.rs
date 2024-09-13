@@ -18,6 +18,8 @@ pub enum Tk {
     TkKwLet,
     #[token("def")]
     TkKwDef,
+    #[token("prop")]
+    TkKwProp,
     #[token("where")]
     TkKwWhere,
     #[token("is")]
@@ -143,10 +145,12 @@ pub enum Tk {
 pub struct Token {
     pub kind: Tk,
     pub lit: String,
+    pub posline: usize,
+    pub poscol: usize,
 }
 
 impl Token {
-    pub fn new(kind: Tk, lit: String) -> Self {
-        Token {kind, lit}
+    pub fn new(kind: Tk, lit: String, pos: usize, col: usize) -> Self {
+        Token {kind, lit, posline: pos, poscol: col}
     }
 }

@@ -8,7 +8,7 @@ pub mod root;
 
 use std::{env, fs, time::Instant};
 
-use root::compile_json;
+use root::compile_typecheck;
 
 
 fn main() {
@@ -18,11 +18,13 @@ fn main() {
     match prog_args.len() {
         3 => match prog_args[1].as_str() {
             "-c" | "--compile" => {
-                let now = Instant::now();
 
                 let filename: &String = &prog_args[2];
-                let res = compile_json(filename);
-                fs::write(format!("{}.json", filename), res).expect("Unable to write file");
+                let res = compile_typecheck(filename);
+                let now: Instant = Instant::now();
+                dbg!(res.clone());
+                let serialized = serde_json::to_string(&res).unwrap();
+                fs::write(format!("{}.json", filename), serialized).expect("Unable to write file");
 
                 let elapsed = now.elapsed();
                 println!("Compiled {filename} in {elapsed:.2?}");
@@ -50,7 +52,9 @@ fn main() {
 #[cfg(test)]
 pub mod tests {
 
-    use super::*;
+    use root::compile_json;
+
+    use crate::root;
 
     #[test]
     fn primatives() {
