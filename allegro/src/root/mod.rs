@@ -16,7 +16,7 @@ pub fn compile_filename(filename: &String) -> Module {
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a = lex.next().unwrap().unwrap();
         println!("{_i} {a:?} '{}'", lex.slice());
-        tokens.push(Token::new(a, lex.slice().to_string()));
+        tokens.push(Token::new(a, lex.slice().to_string(), 0,0));
     }
 
     use passes::parser::parse;

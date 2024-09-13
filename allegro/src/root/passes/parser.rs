@@ -40,29 +40,29 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / prop_def()
 
     rule typedef() -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwType, .. }] [Token { kind: Tk::TkSymbol, lit: name,.. }] t: generic_brackets()? [Token { kind: Tk::TkAssign, .. }] v: typedef_choice(name.to_string()) {v}
+        = [Token { kind: Tk::TkKwType(_), .. }] [Token { kind: Tk::TkSymbol(_), lit: name,.. }] t: generic_brackets()? [Token { kind: Tk::TkAssign, .. }] v: typedef_choice(name.to_string()) {v}
 
     rule typedef_choice(name: String) -> crate::root::resource::ast::Ast
         = structdef(name.clone())
         / enumdef(name.clone())
 
     rule structdef(name: String) -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwStruct, .. }] [Token { kind: Tk::TkKwOf, .. }] m: memberlist() { crate::root::resource::ast::Ast::Struct { name: name.to_string(), members: m.into() }}
+        = [Token { kind: Tk::TkKwStruct(_), .. }] [Token { kind: Tk::TkKwOf(_), .. }] m: memberlist() { crate::root::resource::ast::Ast::Struct { name: name.to_string(), members: m.into() }}
 
     rule memberlist() -> Vec<(String, crate::root::resource::ast::SymbolType)>
-        = v: ([Token { kind: Tk::TkSymbol, lit: name,.. }] [Token { kind: Tk::TkColon, .. }] a: atype() {(name.to_string(), a)}) ** [Token { kind: Tk::TkComma, .. }]
+        = v: ([Token { kind: Tk::TkSymbol(_), lit: name,.. }] [Token { kind: Tk::TkColon(_), .. }] a: atype() {(name.to_string(), a)}) ** [Token { kind: Tk::TkComma, .. }]
 
     rule enumdef(name: String) -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwEnum, .. }] [Token { kind: Tk::TkKwOf, .. }] m: variantlist() { crate::root::resource::ast::Ast::Enum { name: name.to_string(), members: m.into() }}
+        = [Token { kind: Tk::TkKwEnum(_), .. }] [Token { kind: Tk::TkKwOf(_), .. }] m: variantlist() { crate::root::resource::ast::Ast::Enum { name: name.to_string(), members: m.into() }}
 
     rule variantlist() -> Vec<(crate::root::resource::ast::SymbolType)>
-        = v: ([Token { kind: Tk::TkSymbol, lit: name,.. }] a: varianttype()? {crate::root::resource::ast::SymbolType::Variant(name.to_string(), if a.is_some() {a.unwrap().into()} else {vec![].into()})}) ** [Token { kind: Tk::TkComma, .. }]
+        = v: ([Token { kind: Tk::TkSymbol(_), lit: name,.. }] a: varianttype()? {crate::root::resource::ast::SymbolType::Variant(name.to_string(), if a.is_some() {a.unwrap().into()} else {vec![].into()})}) ** [Token { kind: Tk::TkComma, .. }]
 
     rule varianttype() -> Vec<crate::root::resource::ast::SymbolType>
-        = [Token { kind: Tk::TkLparen, .. }] a: atype() ** [Token { kind: Tk::TkComma, .. }] [Token { kind: Tk::TkRparen, .. }] {a}
+        = [Token { kind: Tk::TkLparen(_), .. }] a: atype() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRparen(_), .. }] {a}
 
     rule defblock() -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwDef, .. }] name: atype() [Token { kind: Tk::TkAssign, .. }] f: funcdef() * [Token { kind: Tk::TkKwEnd, .. }] { crate::root::resource::ast::Ast::TypeDef { name: name, funcs: f.into() }}
+        = [Token { kind: Tk::TkKwDef(_), .. }] name: atype() [Token { kind: Tk::TkAssign(_), .. }] f: funcdef() * [Token { kind: Tk::TkKwEnd(_), .. }] { crate::root::resource::ast::Ast::TypeDef { name: name, funcs: f.into() }}
 
     rule with_clause() -> crate::root::resource::ast::Ast
         = [Token { kind: Tk::TkKwWith, .. }] s: namespace() {crate::root::resource::ast::Ast::WithClause { include: s }}
