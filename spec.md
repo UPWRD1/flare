@@ -123,23 +123,86 @@ let main =
     print factorial(5) -- 120
 ```
 
-Note how `main()` uses a shorthand. Functions declared this way take no parameters.
+Note how `main()` uses a shorthand. Functions declared this way return the unit type `naught` and take no parameters.
 
-## Primative Types
+Functions can extend types, both user created and inbuilt. 
+```lua
+let mul_each of x: int for !Array[int] =
+    self.apply(fn of el -> el * x)
 
-* `int`
-* `uint`
-* `flt`
-* `word`
-* `byte`
+let main =
+    my_array = ![1, 2, 3] -- declare mutable variable
+    my_array.mul_each(2) -- [2, 4, 6]
+```
 
-* `bool`
-  
-* `chr`
-* `str`
+Here, `mul_each()` operates on a mutable `Array` type. However, we have a problem. What if we want to use either an `Array[flt]` or an `Array[int]`? Let's modify our program to use generics:
 
-* `ptr`
+```lua
+let mul_each of x: ?T for !Array[?T] =
+    self.apply(fn of el -> el * x)
 
-* `tuple`
-* `array`
+let main =
+    my_array = ![1, 2, 3] -- declare mutable variable
+    my_array.mul_each(2) -- [2, 4, 6]
+```
 
+If we try this code, we get an error. That's because the compiler doesn't know if `?T` can be multiplied. For example, `?T` could be a `str`, or `bool`! Trying to multiply certain types could lead to runtime errors or undefined behavior.
+
+Thankfully, there's a solution. We can restrict `?T` to types have the `Numeric` property (which we'll cover next) like so:
+ 
+```lua
+let mul_each of x: ?T for !Array[?T] where ?T is Numeric =
+    self.apply(fn of el -> el * x)
+
+let main =
+    my_array = ![1, 2, 3] -- declare mutable variable
+    my_array.mul_each(2) -- [2, 4, 6]
+```
+
+
+
+
+```ruby
+with IO
+with Env
+with Iter
+
+type Config = struct of 
+	query: str,
+	file_path: str,
+	ignore_case: bool
+
+def Config =
+	let build of args: Vec<str> -> Result<Config, str> =
+		if args.len() < 3 {
+			return Err("Not enough arguments!")
+		}
+		query = args[1]
+		file_path = args[2]
+		ignore_case = env:var("IGNORE_CASE").is_ok()
+		Ok(Config {query, file_path, ignore_case})
+
+	let run of self -> Result<(), str> =
+		contents = IO:read_file(self.file_path).unwrap()
+		res = 
+			if self.ignore_case then 
+				search_case_insensitive(self.query, contents) 
+			else 
+				search(self.query, contents)
+			& Iter:foreach(fn -> do IO:out(line))
+		return Ok(())
+end
+
+let search of query: str, contents: str -> Vec<str> =
+	contents.lines() & Iter:filter(fn of line -> line.contains(query))
+
+let search_case_insensitive of query: str, contents: str -> Vec<str> =
+	q = query.to_lowercase()
+	contents.lines() & Iter:filter(fn of line -> line.to_lowercase().contains(q))
+
+let main =
+	args = Env:read_argsv()
+	config = Config:build(args) & unwrap_else(fn of e -> do IO:quit("Problem parsing arguments: " .. e, 1))
+	if config.run() is Err(e) then do IO:quit("Application error: " .. e, 1) else IO:exit(0)
+	
+```
