@@ -14,8 +14,8 @@ pub fn compile_filename(filename: &String) -> Module {
 
     let mut tokens: Vec<Token> = vec![];
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
-        let a = lex.next().unwrap().unwrap();
-        println!("{_i} {a:?} '{}'", lex.slice());
+        let a: Tk = lex.next().unwrap().unwrap();
+        //println!("{_i} {a:?} '{}'", lex.slice());
         tokens.push(Token::new(a, lex.slice().to_string(), 0,0));
     }
 
@@ -52,7 +52,7 @@ pub fn compile_typecheck(filename: &String) -> TypedProgram {
     let mut p = Program { modules: vec![], dependencies: vec![] };
     let root_ast = compile_filename(filename);
     p.modules.push(root_ast.clone());
-    //dbg!(p.clone());
+    dbg!(p.clone());
     let np = get_dependencies(p.clone());
     let new_p: TypedProgram = np.clone().into();
     new_p

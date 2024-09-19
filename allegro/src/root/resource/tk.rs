@@ -1,150 +1,151 @@
-use logos::{Lexer, Logos, Skip};
-
-fn word_callback(lex: &mut Lexer<Tk>) -> (usize, usize) {
-    let line = lex.extras.0;
-    let column = lex.span().start - lex.extras.1;
-
-    (line, column)
-}
-
-fn newline_callback(lex: &mut Lexer<Tk>) -> Skip {
-    lex.extras.0 += 1;
-    lex.extras.1 = lex.span().end;
-    Skip
-}
+use logos::Logos;
 
 ///Enum for type of token
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Logos)]
-#[logos(skip r"[\t\f]+")] // Ignore this regex pattern between tokens
-#[logos(extras = (usize, usize))]
+#[logos(skip r"[\t\f\n]+")] // Ignore this regex pattern between tokens
 pub enum Tk {
     #[regex(" ", logos::skip)]
     TkSpace,
-    #[token(";")]
+    #[regex(r";")]
     TkSemicolon,
-    #[regex(r"\n", newline_callback)]
-    Newline,
     #[regex("--.*", logos::skip)]
     TkComment,
-    #[token("with", word_callback)]
-    TkKwWith((usize, usize)),
-    #[token("let")]
-    TkKwLet((usize, usize)),
-    #[token("def")]
-    TkKwDef((usize, usize)),
-    #[token("prop")]
-    TkKwProp((usize, usize)),
-    #[token("where")]
-    TkKwWhere((usize, usize)),
-    #[token("is")]
-    TkKwIs((usize, usize)),
-    #[token("do")]
-    TkKwDo((usize, usize)),
-    #[token("end")]
-    TkKwEnd((usize, usize)),
-    #[token("devprint")]
-    TkKwPrint((usize, usize)),
-    #[token("of")]
-    TkKwOf((usize, usize)),
-    #[token("fn")]
-    TkKwFn((usize, usize)),
-    #[token("mut")]
-    TkKwMut((usize, usize)),
-    #[token("if")]
-    TkKwIf((usize, usize)),
-    #[token("then")]
-    TkKwThen((usize, usize)),
-    #[token("else")]
-    TkKwElse((usize, usize)),
-    #[token("return")]
-    TkKwReturn((usize, usize)),
-    #[token("and")]
-    TkKwAnd((usize, usize)),
-    #[token("or")]
-    TkKwOr((usize, usize)),
-    #[token("not")]
-    TkKwNot((usize, usize)),
-    #[token("int")]
-    TkKwInt((usize, usize)),
-    #[token("flt")]
-    TkKwFlt((usize, usize)),
-    #[token("str")]
-    TkKwStr((usize, usize)),
-    #[token("Fn")]
-    TkKwFnTy((usize, usize)),
-    #[token("naught")]
-    TkKwNaught((usize, usize)),
-    #[token("bool")]
-    TkKwBool((usize, usize)),
-    #[token("type")]
-    TkKwType((usize, usize)),
-    #[token("struct")]
-    TkKwStruct((usize, usize)),
-    #[token("enum")]
-    TkKwEnum((usize, usize)),
+    #[regex(r"with")]
+    TkKwWith,
+    #[regex(r"let")]
+    TkKwLet,
+    #[regex(r"def")]
+    TkKwDef,
+    #[regex(r"prop")]
+    TkKwProp,
+    #[regex(r"where")]
+    TkKwWhere,
+    #[regex(r"is")]
+    TkKwIs,
+    #[regex(r"do")]
+    TkKwDo,
+    #[regex(r"end")]
+    TkKwEnd,
+    #[regex(r"for")]
+    TkKwFor,
+    #[regex(r"devprint")]
+    TkKwPrint,
+    #[regex(r"of")]
+    TkKwOf,
+    #[regex(r"fn")]
+    TkKwFn,
+    #[regex(r"mut")]
+    TkKwMut,
+    #[regex(r"if")]
+    TkKwIf,
+    #[regex(r"then")]
+    TkKwThen,
+    #[regex(r"else")]
+    TkKwElse,
+    #[regex(r"match")]
+    TkKwMatch,
+    #[regex(r"return")]
+    TkKwReturn,
+    #[regex(r"and")]
+    TkKwAnd,
+    #[regex(r"or")]
+    TkKwOr,
+    #[regex(r"not")]
+    TkKwNot,
+    // #[regex(r"self")]
+    // TkKwSelf,
+    #[regex(r"uint")]
+    TkKwUint,
+    #[regex(r"word")]
+    TkKwWord,
+    #[regex(r"byte")]
+    TkKwByte,
+    #[regex(r"int")]
+    TkKwInt,
+    #[regex(r"flt")]
+    TkKwFlt,
+    // #[regex(r"str")]
+    // TkKwStr,
+    #[regex(r"char")]
+    TkKwChar,
+    #[regex(r"Fn")]
+    TkKwFnTy,
+    #[regex(r"naught")]
+    TkKwNaught,
+    #[regex(r"bool")]
+    TkKwBool,
+    #[regex(r"type")]
+    TkKwType,
+    #[regex(r"struct")]
+    TkKwStruct,
+    #[regex(r"enum")]
+    TkKwEnum,
     #[regex("([a-zA-Z]|_)+[a-zA-Z0-9]*", priority=2)]
-    TkSymbol((usize, usize)),
-    //|true|false|\"[a-zA-Z0-9]*\"
+    TkSymbol,
     #[regex("[0-9]+", priority=4)]
-    TkInt((usize, usize)),
+    TkInt,
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", priority=2)]
-    TkFlt((usize, usize)),
+    TkFlt,
     #[regex("true", priority=3)]
-    TkTrue((usize, usize)),
+    TkTrue,
     #[regex("false", priority=3)]
-    TkFalse((usize, usize)),
+    TkFalse,
     #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#)]
-    TkStrLit((usize, usize)),
-    #[token("->")]
-    TkArr((usize, usize)),
-    #[token("!")]
-    TkBang((usize, usize)),
-    #[token("?")]
-    TkQuestion((usize, usize)),
-    #[token("&")]
-    TkFuncComp((usize, usize)),
-    #[token("+")]
-    TkPlus((usize, usize)),
-    #[token("-")]
-    TkMinus((usize, usize)),
-    #[token("*")]
-    TkStar((usize, usize)),
-    #[token("/")]
-    TkSlash((usize, usize)),
-    #[token("(")]
-    TkLparen((usize, usize)),
-    #[token(")")]
-    TkRparen((usize, usize)),
-    #[token("[")]
-    TkLbracket((usize, usize)),
-    #[token("]")]
-    TkRbracket((usize, usize)),
-    #[token("{")]
-    TkLbrace((usize, usize)),
-    #[token("}")]
-    TkRbrace((usize, usize)),
-    #[token("=")]
-    TkAssign((usize, usize)),
-    #[token("==")]
-    TkCEQ((usize, usize)),
-    #[token("<")]
-    TkCLT((usize, usize)),
-    #[token("<=")]
-    TkCLE((usize, usize)),
-    #[token(">")]
-    TkCGT((usize, usize)),
-    #[token(">=")]
-    TkCGE((usize, usize)),
-    #[token(",")]
-    TkComma((usize, usize)),
-    #[token(":")]
-    TkColon((usize, usize)),
-    #[token("::")]
+    TkStrLit,
+    #[regex(r"->")]
+    TkArr,
+    #[regex(r"!")]
+    TkBang,
+    #[regex(r"\^")]
+    TkPtrArr,
+    #[regex(r"\%")]
+    TkPtrInit,
+    #[regex(r"\?")]
+    TkQuestion,
+    #[regex(r"&")]
+    TkFuncComp,
+    #[regex(r"\+")]
+    TkPlus,
+    #[regex(r"-")]
+    TkMinus,
+    #[regex(r"\*")]
+    TkStar,
+    #[regex(r"/")]
+    TkSlash,
+    #[regex(r"\(")]
+    TkLparen,
+    #[regex(r"\)")]
+    TkRparen,
+    #[regex(r"\[")]
+    TkLbracket,
+    #[regex(r"]")]
+    TkRbracket,
+    #[regex(r"\{")]
+    TkLbrace,
+    #[regex(r"}")]
+    TkRbrace,
+    #[regex(r"=")]
+    TkAssign,
+    #[regex(r"==")]
+    TkCEQ,
+    #[regex(r"<")]
+    TkCLT,
+    #[regex(r"<=")]
+    TkCLE,
+    #[regex(r">")]
+    TkCGT,
+    #[regex(r">=")]
+    TkCGE,
+    #[regex(r"\,")]
+    TkComma,
+    #[regex(r":")]
+    TkColon,
+    #[regex(r"::")]
     TkDoubleColon,
-    #[token(".")]
-    TkDot((usize, usize)),
-    #[token("@")]
-    TkAt((usize, usize)),
+    #[regex(r"\.")]
+    TkDot,
+    #[regex(r"@")]
+    TkAt,
 }
 
 #[derive(Debug, Clone)]

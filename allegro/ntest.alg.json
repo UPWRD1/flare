@@ -1,1 +1,409 @@
-{"modules":[{"body":[{"FnDef":{"name":"main","rettype":"Int","args":[],"limits":[],"body":[{"e":{"Assignment":{"name":{"Symbol":"a"},"value":{"Int":3}}},"exprtype":"Int"}]}}]}],"dependencies":[]}
+{
+  "modules": [
+    {
+      "body": [
+        {
+          "Struct": {
+            "name": "Container",
+            "members": [
+              [
+                "$_capacity",
+                "Int"
+              ],
+              [
+                "$_contents",
+                "Int"
+              ]
+            ]
+          }
+        },
+        {
+          "TypeDef": {
+            "name": {
+              "Custom": [
+                "Container",
+                []
+              ]
+            },
+            "funcs": [
+              {
+                "FnDef": {
+                  "name": "new",
+                  "rettype": {
+                    "Custom": [
+                      "Container",
+                      []
+                    ]
+                  },
+                  "args": [
+                    [
+                      "cap",
+                      "Int"
+                    ]
+                  ],
+                  "limits": [],
+                  "body": [
+                    {
+                      "e": {
+                        "StructInstance": {
+                          "name": {
+                            "Symbol": "Container"
+                          },
+                          "fields": [
+                            {
+                              "Assignment": {
+                                "name": {
+                                  "Symbol": "capacity"
+                                },
+                                "value": {
+                                  "Symbol": "cap"
+                                }
+                              }
+                            },
+                            {
+                              "Assignment": {
+                                "name": {
+                                  "Symbol": "contents"
+                                },
+                                "value": {
+                                  "Int": 0
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "exprtype": {
+                        "Custom": [
+                          "Container",
+                          []
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "FnDef": {
+                  "name": "get_remaining",
+                  "rettype": "Int",
+                  "args": [
+                    [
+                      "self",
+                      {
+                        "Generic": "?_2c71bd48d95c9b64"
+                      }
+                    ]
+                  ],
+                  "limits": [],
+                  "body": [
+                    {
+                      "e": {
+                        "Return": {
+                          "value": {
+                            "BinSub": {
+                              "l": {
+                                "FieldAccess": [
+                                  {
+                                    "Symbol": "self"
+                                  },
+                                  {
+                                    "Symbol": "capacity"
+                                  }
+                                ]
+                              },
+                              "r": {
+                                "FieldAccess": [
+                                  {
+                                    "Symbol": "self"
+                                  },
+                                  {
+                                    "Symbol": "contents"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "exprtype": "Int"
+                    }
+                  ]
+                }
+              },
+              {
+                "FnDef": {
+                  "name": "add",
+                  "rettype": {
+                    "Custom": [
+                      "Container",
+                      []
+                    ]
+                  },
+                  "args": [
+                    [
+                      "self",
+                      {
+                        "Generic": "?_2c71bd48d95c9b64"
+                      }
+                    ],
+                    [
+                      "wt",
+                      "Int"
+                    ]
+                  ],
+                  "limits": [],
+                  "body": [
+                    {
+                      "e": {
+                        "If": {
+                          "condition": {
+                            "Logical": {
+                              "l": {
+                                "BinAdd": {
+                                  "l": {
+                                    "FieldAccess": [
+                                      {
+                                        "Symbol": "self"
+                                      },
+                                      {
+                                        "Symbol": "contents"
+                                      }
+                                    ]
+                                  },
+                                  "r": {
+                                    "Symbol": "wt"
+                                  }
+                                }
+                              },
+                              "op": "CLE",
+                              "r": {
+                                "FieldAccess": [
+                                  {
+                                    "Symbol": "self"
+                                  },
+                                  {
+                                    "Symbol": "capacity"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "then": {
+                            "StructInstance": {
+                              "name": {
+                                "Symbol": "Container"
+                              },
+                              "fields": [
+                                {
+                                  "Assignment": {
+                                    "name": {
+                                      "Symbol": "capacity"
+                                    },
+                                    "value": {
+                                      "FieldAccess": [
+                                        {
+                                          "Symbol": "self"
+                                        },
+                                        {
+                                          "Symbol": "capacity"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "Assignment": {
+                                    "name": {
+                                      "Symbol": "contents"
+                                    },
+                                    "value": {
+                                      "BinAdd": {
+                                        "l": {
+                                          "FieldAccess": [
+                                            {
+                                              "Symbol": "self"
+                                            },
+                                            {
+                                              "Symbol": "contents"
+                                            }
+                                          ]
+                                        },
+                                        "r": {
+                                          "Symbol": "wt"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          "otherwise": {
+                            "StructInstance": {
+                              "name": {
+                                "Symbol": "Container"
+                              },
+                              "fields": [
+                                {
+                                  "Assignment": {
+                                    "name": {
+                                      "Symbol": "capacity"
+                                    },
+                                    "value": {
+                                      "BinMul": {
+                                        "l": {
+                                          "FieldAccess": [
+                                            {
+                                              "Symbol": "self"
+                                            },
+                                            {
+                                              "Symbol": "capacity"
+                                            }
+                                          ]
+                                        },
+                                        "r": {
+                                          "Int": 2
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "Assignment": {
+                                    "name": {
+                                      "Symbol": "contents"
+                                    },
+                                    "value": {
+                                      "BinAdd": {
+                                        "l": {
+                                          "FieldAccess": [
+                                            {
+                                              "Symbol": "self"
+                                            },
+                                            {
+                                              "Symbol": "contents"
+                                            }
+                                          ]
+                                        },
+                                        "r": {
+                                          "Symbol": "wt"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      "exprtype": {
+                        "Obj": [
+                          [
+                            "$_capacity",
+                            "Int"
+                          ],
+                          [
+                            "$_contents",
+                            "Int"
+                          ]
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "body": [
+        {
+          "WithClause": {
+            "include": [
+              "container"
+            ]
+          }
+        },
+        {
+          "FnDef": {
+            "name": "main",
+            "rettype": "Int",
+            "args": [],
+            "limits": [],
+            "body": [
+              {
+                "e": {
+                  "Assignment": {
+                    "name": {
+                      "Symbol": "a"
+                    },
+                    "value": {
+                      "Composition": {
+                        "l": {
+                          "Composition": {
+                            "l": {
+                              "Call": {
+                                "name": [
+                                  {
+                                    "Symbol": "Container"
+                                  },
+                                  {
+                                    "Symbol": "new"
+                                  }
+                                ],
+                                "args": [
+                                  {
+                                    "Int": 10
+                                  }
+                                ]
+                              }
+                            },
+                            "r": {
+                              "Call": {
+                                "name": [
+                                  {
+                                    "Symbol": "Container"
+                                  },
+                                  {
+                                    "Symbol": "add"
+                                  }
+                                ],
+                                "args": [
+                                  {
+                                    "Int": 3
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "r": {
+                          "Call": {
+                            "name": [
+                              {
+                                "Symbol": "get_remaining"
+                              }
+                            ],
+                            "args": []
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "exprtype": "Int"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    "/workspaces/allegro/allegro/container.alg"
+  ]
+}

@@ -20,13 +20,13 @@ fn main() {
             "-c" | "--compile" => {
 
                 let filename: &String = &prog_args[2];
-                let res = compile_typecheck(filename);
                 let now: Instant = Instant::now();
-                dbg!(res.clone());
-                let serialized = serde_json::to_string(&res).unwrap();
+                let res = compile_typecheck(filename);
+                let elapsed = now.elapsed();
+                 println!("{:#?}", res.clone());
+                let serialized = serde_json::to_string_pretty(&res).unwrap();
                 fs::write(format!("{}.json", filename), serialized).expect("Unable to write file");
 
-                let elapsed = now.elapsed();
                 println!("Compiled {filename} in {elapsed:.2?}");
             }
 

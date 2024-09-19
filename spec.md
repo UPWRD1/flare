@@ -7,7 +7,6 @@
 > That’s what I say.
 > -- John Ashbery, The Short Answer
 
-
 Allegro is a programming language designed to quickly build parallel, multithreaded systems.
 
 ## Syntax
@@ -26,17 +25,17 @@ The syntax of Allegro has been designed to meet the following goals:
 ### List of Keywords
 
 ```rust
-do
+def
 else
 end
 for
 if
-in
 let
+mut
 of
+prop
 return
 thru
-while
 ```
 
 ### Operators and Comments
@@ -67,14 +66,11 @@ or -- logical or
 
 -- Other operators:
 
-:= -- assignment
+= -- assignment
 is -- type comparison
--> -- Definition block start
-do -- Control block start
-end -- end block
 thru -- range operator
-=> -- Function composition
-```
+& -- Function composition
+``` 
 
 ---
 
@@ -91,17 +87,11 @@ y = 3.0
 print x == y -- false
 -- why? floats and integers are separate types
 
-z = str -- delayed initialization
-z = "Hello world!"
-
-illegal = str
-print illegal -- Error: unbound pair
-
-mutable = !3 -- Mutable pair
+mut mutable = 3 -- Mutable pair
 mutable = 4 -- Reassignment
 print mutable -- 4
 
-wrong = !"asdf"
+mut wrong = "asdf"
 wrong = 3.0 -- Error: Differing types
 ```
 
@@ -133,38 +123,23 @@ let main =
     print factorial(5) -- 120
 ```
 
-Note how `main()` uses a shorthand. Functions declared this way return the unit type `naught` and take no parameters.
+Note how `main()` uses a shorthand. Functions declared this way take no parameters.
 
-Functions can extend types, both user created and inbuilt. 
-```lua
-let mul_each of x: int for !Array[int] =
-    self.apply(fn of el -> el * x)
+## Primative Types
 
-let main =
-    my_array = ![1, 2, 3] -- declare mutable variable
-    my_array.mul_each(2) -- [2, 4, 6]
-```
+* `int`
+* `uint`
+* `flt`
+* `word`
+* `byte`
 
-Here, `mul_each()` operates on a mutable `Array` type. However, we have a problem. What if we want to use either an `Array[flt]` or an `Array[int]`? Let's modify our program to use generics:
+* `bool`
+  
+* `chr`
+* `str`
 
-```lua
-let mul_each of x: ?T for !Array[?T] =
-    self.apply(fn of el -> el * x)
+* `ptr`
 
-let main =
-    my_array = ![1, 2, 3] -- declare mutable variable
-    my_array.mul_each(2) -- [2, 4, 6]
-```
+* `tuple`
+* `array`
 
-If we try this code, we get an error. That's because the compiler doesn't know if `?T` can be multiplied. For example, `?T` could be a `str`, or `bool`! Trying to multiply certain types could lead to runtime errors or undefined behavior.
-
-Thankfully, there's a solution. We can restrict `?T` to types have the `Numeric` property (which we'll cover next) like so:
- 
-```lua
-let mul_each of x: ?T for !Array[?T] where ?T is Numeric =
-    self.apply(fn of el -> el * x)
-
-let main =
-    my_array = ![1, 2, 3] -- declare mutable variable
-    my_array.mul_each(2) -- [2, 4, 6]
-```

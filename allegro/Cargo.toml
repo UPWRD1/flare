@@ -6,9 +6,9 @@ edition = "2021"
 [dependencies]
 colored = "2.1.0"
 lazy_static = "1.4.0"
-logos = "0.14.0"
+logos = "0.14.1"
 peg = "0.8.4"
-recursive = "0.1.1"
+# recursive = "0.1.1"
 serde = {version = "1.0.210", features = ["derive"]}
 serde_json = "1.0.128"
 thin-vec = {version = "0.2.13", features = ["serde"]}
