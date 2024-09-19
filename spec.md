@@ -168,3 +168,51 @@ let main =
     my_array = ![1, 2, 3] -- declare mutable variable
     my_array.mul_each(2) -- [2, 4, 6]
 ```
+
+
+
+
+```ruby
+with IO
+with Env
+with Iter
+
+type Config = struct of 
+	query: str,
+	file_path: str,
+	ignore_case: bool
+
+def Config =
+	let build of args: Vec<str> -> Result<Config, str> =
+		if args.len() < 3 {
+			return Err("Not enough arguments!")
+		}
+		query = args[1]
+		file_path = args[2]
+		ignore_case = env:var("IGNORE_CASE").is_ok()
+		Ok(Config {query, file_path, ignore_case})
+
+	let run of self -> Result<(), str> =
+		contents = IO:read_file(self.file_path).unwrap()
+		res = 
+			if self.ignore_case then 
+				search_case_insensitive(self.query, contents) 
+			else 
+				search(self.query, contents)
+			& Iter:foreach(fn -> do IO:out(line))
+		return Ok(())
+end
+
+let search of query: str, contents: str -> Vec<str> =
+	contents.lines() & Iter:filter(fn of line -> line.contains(query))
+
+let search_case_insensitive of query: str, contents: str -> Vec<str> =
+	q = query.to_lowercase()
+	contents.lines() & Iter:filter(fn of line -> line.to_lowercase().contains(q))
+
+let main =
+	args = Env:read_argsv()
+	config = Config:build(args) & unwrap_else(fn of e -> do IO:quit("Problem parsing arguments: " .. e, 1))
+	if config.run() is Err(e) then do IO:quit("Application error: " .. e, 1) else IO:exit(0)
+	
+```
