@@ -64,8 +64,8 @@ pub enum Tk {
     TkKwInt,
     #[regex(r"flt")]
     TkKwFlt,
-    // #[regex(r"str")]
-    // TkKwStr,
+    #[regex(r"str")]
+    TkKwStr,
     #[regex(r"char")]
     TkKwChar,
     #[regex(r"Fn")]
@@ -80,7 +80,7 @@ pub enum Tk {
     TkKwStruct,
     #[regex(r"enum")]
     TkKwEnum,
-    #[regex("([a-zA-Z]|_)+[a-zA-Z0-9]*", priority=2)]
+    #[regex("([a-zA-Z]|_)+([a-zA-Z0-9]|_)*", priority=2)]
     TkSymbol,
     #[regex("[0-9]+", priority=4)]
     TkInt,

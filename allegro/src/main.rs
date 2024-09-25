@@ -23,7 +23,7 @@ fn main() {
                 let now: Instant = Instant::now();
                 let res = compile_typecheck(filename);
                 let elapsed = now.elapsed();
-                 println!("{:#?}", res.clone());
+                //println!("{:#?}", res.clone());
                 let serialized = serde_json::to_string_pretty(&res).unwrap();
                 fs::write(format!("{}.json", filename), serialized).expect("Unable to write file");
 

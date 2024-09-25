@@ -3,16 +3,60 @@
     {
       "body": [
         {
+          "Enum": {
+            "name": "PlayerClass",
+            "members": [
+              {
+                "Variant": [
+                  "Barbarian",
+                  [
+                    "Int"
+                  ]
+                ]
+              },
+              {
+                "Variant": [
+                  "Rogue",
+                  [
+                    "Int"
+                  ]
+                ]
+              },
+              {
+                "Variant": [
+                  "Mage",
+                  [
+                    "Int"
+                  ]
+                ]
+              }
+            ]
+          }
+        },
+        {
           "Struct": {
-            "name": "Container",
+            "name": "Player",
             "members": [
               [
-                "$_capacity",
+                "$_name",
+                "Str"
+              ],
+              [
+                "$_level",
                 "Int"
               ],
               [
-                "$_contents",
-                "Int"
+                "$_hp",
+                "Uint"
+              ],
+              [
+                "$_class",
+                {
+                  "Custom": [
+                    "PlayerClass",
+                    []
+                  ]
+                }
               ]
             ]
           }
@@ -21,77 +65,32 @@
           "TypeDef": {
             "name": {
               "Custom": [
-                "Container",
+                "Player",
                 []
               ]
             },
             "funcs": [
               {
-                "FnDef": {
+                "MethodDef": {
+                  "parent": "Player",
                   "name": "new",
                   "rettype": {
                     "Custom": [
-                      "Container",
+                      "Player",
                       []
                     ]
                   },
                   "args": [
                     [
-                      "cap",
-                      "Int"
-                    ]
-                  ],
-                  "limits": [],
-                  "body": [
-                    {
-                      "e": {
-                        "StructInstance": {
-                          "name": {
-                            "Symbol": "Container"
-                          },
-                          "fields": [
-                            {
-                              "Assignment": {
-                                "name": {
-                                  "Symbol": "capacity"
-                                },
-                                "value": {
-                                  "Symbol": "cap"
-                                }
-                              }
-                            },
-                            {
-                              "Assignment": {
-                                "name": {
-                                  "Symbol": "contents"
-                                },
-                                "value": {
-                                  "Int": 0
-                                }
-                              }
-                            }
-                          ]
-                        }
-                      },
-                      "exprtype": {
-                        "Custom": [
-                          "Container",
-                          []
-                        ]
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "FnDef": {
-                  "name": "get_remaining",
-                  "rettype": "Int",
-                  "args": [
-                    [
-                      "self",
+                      "name",
                       {
-                        "Generic": "?_2c71bd48d95c9b64"
+                        "Generic": "?_313907108b3ca7c0"
+                      }
+                    ],
+                    [
+                      "class",
+                      {
+                        "Generic": "?_339e543e57f77fce"
                       }
                     ]
                   ],
@@ -101,195 +100,48 @@
                       "e": {
                         "Return": {
                           "value": {
-                            "BinSub": {
-                              "l": {
-                                "FieldAccess": [
-                                  {
-                                    "Symbol": "self"
-                                  },
-                                  {
-                                    "Symbol": "capacity"
-                                  }
-                                ]
-                              },
-                              "r": {
-                                "FieldAccess": [
-                                  {
-                                    "Symbol": "self"
-                                  },
-                                  {
-                                    "Symbol": "contents"
-                                  }
-                                ]
-                              }
-                            }
-                          }
-                        }
-                      },
-                      "exprtype": "Int"
-                    }
-                  ]
-                }
-              },
-              {
-                "FnDef": {
-                  "name": "add",
-                  "rettype": {
-                    "Custom": [
-                      "Container",
-                      []
-                    ]
-                  },
-                  "args": [
-                    [
-                      "self",
-                      {
-                        "Generic": "?_2c71bd48d95c9b64"
-                      }
-                    ],
-                    [
-                      "wt",
-                      "Int"
-                    ]
-                  ],
-                  "limits": [],
-                  "body": [
-                    {
-                      "e": {
-                        "If": {
-                          "condition": {
-                            "Logical": {
-                              "l": {
-                                "BinAdd": {
-                                  "l": {
-                                    "FieldAccess": [
-                                      {
-                                        "Symbol": "self"
-                                      },
-                                      {
-                                        "Symbol": "contents"
-                                      }
-                                    ]
-                                  },
-                                  "r": {
-                                    "Symbol": "wt"
-                                  }
-                                }
-                              },
-                              "op": "CLE",
-                              "r": {
-                                "FieldAccess": [
-                                  {
-                                    "Symbol": "self"
-                                  },
-                                  {
-                                    "Symbol": "capacity"
-                                  }
-                                ]
-                              }
-                            }
-                          },
-                          "then": {
                             "StructInstance": {
                               "name": {
-                                "Symbol": "Container"
+                                "Symbol": "Player"
                               },
                               "fields": [
                                 {
                                   "Assignment": {
                                     "name": {
-                                      "Symbol": "capacity"
+                                      "Symbol": "name"
                                     },
                                     "value": {
-                                      "FieldAccess": [
-                                        {
-                                          "Symbol": "self"
-                                        },
-                                        {
-                                          "Symbol": "capacity"
-                                        }
-                                      ]
+                                      "Symbol": "name"
                                     }
                                   }
                                 },
                                 {
                                   "Assignment": {
                                     "name": {
-                                      "Symbol": "contents"
+                                      "Symbol": "level"
                                     },
                                     "value": {
-                                      "BinAdd": {
-                                        "l": {
-                                          "FieldAccess": [
-                                            {
-                                              "Symbol": "self"
-                                            },
-                                            {
-                                              "Symbol": "contents"
-                                            }
-                                          ]
-                                        },
-                                        "r": {
-                                          "Symbol": "wt"
-                                        }
-                                      }
-                                    }
-                                  }
-                                }
-                              ]
-                            }
-                          },
-                          "otherwise": {
-                            "StructInstance": {
-                              "name": {
-                                "Symbol": "Container"
-                              },
-                              "fields": [
-                                {
-                                  "Assignment": {
-                                    "name": {
-                                      "Symbol": "capacity"
-                                    },
-                                    "value": {
-                                      "BinMul": {
-                                        "l": {
-                                          "FieldAccess": [
-                                            {
-                                              "Symbol": "self"
-                                            },
-                                            {
-                                              "Symbol": "capacity"
-                                            }
-                                          ]
-                                        },
-                                        "r": {
-                                          "Int": 2
-                                        }
-                                      }
+                                      "Int": 0
                                     }
                                   }
                                 },
                                 {
                                   "Assignment": {
                                     "name": {
-                                      "Symbol": "contents"
+                                      "Symbol": "hp"
                                     },
                                     "value": {
-                                      "BinAdd": {
-                                        "l": {
-                                          "FieldAccess": [
-                                            {
-                                              "Symbol": "self"
-                                            },
-                                            {
-                                              "Symbol": "contents"
-                                            }
-                                          ]
-                                        },
-                                        "r": {
-                                          "Symbol": "wt"
-                                        }
-                                      }
+                                      "Int": 10
+                                    }
+                                  }
+                                },
+                                {
+                                  "Assignment": {
+                                    "name": {
+                                      "Symbol": "class"
+                                    },
+                                    "value": {
+                                      "Symbol": "class"
                                     }
                                   }
                                 }
@@ -299,16 +151,75 @@
                         }
                       },
                       "exprtype": {
-                        "Obj": [
+                        "Custom": [
+                          "Player",
                           [
-                            "$_capacity",
-                            "Int"
-                          ],
-                          [
-                            "$_contents",
-                            "Int"
+                            {
+                              "Generic": "?_313907108b3ca7c0"
+                            },
+                            {
+                              "Generic": "?_339e543e57f77fce"
+                            }
                           ]
                         ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "MethodDef": {
+                  "parent": "Player",
+                  "name": "level_up",
+                  "rettype": {
+                    "Mut": "Int"
+                  },
+                  "args": [
+                    [
+                      "self",
+                      {
+                        "Mut": {
+                          "Generic": "?_2c71bd48d95c9b64"
+                        }
+                      }
+                    ]
+                  ],
+                  "limits": [],
+                  "body": [
+                    {
+                      "e": {
+                        "MutableAssignment": {
+                          "name": {
+                            "FieldAccess": [
+                              {
+                                "Symbol": "self"
+                              },
+                              {
+                                "Symbol": "level"
+                              }
+                            ]
+                          },
+                          "value": {
+                            "BinAdd": {
+                              "l": {
+                                "FieldAccess": [
+                                  {
+                                    "Symbol": "self"
+                                  },
+                                  {
+                                    "Symbol": "level"
+                                  }
+                                ]
+                              },
+                              "r": {
+                                "Int": 1
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "exprtype": {
+                        "Mut": "Int"
                       }
                     }
                   ]
@@ -324,7 +235,42 @@
         {
           "WithClause": {
             "include": [
-              "container"
+              "player"
+            ]
+          }
+        },
+        {
+          "Struct": {
+            "name": "Loc",
+            "members": [
+              [
+                "$_x",
+                "Int"
+              ],
+              [
+                "$_y",
+                "Int"
+              ]
+            ]
+          }
+        },
+        {
+          "Struct": {
+            "name": "GameState",
+            "members": [
+              [
+                "$_playerpos",
+                {
+                  "Custom": [
+                    "Loc",
+                    []
+                  ]
+                }
+              ],
+              [
+                "$_difficulty",
+                "Uint"
+              ]
             ]
           }
         },
@@ -337,63 +283,74 @@
             "body": [
               {
                 "e": {
-                  "Assignment": {
+                  "MutableAssignment": {
                     "name": {
-                      "Symbol": "a"
+                      "Symbol": "p"
                     },
                     "value": {
-                      "Composition": {
-                        "l": {
-                          "Composition": {
-                            "l": {
-                              "Call": {
-                                "name": [
-                                  {
-                                    "Symbol": "Container"
-                                  },
-                                  {
-                                    "Symbol": "new"
-                                  }
-                                ],
-                                "args": [
-                                  {
-                                    "Int": 10
-                                  }
-                                ]
-                              }
-                            },
-                            "r": {
-                              "Call": {
-                                "name": [
-                                  {
-                                    "Symbol": "Container"
-                                  },
-                                  {
-                                    "Symbol": "add"
-                                  }
-                                ],
-                                "args": [
-                                  {
-                                    "Int": 3
-                                  }
-                                ]
-                              }
+                      "ModuleCall": {
+                        "module": {
+                          "Symbol": "Player"
+                        },
+                        "name": {
+                          "Symbol": "new"
+                        },
+                        "args": [
+                          {
+                            "Str": "\"joe\""
+                          },
+                          {
+                            "Call": {
+                              "name": {
+                                "Symbol": "Mage"
+                              },
+                              "args": [
+                                {
+                                  "Int": 5
+                                }
+                              ]
                             }
                           }
-                        },
-                        "r": {
-                          "Call": {
-                            "name": [
-                              {
-                                "Symbol": "get_remaining"
-                              }
-                            ],
-                            "args": []
-                          }
-                        }
+                        ]
                       }
                     }
                   }
+                },
+                "exprtype": {
+                  "Mut": {
+                    "Custom": [
+                      "Player",
+                      []
+                    ]
+                  }
+                }
+              },
+              {
+                "e": {
+                  "MethodCall": {
+                    "obj": {
+                      "Symbol": "p"
+                    },
+                    "name": {
+                      "Symbol": "level_up"
+                    },
+                    "args": []
+                  }
+                },
+                "exprtype": {
+                  "Mut": "Int"
+                }
+              },
+              {
+                "e": {
+                  "FieldAccess": [
+                    {
+                      "Symbol": "p"
+                    },
+                    {
+                      "Symbol": "level"
+                    }
+                  ]
                 },
                 "exprtype": "Int"
               }
@@ -404,6 +361,6 @@
     }
   ],
   "dependencies": [
-    "/workspaces/allegro/allegro/container.alg"
+    "/workspaces/allegro/allegro/player.alg"
   ]
 }

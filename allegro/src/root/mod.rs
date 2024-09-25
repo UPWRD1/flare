@@ -52,7 +52,7 @@ pub fn compile_typecheck(filename: &String) -> TypedProgram {
     let mut p = Program { modules: vec![], dependencies: vec![] };
     let root_ast = compile_filename(filename);
     p.modules.push(root_ast.clone());
-    dbg!(p.clone());
+    //dbg!(p.clone());
     let np = get_dependencies(p.clone());
     let new_p: TypedProgram = np.clone().into();
     new_p

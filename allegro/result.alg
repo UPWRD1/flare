@@ -1,0 +1,3 @@
+type Result<?T, ?E> = enum of 
+    Ok(?T),
+    Err(?E)
