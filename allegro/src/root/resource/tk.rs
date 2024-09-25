@@ -6,77 +6,82 @@ use logos::Logos;
 pub enum Tk {
     #[regex(" ", logos::skip)]
     TkSpace,
-    #[token(";")]
+    #[regex(r";")]
     TkSemicolon,
-    // #[token("\n")]
-    // TkStatementEnd,
     #[regex("--.*", logos::skip)]
     TkComment,
-    #[token("with")]
+    #[regex(r"with")]
     TkKwWith,
-    #[token("let")]
+    #[regex(r"let")]
     TkKwLet,
-    #[token("def")]
+    #[regex(r"def")]
     TkKwDef,
-    #[token("where")]
+    #[regex(r"prop")]
+    TkKwProp,
+    #[regex(r"where")]
     TkKwWhere,
-    #[token("is")]
+    #[regex(r"is")]
     TkKwIs,
-    #[token("do")]
+    #[regex(r"do")]
     TkKwDo,
-    #[token("end")]
+    #[regex(r"end")]
     TkKwEnd,
-    #[token("devprint")]
-    TkKwPrint,
-    #[token("of")]
-    TkKwOf,
-    #[token("fn")]
-    TkKwFn,
-    #[token("mut")]
-    TkKwMut,
-    #[token("if")]
-    TkKwIf,
-    #[token("then")]
-    TkKwThen,
-    #[token("else")]
-    TkKwElse,
-    #[token("while")]
-    TkKwWhile,
-    #[token("for")]
+    #[regex(r"for")]
     TkKwFor,
-    #[token("in")]
-    TkKwIn,
-    #[token("thru")]
-    TkKwThru,
-    #[token("return")]
+    #[regex(r"devprint")]
+    TkKwPrint,
+    #[regex(r"of")]
+    TkKwOf,
+    #[regex(r"fn")]
+    TkKwFn,
+    #[regex(r"mut")]
+    TkKwMut,
+    #[regex(r"if")]
+    TkKwIf,
+    #[regex(r"then")]
+    TkKwThen,
+    #[regex(r"else")]
+    TkKwElse,
+    #[regex(r"match")]
+    TkKwMatch,
+    #[regex(r"return")]
     TkKwReturn,
-    #[token("and")]
+    #[regex(r"and")]
     TkKwAnd,
-    #[token("or")]
+    #[regex(r"or")]
     TkKwOr,
-    #[token("not")]
+    #[regex(r"not")]
     TkKwNot,
-    #[token("int")]
+    // #[regex(r"self")]
+    // TkKwSelf,
+    #[regex(r"uint")]
+    TkKwUint,
+    #[regex(r"word")]
+    TkKwWord,
+    #[regex(r"byte")]
+    TkKwByte,
+    #[regex(r"int")]
     TkKwInt,
-    #[token("flt")]
+    #[regex(r"flt")]
     TkKwFlt,
-    #[token("str")]
+    #[regex(r"str")]
     TkKwStr,
-    #[token("Fn")]
+    #[regex(r"char")]
+    TkKwChar,
+    #[regex(r"Fn")]
     TkKwFnTy,
-    #[token("naught")]
+    #[regex(r"naught")]
     TkKwNaught,
-    #[token("bool")]
+    #[regex(r"bool")]
     TkKwBool,
-    #[token("type")]
+    #[regex(r"type")]
     TkKwType,
-    #[token("struct")]
+    #[regex(r"struct")]
     TkKwStruct,
-    #[token("enum")]
+    #[regex(r"enum")]
     TkKwEnum,
-    #[regex("([a-zA-Z]|_)+[a-zA-Z0-9]*", priority=2)]
+    #[regex("([a-zA-Z]|_)+([a-zA-Z0-9]|_)*", priority=2)]
     TkSymbol,
-    //|true|false|\"[a-zA-Z0-9]*\"
     #[regex("[0-9]+", priority=4)]
     TkInt,
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", priority=2)]
@@ -87,55 +92,59 @@ pub enum Tk {
     TkFalse,
     #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#)]
     TkStrLit,
-    #[token("->")]
+    #[regex(r"->")]
     TkArr,
-    #[token("!")]
+    #[regex(r"!")]
     TkBang,
-    #[token("?")]
+    #[regex(r"\^")]
+    TkPtrArr,
+    #[regex(r"\%")]
+    TkPtrInit,
+    #[regex(r"\?")]
     TkQuestion,
-    #[token("&")]
+    #[regex(r"&")]
     TkFuncComp,
-    #[token("+")]
+    #[regex(r"\+")]
     TkPlus,
-    #[token("-")]
+    #[regex(r"-")]
     TkMinus,
-    #[token("*")]
+    #[regex(r"\*")]
     TkStar,
-    #[token("/")]
+    #[regex(r"/")]
     TkSlash,
-    #[token("(")]
+    #[regex(r"\(")]
     TkLparen,
-    #[token(")")]
+    #[regex(r"\)")]
     TkRparen,
-    #[token("[")]
+    #[regex(r"\[")]
     TkLbracket,
-    #[token("]")]
+    #[regex(r"]")]
     TkRbracket,
-    #[token("{")]
+    #[regex(r"\{")]
     TkLbrace,
-    #[token("}")]
+    #[regex(r"}")]
     TkRbrace,
-    #[token("=")]
+    #[regex(r"=")]
     TkAssign,
-    #[token("==")]
+    #[regex(r"==")]
     TkCEQ,
-    #[token("<")]
+    #[regex(r"<")]
     TkCLT,
-    #[token("<=")]
+    #[regex(r"<=")]
     TkCLE,
-    #[token(">")]
+    #[regex(r">")]
     TkCGT,
-    #[token(">=")]
+    #[regex(r">=")]
     TkCGE,
-    #[token(",")]
+    #[regex(r"\,")]
     TkComma,
-    #[token(":")]
+    #[regex(r":")]
     TkColon,
-    #[token("::")]
+    #[regex(r"::")]
     TkDoubleColon,
-    #[token(".")]
+    #[regex(r"\.")]
     TkDot,
-    #[token("@")]
+    #[regex(r"@")]
     TkAt,
 }
 
@@ -143,10 +152,12 @@ pub enum Tk {
 pub struct Token {
     pub kind: Tk,
     pub lit: String,
+    pub posline: usize,
+    pub poscol: usize,
 }
 
 impl Token {
-    pub fn new(kind: Tk, lit: String) -> Self {
-        Token {kind, lit}
+    pub fn new(kind: Tk, lit: String, pos: usize, col: usize) -> Self {
+        Token {kind, lit, posline: pos, poscol: col}
     }
 }

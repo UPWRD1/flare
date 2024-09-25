@@ -1,9 +1,9 @@
+use crate::root::passes::midend::typechecking::TypedAst;
+use serde::Deserialize;
+use serde::Serialize;
 use std::hash::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
-
-use serde::Deserialize;
-use serde::Serialize;
 use thin_vec::ThinVec;
 
 pub fn calculate_hash<T: Hash>(t: &String) -> String {
@@ -32,6 +32,14 @@ pub enum Ast {
         limits: Option<Vec<FnArgLimit>>,
         body: Vec<Expr>,
     },
+    MethodDef {
+        parent: String,
+        name: String,
+        rettype: SymbolType,
+        args: ThinVec<(String, SymbolType)>,
+        limits: Option<Vec<FnArgLimit>>,
+        body: Vec<Expr>,
+    },
     Struct {
         name: String,
         members: ThinVec<(String, SymbolType)>,
@@ -47,11 +55,91 @@ pub enum Ast {
     WithClause {
         include: Vec<Expr>,
     },
+    TypeAlias {
+        name: String,
+        is: SymbolType,
+    },
+    Propdef {
+        p: Property,
+    },
 }
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl Ast {
+    pub fn get_fnname(&self) -> String {
+        match self {
+            Self::FnDef { name, .. } => name.to_string(),
+            Self::MethodDef { name, .. } => name.to_string(),
+
+            _ => panic!("{:?} is not a function", self),
+        }
+    }
+
+    pub fn convert_fn_to_methodfn(&self, parent: String) -> Self {
+        match self {
+            Self::FnDef { name, rettype, args, limits, body} => Self::MethodDef {parent, name: name.to_string(), rettype: rettype.clone(), args: args.clone(), limits: limits.clone(), body: body.to_vec()},
+            _ => panic!("{:?} is not a function", self),
+
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FnArgLimit {
     pub name: String,
-    pub limit: String,
+    pub limit: SymbolType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Property {
+    pub name: String,
+    pub req: Vec<FnSignature>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FnSignature {
+    pub name: String,
+    pub rettype: SymbolType,
+    pub args: ThinVec<SymbolType>,
+    pub limits: Option<Vec<FnArgLimit>>,
+}
+
+impl From<TypedAst> for FnSignature {
+    fn from(value: TypedAst) -> Self {
+        match value {
+            TypedAst::FnDef {
+                name,
+                rettype,
+                args,
+                limits,
+                body: _,
+            } => {
+                return Self {
+                    name,
+                    rettype,
+                    args: args.iter().map(|f| f.1.clone()).collect(),
+                    limits,
+                }
+            }
+
+            TypedAst::MethodDef {
+                parent: _, 
+                name,
+                rettype,
+                args,
+                limits,
+                body: _,
+            } => {
+                return Self {
+                    name,
+                    rettype,
+                    args: args.iter().map(|f| f.1.clone()).collect(),
+                    limits,
+                }
+            }
+            
+            
+            _ => panic!("{:?} is not a function", value),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -61,69 +149,100 @@ pub enum LogicOp {
     CLE,
     CGT,
     CGE,
+    Is,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum Predicate {
+    Comparison {
+        op: LogicOp,
+        rhs: Box<Expr>,
+    },
+    Variant {
+        name: String,
+        membervars: Vec<String>,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Expr {
     BinAdd {
-        l: Box<Expr>,
-        r: Box<Expr>,
+        l: Box<Self>,
+        r: Box<Self>,
     },
     BinSub {
-        l: Box<Expr>,
-        r: Box<Expr>,
+        l: Box<Self>,
+        r: Box<Self>,
     },
     BinMul {
-        l: Box<Expr>,
-        r: Box<Expr>,
+        l: Box<Self>,
+        r: Box<Self>,
     },
     BinDiv {
-        l: Box<Expr>,
-        r: Box<Expr>,
+        l: Box<Self>,
+        r: Box<Self>,
     },
     Logical {
-        l: Box<Expr>,
+        l: Box<Self>,
         op: LogicOp,
-        r: Box<Expr>,
+        r: Box<Self>,
     },
     Assignment {
-        name: Box<Expr>,
-        value: Box<Expr>,
+        name: Box<Self>,
+        value: Box<Self>,
     },
     MutableAssignment {
-        name: Box<Expr>,
-        value: Box<Expr>,
+        name: Box<Self>,
+        value: Box<Self>,
     },
     Closure {
         args: Vec<(String, SymbolType)>,
-        body: Vec<Expr>,
+        body: Vec<Self>,
     },
     Composition {
-        l: Box<Expr>,
-        r: Box<Expr>,
+        l: Box<Self>,
+        r: Box<Self>,
     },
     Return {
-        value: Box<Expr>,
+        value: Box<Self>,
     },
     If {
-        condition: Box<Expr>,
-        then: Box<Expr>,
-        otherwise: Box<Expr>,
+        condition: Box<Self>,
+        then: Box<Self>,
+        otherwise: Box<Self>,
+    },
+    Match {
+        matchee: Box<Self>,
+        arms: Vec<(Predicate, Self)>,
     },
     // Atomics
     Int(i32),
+    Uint(u32),
+    Word(usize),
+    Byte(u8),
     Flt(f32),
     Str(String),
+    Char(char),
     Bool(bool),
+    AddressOf(Box<Self>),
     Symbol(String),
     StructInstance {
-        name: Box<Expr>,
-        fields: Vec<Expr>,
+        name: Box<Self>,
+        fields: Vec<Self>,
     },
-    FieldAccess(Vec<Expr>),
+    FieldAccess(Box<Self>, Box<Self>),
     Call {
-        name: Box<Expr>,
-        args: Vec<Expr>,
+        name: Box<Self>,
+        args: Vec<Self>,
+    },
+    MethodCall {
+        obj: Box<Self>,
+        name: Box<Self>,
+        args: Vec<Self>,
+    },
+    ModuleCall {
+        module: Box<Self>,
+        name: Box<Self>,
+        args: Vec<Self>,
     },
 }
 
@@ -131,7 +250,8 @@ impl Expr {
     pub fn get_symbol_name(&self) -> String {
         match self {
             Expr::Symbol(s) => s.to_string(),
-            _ => panic!(),
+            Expr::FieldAccess(s, f) => f.get_symbol_name(),
+            _ => panic!("{self:?} is not a symbol"),
         }
     }
 
@@ -141,23 +261,46 @@ impl Expr {
             _ => panic!(),
         }
     }
+
+    pub fn get_callee(&self) -> String {
+        match self {
+            Expr::Call { name, .. } => name.get_symbol_name(),
+            _ => panic!(),
+        }
+    }
+
+    pub fn get_call_args(&self) -> Vec<Self> {
+        match self {
+            Expr::Call { name: _, args, .. } => args.to_vec(),
+            _ => panic!(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum SymbolType {
     Int,
+    Uint,
+    Word,
+    Byte,
     Flt,
     Str,
+    Char,
     Bool,
     Mut(Box<Self>),
-    Fn(ThinVec<Self>, Box<Self>),
+    Fn(ThinVec<Self>, Box<Self>, bool), // bool if is variant constructor
+    MethodFn { parent: String, f: Box<Self> },
     Naught,
+    Pointer(Box<Self>),
     Unknown,
     Generic(String),
     Custom(String, ThinVec<Self>),
-    Obj(ThinVec<(String, Self)>),
-    Enum(usize, ThinVec<Self>),
+    Obj(String, ThinVec<(String, Self)>),
+    Enum(String, usize, ThinVec<Self>),
     Variant(String, ThinVec<Self>),
+    Property,
+    TypeDefSelf,
+    Definition(String),
 }
 
 impl SymbolType {
@@ -180,9 +323,9 @@ impl SymbolType {
         }
     }
 
-    pub fn is_str(&self) -> bool {
-        matches!(self, Self::Str)
-    }
+    // pub fn is_str(&self) -> bool {
+    //     matches!(self, Self::Str)
+    // }
 
     pub fn is_int(&self) -> bool {
         matches!(self, Self::Int)
@@ -201,8 +344,11 @@ impl SymbolType {
     }
 
     pub fn get_custom_name(&self) -> String {
-        match self {
+        match self.extract() {
             Self::Custom(v, ..) => v.to_string(),
+            Self::Obj(v, ..) => v.to_string(),
+            Self::Enum(v, ..) => v.to_string(),
+
             _ => panic!("{self:?} is not a custom type"),
         }
     }
@@ -215,38 +361,60 @@ impl SymbolType {
     }
 
     pub fn is_fn(&self) -> bool {
-        matches!(self, Self::Fn(..))
+        matches!(self, Self::Fn(..)) || matches!(self, Self::MethodFn { .. })
     }
 
     pub fn get_args(&self) -> ThinVec<Self> {
         match self {
             SymbolType::Fn(args, ..) => args.clone(),
+            SymbolType::MethodFn { parent: _, f } => f.get_args(),
             _ => panic!("{self:?} is not a function"),
+        }
+    }
+
+    pub fn get_parent(&self) -> String {
+        match self {
+            SymbolType::MethodFn { parent: s, f: _ } => s.to_string(),
+            _ => panic!("{self:?} is not a method"),
         }
     }
 
     pub fn extract(&self) -> Self {
         match self {
             SymbolType::Int
+            | SymbolType::Uint
+            | SymbolType::Byte
             | SymbolType::Flt
             | SymbolType::Str
+            | SymbolType::Char
+            | SymbolType::Bool
             | SymbolType::Naught
             | SymbolType::Generic(..)
-            | SymbolType::Obj(_)
+            | SymbolType::Obj(..)
             | SymbolType::Enum(..)
-            | SymbolType::Variant(_, _)
-            | SymbolType::Bool => self.clone(),
+            | SymbolType::Variant(_, _) => self.clone(),
+            SymbolType::Fn(.., rt, v) => { if *v {*rt.clone()} else {self.clone()}},
             SymbolType::Mut(t) => t.extract(),
-            SymbolType::Fn(_, t) => t.extract(),
-            SymbolType::Unknown => panic!(),
-            SymbolType::Custom(_, _) => todo!(),
+            SymbolType::Unknown => self.clone(),
+            SymbolType::Pointer(t) => t.extract(),
+            Self::Custom(..) => return self.clone(),
+            _ => todo!("{:?}", self),
         }
     }
     #[must_use]
     pub fn get_rt(&self) -> Self {
         match self {
-            Self::Fn(_, ret) => *ret.clone(),
+            Self::Fn(_, ret, _) => *ret.clone(),
+            Self::MethodFn { parent: _, f } => f.get_rt(),
             _ => panic!("{self:?} is not a function"),
+        }
+    }
+
+    pub fn is_variant_constructor(&self) -> bool {
+        match self {
+            SymbolType::Fn(_, _, t) => t.clone(),
+            Self::MethodFn { parent: _, f } => f.is_variant_constructor(),
+            _ => panic!("{self:?} is not a variant constructor"),
         }
     }
 
@@ -262,12 +430,19 @@ impl SymbolType {
     }
 
     pub fn is_obj(&self) -> bool {
-        matches!(self, Self::Obj(..))
+        matches!(self.extract(), Self::Obj(..))
     }
 
     pub fn get_members(&self) -> ThinVec<(String, Self)> {
-        match self {
-            SymbolType::Obj(v) => v.clone(),
+        match self.extract() {
+            SymbolType::Obj(_n, v) => v.clone(),
+            _ => panic!("{self:?} is not an object"),
+        }
+    }
+
+    pub fn get_obj_name(&self) -> String {
+        match self.extract() {
+            SymbolType::Obj(n, ..) => n.clone(),
             _ => panic!("{self:?} is not an object"),
         }
     }
@@ -277,15 +452,15 @@ impl SymbolType {
     }
 
     pub fn get_variants(&self) -> ThinVec<Self> {
-        match self {
-            SymbolType::Enum(_,v) => v.clone(),
+        match self.extract() {
+            SymbolType::Enum(_, _, v) => v.clone(),
             _ => panic!("{self:?} is not an enum"),
         }
     }
 
     pub fn get_generic_count(&self) -> usize {
-        match self {
-            SymbolType::Enum(c, ..) => c.clone(),
+        match self.extract() {
+            SymbolType::Enum(_, c, ..) => c.clone(),
             _ => panic!("{self:?} is not an enum"),
         }
     }
@@ -308,17 +483,28 @@ impl SymbolType {
         }
     }
 
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, Self::Pointer(..))
+    }
+
+    pub fn get_pointee(&self) -> Self {
+        match self {
+            SymbolType::Pointer(t) => *t.clone(),
+            _ => panic!("{self:?} is not a pointer"),
+        }
+    }
+
     pub fn get_raw(&self) -> Self {
         match self {
             Self::Naught | Self::Unknown | Self::Int | Self::Flt | Self::Str | Self::Bool => {
                 self.clone()
             }
             Self::Mut(t) => t.clone().get_raw(),
-            Self::Fn(_, t) => t.clone().get_raw(),
+            Self::Fn(_, t, _) => t.clone().get_raw(),
             Self::Generic(_) => self.clone(),
             Self::Custom(..) => panic!("Custom type here!"),
-            Self::Obj(_) | Self::Variant(..) => todo!(),
-            Self::Enum(..) => todo!(),
+            Self::Obj(..) | Self::Variant(..) => todo!(),
+            _ => todo!(),
         }
     }
 
@@ -326,55 +512,57 @@ impl SymbolType {
         //println!("{:?} vs {:?}", self, rhs);
         let r = rhs.clone(); //.get_raw();
         match self {
-            Self::Int => r.is_int() || r.is_generic() || r.is_unknown(),
-            Self::Flt => r.is_flt() || r.is_generic() || r.is_unknown(),
-            Self::Str => r.is_str() || r.is_generic() || r.is_unknown(),
-            Self::Bool => r.is_bool() || r.is_generic() || r.is_unknown(),
-            Self::Mut(t) | Self::Fn(_, t) => t.compare(&r),
+            Self::Mut(t) | Self::Fn(_, t, _) => t.compare(&r),
             Self::Naught | Self::Unknown | Self::Generic(_) => true,
-            Self::Obj(m) => {
+            Self::Obj(_n,m) => {
                 if r.is_obj() {
                     for e in r.get_members().iter().enumerate() {
-                        if m[e.0].1.compare(&e.1.1) {
-                            continue
-                        } else {
-                            return false
-                        }
-                    }
-                    return true
-                } else {
-                    return false
-                }
-            },
-            Self::Custom(name, v) => {
-                if r.get_variant_name() == *name {
-                    for arg in v.iter().enumerate() {
-                        let g = rhs.get_custom_generics();
-                        if *arg.1 == g[arg.0] {
+                        if m[e.0].1.compare(&e.1 .1) {
                             continue;
                         } else {
                             return false;
                         }
                     }
-                    true
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            Self::Custom(name, v) => {
+                if r.is_custom() {
+                    return *self == r;
+                }
+                if r.is_variant() {
+                    if r.get_variant_name() == *name {
+                        for arg in v.iter().enumerate() {
+                            let g = rhs.get_custom_generics();
+                            if *arg.1 == g[arg.0] {
+                                continue;
+                            } else {
+                                return false;
+                            }
+                        }
+                        true
+                    } else {
+                        false
+                    }
                 } else if r.is_enum() {
                     r.get_generic_count() == v.len()
                 } else {
                     false
                 }
             }
-            Self::Variant(..) => r.is_enum() && r.get_variants().contains(self) || r.is_variant() && r == *self,
-            Self::Enum(_, v) => {
+            Self::Variant(..) => {
+                r.is_enum() && r.get_variants().contains(self) || r.is_variant() && r == *self
+            }
+            Self::Enum(_, _, v) => {
                 if r.is_fn() && r.get_rt().is_variant() {
                     for var in v {
                         if !var.get_variant_members().is_empty()
                             && !r.get_rt().get_variant_members().is_empty()
                         {
                             for varg in var.get_variant_members().iter().enumerate() {
-                                if varg
-                                    .1
-                                    .compare(&r.get_rt().get_variant_members()[varg.0])
-                                {
+                                if varg.1.compare(&r.get_rt().get_variant_members()[varg.0]) {
                                     continue;
                                 } else {
                                     return false;
@@ -385,11 +573,15 @@ impl SymbolType {
                     true
                 } else if r.is_enum() {
                     r.get_variants() == self.get_variants()
-                } else{
-                
+                } else {
                     false
                 }
-                
+            }
+            Self::Property => panic!("Cannot compare properties"),
+            Self::Pointer(t) => t.compare(rhs),
+            _ => {
+                let _s = self.clone();
+                return matches!(r.clone(), _s) || r.is_generic() || r.is_unknown();
             }
         }
     }

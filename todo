@@ -1,14 +1,119 @@
-[] Control Flow:
-    [] If statement
-        [] If/Else statement
-    [] Loops
-        [] For
-        [] While
-        [] Infinite
-        [] Break
-        [] Continue
-    [] File Importing
-        [] Namespaces?
-
-[] Codegen:
-    [] Print Statement
+[src/root/passes/midend/typechecking.rs:471:9] t = Typechecker {
+    symbol_table: SymbolTable {
+        entries: {
+            "Vec": Obj(
+                [
+                    (
+                        "e0",
+                        Pointer(
+                            Generic(
+                                "?_T",
+                            ),
+                        ),
+                    ),
+                    (
+                        "len",
+                        Int,
+                    ),
+                    (
+                        "cap",
+                        Int,
+                    ),
+                ],
+            ),
+            "Vec.new": Fn(
+                [
+                    Generic(
+                        "?_735b2f4734cda621",
+                    ),
+                ],
+                Obj(
+                    [
+                        (
+                            "e0",
+                            Generic(
+                                "?_735b2f4734cda621",
+                            ),
+                        ),
+                        (
+                            "len",
+                            Int,
+                        ),
+                        (
+                            "cap",
+                            Int,
+                        ),
+                    ],
+                ),
+                false,
+            ),
+            "main": Fn(
+                [],
+                Obj(
+                    [
+                        (
+                            "e0",
+                            Generic(
+                                "?_735b2f4734cda621",
+                            ),
+                        ),
+                        (
+                            "len",
+                            Int,
+                        ),
+                        (
+                            "cap",
+                            Int,
+                        ),
+                    ],
+                ),
+                false,
+            ),
+        },
+        parent: Some(
+            SymbolTable {
+                entries: {
+                    "?_e5e135daabbc9bf2": Obj(
+                        [
+                            (
+                                "e0",
+                                Generic(
+                                    "?_735b2f4734cda621",
+                                ),
+                            ),
+                            (
+                                "len",
+                                Int,
+                            ),
+                            (
+                                "cap",
+                                Int,
+                            ),
+                        ],
+                    ),
+                    "?_735b2f4734cda621": Int,
+                    "?_c8c7a99bb88e156b": Obj(
+                        [
+                            (
+                                "e0",
+                                Generic(
+                                    "?_735b2f4734cda621",
+                                ),
+                            ),
+                            (
+                                "len",
+                                Int,
+                            ),
+                            (
+                                "cap",
+                                Int,
+                            ),
+                        ],
+                    ),
+                },
+                parent: None,
+            },
+        ),
+    },
+    current_func: "main",
+}
