@@ -1,4 +1,4 @@
-with player
+with "examples/player"
 
 type Loc = struct of 
 	x: int,

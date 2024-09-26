@@ -5,14 +5,9 @@ edition = "2021"
 
 [dependencies]
 colored = "2.1.0"
-cranelift = "0.97.1"
-cranelift-module = "0.97.1"
-cranelift-jit = "0.97.1"
-cranelift-native = "0.97.1"
 lazy_static = "1.4.0"
 logos = "0.14.1"
 peg = "0.8.4"
-# recursive = "0.1.1"
 serde = {version = "1.0.210", features = ["derive"]}
 serde_json = "1.0.128"
 thin-vec = {version = "0.2.13", features = ["serde"]}

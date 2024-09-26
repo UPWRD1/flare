@@ -224,9 +224,10 @@ impl SymbolTable {
                 self.entries
                     .insert(name.to_string(), SymbolType::Mut(Box::new(newt)));
             } else {
-                if self.entries.get(name).unwrap() == t {
+                if self.compare_ty(self.entries.get(name).unwrap(), t) {
                     return; // do nothing
                 } else {
+                    
                     panic!("Cannot redefine immutable value {name} to {:?}; {name} already has value {:?}", t, self.entries.get(name))
                 }
             }

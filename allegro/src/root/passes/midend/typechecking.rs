@@ -434,7 +434,7 @@ impl Typecheck<Ast> for TypedAst {
                 }
             }
             Ast::WithClause { include } => Self::WithClause {
-                include: include.iter().map(|e| e.get_symbol_name()).collect(),
+                include: include.iter().map(|e| e.get_lit()).collect(),
             },
             Ast::Struct { name, members } => {
                 t.symbol_table

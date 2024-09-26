@@ -1,4 +1,4 @@
-with result
+with "examples/result"
 
 type Slice<?T> = struct of
 	start: ^?T,

@@ -28,7 +28,7 @@ pub fn get_dependencies(mut p: Program) -> Program {
     for a in m.body.clone() {
         match a {
             resource::ast::Ast::WithClause { include } => {
-                let to_compile = include.first().unwrap().get_symbol_name();
+                let to_compile = include.first().unwrap().get_lit();
                 let tc = format!(
                     "{}/{}.alg",
                     std::env::current_dir().unwrap().to_string_lossy(),
@@ -40,7 +40,6 @@ pub fn get_dependencies(mut p: Program) -> Program {
                 p.dependencies.append(&mut dep_p.dependencies);
                 p.modules.append(&mut dep_p.modules);
                 //dbg!(p.dependencies.clone());
-
             }
             _ => continue,
         }

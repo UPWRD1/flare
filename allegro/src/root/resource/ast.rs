@@ -275,6 +275,13 @@ impl Expr {
             _ => panic!(),
         }
     }
+
+    pub fn get_lit(&self) -> String {
+        match self {
+            Self::Str(s) => s.strip_prefix("\"").unwrap().strip_suffix("\"").unwrap().to_string(),
+            _ => panic!("{:?} is not a string literal", self)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]

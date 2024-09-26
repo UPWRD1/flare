@@ -2,8 +2,8 @@
 --with Env
 --with Iter
 
-with slice
-with result
+with "examples/slice"
+with "examples/result"
 
 type Config = struct of 
 	query: str,

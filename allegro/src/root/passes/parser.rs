@@ -72,7 +72,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         = f: funcdef() {f.convert_fn_to_methodfn(parent)}
 
     rule with_clause() -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwWith, .. }] s: namespace() {crate::root::resource::ast::Ast::WithClause { include: s }}
+        = [Token { kind: Tk::TkKwWith, .. }] s: expr() ** [Token { kind: Tk::TkComma, .. }] {crate::root::resource::ast::Ast::WithClause { include: s }}
 
     rule funcdef() -> crate::root::resource::ast::Ast
         = [Token { kind: Tk::TkKwLet, .. }] [Token { kind: Tk::TkSymbol, lit: name,.. }] args: func_args() r: func_ret_type()? limits: where_limit() [Token { kind: Tk::TkAssign, .. }] start: position!() body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.to_string(), args: if args.is_some() {args.unwrap().into()} else {vec![].into()}, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::ast::SymbolType::Generic(format!("?_{}", crate::root::resource::ast::calculate_hash::<String>(&name) ))}, limits, body } }
