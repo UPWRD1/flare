@@ -26,12 +26,12 @@ def Config =
 			return Ok(Config {query = args.get(1), file_path = args.get(2), ignore_case = args.contains("-i")})
 
 	let run of self =
-		contents = self:file_path --& unwrap()
+		contents = self.file_path --& unwrap()
 		res = 
-			if self:ignore_case then 
-				search_case_insensitive(self:query, contents) 
+			if self.ignore_case then 
+				search_case_insensitive(self.query, contents) 
 			else 
-				search(self:query, contents)
+				search(self.query, contents)
 			--& foreach(fn -> out(line))
 end
 

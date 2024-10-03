@@ -1,591 +1,513 @@
-use std::collections::HashMap;
+use petgraph::{
+    prelude::{DiGraphMap, GraphMap},
+    visit::Dfs,
+    Directed,
+    Direction::{Incoming, Outgoing},
+};
 
-use super::symboltable::{SymbolTable, SymbolTableGroup};
-use crate::root::resource::ast::{Ast, Expr, FnArgLimit, Module, Program, Property, SymbolType};
-use serde::{Deserialize, Serialize};
-use thin_vec::ThinVec;
+use crate::root::resource::ast::{Ast, Expr, Program, SymbolType};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Typechecker {
-    pub symbol_table: SymbolTable,
-    pub current_func: String,
-    pub current_parent: Option<SymbolType>,
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Copy, PartialOrd, Ord)]
+pub struct TypeVar(pub usize);
+
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
+pub enum PartialType {
+    Root,
+    Module,
+    TypeDef,
+    StandardScope,
+    Variable(TypeVar),
+    Record(&'static str),
+    Enum(&'static str),
+    Variant,
+    Int,
+    Uint,
+    Byte,
+    Flt,
+    Bool,
+    Char,
+    Str,
+    Naught,
+    Fn(&'static [Self], &'static Self),
+    Mut(&'static Self),
+    Custom(&'static str, usize),
 }
 
-impl Default for Typechecker {
-    fn default() -> Self {
-        Self::new()
+impl PartialType {
+    pub fn get_fn_args(&self) -> &'static [Self] {
+        match self {
+            Self::Fn(args, _) => args,
+            _ => panic!("{self:?} is not a function!"),
+        }
     }
+
+    pub fn get_fn_rt(&self) -> &Self {
+        match self {
+            Self::Fn(_, rt) => rt,
+            _ => panic!("{self:?} is not a function!"),
+        }
+    }
+}
+
+trait ConvertToPartial {
+    fn convert(&self, t: &mut Environment) -> PartialType
+    where
+        Self: Sized;
+}
+
+impl ConvertToPartial for SymbolType {
+    fn convert(&self, t: &mut Environment) -> PartialType {
+        //dbg!(self.clone());
+        match self {
+            SymbolType::Int => PartialType::Int,
+            SymbolType::Uint => PartialType::Uint,
+            SymbolType::Byte => PartialType::Byte,
+            SymbolType::Flt => PartialType::Flt,
+            SymbolType::Str => PartialType::Str,
+            SymbolType::Bool => PartialType::Bool,
+
+            SymbolType::Mut(x) => PartialType::Mut(Box::leak(Box::new(x.convert(t)))),
+            SymbolType::Generic(_n) => PartialType::Variable(t.tvg.generate()),
+            SymbolType::Custom(n, c) => {
+                PartialType::Custom(Box::leak(Box::new(n.clone())), c.len())
+            }
+            _ => PartialType::Variable(t.tvg.generate()), //todo!("{:?}", self),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GraphEdge {
+    Name(String),
+    Expr(Expr),
+    Substitution,
+    Scope,
+    Module,
+}
+
+impl From<Expr> for GraphEdge {
+    fn from(value: Expr) -> Self {
+        match value {
+            Expr::Symbol(s) => Self::Name(s.to_string()),
+            _ => Self::Expr(value.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TyVarGenerator {
+    current: usize,
+}
+
+impl TyVarGenerator {
+    pub fn new() -> Self {
+        Self { current: 0 }
+    }
+
+    pub fn generate(&mut self) -> TypeVar {
+        self.current += 1;
+        return TypeVar(self.current);
+    }
+}
+#[derive(Debug, Clone)]
+struct Environment {
+    g: DiGraphMap<PartialType, GraphEdge>,
+    tvg: TyVarGenerator,
+    current_node: Option<PartialType>,
+    current_func: Option<PartialType>,
+    current_typeclass: Option<PartialType>,
+}
+
+impl Environment {
+    pub fn new() -> Self {
+        Self {
+            g: GraphMap::<PartialType, GraphEdge, Directed>::new(),
+            tvg: TyVarGenerator::new(),
+            current_node: None,
+            current_func: None,
+            current_typeclass: None,
+        }
+    }
+
+    fn extend_curr(&mut self, p: PartialType, e: GraphEdge) -> PartialType {
+        let curr = self.current_node.unwrap();
+        self.g.add_edge(curr, p, e);
+        return p;
+    }
+
+    fn extend_enter(&mut self, p: PartialType, e: GraphEdge) {
+        let nindx = self.extend_curr(p, e);
+        self.current_node = Some(nindx);
+    }
+
+    fn enter_do<F, T>(&mut self, n: PartialType, mut exec: F) -> T
+    where
+        F: FnMut(&mut Self) -> T,
+    {
+        let current_current = self.current_node;
+        self.current_node = Some(n);
+        let res = exec(self);
+        self.current_node = current_current;
+        res
+    }
+
+    fn get_name(&mut self, e: GraphEdge) -> Option<PartialType> {
+        let c: PartialType = self.current_node.unwrap();
+        //dbg!(e.clone());
+        //dbg!(c);
+        // println!(
+        //     "{:?}",
+        //     petgraph::dot::Dot::with_config(&(self.g.clone()), &[])
+        // );
+        assert!(matches!(e, GraphEdge::Name(_)));
+        if e == GraphEdge::Name("self".to_string()) {
+            return self.current_typeclass;
+        }
+        let mut dfs = Dfs::new(&self.g, c);
+        while let Some(visited) = dfs.next(&self.g) {
+            let w = self.g.edge_weight(c, visited);
+
+            if w == Some(&e) {
+                println!(" {:?} {:?}, {:?}", w, e, visited);
+
+                return Some(visited);
+            }
+        }
+        let mut res = None;
+        for n in &self.g.neighbors_directed(c, Incoming).collect::<Vec<PartialType>>() {
+            res = self.enter_do(*n, |this| {this.get_name(e.clone())});
+        }
+        
+        res
+    }
+
+    fn get_parented_name(&mut self, p: PartialType, e: GraphEdge) -> Option<PartialType> {
+        let curr_curr = self.current_node;
+        self.current_node = Some(p);
+        let res = self.get_name(e);
+        self.current_node = curr_curr;
+        return res;
+    }
+
+    fn unify(&mut self, l: PartialType, r: PartialType) -> Result<PartialType, String> {
+        match (l, r) {
+            (PartialType::Int, PartialType::Int)
+            | (PartialType::Flt, PartialType::Flt)
+            | (PartialType::Str, PartialType::Str)
+            | (PartialType::Bool, PartialType::Bool) => Ok(l),
+            (PartialType::Variable(_), t) => {
+                self.g.add_edge(l, r, GraphEdge::Substitution);
+                Ok(t)
+            }
+            (t, PartialType::Variable(_)) => {
+                self.g.add_edge(r, l, GraphEdge::Substitution);
+                Ok(t)
+            }
+            (t, PartialType::Fn(_, _)) => {
+                self.g.add_edge(
+                    PartialType::Fn(r.get_fn_args(), Box::leak(Box::new(t))),
+                    l,
+                    GraphEdge::Substitution,
+                );
+                Ok(t)
+            }
+            (PartialType::Fn(_, _), t) => {
+                self.g.add_edge(
+                    PartialType::Fn(r.get_fn_args(), Box::leak(Box::new(t))),
+                    r,
+                    GraphEdge::Substitution,
+                );
+                Ok(t)
+            }
+
+            (PartialType::Mut(t), u) => {
+                let res = self.unify(*t, u).unwrap();
+                self.g.add_edge(res, r, GraphEdge::Substitution);
+                Ok(PartialType::Mut(Box::leak(Box::new(res))))
+            }
+
+            (t, u) if t == u => Ok(t),
+
+            _ => Err(format!("Cannot unify {:?} with {:?}", l, r)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Typechecker {
+    env: Environment,
 }
 
 impl Typechecker {
     pub fn new() -> Self {
-        Typechecker {
-            symbol_table: SymbolTable::new(),
-            current_func: String::new(),
-            current_parent: None,
+        Self {
+            env: Environment::new(),
         }
     }
 
-    pub fn synth_type(&mut self, e: &Expr) -> SymbolType {
-        //dbg!(e.clone());
-        let l = match e {
-            Expr::Int(_) => SymbolType::Int,
-            Expr::Flt(_) => SymbolType::Flt,
-            Expr::Str(_) => SymbolType::Str,
-            Expr::Bool(_) => SymbolType::Bool,
-            Expr::Symbol(t) => {
-                if t == "self" {
-                    self.current_parent.clone().unwrap()
-                } else {
-                    self.symbol_table.get(t.clone())
-                }
+    fn extend_enter_do<F, T>(&mut self, p: PartialType, e: GraphEdge, mut exec: F) -> T
+    where
+        F: FnMut(&mut Self) -> T,
+    {
+        let current_current = self.env.current_node;
+        let nindx = self.env.extend_curr(p, e);
+        self.env.current_node = Some(nindx);
+        let res = exec(self);
+        self.env.current_node = current_current;
+        res
+    }
+
+    fn check_expr(&mut self, e: &Expr) -> PartialType {
+        println!(
+            "{:?}",
+            petgraph::dot::Dot::with_config(&(self.env.clone().g), &[])
+        );
+        dbg!(e.clone());
+        let res = match e {
+            Expr::Int(_) => PartialType::Int,
+            Expr::Uint(_) => PartialType::Uint,
+            Expr::Flt(_) => PartialType::Flt,
+            Expr::Bool(_) => PartialType::Bool,
+            Expr::Str(_) => PartialType::Str,
+            Expr::Symbol(name) => self
+                .env
+                .get_name(GraphEdge::Name(name.to_string()))
+                .expect(&format!("Symbol {} is not defined!", name)),
+            Expr::Logical { l, op: _, r } => {
+                let lty: PartialType = self.check_expr(&*l);
+                let rty: PartialType = self.check_expr(&*r);
+                self.env.unify(lty, rty).unwrap()
             }
             Expr::BinAdd { l, r }
             | Expr::BinSub { l, r }
             | Expr::BinMul { l, r }
-            | Expr::BinDiv { l, r } => self.synth_binop(l, r),
-            Expr::Logical { l, op: _, r } => self.synth_logical(l, r),
-            Expr::Assignment { name, value } => self.synth_assignment(value, name),
-            Expr::MutableAssignment { name, value } => self.synth_mut_assignment(value, name),
-            Expr::Closure { args, body } => {
-                self.symbol_table.new_scope();
-                for a in args.clone() {
-                    self.symbol_table.set(&a.0.clone(), &a.1.clone());
-                }
-                let mut x: SymbolType = SymbolType::Naught;
-                for e in body {
-                    x = self.synth_type(e);
-                }
-                SymbolType::Fn(
-                    args.iter().map(|a| a.1.clone()).collect(),
-                    Box::new(x),
-                    false,
-                )
+            | Expr::BinDiv { l, r } => {
+                let lty: PartialType = self.check_expr(&*l);
+                let rty: PartialType = self.check_expr(&r);
+                self.env.unify(lty, rty).unwrap()
             }
-            Expr::Call { name, args } => {
-                //dbg!(name.clone());
-                let callee = self.synth_type(&name);
-                //dbg!(name.clone());
-                if callee.is_fn() {
-                    //dbg!(name.clone());
-                    let cargs: Vec<SymbolType> = callee.get_args().to_vec();
-                    if cargs.len() == args.len() {
-                        self.symbol_table.new_scope();
-                        for (i, e) in cargs.into_iter().enumerate() {
-                            let arg = self.synth_type(&args[i]);
-                            if self.symbol_table.compare_ty(&e, &arg) {
-                                continue;
-                            } else {
-                                panic!("invalid type on argument, expected {e:?}, found {arg:?}")
-                            }
-                        }
-
-                        let ofin = self.symbol_table.get(name.get_symbol_name()).get_rt();
-                        let fin = self.symbol_table.handle_custom(ofin);
-                        self.symbol_table.pop_scope();
-
-                        if fin.is_variant() {
-                            let mut newt: Vec<SymbolType> = vec![];
-                            for t in fin.get_variant_members() {
-                                if t.is_generic() {
-                                    newt.push(self.symbol_table.get(t.get_generic_name()))
-                                } else {
-                                    newt.push(t)
-                                }
-                            }
-                            SymbolType::Variant(fin.get_variant_name(), newt.into())
-                        } else {
-                            return fin;
-                        }
-                    } else {
-                        panic!(
-                            "Invalid arg length on func: {:?}. Expected {}, found {}",
-                            name,
-                            cargs.len(),
-                            args.len()
-                        )
-                    }
-                } else {
-                    //dbg!(self.clone());
-                    panic!("{name:?} is not a function, is {:?}", self.synth_type(&name))
-                }
+            Expr::Assignment { name, value } => {
+                let name = name.get_symbol_name();
+                let rhs: PartialType = self.check_expr(&*value);
+                let lnode = self.env.extend_curr(rhs, GraphEdge::Name(name));
+                self.env.unify(lnode, rhs).unwrap();
+                lnode
             }
+            Expr::MutableAssignment { name, value } => {
+                let name = name.get_symbol_name();
+                let rhs: PartialType = self.check_expr(&*value);
+                let lnode = self.env.extend_curr(rhs, GraphEdge::Name(name));
+                self.env.unify(lnode, rhs).unwrap();
 
-            Expr::Return { value } => {
-                let vt = self.synth_type(&*value);
-                let fnt = self.symbol_table.get(self.current_func.clone()).get_rt();
-                if self.symbol_table.compare_ty(&fnt, &vt) {
-                    vt
-                } else {
-                    panic!("Return types don't match! Expected: {fnt:?}; found: {vt:?} with expr {:?} in function {:?}", value, self.current_func)
-                }
+                rhs
             }
-
             Expr::If {
                 condition,
                 then,
-                otherwise,
+                otherwise: _,
             } => {
-                let cond_type = self.synth_type(&*condition);
-                if cond_type.is_bool() {
-                    self.symbol_table.new_scope();
-                    let tt = self.synth_type(&*then);
-                    self.symbol_table.pop_scope();
-                    self.symbol_table.new_scope();
-                    let ot = self.synth_type(&*otherwise);
-                    self.symbol_table.pop_scope();
+                let _cond = self.check_expr(&*condition);
+                let thenty: Box<PartialType> =
+                    self.extend_enter_do(PartialType::StandardScope, GraphEdge::Scope, |this| {
+                        Box::new(this.check_expr(&*then).into())
+                    });
+                let elsety: Box<PartialType> =
+                    self.extend_enter_do(PartialType::StandardScope, GraphEdge::Scope, |this| {
+                        Box::new(this.check_expr(e).into())
+                    });
 
-                    if self.symbol_table.compare_ty(&ot, &tt) {
-                        tt
-                    } else {
-                        panic!("If branches have differing types! {:?} vs {:?}", tt, ot)
-                    }
-                } else {
-                    panic!("Expression {:?} is not boolean", condition);
-                }
+                self.env.unify(*thenty, *elsety).unwrap()
             }
-            Expr::StructInstance { name, fields } => {
-                let typedfields: Vec<(String, SymbolType)> = fields
-                    .iter()
-                    .map(|e| {
-                        let x = e.get_assignment();
-                        (x.0, self.synth_type(&x.1))
-                    })
-                    .collect();
-                let structuretype = self.symbol_table.get(name.get_symbol_name());
-                let mut generic_vec: Vec<SymbolType> = vec![];
-                if structuretype.is_obj() {
-                    let members = structuretype.get_members();
-                    if members.len() == typedfields.len() {
-                        for member in members.iter().enumerate() {
-                            let field = &typedfields[member.0];
-                            if !self.symbol_table.compare_ty( &field.1, &member.1.1) {
-                                panic!(
-                                    "{name:?} is not instantiated correctly! {:?} vs {:?}",
-                                    member.1 .1, field.1
-                                )
-                            } else if field.1.is_generic() {
-                                generic_vec.push(field.1.clone())
-                            }
-                        }
-                    } else {
-                        panic!("{name:?} is not instantiated correctly!")
-                    }
 
-                    return SymbolType::Custom(name.get_symbol_name(), generic_vec.into());
-                } else {
-                    panic!("{name:?} is not an object!")
+            Expr::StructInstance { name, fields: _ } => {
+                //dbg!(self.env.current_node);
+                self
+                .env
+                .get_name(GraphEdge::Name(name.get_symbol_name().to_string()))
+                .unwrap()},//.expect(&format!("Struct {name:?} is not defined!")),
+            Expr::Call { name, args } => match *name.clone() {
+                Expr::Symbol(s) => {
+                    let t = self
+                        .env
+                        .get_name(GraphEdge::Name(s.to_string()))
+                        .expect("Function is not defined!");
+                    let _nargs: Vec<PartialType> =
+                        args.iter().map(|a| self.check_expr(a)).collect();
+                    assert!(matches!(t.clone(), PartialType::Fn(_, _)));
+                    t
                 }
+                Expr::FieldAccess(f, c) => {
+                    let nf = self.check_expr(&*f);
+                    dbg!(f);
+                    dbg!(c.clone());
+                    let t = self
+                        .env
+                        .get_parented_name(nf, GraphEdge::Name(c.to_string()))
+                        .expect("Function is not defined!");
+                    let _nargs: Vec<PartialType> =
+                        args.iter().map(|a| self.check_expr(a)).collect();
+                    assert!(matches!(t.clone(), PartialType::Fn(_, _)));
+                    t
+                }
+                _ => panic!("{:?} is not a function!", name),
+            },
+            Expr::Return { value } => {
+                let cunwrap = self.env.current_func.unwrap();
+                let val = self.check_expr(&*value);
+                let a = self.env.unify(val, cunwrap);
+                a.expect(&format!("Error when returning {:?}", self.env.current_func))
             }
-            Expr::AddressOf(t) => SymbolType::Pointer(Box::new(self.synth_type(t))),
-            Expr::Composition { l, r } => {
-                let n = r.get_callee();
-                assert!(self.symbol_table.get(n.clone()).is_fn());
-
-                let mut a = r.get_call_args();
-                let mut finargs = vec![*l.clone()];
-                finargs.append(&mut a);
-                self.synth_type(&Expr::Call {
-                    name: Box::new(Expr::Symbol(n)),
-                    args: finargs,
-                })
-            }
-            Expr::FieldAccess(o, f) => {
-                let mut a: SymbolType = self.synth_type(o);
-                if matches!(a, SymbolType::TypeDefSelf) && self.current_parent.is_some() {
-                    a = self.current_parent.clone().unwrap();
-                }
-                let ot = self.symbol_table.get(a.get_custom_name());
-                //dbg!(ot.clone());
-                assert!(ot.is_obj());
-                let om = ot.get_members();
-                let n = format!("$_{}", f.get_symbol_name());
-                for e in om {
-                    if e.0 == n {
-                        return e.1;
-                    } else {
-                        continue;
-                    }
-                }
-                panic!("{:?} is not a field of {:?}", n, o)
-            }
-            Expr::MethodCall { obj, name, args } => {
-                let msig = self.symbol_table.get_module(obj.get_symbol_name(), name.get_symbol_name());
-                let mut nargs = args.clone();
-                nargs.insert(0, *obj.clone());
-                let callargs: Vec<SymbolType> = nargs.iter().map(|e| self.synth_type(e)).collect();
-                
-                assert!(callargs.len() == msig.args.len(), "call to {:?} on {:?} expects {} arguments, found {}", name, obj, msig.args.len(), callargs.len());
-                for arg in msig.args.iter().enumerate() {
-                    let carg = &callargs[arg.0];
-                    //dbg!(arg.1.clone());
-                    //dbg!(carg.clone());
-                    if !self.symbol_table.compare_ty(&arg.1, &carg) {
-                        panic!("invalid type on argument, expected {arg:?}, found {carg:?}")
-                    }
-                }
-                return msig.rettype
+            Expr::FieldAccess(par, name) => {
+                let rhs = self
+                    .env
+                    .get_name(GraphEdge::Name(par.get_symbol_name()))
+                    .unwrap();
+                dbg!(rhs);
+                let res = self.env.get_parented_name(rhs, GraphEdge::Name(name.to_string()));
+                return res.unwrap();
             }
             Expr::ModuleCall { module, name, args } => {
-                let msig = self.symbol_table.get_module(module.get_symbol_name(), name.get_symbol_name());
-                let callargs: Vec<SymbolType> = args.iter().map(|e| self.synth_type(e)).collect();
-                
-                assert!(callargs.len() == msig.args.len(), "call to {:?} on {:?} expects {} arguments, found {}", name, module, msig.args.len(), callargs.len());
-                return msig.rettype
+                //dbg!(module);
+
+                let rhs = self
+                    .env
+                    .get_name(GraphEdge::Name(module.get_symbol_name()))
+                    .unwrap();
+                rhs
             }
-            _ => panic!("unknown expr: {:?}", e),
+            _ => todo!("{:?}", e),
         };
-        //self.symbol_table.handle_custom(l)
-        l
+        println!(
+            "{:?}",
+            petgraph::dot::Dot::with_config(&(self.env.clone().g), &[])
+        );
+
+        res
     }
 
-    fn synth_mut_assignment(&mut self, value: &Box<Expr>, name: &Box<Expr>) -> SymbolType {
-        //let lt = self.synth_type(*name.clone());
-        let rt = SymbolType::Mut(Box::new(self.synth_type(&*value)));
-        self.symbol_table.set(&name.get_symbol_name(), &rt.clone());
-        rt
-    }
-
-    fn synth_assignment(&mut self, value: &Box<Expr>, name: &Box<Expr>) -> SymbolType {
-        //let lt = self.synth_type(*name.clone());
-        let rt = self.synth_type(&*value);
-        self.symbol_table.set(&name.get_symbol_name(), &rt);
-        rt
-    }
-
-    fn synth_logical(&mut self, l: &Box<Expr>, r: &Box<Expr>) -> SymbolType {
-        let lt = self.synth_type(&*l).extract();
-        let rt = self.synth_type(&*r).extract();
-        if self.symbol_table.compare_ty(&lt, &rt) {
-            SymbolType::Bool
-        } else {
-            panic!("Cannot compare {lt:?} {l:?} with {rt:?} {r:?}")
-        }
-    }
-
-    fn synth_binop(&mut self, l: &Box<Expr>, r: &Box<Expr>) -> SymbolType {
-        let lt = self.synth_type(&*l);
-        let rt = self.synth_type(&*r);
-        //dbg!(lt.clone());
-        //dbg!(rt.clone());
-        if self.symbol_table.compare_ty(&lt, &rt) {
-            lt
-        } else {
-            panic!("Cannot operate {lt:?} {l:?} with {rt:?} {r:?}")
-        }
-    }
-}
-
-pub trait Typecheck<T> {
-    fn convert(value: &T, t: &mut Typechecker) -> Self;
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypedProgram {
-    pub modules: Vec<TypedModule>,
-    pub dependencies: Vec<String>,
-}
-
-impl From<Program> for TypedProgram {
-    fn from(value: Program) -> Self {
-        let mut t = Typechecker::new();
-        t.symbol_table.new_scope();
-        let mut vtm: Vec<TypedModule> = vec![];
-        let mut vmr = value.modules;
-        vmr.reverse();
-        for m in vmr {
-            let tm = TypedModule::convert(&m, &mut t);
-            vtm.push(tm);
-        }
-        //dbg!(t);
-        Self {
-            modules: vtm,
-            dependencies: value.dependencies,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypedModule {
-    pub body: Vec<TypedAst>,
-}
-
-impl Typecheck<Module> for TypedModule {
-    fn convert(value: &Module, t: &mut Typechecker) -> Self {
-        let mut b: Vec<TypedAst> = vec![];
-        for a in &value.body {
-            let ta = TypedAst::convert(&a, t);
-            //dbg!(t.clone());
-            b.push(ta)
-        }
-        Self { body: b }
-    }
-}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TypedAst {
-    FnDef {
-        name: String,
-        rettype: SymbolType,
-        args: Vec<(String, SymbolType)>,
-        limits: Option<Vec<FnArgLimit>>,
-        body: Vec<TypedExpr>,
-    },
-    MethodDef {
-        parent: String,
-        name: String,
-        rettype: SymbolType,
-        args: ThinVec<(String, SymbolType)>,
-        limits: Option<Vec<FnArgLimit>>,
-        body: Vec<TypedExpr>,
-    },
-    Struct {
-        name: String,
-        members: Vec<(String, SymbolType)>,
-    },
-    Enum {
-        name: String,
-        members: Vec<SymbolType>,
-    },
-    TypeDef {
-        name: SymbolType,
-        funcs: Vec<Self>,
-    },
-    WithClause {
-        include: Vec<String>,
-    },
-    Propdef {
-        p: Property,
-    },
-    TypeAlias {
-        name: String,
-        is: SymbolType,
-    },
-}
-
-impl Typecheck<Ast> for TypedAst {
-    fn convert(value: &Ast, t: &mut Typechecker) -> Self {
-        //dbg!(t.clone());
-
-        match value {
+    fn check_ast(&mut self, a: &Ast) {
+        match a {
             Ast::FnDef {
+                name,
+                rettype,
+                args,
+                limits: _,
+                body,
+            } => {
+                let nargs: Vec<PartialType> =
+                    args.iter().map(|a| a.1.convert(&mut self.env)).collect();
+                let nrt = rettype.convert(&mut self.env);
+
+                self.extend_enter_do(
+                    PartialType::Fn(
+                        Box::leak(nargs.clone().into_boxed_slice()),
+                        Box::leak(Box::new(nrt)),
+                    ),
+                    GraphEdge::Name(name.to_string()),
+                    |this| {
+                        for arg in nargs.iter().zip(args.clone()) {
+                            this.env
+                                .extend_curr(arg.0.clone(), GraphEdge::Name(arg.1 .0));
+                        }
+                        this.env.current_func = this.env.current_node;
+                        let a: Vec<PartialType> =
+                            body.iter().map(|b| this.clone().check_expr(&b)).collect();
+                    },
+                );
+            }
+            Ast::WithClause { include: _ } => return,
+            Ast::Enum { name, members } => {
+                self.extend_enter_do(
+                    PartialType::Enum(Box::leak(Box::new(name.clone()))),
+                    GraphEdge::Name(name.to_string()),
+                    |this| {
+                        for m in &members.clone() {
+                            //dbg!(m);
+                            this.env.extend_curr(
+                                PartialType::Variant,
+                                GraphEdge::Name(m.get_variant_name()),
+                            );
+                        }
+                    },
+                );
+            }
+            Ast::Struct { name, members } => {
+                let p = PartialType::Record(Box::leak(Box::new(name.clone())));
+                let current_current = self.env.current_node;
+                self.env
+                    .extend_enter(p, GraphEdge::Name(name.to_string()));
+                for a in members.to_vec() {
+                    let m2 = a.1.convert(&mut self.env);
+                    self.env.extend_curr(m2, GraphEdge::Name(a.0.clone()));
+                }
+                self.env.current_node = current_current;
+    
+                
+            }
+            Ast::TypeDef { name, funcs } => {
+                let prevcur = self.env.current_node;
+                let d: PartialType = self
+                    .env
+                    .get_name(GraphEdge::Name(name.get_custom_name()))
+                    .unwrap();
+                //self.env.extend_curr(d, GraphEdge::Module);
+                self.env.current_node = Some(d);
+                self.env.current_typeclass = Some(PartialType::Custom(
+                    Box::leak(Box::new(name.get_custom_name())),
+                    0,
+                ));
+                for a in funcs.clone() {
+                    self.check_ast(&a);
+                }
+                self.env.current_node = prevcur;
+                self.env.current_typeclass = None;
+            }
+            Ast::MethodDef {
+                parent,
                 name,
                 rettype,
                 args,
                 limits,
                 body,
             } => {
-                let n: String = name.clone();
-                t.symbol_table.set(
-                    &n.clone(),
-                    &SymbolType::Fn(
-                        args.clone().iter().map(|a| a.1.clone()).collect(),
-                        Box::new(rettype.clone()),
-                        false,
+                let nargs: Vec<PartialType> =
+                    args.iter().map(|a| a.1.convert(&mut self.env)).collect();
+                let nrt = rettype.convert(&mut self.env);
+
+                self.extend_enter_do(
+                    PartialType::Fn(
+                        Box::leak(nargs.clone().into_boxed_slice()),
+                        Box::leak(Box::new(nrt)),
                     ),
-                );
-                t.symbol_table.new_scope();
-                for a in args {
-                    t.symbol_table.set(&a.0.clone(), &a.1);
-                }
-                t.current_func.clone_from(&name);
-                let b: Vec<TypedExpr> = body
-                    .iter()
-                    .map(|e| TypedExpr::convert(e, t))
-                    .collect();
-                let mut nrt = rettype.clone();
-                if rettype.is_generic() {
-                    nrt = b.last().unwrap().exprtype.clone().unwrap();
-                }
-                let mut nargs: Vec<(String, SymbolType)> = vec![];
-
-                for i in args.clone() {
-                    if i.1.is_generic() {
-                        nargs.push((i.0, t.symbol_table.get(i.1.get_generic_name())));
-                    } else {
-                        nargs.push(i);
-                    }
-                }
-
-                t.symbol_table.redefine(
-                    &n,
-                    &SymbolType::Fn(
-                        nargs.clone().iter().map(|a| a.1.clone()).collect(),
-                        Box::new(nrt.clone()),
-                        false,
-                    ),
-                );
-
-                t.symbol_table.pop_scope();
-
-                if !t
-                    .symbol_table
-                    .compare_ty(rettype, &b.last().unwrap().exprtype.clone().unwrap())
-                {
-                    panic!("Return type was not equal to the last expression in function body; {:?} vs {:?}", rettype, &b.last().unwrap().exprtype.clone().unwrap())
-                }
-
-                Self::FnDef {
-                    name: name.clone(),
-                    rettype: nrt,
-                    args: nargs,
-                    limits: limits.clone(),
-                    body: b,
-                }
-            }
-            Ast::WithClause { include } => Self::WithClause {
-                include: include.iter().map(|e| e.get_lit()).collect(),
-            },
-            Ast::Struct { name, members } => {
-                t.symbol_table
-                    .set(&name.clone(), &SymbolType::Obj(name.to_string(), members.clone()));
-                Self::Struct {
-                    name: name.to_string(),
-                    members: members.to_vec(),
-                }
-            }
-
-            Ast::Enum { name, members } => {
-                let mut gc = 0;
-                for m in members.clone() {
-                    let mm = m.get_variant_members();
-                    for mg in mm {
-                        if mg.is_generic() {
-                            gc += 1;
+                    GraphEdge::Name(name.to_string()),
+                    |this| {
+                        for arg in nargs.iter().zip(args.clone()) {
+                            this.env
+                                .extend_curr(arg.0.clone(), GraphEdge::Name(arg.1 .0));
                         }
-                    }
-                }
-                t.symbol_table
-                    .set(&name.clone(), &SymbolType::Enum(name.to_string(), gc, members.clone()));
-
-                for m in members.clone() {
-                    let mm = m.get_variant_members();
-                    for mg in mm {
-                        if mg.is_generic() {
-                            t.symbol_table
-                                .set(&mg.get_generic_name(), &SymbolType::Unknown)
-                        }
-                    }
-                    t.symbol_table.set(
-                        &m.get_variant_name(),
-                        &SymbolType::Fn(
-                            m.get_variant_members().into(),
-                            Box::new(SymbolType::Enum(m.get_variant_name(), gc, members.clone())),
-                            true,
-                        ),
-                    );
-                }
-
-                Self::Enum {
-                    name: name.to_string(),
-                    members: members.to_vec(),
-                }
-            }
-            Ast::TypeDef { name, funcs } => {
-                let gett = &t.symbol_table.get(name.get_custom_name());
-                if t.symbol_table.has(&name.get_custom_name())
-                    && t.symbol_table.compare_ty(gett, name)
-                {
-                    let nn = name.get_custom_name();
-                    let mut nfuncs: Vec<TypedAst> = vec![];
-                    t.current_parent = Some(name.clone());
-                    let mut new_group = SymbolTableGroup {
-                        name: nn.clone(),
-                        children: HashMap::new(),
-                    };
-                    for f in funcs {
-                        //dbg!(f.clone());
-                        let res = Self::convert(&f, t);
-                        new_group
-                            .children
-                            .insert(f.get_fnname(), res.clone().into());
-                        nfuncs.push(res)
-                    }
-                    t.current_parent = None;
-                    t.symbol_table.groups.push(new_group);
-                    return Self::TypeDef {
-                        name: name.clone(),
-                        funcs: nfuncs.to_vec(),
-                    };
-                } else {
-                    panic!("Cannot define implementation for undefined type {name:?}")
-                }
-            }
-             
-            Ast::Propdef { p: _ } => {
-                todo!()
-                // t.symbol_table.set(p.name, &SymbolType::Property);
-                // for f in &p.req {
-                //     t.symbol_table.set()
-                // }
-                // return Self::Propdef {p: p.clone()}
-            }
-            Ast::TypeAlias { name, is } => {
-                t.symbol_table.set(name, is);
-                Self::TypeAlias {
-                    name: name.to_string(),
-                    is: is.clone(),
-                }
-            }
-            Ast::MethodDef { parent, name, rettype, args, limits, body } => {
-                
-                t.symbol_table.new_scope();
-                let n: String = name.clone();
-                t.symbol_table.set(
-                    &n.clone(),
-                    &SymbolType::MethodFn {parent: parent.to_string(),f: 
-                    Box::new(SymbolType::Fn(
-                        args.clone().iter().map(|a| a.1.clone()).collect(),
-                        Box::new(rettype.clone()),
-                        false,
-                    ))},
+                        this.env.current_func = this.env.current_node;
+                        let a: Vec<PartialType> =
+                            body.iter().map(|b| this.clone().check_expr(&b)).collect();
+                    },
                 );
-                for a in args {
-                    t.symbol_table.set(&a.0.clone(), &a.1);
-                }
-                t.current_func.clone_from(&name);
-                let b: Vec<TypedExpr> = body
-                    .iter()
-                    .map(|e| TypedExpr::convert(e, t))
-                    .collect();
-                let mut nrt = rettype.clone();
-                if rettype.is_generic() {
-                    nrt = b.last().unwrap().exprtype.clone().unwrap();
-                }
-                //let mut nargs: Vec<(String, SymbolType)> = vec![];
-
-                // for i in args.clone() {
-                //     if i.1.is_generic() {
-                //         nargs.push((i.0, t.symbol_table.get(i.1.get_generic_name())));
-                //     } else {
-                //         nargs.push(i);
-                //     }
-                // }
-                t.symbol_table.pop_scope();
-                return Self::MethodDef {
-                    parent: t.current_parent.clone().unwrap().clone().get_custom_name(),
-                    name: name.to_string(),
-                    rettype: nrt,
-                    args: args.clone(),
-                    limits: limits.clone(),
-                    body: b,
-                }
             }
+            _ => todo!("{:?}", a),
         }
     }
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TypedExpr {
-    pub e: Expr,
-    pub exprtype: Option<SymbolType>,
-}
-
-impl Typecheck<Expr> for TypedExpr {
-    fn convert(value: &Expr, t: &mut Typechecker) -> Self {
-        Self {
-            e: value.clone(),
-            exprtype: Some(t.synth_type(value)),
+    pub fn check(&mut self, mut p: Box<Program>) {
+        //let thisp: &'static Program = Box::leak(p);
+        let rootidx = self.env.g.add_node(PartialType::Root);
+        self.env.current_node = Some(rootidx);
+        p.modules.reverse();
+        for module in &p.modules {
+            let current_current = self.env.current_node;
+            self.env
+                .extend_enter(PartialType::Module, GraphEdge::Name(module.name.clone()));
+            for a in &module.body {
+                self.check_ast(&a)
+            }
+            self.env.current_node = current_current;
         }
     }
 }

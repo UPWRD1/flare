@@ -12,11 +12,11 @@ type Player = struct of
 
 
 def Player =
-	let new of name, class -> Player = 
-		return Player {name = name, level = 0, hp = 10, class = class}
+	let new of name: str, class: PlayerClass -> Player = 
+		return Player {name: name, level: 0, hp: 10, class: class}
 
 	let level_up of mut self =
-		-- self = Player {name = self:name, level = self:level + 1, hp = self:hp, class = self:class}
-		self:level = self:level + 1
+		-- self = Player {name: self.name, level: self.level + 1, hp: self.hp, class: self.class}
+		self.level = self.level + 1
 
 end

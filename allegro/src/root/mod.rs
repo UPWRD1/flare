@@ -2,7 +2,7 @@ pub mod passes;
 use std::fs;
 
 use logos::Logos;
-use passes::midend::typechecking::TypedProgram;
+use passes::midend::typechecking::Typechecker;
 use resource::ast::{Module, Program};
 pub mod resource;
 
@@ -15,12 +15,14 @@ pub fn compile_filename(filename: &String) -> Module {
     let mut tokens: Vec<Token> = vec![];
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a: Tk = lex.next().unwrap().unwrap();
-        //println!("{_i} {a:?} '{}'", lex.slice());
+        println!("{_i} {a:?} '{}'", lex.slice());
         tokens.push(Token::new(a, lex.slice().to_string(), 0,0));
     }
 
     use passes::parser::parse;
-    parse(&tokens)   
+    let m = parse(&tokens);
+
+    Module { name: filename.to_string(), body: m.body.clone() }
 }
 
 pub fn get_dependencies(mut p: Program) -> Program {
@@ -47,14 +49,17 @@ pub fn get_dependencies(mut p: Program) -> Program {
     p
 }
 
-pub fn compile_typecheck(filename: &String) -> TypedProgram {
+pub fn compile_typecheck(filename: &String) {
     let mut p = Program { modules: vec![], dependencies: vec![] };
     let root_ast = compile_filename(filename);
     p.modules.push(root_ast.clone());
-    //dbg!(p.clone());
     let np = get_dependencies(p.clone());
-    let new_p: TypedProgram = np.clone().into();
-    new_p
+    //dbg!(np.clone());
+
+    let mut tc = Typechecker::new();
+    tc.check(Box::new(np));
+    //let new_p: TypedProgram = np.clone().into();
+    //new_p
 }
 
 pub fn compile_json(filename: &String) -> String {
