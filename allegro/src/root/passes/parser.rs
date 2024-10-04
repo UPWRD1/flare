@@ -247,6 +247,6 @@ use crate::root::resource::{
 };
 
 pub fn parse(tokens: &[Token]) -> Module {
-    let p = program(&SliceByRef(&tokens)).unwrap();
+    let p = program(&SliceByRef(tokens)).unwrap();
     p
 }

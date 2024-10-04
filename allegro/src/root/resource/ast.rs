@@ -42,11 +42,11 @@ pub enum Ast {
     },
     Struct {
         name: String,
-        members: ThinVec<(String, SymbolType)>,
+        members: Vec<(String, SymbolType)>,
     },
     Enum {
         name: String,
-        members: ThinVec<SymbolType>,
+        members: Vec<SymbolType>,
     },
     TypeDef {
         name: SymbolType,
@@ -376,7 +376,7 @@ impl SymbolType {
             SymbolType::Mut(t) => t.extract(),
             SymbolType::Unknown => self.clone(),
             SymbolType::Pointer(t) => t.extract(),
-            Self::Custom(..) => return self.clone(),
+            Self::Custom(..) => self.clone(),
             _ => todo!("{:?}", self),
         }
     }

@@ -22,10 +22,10 @@ fn main() {
 
                 let filename: &String = &prog_args[2];
                 let now: Instant = Instant::now();
-                let res = compile_typecheck(filename);
+                compile_typecheck(filename);
                 let elapsed = now.elapsed();
                 //println!("{:#?}", res.clone());
-                let serialized = serde_json::to_string_pretty(&res).unwrap();
+                let serialized = serde_json::to_string_pretty(&()).unwrap();
                 fs::write(format!("{}.json", filename), serialized).expect("Unable to write file");
 
                 println!("Compiled {filename} in {elapsed:.2?}");

@@ -63,9 +63,9 @@ pub fn compile_typecheck(filename: &String) {
 }
 
 pub fn compile_json(filename: &String) -> String {
-    let new_p = compile_typecheck(filename);
+    compile_typecheck(filename);
     //dbg!(new_p.clone());
 
-    let serialized = serde_json::to_string(&new_p).unwrap();
-    serialized
+    
+    serde_json::to_string(&()).unwrap()
 }
