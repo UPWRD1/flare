@@ -1,20 +1,18 @@
 -- with "examples/container"
 
-type A = struct of 
-	d: int,
-	e: flt
+type T = struct of 
+	f1: int,
+	f2: flt
 
-def A =
-	let new of d, e =
-		A {d: d, e: e}
+def T =
+	let new of x, y =
+		T {f1: x, f2: y}
+	
+	let dump of self = 
+		self.f1 * 3
 end
 
-type B = struct of 
-	d: str,
-	e: uint
-
 let main =
-	x = A::new()
-	y = B::new()
-	b = x.a
+	a = T.new()
+	d = call()
 	

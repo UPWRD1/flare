@@ -80,15 +80,15 @@ pub enum Tk {
     TkKwStruct,
     #[regex(r"enum")]
     TkKwEnum,
-    #[regex("([a-zA-Z]|_)+([a-zA-Z0-9]|_)*", priority=2)]
+    #[regex("([a-zA-Z]|_)+([a-zA-Z0-9]|_)*", priority = 2)]
     TkSymbol,
-    #[regex("[0-9]+", priority=4)]
+    #[regex("[0-9]+", priority = 4)]
     TkInt,
-    #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", priority=2)]
+    #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", priority = 2)]
     TkFlt,
-    #[regex("true", priority=3)]
+    #[regex("true", priority = 3)]
     TkTrue,
-    #[regex("false", priority=3)]
+    #[regex("false", priority = 3)]
     TkFalse,
     #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#)]
     TkStrLit,
@@ -158,6 +158,11 @@ pub struct Token {
 
 impl Token {
     pub fn new(kind: Tk, lit: String, pos: usize, col: usize) -> Self {
-        Token {kind, lit, posline: pos, poscol: col}
+        Token {
+            kind,
+            lit,
+            posline: pos,
+            poscol: col,
+        }
     }
 }

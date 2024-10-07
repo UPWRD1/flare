@@ -75,9 +75,21 @@ impl Ast {
 
     pub fn convert_fn_to_methodfn(&self, parent: String) -> Self {
         match self {
-            Self::FnDef { name, rettype, args, limits, body} => Self::MethodDef {parent, name: name.to_string(), rettype: rettype.clone(), args: args.clone(), limits: limits.clone(), body: body.to_vec()},
+            Self::FnDef {
+                name,
+                rettype,
+                args,
+                limits,
+                body,
+            } => Self::MethodDef {
+                parent,
+                name: name.to_string(),
+                rettype: rettype.clone(),
+                args: args.clone(),
+                limits: limits.clone(),
+                body: body.to_vec(),
+            },
             _ => panic!("{:?} is not a function", self),
-
         }
     }
 }
@@ -238,8 +250,13 @@ impl Expr {
 
     pub fn get_lit(&self) -> String {
         match self {
-            Self::Str(s) => s.strip_prefix("\"").unwrap().strip_suffix("\"").unwrap().to_string(),
-            _ => panic!("{:?} is not a string literal", self)
+            Self::Str(s) => s
+                .strip_prefix("\"")
+                .unwrap()
+                .strip_suffix("\"")
+                .unwrap()
+                .to_string(),
+            _ => panic!("{:?} is not a string literal", self),
         }
     }
 }
@@ -279,7 +296,7 @@ pub enum SymbolType {
 #[derive(Debug, Clone)]
 pub struct RecordDef {
     pub name: String,
-    pub fields: Vec<(String, SymbolType)>
+    pub fields: Vec<(String, SymbolType)>,
 }
 
 impl SymbolType {
@@ -372,7 +389,13 @@ impl SymbolType {
             | SymbolType::StructRef(..)
             | SymbolType::Enum(..)
             | SymbolType::Variant(_, _) => self.clone(),
-            SymbolType::Fn(.., rt, v) => { if *v {*rt.clone()} else {self.clone()}},
+            SymbolType::Fn(.., rt, v) => {
+                if *v {
+                    *rt.clone()
+                } else {
+                    self.clone()
+                }
+            }
             SymbolType::Mut(t) => t.extract(),
             SymbolType::Unknown => self.clone(),
             SymbolType::Pointer(t) => t.extract(),
@@ -487,81 +510,81 @@ impl SymbolType {
         }
     }
 
-//     pub fn compare(&self, rhs: &Self) -> bool {
-//         //println!("{:?} vs {:?}", self, rhs);
-//         let r = rhs.clone(); //.get_raw();
-//         match self {
-//             Self::Mut(t) | Self::Fn(_, t, _) => t.compare(&r),
-//             Self::Naught | Self::Unknown | Self::Generic(_) => true,
-//             Self::StructRef(_ns) => {
-//                 if r.is_obj() {
-//                     for e in r.get_members().iter().enumerate() {
-//                         if m[e.0].1.compare(&e.1 .1) {
-//                             continue;
-//                         } else {
-//                             return false;
-//                         }
-//                     }
-//                     return true;
-//                 } else {
-//                     return false;
-//                 }
-//             }
-//             Self::Custom(name, v) => {
-//                 if r.is_custom() {
-//                     return *self == r;
-//                 }
-//                 if r.is_variant() {
-//                     if r.get_variant_name() == *name {
-//                         for arg in v.iter().enumerate() {
-//                             let g = rhs.get_custom_generics();
-//                             if *arg.1 == g[arg.0] {
-//                                 continue;
-//                             } else {
-//                                 return false;
-//                             }
-//                         }
-//                         true
-//                     } else {
-//                         false
-//                     }
-//                 } else if r.is_enum() {
-//                     r.get_generic_count() == v.len()
-//                 } else {
-//                     false
-//                 }
-//             }
-//             Self::Variant(..) => {
-//                 r.is_enum() && r.get_variants().contains(self) || r.is_variant() && r == *self
-//             }
-//             Self::Enum(_, _, v) => {
-//                 if r.is_fn() && r.get_rt().is_variant() {
-//                     for var in v {
-//                         if !var.get_variant_members().is_empty()
-//                             && !r.get_rt().get_variant_members().is_empty()
-//                         {
-//                             for varg in var.get_variant_members().iter().enumerate() {
-//                                 if varg.1.compare(&r.get_rt().get_variant_members()[varg.0]) {
-//                                     continue;
-//                                 } else {
-//                                     return false;
-//                                 }
-//                             }
-//                         }
-//                     }
-//                     true
-//                 } else if r.is_enum() {
-//                     r.get_variants() == self.get_variants()
-//                 } else {
-//                     false
-//                 }
-//             }
-//             Self::Property => panic!("Cannot compare properties"),
-//             Self::Pointer(t) => t.compare(rhs),
-//             _ => {
-//                 let _s = self.clone();
-//                 return matches!(r.clone(), _s) || r.is_generic() || r.is_unknown();
-//             }
-//         }
-//     }
+    //     pub fn compare(&self, rhs: &Self) -> bool {
+    //         //println!("{:?} vs {:?}", self, rhs);
+    //         let r = rhs.clone(); //.get_raw();
+    //         match self {
+    //             Self::Mut(t) | Self::Fn(_, t, _) => t.compare(&r),
+    //             Self::Naught | Self::Unknown | Self::Generic(_) => true,
+    //             Self::StructRef(_ns) => {
+    //                 if r.is_obj() {
+    //                     for e in r.get_members().iter().enumerate() {
+    //                         if m[e.0].1.compare(&e.1 .1) {
+    //                             continue;
+    //                         } else {
+    //                             return false;
+    //                         }
+    //                     }
+    //                     return true;
+    //                 } else {
+    //                     return false;
+    //                 }
+    //             }
+    //             Self::Custom(name, v) => {
+    //                 if r.is_custom() {
+    //                     return *self == r;
+    //                 }
+    //                 if r.is_variant() {
+    //                     if r.get_variant_name() == *name {
+    //                         for arg in v.iter().enumerate() {
+    //                             let g = rhs.get_custom_generics();
+    //                             if *arg.1 == g[arg.0] {
+    //                                 continue;
+    //                             } else {
+    //                                 return false;
+    //                             }
+    //                         }
+    //                         true
+    //                     } else {
+    //                         false
+    //                     }
+    //                 } else if r.is_enum() {
+    //                     r.get_generic_count() == v.len()
+    //                 } else {
+    //                     false
+    //                 }
+    //             }
+    //             Self::Variant(..) => {
+    //                 r.is_enum() && r.get_variants().contains(self) || r.is_variant() && r == *self
+    //             }
+    //             Self::Enum(_, _, v) => {
+    //                 if r.is_fn() && r.get_rt().is_variant() {
+    //                     for var in v {
+    //                         if !var.get_variant_members().is_empty()
+    //                             && !r.get_rt().get_variant_members().is_empty()
+    //                         {
+    //                             for varg in var.get_variant_members().iter().enumerate() {
+    //                                 if varg.1.compare(&r.get_rt().get_variant_members()[varg.0]) {
+    //                                     continue;
+    //                                 } else {
+    //                                     return false;
+    //                                 }
+    //                             }
+    //                         }
+    //                     }
+    //                     true
+    //                 } else if r.is_enum() {
+    //                     r.get_variants() == self.get_variants()
+    //                 } else {
+    //                     false
+    //                 }
+    //             }
+    //             Self::Property => panic!("Cannot compare properties"),
+    //             Self::Pointer(t) => t.compare(rhs),
+    //             _ => {
+    //                 let _s = self.clone();
+    //                 return matches!(r.clone(), _s) || r.is_generic() || r.is_unknown();
+    //             }
+    //         }
+    //     }
 }

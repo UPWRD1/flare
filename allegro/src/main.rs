@@ -2,15 +2,14 @@
 #![deny(elided_lifetimes_in_paths)]
 extern crate colored;
 extern crate lazy_static;
-extern crate peg;
 extern crate logos;
+extern crate peg;
 
 pub mod root;
 
 use std::{env, fs, time::Instant};
 
 use root::compile_typecheck;
-
 
 fn main() {
     const VERSION: &str = "0.0.1";
@@ -19,7 +18,6 @@ fn main() {
     match prog_args.len() {
         3 => match prog_args[1].as_str() {
             "-c" | "--compile" => {
-
                 let filename: &String = &prog_args[2];
                 let now: Instant = Instant::now();
                 compile_typecheck(filename);
@@ -46,10 +44,6 @@ fn main() {
     }
 }
 
-
-
-
-
 #[cfg(test)]
 pub mod tests {
 
@@ -59,7 +53,10 @@ pub mod tests {
 
     #[test]
     fn primatives() {
-        let res = compile_json(&"/workspaces/allegro/allegro/tests/typechecking/primatives/primativetest.alg".to_string());
+        let res = compile_json(
+            &"/workspaces/allegro/allegro/tests/typechecking/primatives/primativetest.alg"
+                .to_string(),
+        );
         let correct = "{\"modules\":[{\"body\":[{\"FnDef\":{\"name\":\"main\",\"rettype\":\"Bool\",\"args\":[],\"limits\":[],\"body\":[{\"e\":{\"Int\":3},\"exprtype\":\"Int\"},{\"e\":{\"Flt\":3.0},\"exprtype\":\"Flt\"},{\"e\":{\"Str\":\"\\\"three\\\"\"},\"exprtype\":\"Str\"},{\"e\":{\"Bool\":true},\"exprtype\":\"Bool\"}]}}]}],\"dependencies\":[]}";
         assert_eq!(res, correct);
     }

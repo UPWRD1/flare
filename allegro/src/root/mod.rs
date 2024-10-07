@@ -16,13 +16,16 @@ pub fn compile_filename(filename: &String) -> Module {
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a: Tk = lex.next().unwrap().unwrap();
         println!("{_i} {a:?} '{}'", lex.slice());
-        tokens.push(Token::new(a, lex.slice().to_string(), 0,0));
+        tokens.push(Token::new(a, lex.slice().to_string(), 0, 0));
     }
 
     use passes::parser::parse;
     let m = parse(&tokens);
 
-    Module { name: filename.to_string(), body: m.body.clone() }
+    Module {
+        name: filename.to_string(),
+        body: m.body.clone(),
+    }
 }
 
 pub fn get_dependencies(mut p: Program) -> Program {
@@ -37,7 +40,10 @@ pub fn get_dependencies(mut p: Program) -> Program {
                     to_compile
                 );
                 let dep_ast = compile_filename(&tc);
-                let mut dep_p = get_dependencies(Program { modules: vec![dep_ast], dependencies: vec![] });
+                let mut dep_p = get_dependencies(Program {
+                    modules: vec![dep_ast],
+                    dependencies: vec![],
+                });
                 p.dependencies.push(tc);
                 p.dependencies.append(&mut dep_p.dependencies);
                 p.modules.append(&mut dep_p.modules);
@@ -50,7 +56,10 @@ pub fn get_dependencies(mut p: Program) -> Program {
 }
 
 pub fn compile_typecheck(filename: &String) {
-    let mut p = Program { modules: vec![], dependencies: vec![] };
+    let mut p = Program {
+        modules: vec![],
+        dependencies: vec![],
+    };
     let root_ast = compile_filename(filename);
     p.modules.push(root_ast.clone());
     let np = get_dependencies(p.clone());
@@ -66,6 +75,5 @@ pub fn compile_json(filename: &String) -> String {
     compile_typecheck(filename);
     //dbg!(new_p.clone());
 
-    
     serde_json::to_string(&()).unwrap()
 }

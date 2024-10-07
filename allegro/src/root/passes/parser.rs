@@ -81,7 +81,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule func_ret_type() -> crate::root::resource::ast::SymbolType
         = [Token { kind: Tk::TkArr, .. }] r: atype() {r}
 
-    rule func_args() -> Option<Vec<(String, crate::root::resource::ast::SymbolType)>> 
+    rule func_args() -> Option<Vec<(String, crate::root::resource::ast::SymbolType)>>
         = ([Token { kind: Tk::TkKwOf, .. }] l: func_args_list() {l})?
 
     rule where_limit() -> Option<Vec<crate::root::resource::ast::FnArgLimit>> =
@@ -92,11 +92,11 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
 
     rule type_arg() -> (String, crate::root::resource::ast::SymbolType)
         = m: [Token { kind: Tk::TkKwMut, .. }]? t: simplesymbol() k: arg_type()? start: position!() {let r = if k.is_some()  {k.unwrap()} else {crate::root::resource::ast::SymbolType::Generic(format!("?_{}", crate::root::resource::ast::calculate_hash::<String>(&t.get_symbol_name()) ))}; if m.is_some() {return (t.get_symbol_name(), crate::root::resource::ast::SymbolType::Mut(Box::new(r)))} else {return (t.get_symbol_name(), r)}}
-    
+
     rule arg_type() -> crate::root::resource::ast::SymbolType
         = [Token { kind: Tk::TkColon, .. }] k: atype() {k}
 
-    rule prop_def() -> crate::root::resource::ast::Ast 
+    rule prop_def() -> crate::root::resource::ast::Ast
         = [Token { kind: Tk::TkKwProp, .. }] n: simplesymbol() [Token { kind: Tk::TkKwFor, .. }] t: atype() [Token { kind: Tk::TkAssign, .. }] f: fn_sig() ** [Token { kind: Tk::TkComma, .. }] {crate::root::resource::ast::Ast::Propdef { p: crate::root::resource::ast::Property {name: n.get_symbol_name(), req: f}  }}
 
     rule fn_sig() -> crate::root::resource::ast::FnSignature
@@ -104,7 +104,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
 
     rule sig_args() -> Vec<crate::root::resource::ast::SymbolType>
         = a: ([Token { kind: Tk::TkKwOf, .. }] l: sig_arg_list() {l})? {if a.is_some() {a.unwrap()} else {vec![]}}
-        
+
     rule sig_arg_list() -> Vec<(crate::root::resource::ast::SymbolType)>
         = a: sig_arg_type() ** [Token { kind: Tk::TkComma, .. }] {a}
 
@@ -123,7 +123,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule assignment() -> crate::root::resource::ast::Expr
         = n: symbol() [Token { kind: Tk::TkAssign, .. }] v: expr()  { crate::root::resource::ast::Expr::Assignment { name: Box::new(n), value: Box::new(v) } }
         / [Token { kind: Tk::TkKwMut, .. }] n: simplesymbol() [Token { kind: Tk::TkAssign, .. }] v: expr()  { crate::root::resource::ast::Expr::MutableAssignment { name: Box::new(n), value: Box::new(v) } }
-    
+
     rule closure() -> crate::root::resource::ast::Expr
         = [Token { kind: Tk::TkKwFn, .. }] args: func_args() [Token { kind: Tk::TkArr, .. }] body: expr()+ { crate::root::resource::ast::Expr::Closure { args: if args.is_some() {args.unwrap()} else {vec![]}, body } }
 
@@ -170,7 +170,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
 
     rule predicate() -> crate::root::resource::ast::Predicate
         = logic_predicate()
-    
+
     rule logic_predicate() -> crate::root::resource::ast::Predicate
         = precedence! {
             op: [Token { kind: Tk::TkCEQ, .. }] r: expr() [Token { kind: Tk::TkKwThen, .. }] {crate::root::resource::ast::Predicate::Comparison { op: crate::root::resource::ast::LogicOp::CEQ, rhs: Box::new(r) }}
@@ -187,7 +187,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / [Token { kind: Tk::TkFalse, lit: n,.. }] { crate::root::resource::ast::Expr::Bool(false)}
         / [Token { kind: Tk::TkTrue, lit: n,.. }] { crate::root::resource::ast::Expr::Bool(true)}
         / [Token { kind: Tk::TkPtrInit, .. }] e: expr() {crate::root::resource::ast::Expr::AddressOf(Box::new(e))}
-    
+
     #[cache_left_rec]
     rule call() -> crate::root::resource::ast::Expr
         = name: symbol() [Token { kind: Tk::TkLparen, .. }] args: call_list() [Token { kind: Tk::TkRparen, .. }] { crate::root::resource::ast::Expr::Call { name: Box::new(name.clone()), args}}
@@ -227,7 +227,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / s: symbol() a: (generic_brackets())? {crate::root::resource::ast::SymbolType::Custom(s.get_symbol_name(), if a.is_some() {a.unwrap().into()} else {vec![].into()})}
         / [Token { kind: Tk::TkQuestion, .. }] s: simplesymbol() start:position!() {crate::root::resource::ast::SymbolType::Generic(format!("?_{}", s.get_symbol_name()))}
         / [Token { kind: Tk::TkPtrArr, .. }] t: atype() {crate::root::resource::ast::SymbolType::Pointer(Box::new(t))}
-    
+
     rule generic_brackets() -> Vec<crate::root::resource::ast::SymbolType>
         = [Token { kind: Tk::TkCLT, .. }] a: atype() ** [Token { kind: Tk::TkComma, .. }] [Token { kind: Tk::TkCGT, .. }]{a}
 

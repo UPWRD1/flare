@@ -1,10 +1,10 @@
-use std::collections::HashMap;
-
 use petgraph::{
     prelude::{DiGraphMap, GraphMap},
-    visit::{Bfs, Dfs, DfsPostOrder, EdgeFiltered, EdgeRef},
-    Directed,
-    Direction::{Incoming, Outgoing},
+    visit::{
+        DfsPostOrder, EdgeFiltered,
+        EdgeRef,
+    },
+    Directed, Direction::Outgoing,
 };
 
 use crate::root::resource::ast::{Ast, Expr, Program, SymbolType};
@@ -15,7 +15,7 @@ pub struct TypeVar(pub usize);
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub enum PartialType {
     Root,
-    Module,
+    Module(&'static str),
     TypeDef,
     StandardScope,
     Variable(TypeVar),
@@ -50,6 +50,16 @@ impl PartialType {
             _ => panic!("{self:?} is not a function!"),
         }
     }
+
+    pub fn get_lit_name(&self) -> Option<String> {
+        match self {
+            PartialType::Module(n) => Some(n.to_string()),
+            PartialType::Record(n) => Some(n.to_string()),
+            PartialType::Enum(n) => Some(n.to_string()),
+            PartialType::Custom(n, _) => Some(n.to_string()),
+            _ => None,
+        }
+    }
 }
 
 trait ConvertToPartial {
@@ -72,7 +82,15 @@ impl ConvertToPartial for SymbolType {
             SymbolType::Mut(x) => PartialType::Mut(Box::leak(Box::new(x.convert(t)))),
             SymbolType::Generic(_n) => PartialType::Variable(t.tvg.generate()),
             SymbolType::Custom(n, c) => {
-                PartialType::Custom(Box::leak(Box::new(n.clone())), c.len())
+                // dbg!(t.current_node);
+                let x = t.get_name(GraphEdge::Name(n.to_string()), true);
+                if x.is_some() {
+                    //dbg!(n);
+                    //dbg!(x);
+                    return x.unwrap();
+                } else {
+                    return PartialType::Custom(Box::leak(Box::new(n.clone())), c.len());
+                }
             }
             _ => PartialType::Variable(t.tvg.generate()), //todo!("{:?}", self),
         }
@@ -85,7 +103,7 @@ pub enum GraphEdge {
     Expr(Expr),
     Substitution,
     Scope,
-    Module,
+    Module(String),
 }
 
 impl From<Expr> for GraphEdge {
@@ -93,6 +111,16 @@ impl From<Expr> for GraphEdge {
         match value {
             Expr::Symbol(s) => Self::Name(s.to_string()),
             _ => Self::Expr(value.clone()),
+        }
+    }
+}
+
+impl GraphEdge {
+    pub fn get_name(&self) -> String {
+        match self {
+            GraphEdge::Name(n) => n.clone(),
+            GraphEdge::Module(n) => n.clone(),
+            _ => todo!(),
         }
     }
 }
@@ -121,7 +149,7 @@ impl TyVarGenerator {
 #[derive(Debug, Clone)]
 struct Environment {
     g: DiGraphMap<PartialType, GraphEdge>,
-    m: HashMap<String, PartialType>,
+    //m: HashMap<String, PartialType>,
     tvg: TyVarGenerator,
     current_node: Option<PartialType>,
     current_func: Option<PartialType>,
@@ -132,7 +160,7 @@ impl Environment {
     pub fn new() -> Self {
         Self {
             g: GraphMap::<PartialType, GraphEdge, Directed>::new(),
-            m: HashMap::new(),
+           // m: HashMap::new(),
             tvg: TyVarGenerator::new(),
             current_node: None,
             current_func: None,
@@ -142,88 +170,83 @@ impl Environment {
 
     fn extend_curr(&mut self, p: PartialType, e: GraphEdge) -> PartialType {
         let curr = self.current_node.unwrap();
+        println!("extend {:?} with {:?} via {:?}", curr, p, e);
         self.g.add_edge(curr, p, e);
+        self.current_node = Some(curr);
         p
     }
 
-    fn extend_enter(&mut self, p: PartialType, e: GraphEdge) {
-        let nindx = self.extend_curr(p, e);
-        self.current_node = Some(nindx);
-    }
+    // fn extend_enter(&mut self, p: PartialType, e: GraphEdge) {
+    //     let nindx = self.extend_curr(p, e);
+    //     self.current_node = Some(nindx);
+    // }
 
-    fn enter_do<F, T>(&mut self, n: PartialType, mut exec: F) -> T
-    where
-        F: FnMut(&mut Self) -> T,
-    {
-        let current_current = self.current_node;
-        self.current_node = Some(n);
-        let res = exec(self);
-        self.current_node = current_current;
-        res
-    }
+    // fn enter_do<F, T>(&mut self, n: PartialType, mut exec: F) -> T
+    // where
+    //     F: FnMut(&mut Self) -> T,
+    // {
+    //     let current_current = self.current_node;
+    //     self.current_node = Some(n);
+    //     let res = exec(self);
+    //     self.current_node = current_current;
+    //     res
+    // }
 
-    fn get_name(&mut self, e: GraphEdge) -> Option<PartialType> {
+    fn get_name(&mut self, e: GraphEdge, is_type: bool) -> Option<PartialType> {
         // println!(
         //     "{:?}",
         //     petgraph::dot::Dot::with_config(&(self.g.clone()), &[])
         // );
-        let c: PartialType = self.current_node.unwrap();
+        //dbg!(e.clone());
         assert!(matches!(e, GraphEdge::Name(_)));
         if e == GraphEdge::Name("self".to_string()) {
             return self.current_typeclass;
         }
-        let filtered = EdgeFiltered::from_fn(&self.g, |edge_ref| *edge_ref.weight() == e );
+        let filtered = EdgeFiltered::from_fn(&self.g, |edge_ref| {
+            *edge_ref.weight() == e //&& edge_ref.target() == self.current_node.unwrap()
+        });
 
-        let mut dfs = Bfs::new(&filtered, self.current_node?);
-        dfs.next(&self.g)
-    //     while let Some(visited) = dfs.next(&self.g) {
-            
-    //         println!("{:?} {:?}", visited, e);
-    // }
-    // todo!()
-        // while let Some(visited) = dfs.next(&self.g) {
-        //     let w: Vec<&GraphEdge> = self.g.edges(visited).into_iter().map(|x| x.2).collect();
-        //     println!("{:?} {:?}",visited, w);
-
-        //     if w.contains(&&e) {
-
-        //         return Some(visited);
-        //     }
-        // }
-        // let mut res = None;
-        // for n in &self.g.neighbors_directed(c, Incoming).collect::<Vec<PartialType>>() {
-        //     res = self.enter_do(*n, |this| {this.get_name(e.clone())});
-        //     if res.is_some() {
-        //         break
-        //     }
-        // }
-        
-        // res
-        
+        let mut dfs = DfsPostOrder::new(&filtered, self.current_node?);
+        let mut r: Vec<PartialType> = vec![];
+        while let Some(t) = dfs.next(&self.g) {
+            r.push(t)
+        }
+        //dbg!(r.clone());
+        if is_type {
+            r = r
+                .iter()
+                .filter(|x| {
+                    x.get_lit_name()
+                        .map_or_else(|| false, |v| v == e.get_name())
+                })
+                .cloned()
+                .collect();
+            //dbg!(r.clone());
+        }
+        r.first().copied()
     }
 
-    fn get_parented_name(&mut self, p: PartialType, e: GraphEdge) -> Option<PartialType> {
+    fn get_parented_name(
+        &mut self,
+        p: PartialType,
+        e: GraphEdge,
+        is_type: bool,
+    ) -> Option<PartialType> {
         let curr_curr = self.current_node;
         self.current_node = Some(p);
-        let res = self.get_name(e);
+        let res = self.get_name(e, is_type);
         self.current_node = curr_curr;
         res
     }
 
     fn unify(&mut self, l: PartialType, r: PartialType) -> Result<PartialType, String> {
+        //dbg!(l, r);
         match (l, r) {
             (PartialType::Int, PartialType::Int)
             | (PartialType::Flt, PartialType::Flt)
             | (PartialType::Str, PartialType::Str)
             | (PartialType::Bool, PartialType::Bool) => Ok(l),
-            (PartialType::Variable(_), t) => {
-                self.g.add_edge(l, r, GraphEdge::Substitution);
-                Ok(t)
-            }
-            (t, PartialType::Variable(_)) => {
-                self.g.add_edge(r, l, GraphEdge::Substitution);
-                Ok(t)
-            }
+            
             (t, PartialType::Fn(_, _)) => {
                 self.g.add_edge(
                     PartialType::Fn(r.get_fn_args(), Box::leak(Box::new(t))),
@@ -240,6 +263,15 @@ impl Environment {
                 );
                 Ok(t)
             }
+            (PartialType::Variable(_), t) => {
+                self.g.add_edge(l, r, GraphEdge::Substitution);
+                Ok(t)
+            }
+            (t, PartialType::Variable(_)) => {
+                self.g.add_edge(r, l, GraphEdge::Substitution);
+                Ok(t)
+            }
+            
 
             (PartialType::Mut(t), u) => {
                 let res = self.unify(*t, u).unwrap();
@@ -247,27 +279,42 @@ impl Environment {
                 Ok(PartialType::Mut(Box::leak(Box::new(res))))
             }
 
-            (t, u) if t == u => Ok(t),
-
             (PartialType::Field(_, t), PartialType::Field(_, u)) => {
-                Ok(self.unify(*t, *u).unwrap())
-
+                let res = self.unify(*t, *u);
+                if res.is_ok() {
+                    self.g.add_edge(res.clone()?, r, GraphEdge::Substitution);
+                    return res
+                }
+                Err(format!("Cannot unify {:?} with {:?}", l, r))            
             }
 
             (PartialType::Field(_, t), u) => {
-                let res = self.unify(*t, u).unwrap();
-                return Ok(res)
-
+                let res = self.unify(*t, u);
+                if res.is_ok() {
+                    self.g.add_edge(l, res.clone()?, GraphEdge::Substitution);
+                    return res
+                }
+                Err(format!("Cannot unify {:?} with {:?}", l, r))            
             }
 
             (t, PartialType::Field(_, u)) => {
-                return Ok(self.unify(t, *u).unwrap())
+                let res = self.unify(t, *u);
+                if res.is_ok() {
+                    //self.g.add_edge(res.clone()?, *u, GraphEdge::Substitution);
+                    self.g.add_edge(l, r, GraphEdge::Substitution);
+
+                    return res
+                }
+                Err(format!("Cannot unify {:?} with {:?}", l, r))            
             }
+            (t, u) if t == u => Ok(t),
 
-
-            
             _ => Err(format!("Cannot unify {:?} with {:?}", l, r)),
         }
+    }
+
+    fn get_children(&mut self, t: PartialType) -> Vec<String> {
+        self.g.edges_directed(t, Outgoing).map(|x| x.2.get_name()).collect()
     }
 }
 
@@ -302,8 +349,7 @@ impl Typechecker {
     }
 
     fn check_expr(&mut self, e: &Expr) -> PartialType {
-
-        dbg!(e.clone());
+        //dbg!(e.clone());
         let res = match e {
             Expr::Int(_) => PartialType::Int,
             Expr::Uint(_) => PartialType::Uint,
@@ -312,7 +358,7 @@ impl Typechecker {
             Expr::Str(_) => PartialType::Str,
             Expr::Symbol(name) => self
                 .env
-                .get_name(GraphEdge::Name(name.to_string()))
+                .get_name(GraphEdge::Name(name.to_string()), false)
                 .unwrap_or_else(|| panic!("Symbol {} is not defined!", name)),
             Expr::Logical { l, op: _, r } => {
                 let lty: PartialType = self.check_expr(l);
@@ -339,7 +385,6 @@ impl Typechecker {
                 let rhs: PartialType = self.check_expr(value);
                 let lnode = self.env.extend_curr(rhs, GraphEdge::Name(name));
                 self.env.unify(lnode, rhs).unwrap();
-
                 rhs
             }
             Expr::If {
@@ -363,40 +408,52 @@ impl Typechecker {
             Expr::StructInstance { name, fields } => {
                 //dbg!(self.env.current_node);
                 let t = self
-                .env
-                .get_name(GraphEdge::Name(name.get_symbol_name().to_string()))
-                .unwrap();
-                // let children: Vec<PartialType> = self.env.g.neighbors_directed(t, Outgoing).collect();
-                // for f in fields.iter().enumerate() {
-                //     dbg!(f.1.1.clone());
-                //     let ft = self.check_expr(&f.1.1);
-                //     //self.env.unify(ft, children[f.0]).unwrap();
-                // }
+                    .env
+                    .get_name(GraphEdge::Name(name.get_symbol_name().to_string()), false)
+                    .unwrap();
+                let tfields: Vec<String> = self.env.get_children(t);
+                dbg!(fields.clone());
+                for f in fields.iter() {
+                    let fieldtype = self.check_expr(&f.1);
+                    let resty = self.env.get_parented_name(t, GraphEdge::Name(f.0.clone()), false).unwrap();
+                    self.env.unify(fieldtype, resty).unwrap();
+                }
                 t
             }
-                
-                ,//.expect(&format!("Struct {name:?} is not defined!")),
+
             Expr::Call { name, args } => match *name.clone() {
                 Expr::Symbol(s) => {
                     let t = self
                         .env
-                        .get_name(GraphEdge::Name(s.to_string()))
+                        .get_name(GraphEdge::Name(s.to_string()), false)
                         .expect("Function is not defined!");
-                    let _nargs: Vec<PartialType> =
-                        args.iter().map(|a| self.check_expr(a)).collect();
+                    let nargs: Vec<PartialType> = args.iter().map(|a| self.check_expr(a)).collect();
                     assert!(matches!(t, PartialType::Fn(_, _)));
+                    let targs = t.get_fn_args();
+                    for arg in targs.iter().zip(nargs) {
+                        self.env.unify(*arg.0, arg.1).unwrap();
+                    }
                     t
                 }
                 Expr::FieldAccess(f, c) => {
                     //let nf = self.check_expr(&f);
-                    ///dbg!(f);
+                    //dbg!(f.clone());
                     let t = self
                         .env
-                        .get_parented_name(self.env.current_node.unwrap(), GraphEdge::Name(c.to_string()))
-                        .expect("Function is not defined!");
-                    let _nargs: Vec<PartialType> =
+                        .get_name( GraphEdge::Name(c.to_string()), false)
+                        .expect(&format!("Function {:?} is not defined!", c));
+                    //dbg!(t);
+                    let nargs: Vec<PartialType> =
                         args.iter().map(|a| self.check_expr(a)).collect();
                     assert!(matches!(t, PartialType::Fn(_, _)));
+                    let targs = t.get_fn_args();
+                    //dbg!(nargs.clone());
+                    //dbg!(targs);
+                    assert!(nargs.len() == targs.len());
+
+                    for arg in targs.iter().zip(nargs) {
+                        self.env.unify(*arg.0, arg.1).unwrap();
+                    }
                     t
                 }
                 _ => panic!("{:?} is not a function!", name),
@@ -408,38 +465,36 @@ impl Typechecker {
                 a.unwrap_or_else(|_| panic!("Error when returning {:?}", self.env.current_func))
             }
             Expr::FieldAccess(par, name) => {
-                let nf = par.get_symbol_name();
-
-                let nft = self
-                .env
-                .get_name(GraphEdge::Name(nf.clone())).unwrap();
+                let nf = self.check_expr(par);
+                // let nf = self
+                //     .env
+                //     .get_parented_name(np, GraphEdge::Name(name.get_symbol_name()), false)
+                //     .unwrap();
                 let t = self
                     .env
-                    .get_parented_name(nft, GraphEdge::Name(name.to_string()))
+                    .get_parented_name(nf, GraphEdge::Name(name.to_string()), false)
                     .unwrap_or_else(|| panic!("Field {:?} is not defined for {:?}", name, nf));
-
                 return t;
             }
             Expr::ModuleCall { module, name, args } => {
-                //dbg!(module);
-
-                
-                self
-                    .env
-                    .get_name(GraphEdge::Name(module.get_symbol_name()))
-                    .unwrap()
+                let t = self.check_expr(module);
+                dbg!(t);
+                let nargs: Vec<PartialType> = args.iter().map(|a| self.check_expr(a)).collect();
+                assert!(matches!(t, PartialType::Fn(_, _)));
+                let targs = t.get_fn_args();
+                for arg in targs.iter().zip(nargs) {
+                    self.env.unify(*arg.0, arg.1).unwrap();
+                }
+                t
             }
             _ => todo!("{:?}", e),
         };
-        println!(
-            "{:?}",
-            petgraph::dot::Dot::with_config(&(self.env.clone().g), &[])
-        );
 
         res
     }
 
     fn check_ast(&mut self, a: &Ast) {
+        //dbg!(self.env.current_node);
         match a {
             Ast::FnDef {
                 name,
@@ -460,14 +515,13 @@ impl Typechecker {
                     GraphEdge::Name(name.to_string()),
                     |this| {
                         for arg in nargs.iter().zip(args.clone()) {
-                            this.env
-                                .extend_curr(*arg.0, GraphEdge::Name(arg.1 .0));
+                            this.env.extend_curr(*arg.0, GraphEdge::Name(arg.1 .0));
                         }
                         this.env.current_func = this.env.current_node;
                         let a: Vec<PartialType> =
                             body.iter().map(|b| this.clone().check_expr(b)).collect();
                         let r = rettype.clone().convert(&mut this.env);
-                        this.env.unify(*a.last().unwrap(), r).unwrap()
+                        this.env.unify(r, *a.last().unwrap()).unwrap()
                     },
                 );
             }
@@ -489,35 +543,41 @@ impl Typechecker {
             }
             Ast::Struct { name, members } => {
                 let p = PartialType::Record(Box::leak(Box::new(name.clone())));
-                let current_current = self.env.current_node;
-                self.env
-                    .extend_enter(p, GraphEdge::Name(name.to_string()));
-                for a in members.to_vec() {
-                    let nt = self.env.tvg.generate();
-                    let m2 = a.1.convert(&mut self.env);
-                    self.env.extend_curr(PartialType::Field(nt, Box::leak(Box::new(m2))), GraphEdge::Name(a.0.clone()));
-                }
-                self.env.current_node = current_current;
-    
-                
+                self.extend_enter_do(p, GraphEdge::Name(name.to_string()), |this| {
+                    for a in members.to_vec() {
+                        let nt = this.env.tvg.generate();
+                        let m2 = a.1.convert(&mut this.env);
+                        let last = this.env.extend_curr(
+                            PartialType::Field(nt, Box::leak(Box::new(m2))),
+                            GraphEdge::Name(a.0.clone()),
+                        );
+                        this.env.unify(last, m2).unwrap();
+                    }
+                });
             }
             Ast::TypeDef { name, funcs } => {
                 let prevcur = self.env.current_node;
+                let prevtc = self.env.current_typeclass;
+                let c = name.convert(&mut self.env);
+
+                self.env.current_node = Some(c);
+
+                self.env.current_typeclass = Some(c);
+
+                //dbg!(name);
                 let d: PartialType = self
                     .env
-                    .get_name(GraphEdge::Name(name.get_custom_name()))
+                    .get_name(GraphEdge::Name(name.get_custom_name()), true)
                     .unwrap();
-                //self.env.extend_curr(d, GraphEdge::Module);
-                self.env.current_node = Some(d);
-                self.env.current_typeclass = Some(PartialType::Custom(
-                    Box::leak(Box::new(name.get_custom_name())),
-                    0,
-                ));
+                dbg!(d);
+                //dbg!(c);
+
                 for a in funcs.clone() {
                     self.check_ast(&a);
                 }
                 self.env.current_node = prevcur;
-                self.env.current_typeclass = None;
+
+                self.env.current_typeclass = prevtc;
             }
             Ast::MethodDef {
                 parent,
@@ -538,13 +598,14 @@ impl Typechecker {
                     ),
                     GraphEdge::Name(name.to_string()),
                     |this| {
-                        for arg in nargs.iter().zip(args.clone()) {
-                            this.env
-                                .extend_curr(*arg.0, GraphEdge::Name(arg.1 .0));
-                        }
+                        let prevfunc = this.env.current_func;
                         this.env.current_func = this.env.current_node;
+                        for arg in nargs.iter().zip(args.clone()) {
+                            this.env.extend_curr(*arg.0, GraphEdge::Name(arg.1 .0));
+                        }
                         let a: Vec<PartialType> =
                             body.iter().map(|b| this.clone().check_expr(b)).collect();
+                        //this.env.current_func = prevfunc;
                     },
                 );
             }
@@ -558,13 +619,19 @@ impl Typechecker {
         self.env.current_node = Some(rootidx);
         p.modules.reverse();
         for module in &p.modules {
-            let current_current = self.env.current_node;
-            self.env
-                .extend_enter(PartialType::Module, GraphEdge::Name(module.name.clone()));
-            for a in &module.body {
-                self.check_ast(a)
-            }
-            self.env.current_node = current_current;
+            self.extend_enter_do(
+                PartialType::Module(Box::leak(Box::new(module.name.clone()))),
+                GraphEdge::Name(module.name.clone()),
+                |this| {
+                    for a in &module.body {
+                        this.check_ast(a);
+                    }
+                },
+            );
         }
+        println!(
+            "{:?}",
+            petgraph::dot::Dot::with_config(&(self.env.clone().g), &[])
+        );
     }
 }
