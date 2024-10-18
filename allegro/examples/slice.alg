@@ -2,19 +2,19 @@ with "examples/result"
 
 type Slice<?T> = struct of
 	start: ^?T,
-	len: uint,
+	len: int,
 	cap: int
 
 def Slice<?T> =
     let len of self =
-        self:len
+        self.len
 
     let new of x = 
-        Slice {start = %x, len = 1, cap = 32}
+        Slice {start: %x, len: 1, cap: 32}
 
     let get of self, idx: int -> ?T =
-        if idx <= self:len then
-            return idx * self:start
+        if idx <= self.len then
+            return idx * self.start
         else 
             return -1
 end

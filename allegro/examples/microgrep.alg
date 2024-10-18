@@ -11,11 +11,11 @@ type Config = struct of
 	ignore_case: bool
 
 let search of query: str, contents: str -> Slice<str> =
-	contents.lines() & filter(fn of line -> line.contains(query))
+	contents.lines().filter(fn of line -> line.contains(query))
 
 let search_case_insensitive of query: str, contents: str -> Slice<str> =
 	q = query.to_lowercase()
-	contents.lines() & filter(fn of line -> line.to_lowercase().contains(q))
+	contents.lines().filter(fn of line -> line.to_lowercase().contains(q))
 
 
 def Config =
@@ -23,7 +23,7 @@ def Config =
 		if args.len() < 3 then
 			return Err("Not enough arguments!")
 		else 
-			return Ok(Config {query = args.get(1), file_path = args.get(2), ignore_case = args.contains("-i")})
+			return Ok(Config {query: args.get(1), file_path: args.get(2), ignore_case: args.contains("-i")})
 
 	let run of self =
 		contents = self.file_path --& unwrap()
@@ -37,7 +37,7 @@ end
 
 
 let main =
-	args = Env::read_argsv()
-	config = Config::build(args) & unwrap_else(fn of e -> quit("Problem parsing arguments: " + e, 1))
+	args = Env.read_argsv()
+	config = Config.build(args) & unwrap_else(fn of e -> quit("Problem parsing arguments: " + e, 1))
 	if config.run() is Err(e) then quit("Application error: " + e, 1) else exit(0)
 	

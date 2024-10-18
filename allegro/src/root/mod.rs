@@ -1,5 +1,5 @@
 pub mod passes;
-use std::fs;
+use std::{fs, path:: PathBuf};
 
 use logos::Logos;
 use passes::midend::typechecking::Typechecker;
@@ -15,7 +15,7 @@ pub fn compile_filename(filename: &String) -> Module {
     let mut tokens: Vec<Token> = vec![];
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a: Tk = lex.next().unwrap().unwrap();
-        println!("{_i} {a:?} '{}'", lex.slice());
+        //println!("{_i} {a:?} '{}'", lex.slice());
         tokens.push(Token::new(a, lex.slice().to_string(), 0, 0));
     }
 
@@ -23,7 +23,7 @@ pub fn compile_filename(filename: &String) -> Module {
     let m = parse(&tokens);
 
     Module {
-        name: filename.to_string(),
+        name: PathBuf::from(filename.clone().as_str()).file_stem().unwrap().to_owned().into_string().unwrap(),
         body: m.body.clone(),
     }
 }

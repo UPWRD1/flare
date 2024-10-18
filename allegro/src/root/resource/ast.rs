@@ -197,6 +197,7 @@ pub enum Expr {
     Bool(bool),
     AddressOf(Box<Self>),
     Symbol(String),
+    Namespace(Vec<Self>),
     StructInstance {
         name: Box<Self>,
         fields: Vec<(String, Self)>,
