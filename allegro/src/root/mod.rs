@@ -2,7 +2,7 @@ pub mod passes;
 use std::{fs, path:: PathBuf};
 
 use logos::Logos;
-use passes::midend::typechecking::Typechecker;
+//use passes::midend::typechecking::Typechecker;
 use resource::ast::{Module, Program};
 pub mod resource;
 
@@ -65,8 +65,8 @@ pub fn compile_typecheck(filename: &String) {
     let np = get_dependencies(p.clone());
     //dbg!(np.clone());
 
-    let mut tc = Typechecker::new();
-    tc.check(Box::new(np));
+    // let mut tc = Typechecker::new();
+    // tc.check(Box::new(np));
     //let new_p: TypedProgram = np.clone().into();
     //new_p
 }

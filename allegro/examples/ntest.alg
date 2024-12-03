@@ -1,7 +1,6 @@
-let main =
-	x = 6
-	v = f(x, 3)
 
-let f of x, y = 
-	x * y
+let test of x: int -> int = 
+	x * 2
 
+let main of x: int -> int =
+	b = x + test(3)
