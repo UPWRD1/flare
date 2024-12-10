@@ -1,6 +1,8 @@
+let test of y: int -> int =
+	if y > 5 then 
+		b = y * 4
+	else 
+		b = y * 2
 
-let test of x: int -> int = 
-	x * 2
-
-let main of x: int -> int =
+let main of x: int =
 	b = x + test(3)

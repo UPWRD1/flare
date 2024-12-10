@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 colored = "2.1.0"
 copyvec = "0.2.1"
+# incremental-query = "0.2.0"
 lazy_static = "1.4.0"
 logos = "0.14.1"
 peg = "0.8.4"

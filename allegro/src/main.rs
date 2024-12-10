@@ -1,5 +1,6 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
+#![feature(hasher_prefixfree_extras)]
 extern crate colored;
 extern crate lazy_static;
 extern crate logos;
@@ -9,7 +10,7 @@ pub mod root;
 
 use std::{env, fs, time::Instant};
 
-use root::compile_typecheck;
+use root::{compile_typecheck, passes::midend::environment::Environment};
 
 fn main() {
     const VERSION: &str = "0.0.1";
@@ -20,7 +21,7 @@ fn main() {
             "-c" | "--compile" => {
                 let filename: &String = &prog_args[2];
                 let now: Instant = Instant::now();
-                compile_typecheck(filename);
+                compile_typecheck(&root::Context { env: Environment::new() }, filename);
                 let elapsed = now.elapsed();
                 //println!("{:#?}", res.clone());
                 let serialized = serde_json::to_string_pretty(&()).unwrap();
