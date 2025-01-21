@@ -1,591 +1,239 @@
-use std::collections::HashMap;
+use rayon::vec;
+use thiserror::Error;
 
-use super::symboltable::{SymbolTable, SymbolTableGroup};
-use crate::root::resource::ast::{Ast, Expr, FnArgLimit, Module, Program, Property, SymbolType};
-use serde::{Deserialize, Serialize};
-use thin_vec::ThinVec;
+use anyhow::{Ok, Result};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Typechecker {
-    pub symbol_table: SymbolTable,
-    pub current_func: String,
-    pub current_parent: Option<SymbolType>,
+use crate::root::{passes::midend::environment::UserTypeKind, resource::{ast::{Expr, SymbolType}, errors::TypecheckingError}};
+
+use super::environment::{Environment, FunctionTableEntry, Table, VariableTableEntry};
+
+#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Copy, PartialOrd, Ord)]
+pub struct TypeVar(pub usize);
+
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
+pub enum PartialType {
+    Module,
+    Variable(TypeVar),
+    Record,
+    Field(TypeVar, &'static Self),
+    Enum,
+    Variant,
+    Int,
+    Uint,
+    Byte,
+    Flt,
+    Bool,
+    Char,
+    Str,
+    Naught,
+    Fn(&'static [Self], &'static Self),
+    Mut(&'static Self),
+    Pointer(&'static Self),
+    Generic(&'static str),
+    Custom(usize),
 }
 
-impl Default for Typechecker {
-    fn default() -> Self {
-        Self::new()
-    }
+pub struct Typechecker {
+    env: Environment,
+    current_func: Option<FunctionTableEntry>,
 }
 
 impl Typechecker {
-    pub fn new() -> Self {
-        Typechecker {
-            symbol_table: SymbolTable::new(),
-            current_func: String::new(),
-            current_parent: None,
-        }
+    pub fn new(env: Environment) -> Self {
+        return Typechecker { env, current_func: None};
     }
 
-    pub fn synth_type(&mut self, e: &Expr) -> SymbolType {
-        //dbg!(e.clone());
-        let l = match e {
-            Expr::Int(_) => SymbolType::Int,
-            Expr::Flt(_) => SymbolType::Flt,
-            Expr::Str(_) => SymbolType::Str,
-            Expr::Bool(_) => SymbolType::Bool,
-            Expr::Symbol(t) => {
-                if t == "self" {
-                    self.current_parent.clone().unwrap()
-                } else {
-                    self.symbol_table.get(t.clone())
-                }
-            }
+    fn check_expr(&mut self, e: &Expr) -> Result<SymbolType> {
+        //dbg!(e);
+        let res = match e {
             Expr::BinAdd { l, r }
             | Expr::BinSub { l, r }
             | Expr::BinMul { l, r }
-            | Expr::BinDiv { l, r } => self.synth_binop(l, r),
-            Expr::Logical { l, op: _, r } => self.synth_logical(l, r),
-            Expr::Assignment { name, value } => self.synth_assignment(value, name),
-            Expr::MutableAssignment { name, value } => self.synth_mut_assignment(value, name),
-            Expr::Closure { args, body } => {
-                self.symbol_table.new_scope();
-                for a in args.clone() {
-                    self.symbol_table.set(&a.0.clone(), &a.1.clone());
-                }
-                let mut x: SymbolType = SymbolType::Naught;
-                for e in body {
-                    x = self.synth_type(e);
-                }
-                SymbolType::Fn(
-                    args.iter().map(|a| a.1.clone()).collect(),
-                    Box::new(x),
-                    false,
-                )
+            | Expr::BinDiv { l, r } => {
+                let lhs_type = self.check_expr(l)?;
+                let rhs_type = self.check_expr(r)?;
+                assert!(lhs_type == rhs_type);
+                lhs_type
             }
-            Expr::Call { name, args } => {
-                //dbg!(name.clone());
-                let callee = self.synth_type(&name);
-                //dbg!(name.clone());
-                if callee.is_fn() {
-                    //dbg!(name.clone());
-                    let cargs: Vec<SymbolType> = callee.get_args().to_vec();
-                    if cargs.len() == args.len() {
-                        self.symbol_table.new_scope();
-                        for (i, e) in cargs.into_iter().enumerate() {
-                            let arg = self.synth_type(&args[i]);
-                            if self.symbol_table.compare_ty(&e, &arg) {
-                                continue;
-                            } else {
-                                panic!("invalid type on argument, expected {e:?}, found {arg:?}")
-                            }
-                        }
-
-                        let ofin = self.symbol_table.get(name.get_symbol_name()).get_rt();
-                        let fin = self.symbol_table.handle_custom(ofin);
-                        self.symbol_table.pop_scope();
-
-                        if fin.is_variant() {
-                            let mut newt: Vec<SymbolType> = vec![];
-                            for t in fin.get_variant_members() {
-                                if t.is_generic() {
-                                    newt.push(self.symbol_table.get(t.get_generic_name()))
-                                } else {
-                                    newt.push(t)
-                                }
-                            }
-                            SymbolType::Variant(fin.get_variant_name(), newt.into())
-                        } else {
-                            return fin;
-                        }
-                    } else {
-                        panic!(
-                            "Invalid arg length on func: {:?}. Expected {}, found {}",
-                            name,
-                            cargs.len(),
-                            args.len()
-                        )
-                    }
-                } else {
-                    //dbg!(self.clone());
-                    panic!("{name:?} is not a function, is {:?}", self.synth_type(&name))
-                }
+            Expr::Logical { l, op, r } => {
+                let lhs_type = self.check_expr(l)?;
+                let rhs_type = self.check_expr(r)?;
+                assert!(lhs_type == rhs_type && rhs_type == SymbolType::Bool);
+                SymbolType::Bool
             }
-
-            Expr::Return { value } => {
-                let vt = self.synth_type(&*value);
-                let fnt = self.symbol_table.get(self.current_func.clone()).get_rt();
-                if self.symbol_table.compare_ty(&fnt, &vt) {
-                    vt
-                } else {
-                    panic!("Return types don't match! Expected: {fnt:?}; found: {vt:?} with expr {:?} in function {:?}", value, self.current_func)
-                }
-            }
-
+            Expr::Assignment { name, value } => self.check_expr_assignment(name, value)?,
+            Expr::Return { value } => self.check_expr_return(value)?,
             Expr::If {
                 condition,
                 then,
                 otherwise,
-            } => {
-                let cond_type = self.synth_type(&*condition);
-                if cond_type.is_bool() {
-                    self.symbol_table.new_scope();
-                    let tt = self.synth_type(&*then);
-                    self.symbol_table.pop_scope();
-                    self.symbol_table.new_scope();
-                    let ot = self.synth_type(&*otherwise);
-                    self.symbol_table.pop_scope();
-
-                    if self.symbol_table.compare_ty(&ot, &tt) {
-                        tt
-                    } else {
-                        panic!("If branches have differing types! {:?} vs {:?}", tt, ot)
-                    }
-                } else {
-                    panic!("Expression {:?} is not boolean", condition);
-                }
-            }
-            Expr::StructInstance { name, fields } => {
-                let typedfields: Vec<(String, SymbolType)> = fields
-                    .iter()
-                    .map(|e| {
-                        let x = e.get_assignment();
-                        (x.0, self.synth_type(&x.1))
-                    })
-                    .collect();
-                let structuretype = self.symbol_table.get(name.get_symbol_name());
-                let mut generic_vec: Vec<SymbolType> = vec![];
-                if structuretype.is_obj() {
-                    let members = structuretype.get_members();
-                    if members.len() == typedfields.len() {
-                        for member in members.iter().enumerate() {
-                            let field = &typedfields[member.0];
-                            if !self.symbol_table.compare_ty( &field.1, &member.1.1) {
-                                panic!(
-                                    "{name:?} is not instantiated correctly! {:?} vs {:?}",
-                                    member.1 .1, field.1
-                                )
-                            } else if field.1.is_generic() {
-                                generic_vec.push(field.1.clone())
-                            }
-                        }
-                    } else {
-                        panic!("{name:?} is not instantiated correctly!")
-                    }
-
-                    return SymbolType::Custom(name.get_symbol_name(), generic_vec.into());
-                } else {
-                    panic!("{name:?} is not an object!")
-                }
-            }
-            Expr::AddressOf(t) => SymbolType::Pointer(Box::new(self.synth_type(t))),
-            Expr::Composition { l, r } => {
-                let n = r.get_callee();
-                assert!(self.symbol_table.get(n.clone()).is_fn());
-
-                let mut a = r.get_call_args();
-                let mut finargs = vec![*l.clone()];
-                finargs.append(&mut a);
-                self.synth_type(&Expr::Call {
-                    name: Box::new(Expr::Symbol(n)),
-                    args: finargs,
-                })
-            }
-            Expr::FieldAccess(o, f) => {
-                let mut a: SymbolType = self.synth_type(o);
-                if matches!(a, SymbolType::TypeDefSelf) && self.current_parent.is_some() {
-                    a = self.current_parent.clone().unwrap();
-                }
-                let ot = self.symbol_table.get(a.get_custom_name());
-                //dbg!(ot.clone());
-                assert!(ot.is_obj());
-                let om = ot.get_members();
-                let n = format!("$_{}", f.get_symbol_name());
-                for e in om {
-                    if e.0 == n {
-                        return e.1;
-                    } else {
-                        continue;
-                    }
-                }
-                panic!("{:?} is not a field of {:?}", n, o)
-            }
-            Expr::MethodCall { obj, name, args } => {
-                let msig = self.symbol_table.get_module(obj.get_symbol_name(), name.get_symbol_name());
-                let mut nargs = args.clone();
-                nargs.insert(0, *obj.clone());
-                let callargs: Vec<SymbolType> = nargs.iter().map(|e| self.synth_type(e)).collect();
-                
-                assert!(callargs.len() == msig.args.len(), "call to {:?} on {:?} expects {} arguments, found {}", name, obj, msig.args.len(), callargs.len());
-                for arg in msig.args.iter().enumerate() {
-                    let carg = &callargs[arg.0];
-                    //dbg!(arg.1.clone());
-                    //dbg!(carg.clone());
-                    if !self.symbol_table.compare_ty(&arg.1, &carg) {
-                        panic!("invalid type on argument, expected {arg:?}, found {carg:?}")
-                    }
-                }
-                return msig.rettype
-            }
-            Expr::ModuleCall { module, name, args } => {
-                let msig = self.symbol_table.get_module(module.get_symbol_name(), name.get_symbol_name());
-                let callargs: Vec<SymbolType> = args.iter().map(|e| self.synth_type(e)).collect();
-                
-                assert!(callargs.len() == msig.args.len(), "call to {:?} on {:?} expects {} arguments, found {}", name, module, msig.args.len(), callargs.len());
-                return msig.rettype
-            }
-            _ => panic!("unknown expr: {:?}", e),
+            } => todo!(),
+            Expr::Int(_) => SymbolType::Int,
+            Expr::Uint(_) => SymbolType::Uint,
+            Expr::Byte(_) => SymbolType::Byte,
+            Expr::Flt(ordered_float) => SymbolType::Flt,
+            Expr::Str(_) => SymbolType::Str,
+            Expr::Char(_) => SymbolType::Char,
+            Expr::Bool(_) => SymbolType::Bool,
+            Expr::Symbol(name) => self.check_expr_symbol(name)?,
+            Expr::StructInstance { name, fields } => self.check_expr_structinstance(name, fields)?,
+            Expr::FieldAccess(expr, v) => todo!(),
+            Expr::Call { name, args } => self.check_expr_call(name, args)?,
+            Expr::MethodCall { obj, name, args } => self.check_expr_method_call(obj, name, args)?,
+            _ => todo!(),
         };
-        //self.symbol_table.handle_custom(l)
-        l
+        return Ok(res);
     }
 
-    fn synth_mut_assignment(&mut self, value: &Box<Expr>, name: &Box<Expr>) -> SymbolType {
-        //let lt = self.synth_type(*name.clone());
-        let rt = SymbolType::Mut(Box::new(self.synth_type(&*value)));
-        self.symbol_table.set(&name.get_symbol_name(), &rt.clone());
-        rt
-    }
-
-    fn synth_assignment(&mut self, value: &Box<Expr>, name: &Box<Expr>) -> SymbolType {
-        //let lt = self.synth_type(*name.clone());
-        let rt = self.synth_type(&*value);
-        self.symbol_table.set(&name.get_symbol_name(), &rt);
-        rt
-    }
-
-    fn synth_logical(&mut self, l: &Box<Expr>, r: &Box<Expr>) -> SymbolType {
-        let lt = self.synth_type(&*l).extract();
-        let rt = self.synth_type(&*r).extract();
-        if self.symbol_table.compare_ty(&lt, &rt) {
-            SymbolType::Bool
-        } else {
-            panic!("Cannot compare {lt:?} {l:?} with {rt:?} {r:?}")
+    fn check_expr_structinstance(&mut self, name: &Box<Expr>, fields: &Vec<(String, Expr)>) -> Result<SymbolType, anyhow::Error> {
+        let name_string = name.get_symbol_name();
+        let the_struct = self.env.usertype_table.get_name(&name_string).ok_or(TypecheckingError::UndefinedType { name: name_string.clone() })?;
+        let defined_fields: Vec<(String, SymbolType)> = the_struct.kind.get_fields()?;
+        let mut real_fields: Vec<(String, SymbolType)> = vec![];
+        for f in fields {
+            real_fields.push((f.0.clone(), self.check_expr(&f.1)?));
         }
+        assert!(defined_fields.len() == fields.len());
+        for f in defined_fields.into_iter().zip(real_fields) {
+            assert!(f.0 == f.1)
+        }
+        return Ok(SymbolType::Custom(name_string, vec![]))
     }
 
-    fn synth_binop(&mut self, l: &Box<Expr>, r: &Box<Expr>) -> SymbolType {
-        let lt = self.synth_type(&*l);
-        let rt = self.synth_type(&*r);
-        //dbg!(lt.clone());
-        //dbg!(rt.clone());
-        if self.symbol_table.compare_ty(&lt, &rt) {
-            lt
-        } else {
-            panic!("Cannot operate {lt:?} {l:?} with {rt:?} {r:?}")
-        }
+    fn check_expr_return(&mut self, 
+    value: &Box<Expr>) -> Result<SymbolType, anyhow::Error> {
+        let value_type = self.check_expr(&value)?;
+        //dbg!(value_type.clone());
+        //dbg!(self.current_func.clone().unwrap().return_type);
+        assert!(self.current_func.clone().unwrap().return_type == value_type);
+        Ok(value_type)
     }
-}
 
-pub trait Typecheck<T> {
-    fn convert(value: &T, t: &mut Typechecker) -> Self;
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypedProgram {
-    pub modules: Vec<TypedModule>,
-    pub dependencies: Vec<String>,
-}
-
-impl From<Program> for TypedProgram {
-    fn from(value: Program) -> Self {
-        let mut t = Typechecker::new();
-        t.symbol_table.new_scope();
-        let mut vtm: Vec<TypedModule> = vec![];
-        let mut vmr = value.modules;
-        vmr.reverse();
-        for m in vmr {
-            let tm = TypedModule::convert(&m, &mut t);
-            vtm.push(tm);
-        }
-        //dbg!(t);
-        Self {
-            modules: vtm,
-            dependencies: value.dependencies,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TypedModule {
-    pub body: Vec<TypedAst>,
-}
-
-impl Typecheck<Module> for TypedModule {
-    fn convert(value: &Module, t: &mut Typechecker) -> Self {
-        let mut b: Vec<TypedAst> = vec![];
-        for a in &value.body {
-            let ta = TypedAst::convert(&a, t);
-            //dbg!(t.clone());
-            b.push(ta)
-        }
-        Self { body: b }
-    }
-}
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum TypedAst {
-    FnDef {
-        name: String,
-        rettype: SymbolType,
-        args: Vec<(String, SymbolType)>,
-        limits: Option<Vec<FnArgLimit>>,
-        body: Vec<TypedExpr>,
-    },
-    MethodDef {
-        parent: String,
-        name: String,
-        rettype: SymbolType,
-        args: ThinVec<(String, SymbolType)>,
-        limits: Option<Vec<FnArgLimit>>,
-        body: Vec<TypedExpr>,
-    },
-    Struct {
-        name: String,
-        members: Vec<(String, SymbolType)>,
-    },
-    Enum {
-        name: String,
-        members: Vec<SymbolType>,
-    },
-    TypeDef {
-        name: SymbolType,
-        funcs: Vec<Self>,
-    },
-    WithClause {
-        include: Vec<String>,
-    },
-    Propdef {
-        p: Property,
-    },
-    TypeAlias {
-        name: String,
-        is: SymbolType,
-    },
-}
-
-impl Typecheck<Ast> for TypedAst {
-    fn convert(value: &Ast, t: &mut Typechecker) -> Self {
-        //dbg!(t.clone());
-
-        match value {
-            Ast::FnDef {
-                name,
-                rettype,
-                args,
-                limits,
-                body,
-            } => {
-                let n: String = name.clone();
-                t.symbol_table.set(
-                    &n.clone(),
-                    &SymbolType::Fn(
-                        args.clone().iter().map(|a| a.1.clone()).collect(),
-                        Box::new(rettype.clone()),
-                        false,
-                    ),
+    fn check_expr_assignment(
+        &mut self,
+        name: &Box<Expr>,
+        value: &Box<Expr>,
+    ) -> Result<SymbolType, anyhow::Error> {
+        let name = name.get_symbol_name();
+        Ok(match self.env.current_variables.get_name(&name) {
+            Some(_) => return Err(TypecheckingError::NonMutableReassignment { name }.into()),
+            None => {
+                let rhs_type = self.check_expr(value)?;
+                let id = self.env.get_new_id();
+                self.env.current_variables.set(
+                    &name.clone(),
+                    id,
+                    VariableTableEntry {
+                        name,
+                        mytype: rhs_type.clone(),
+                    },
                 );
-                t.symbol_table.new_scope();
-                for a in args {
-                    t.symbol_table.set(&a.0.clone(), &a.1);
-                }
-                t.current_func.clone_from(&name);
-                let b: Vec<TypedExpr> = body
-                    .iter()
-                    .map(|e| TypedExpr::convert(e, t))
-                    .collect();
-                let mut nrt = rettype.clone();
-                if rettype.is_generic() {
-                    nrt = b.last().unwrap().exprtype.clone().unwrap();
-                }
-                let mut nargs: Vec<(String, SymbolType)> = vec![];
-
-                for i in args.clone() {
-                    if i.1.is_generic() {
-                        nargs.push((i.0, t.symbol_table.get(i.1.get_generic_name())));
-                    } else {
-                        nargs.push(i);
-                    }
-                }
-
-                t.symbol_table.redefine(
-                    &n,
-                    &SymbolType::Fn(
-                        nargs.clone().iter().map(|a| a.1.clone()).collect(),
-                        Box::new(nrt.clone()),
-                        false,
-                    ),
-                );
-
-                t.symbol_table.pop_scope();
-
-                if !t
-                    .symbol_table
-                    .compare_ty(rettype, &b.last().unwrap().exprtype.clone().unwrap())
-                {
-                    panic!("Return type was not equal to the last expression in function body; {:?} vs {:?}", rettype, &b.last().unwrap().exprtype.clone().unwrap())
-                }
-
-                Self::FnDef {
-                    name: name.clone(),
-                    rettype: nrt,
-                    args: nargs,
-                    limits: limits.clone(),
-                    body: b,
-                }
+                rhs_type
             }
-            Ast::WithClause { include } => Self::WithClause {
-                include: include.iter().map(|e| e.get_symbol_name()).collect(),
+        })
+    }
+
+    fn check_expr_symbol(&mut self, name: &String) -> Result<SymbolType, anyhow::Error> {
+        Ok(self
+            .env
+            .current_variables
+            .get_name(&name)
+            .ok_or(TypecheckingError::UndefinedVariable {
+                name: name.to_string(),
+            })?
+            .mytype)
+    }
+
+    fn check_expr_call(
+        &mut self,
+        name: &Box<Expr>,
+        args: &Vec<Expr>,
+    ) -> Result<SymbolType, anyhow::Error> {
+        let name: String = name.get_symbol_name();
+        let mut the_function = self.env.function_table.get_name(&name).ok_or(
+            TypecheckingError::UndefinedFunction {
+                name: name.to_string(),
             },
-            Ast::Struct { name, members } => {
-                t.symbol_table
-                    .set(&name.clone(), &SymbolType::Obj(name.to_string(), members.clone()));
-                Self::Struct {
-                    name: name.to_string(),
-                    members: members.to_vec(),
-                }
-            }
-
-            Ast::Enum { name, members } => {
-                let mut gc = 0;
-                for m in members.clone() {
-                    let mm = m.get_variant_members();
-                    for mg in mm {
-                        if mg.is_generic() {
-                            gc += 1;
-                        }
-                    }
-                }
-                t.symbol_table
-                    .set(&name.clone(), &SymbolType::Enum(name.to_string(), gc, members.clone()));
-
-                for m in members.clone() {
-                    let mm = m.get_variant_members();
-                    for mg in mm {
-                        if mg.is_generic() {
-                            t.symbol_table
-                                .set(&mg.get_generic_name(), &SymbolType::Unknown)
-                        }
-                    }
-                    t.symbol_table.set(
-                        &m.get_variant_name(),
-                        &SymbolType::Fn(
-                            m.get_variant_members().into(),
-                            Box::new(SymbolType::Enum(m.get_variant_name(), gc, members.clone())),
-                            true,
-                        ),
-                    );
-                }
-
-                Self::Enum {
-                    name: name.to_string(),
-                    members: members.to_vec(),
-                }
-            }
-            Ast::TypeDef { name, funcs } => {
-                let gett = &t.symbol_table.get(name.get_custom_name());
-                if t.symbol_table.has(&name.get_custom_name())
-                    && t.symbol_table.compare_ty(gett, name)
-                {
-                    let nn = name.get_custom_name();
-                    let mut nfuncs: Vec<TypedAst> = vec![];
-                    t.current_parent = Some(name.clone());
-                    let mut new_group = SymbolTableGroup {
-                        name: nn.clone(),
-                        children: HashMap::new(),
-                    };
-                    for f in funcs {
-                        //dbg!(f.clone());
-                        let res = Self::convert(&f, t);
-                        new_group
-                            .children
-                            .insert(f.get_fnname(), res.clone().into());
-                        nfuncs.push(res)
-                    }
-                    t.current_parent = None;
-                    t.symbol_table.groups.push(new_group);
-                    return Self::TypeDef {
-                        name: name.clone(),
-                        funcs: nfuncs.to_vec(),
-                    };
-                } else {
-                    panic!("Cannot define implementation for undefined type {name:?}")
-                }
-            }
-             
-            Ast::Propdef { p: _ } => {
-                todo!()
-                // t.symbol_table.set(p.name, &SymbolType::Property);
-                // for f in &p.req {
-                //     t.symbol_table.set()
-                // }
-                // return Self::Propdef {p: p.clone()}
-            }
-            Ast::TypeAlias { name, is } => {
-                t.symbol_table.set(name, is);
-                Self::TypeAlias {
-                    name: name.to_string(),
-                    is: is.clone(),
-                }
-            }
-            Ast::MethodDef { parent, name, rettype, args, limits, body } => {
-                
-                t.symbol_table.new_scope();
-                let n: String = name.clone();
-                t.symbol_table.set(
-                    &n.clone(),
-                    &SymbolType::MethodFn {parent: parent.to_string(),f: 
-                    Box::new(SymbolType::Fn(
-                        args.clone().iter().map(|a| a.1.clone()).collect(),
-                        Box::new(rettype.clone()),
-                        false,
-                    ))},
-                );
-                for a in args {
-                    t.symbol_table.set(&a.0.clone(), &a.1);
-                }
-                t.current_func.clone_from(&name);
-                let b: Vec<TypedExpr> = body
-                    .iter()
-                    .map(|e| TypedExpr::convert(e, t))
-                    .collect();
-                let mut nrt = rettype.clone();
-                if rettype.is_generic() {
-                    nrt = b.last().unwrap().exprtype.clone().unwrap();
-                }
-                //let mut nargs: Vec<(String, SymbolType)> = vec![];
-
-                // for i in args.clone() {
-                //     if i.1.is_generic() {
-                //         nargs.push((i.0, t.symbol_table.get(i.1.get_generic_name())));
-                //     } else {
-                //         nargs.push(i);
-                //     }
-                // }
-                t.symbol_table.pop_scope();
-                return Self::MethodDef {
-                    parent: t.current_parent.clone().unwrap().clone().get_custom_name(),
-                    name: name.to_string(),
-                    rettype: nrt,
-                    args: args.clone(),
-                    limits: limits.clone(),
-                    body: b,
-                }
-            }
+        )?;
+        if !the_function.is_checked {
+            self.check_function_body(&the_function)?;
         }
+        let mut generated_call_arg_types: Vec<SymbolType> = vec![];
+        for expression in args {
+            generated_call_arg_types.push(self.check_expr(expression)?);
+        }
+        for arg in generated_call_arg_types.iter().zip(the_function.args) {
+            assert!(*arg.0 == arg.1 .1)
+        }
+        return Ok(the_function.return_type);
     }
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TypedExpr {
-    pub e: Expr,
-    pub exprtype: Option<SymbolType>,
-}
+    fn check_expr_method_call(
+        &mut self,
+        obj: &Box<Expr>,
+        name: &Box<Expr>,
+        args: &Vec<Expr>,
+    ) -> Result<SymbolType, anyhow::Error> {
+        let obj_name: String = obj.get_symbol_name();
+        let func_name = name.get_symbol_name();
+        let the_object: String = match self
+            .env
+            .usertype_table
+            .get_name(&obj_name) {
+                Some(e) => e.name,
+                None => {
+                    if let Some(o) = self.env.current_variables.get_name(&obj_name) {
+                        o.mytype.get_custom_name()
+                    } else {
+                        return Err(TypecheckingError::UndefinedType { name: obj_name.clone() }.into())
+                    }
+                }
+            };
+        let binding = self.env.method_table.get_name(&the_object).ok_or(TypecheckingError::NoMethods {
+             name: the_object.clone(),
+         },)?;
+        let mut the_function = binding.the_functions.iter().filter(|el| el.name == func_name).nth(0).ok_or(TypecheckingError::UndefinedMethod { obj: the_object, name: func_name } )?.clone();
+            if !the_function.is_checked {
+                self.check_function_body(&mut the_function)?;
+                the_function.is_checked = true
+            }
+            let mut generated_call_arg_types: Vec<SymbolType> = vec![];
+            for expression in args {
+                generated_call_arg_types.push(self.check_expr(expression)?);
+            }
+            for arg in generated_call_arg_types.iter().zip(the_function.args) {
+                assert!(*arg.0 == arg.1 .1)
+            }
+            return Ok(the_function.return_type);
+    }
 
-impl Typecheck<Expr> for TypedExpr {
-    fn convert(value: &Expr, t: &mut Typechecker) -> Self {
-        Self {
-            e: value.clone(),
-            exprtype: Some(t.synth_type(value)),
+    pub fn check_function_body(&mut self, func: &FunctionTableEntry) -> anyhow::Result<()> {
+        let prev_curr_variables = self.env.current_variables.clone();
+        self.env.current_variables = Table::new();
+        self.current_func = Some(func.clone());
+        for arg in func.args.clone() {
+            let id = self.env.get_new_id();
+            let name = arg.0.clone();
+            self.env.current_variables.set(&name, id, VariableTableEntry { name: arg.0, mytype: arg.1 });
         }
+        for e in &func.body {
+            // Check each expression in body
+            self.check_expr(e)?;
+        }
+//        func.is_checked = true;   
+        self.env.current_variables = prev_curr_variables;
+        Ok(())
+    }
+
+    pub fn check(&mut self) -> anyhow::Result<Environment, anyhow::Error> {
+        //dbg!(self.env.clone());
+        let mut main_func: FunctionTableEntry = self
+            .env
+            .function_table
+            .get_name("main")
+            .ok_or(TypecheckingError::MissingMainFunction)?;
+        self.check_function_body(&main_func)?;
+        main_func.is_checked = true;
+        return Ok(self.env.clone());
     }
 }

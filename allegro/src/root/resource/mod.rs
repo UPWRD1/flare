@@ -1,3 +1,5 @@
 //pub mod oldast;
-pub mod tk;
 pub mod ast;
+pub mod tk;
+pub mod lex;
+pub mod errors;

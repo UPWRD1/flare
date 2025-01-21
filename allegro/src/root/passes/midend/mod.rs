@@ -1,2 +1,3 @@
+pub mod environment;
 pub mod typechecking;
-pub mod symboltable;
+pub mod union;

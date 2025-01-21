@@ -4,18 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.94"
+codesnake = "0.2.1"
 colored = "2.1.0"
-cranelift = "0.97.1"
-cranelift-module = "0.97.1"
-cranelift-jit = "0.97.1"
-cranelift-native = "0.97.1"
+itertools = "0.13.0"
 lazy_static = "1.4.0"
 logos = "0.14.1"
+ordered-float = { version = "4.5.0", features = ["serde"] }
 peg = "0.8.4"
-# recursive = "0.1.1"
+rayon = "1.10.0"
 serde = {version = "1.0.210", features = ["derive"]}
 serde_json = "1.0.128"
-thin-vec = {version = "0.2.13", features = ["serde"]}
+thiserror = "2.0.7"
 
 [profile.release]
 opt-level = 3
