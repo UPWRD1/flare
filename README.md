@@ -1,2 +1,2 @@
 # Flare
-Flare is a reactive programming language for the future.
+Flare is a functional, fast, fearless, and friendly programming language for the future.
