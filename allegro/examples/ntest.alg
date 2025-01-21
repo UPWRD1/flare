@@ -1,8 +1,7 @@
-let test of y: int -> int =
-	if y > 5 then 
-		b = y * 4
-	else 
-		b = y * 2
+type Wrapper<?T> = struct of
+	value: ?T
 
-let main of x: int =
-	b = x + test(3)
+def Wrapper<?T> =
+	let new of v: ?T -> Self =
+		return Self {value: v}
+end

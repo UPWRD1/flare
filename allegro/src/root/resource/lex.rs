@@ -1,5 +1,4 @@
-use std::{collections::HashSet, hash::Hasher};
-
+use std::collections::HashSet;
 
 use super::tk::Token;
 

@@ -1,9 +1,12 @@
+use ordered_float::OrderedFloat;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::hash::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
-use thin_vec::ThinVec;
+
+use crate::root::passes::midend::typechecking::PartialType;
 
 pub fn calculate_hash<T: Hash>(t: &String) -> String {
     let mut s = DefaultHasher::new();
@@ -13,45 +16,48 @@ pub fn calculate_hash<T: Hash>(t: &String) -> String {
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    pub modules: Vec<Module>,
-    pub dependencies: Vec<String>,
+    pub modules: Vec<FileModule>,
+    pub dependencies: HashSet<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Module {
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileModule {
     pub name: String,
     pub body: Vec<Ast>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ast {
     FnDef {
         name: String,
         rettype: SymbolType,
-        args: ThinVec<(String, SymbolType)>,
-        limits: Option<Vec<FnArgLimit>>,
+        args: Vec<(String, SymbolType)>,
+        limits: Option<Vec<Expr>>,
         body: Vec<Expr>,
     },
     MethodDef {
         parent: String,
         name: String,
         rettype: SymbolType,
-        args: ThinVec<(String, SymbolType)>,
-        limits: Option<Vec<FnArgLimit>>,
+        args: Vec<(String, SymbolType)>,
+        limits: Option<Vec<Expr>>,
         body: Vec<Expr>,
     },
     Struct {
         name: String,
         members: Vec<(String, SymbolType)>,
+        methods: Vec<Self>
     },
     Enum {
         name: String,
         members: Vec<SymbolType>,
+        methods: Vec<Self>
+
     },
-    TypeDef {
-        name: SymbolType,
-        funcs: ThinVec<Self>,
-    },
+    // TypeDef {
+    //     name: SymbolType,
+    //     funcs: Vec<Self>,
+    // },
     WithClause {
         include: Vec<Expr>,
     },
@@ -63,6 +69,7 @@ pub enum Ast {
         p: Property,
     },
 }
+
 impl Ast {
     pub fn get_fnname(&self) -> String {
         match self {
@@ -94,24 +101,18 @@ impl Ast {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct FnArgLimit {
-    pub name: String,
-    pub limit: SymbolType,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Property {
     pub name: String,
     pub req: Vec<FnSignature>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct FnSignature {
     pub name: String,
     pub rettype: SymbolType,
-    pub args: ThinVec<SymbolType>,
-    pub limits: Option<Vec<FnArgLimit>>,
+    pub args: Vec<SymbolType>,
+    pub limits: Option<Vec<Expr>>,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -123,7 +124,7 @@ pub enum LogicOp {
     CGE,
     Is,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Predicate {
     Comparison {
         op: LogicOp,
@@ -135,7 +136,7 @@ pub enum Predicate {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Expr {
     BinAdd {
         l: Box<Self>,
@@ -159,10 +160,6 @@ pub enum Expr {
         r: Box<Self>,
     },
     Assignment {
-        name: Box<Self>,
-        value: Box<Self>,
-    },
-    MutableAssignment {
         name: Box<Self>,
         value: Box<Self>,
     },
@@ -191,7 +188,7 @@ pub enum Expr {
     Uint(u32),
     Word(usize),
     Byte(u8),
-    Flt(f32),
+    Flt(OrderedFloat<f32>),
     Str(String),
     Char(char),
     Bool(bool),
@@ -279,19 +276,18 @@ pub enum SymbolType {
     Char,
     Bool,
     Mut(Box<Self>),
-    Fn(ThinVec<Self>, Box<Self>, bool), // bool if is variant constructor
+    Fn(Vec<Self>, Box<Self>, bool), // bool if is variant constructor
     MethodFn { parent: String, f: Box<Self> },
     Naught,
     Pointer(Box<Self>),
     Unknown,
     Generic(String),
-    Custom(String, ThinVec<Self>),
+    Custom(String, Vec<Self>),
     StructRef(String),
-    Enum(String, usize, ThinVec<Self>),
-    Variant(String, ThinVec<Self>),
+    Enum(String, usize, Vec<Self>),
+    Variant(String, Vec<Self>),
     Property,
     TypeDefSelf,
-    Definition(String),
 }
 
 #[derive(Debug, Clone)]
@@ -350,7 +346,7 @@ impl SymbolType {
         }
     }
 
-    pub fn get_custom_generics(&self) -> ThinVec<Self> {
+    pub fn get_custom_generics(&self) -> Vec<Self> {
         match self {
             Self::Custom(_, v) => v.clone(),
             _ => panic!("{self:?} is not a custom type"),
@@ -361,7 +357,7 @@ impl SymbolType {
         matches!(self, Self::Fn(..)) || matches!(self, Self::MethodFn { .. })
     }
 
-    pub fn get_args(&self) -> ThinVec<Self> {
+    pub fn get_args(&self) -> Vec<Self> {
         match self {
             SymbolType::Fn(args, ..) => args.clone(),
             SymbolType::MethodFn { parent: _, f } => f.get_args(),
@@ -436,7 +432,7 @@ impl SymbolType {
         matches!(self.extract(), Self::StructRef(..))
     }
 
-    // pub fn get_members(&self) -> ThinVec<(String, Self)> {
+    // pub fn get_members(&self) -> Vec<(String, Self)> {
     //     match self.extract() {
     //         SymbolType::StructRef(_n, v) => v.clone(),
     //         _ => panic!("{self:?} is not an object"),
@@ -454,7 +450,7 @@ impl SymbolType {
         matches!(self, Self::Enum(..))
     }
 
-    pub fn get_variants(&self) -> ThinVec<Self> {
+    pub fn get_variants(&self) -> Vec<Self> {
         match self.extract() {
             SymbolType::Enum(_, _, v) => v.clone(),
             _ => panic!("{self:?} is not an enum"),
@@ -479,7 +475,7 @@ impl SymbolType {
         }
     }
 
-    pub fn get_variant_members(&self) -> ThinVec<Self> {
+    pub fn get_variant_members(&self) -> Vec<Self> {
         match self {
             SymbolType::Variant(_, v) => v.clone(),
             _ => panic!("{self:?} is not a variant"),
@@ -510,6 +506,9 @@ impl SymbolType {
             _ => todo!(),
         }
     }
+
+    
+    
 
     //     pub fn compare(&self, rhs: &Self) -> bool {
     //         //println!("{:?} vs {:?}", self, rhs);

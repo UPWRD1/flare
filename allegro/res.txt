@@ -1,0 +1,1238 @@
+Program {
+    modules: [
+        FileModule {
+            name: "microgrep",
+            body: [
+                WithClause {
+                    include: [
+                        Str(
+                            "\"examples/slice\"",
+                        ),
+                    ],
+                },
+                WithClause {
+                    include: [
+                        Str(
+                            "\"examples/result\"",
+                        ),
+                    ],
+                },
+                Struct {
+                    name: "Config",
+                    members: [
+                        (
+                            "query",
+                            Str,
+                        ),
+                        (
+                            "file_path",
+                            Str,
+                        ),
+                        (
+                            "ignore_case",
+                            Bool,
+                        ),
+                    ],
+                },
+                FnDef {
+                    name: "search",
+                    rettype: Custom(
+                        "Slice",
+                        [
+                            Str,
+                        ],
+                    ),
+                    args: [
+                        (
+                            "query",
+                            Str,
+                        ),
+                        (
+                            "contents",
+                            Str,
+                        ),
+                    ],
+                    limits: Some(
+                        [],
+                    ),
+                    body: [
+                        MethodCall {
+                            obj: Call {
+                                name: FieldAccess(
+                                    Symbol(
+                                        "contents",
+                                    ),
+                                    "lines",
+                                ),
+                                args: [],
+                            },
+                            name: Symbol(
+                                "filter",
+                            ),
+                            args: [
+                                Closure {
+                                    args: [
+                                        (
+                                            "line",
+                                            Generic(
+                                                "?_d8d3fee1a010ab96",
+                                            ),
+                                        ),
+                                    ],
+                                    body: [
+                                        Call {
+                                            name: FieldAccess(
+                                                Symbol(
+                                                    "line",
+                                                ),
+                                                "contains",
+                                            ),
+                                            args: [
+                                                Symbol(
+                                                    "query",
+                                                ),
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                FnDef {
+                    name: "search_case_insensitive",
+                    rettype: Custom(
+                        "Slice",
+                        [
+                            Str,
+                        ],
+                    ),
+                    args: [
+                        (
+                            "query",
+                            Str,
+                        ),
+                        (
+                            "contents",
+                            Str,
+                        ),
+                    ],
+                    limits: Some(
+                        [],
+                    ),
+                    body: [
+                        Assignment {
+                            name: Symbol(
+                                "q",
+                            ),
+                            value: Call {
+                                name: FieldAccess(
+                                    Symbol(
+                                        "query",
+                                    ),
+                                    "to_lowercase",
+                                ),
+                                args: [],
+                            },
+                        },
+                        MethodCall {
+                            obj: Call {
+                                name: FieldAccess(
+                                    Symbol(
+                                        "contents",
+                                    ),
+                                    "lines",
+                                ),
+                                args: [],
+                            },
+                            name: Symbol(
+                                "filter",
+                            ),
+                            args: [
+                                Closure {
+                                    args: [
+                                        (
+                                            "line",
+                                            Generic(
+                                                "?_d8d3fee1a010ab96",
+                                            ),
+                                        ),
+                                    ],
+                                    body: [
+                                        MethodCall {
+                                            obj: Call {
+                                                name: FieldAccess(
+                                                    Symbol(
+                                                        "line",
+                                                    ),
+                                                    "to_lowercase",
+                                                ),
+                                                args: [],
+                                            },
+                                            name: Symbol(
+                                                "contains",
+                                            ),
+                                            args: [
+                                                Symbol(
+                                                    "q",
+                                                ),
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                TypeDef {
+                    name: Custom(
+                        "Config",
+                        [],
+                    ),
+                    funcs: [
+                        MethodDef {
+                            parent: "Config",
+                            name: "build",
+                            rettype: Custom(
+                                "Result",
+                                [
+                                    Custom(
+                                        "Config",
+                                        [],
+                                    ),
+                                    Str,
+                                ],
+                            ),
+                            args: [
+                                (
+                                    "args",
+                                    Custom(
+                                        "Slice",
+                                        [
+                                            Str,
+                                        ],
+                                    ),
+                                ),
+                            ],
+                            limits: Some(
+                                [],
+                            ),
+                            body: [
+                                If {
+                                    condition: Logical {
+                                        l: Call {
+                                            name: FieldAccess(
+                                                Symbol(
+                                                    "args",
+                                                ),
+                                                "len",
+                                            ),
+                                            args: [],
+                                        },
+                                        op: CLT,
+                                        r: Int(
+                                            3,
+                                        ),
+                                    },
+                                    then: Return {
+                                        value: Call {
+                                            name: Symbol(
+                                                "Err",
+                                            ),
+                                            args: [
+                                                Str(
+                                                    "\"Not enough arguments!\"",
+                                                ),
+                                            ],
+                                        },
+                                    },
+                                    otherwise: Return {
+                                        value: Call {
+                                            name: Symbol(
+                                                "Ok",
+                                            ),
+                                            args: [
+                                                StructInstance {
+                                                    name: Symbol(
+                                                        "Config",
+                                                    ),
+                                                    fields: [
+                                                        (
+                                                            "query",
+                                                            Call {
+                                                                name: FieldAccess(
+                                                                    Symbol(
+                                                                        "args",
+                                                                    ),
+                                                                    "get",
+                                                                ),
+                                                                args: [
+                                                                    Int(
+                                                                        1,
+                                                                    ),
+                                                                ],
+                                                            },
+                                                        ),
+                                                        (
+                                                            "file_path",
+                                                            Call {
+                                                                name: FieldAccess(
+                                                                    Symbol(
+                                                                        "args",
+                                                                    ),
+                                                                    "get",
+                                                                ),
+                                                                args: [
+                                                                    Int(
+                                                                        2,
+                                                                    ),
+                                                                ],
+                                                            },
+                                                        ),
+                                                        (
+                                                            "ignore_case",
+                                                            Call {
+                                                                name: FieldAccess(
+                                                                    Symbol(
+                                                                        "args",
+                                                                    ),
+                                                                    "contains",
+                                                                ),
+                                                                args: [
+                                                                    Str(
+                                                                        "\"-i\"",
+                                                                    ),
+                                                                ],
+                                                            },
+                                                        ),
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                        MethodDef {
+                            parent: "Config",
+                            name: "run",
+                            rettype: Generic(
+                                "?_27e9ab0fdb496fa4",
+                            ),
+                            args: [
+                                (
+                                    "self",
+                                    Generic(
+                                        "?_2c71bd48d95c9b64",
+                                    ),
+                                ),
+                            ],
+                            limits: Some(
+                                [],
+                            ),
+                            body: [
+                                Assignment {
+                                    name: Symbol(
+                                        "contents",
+                                    ),
+                                    value: FieldAccess(
+                                        Symbol(
+                                            "self",
+                                        ),
+                                        "file_path",
+                                    ),
+                                },
+                                Assignment {
+                                    name: Symbol(
+                                        "res",
+                                    ),
+                                    value: If {
+                                        condition: FieldAccess(
+                                            Symbol(
+                                                "self",
+                                            ),
+                                            "ignore_case",
+                                        ),
+                                        then: Call {
+                                            name: Symbol(
+                                                "search_case_insensitive",
+                                            ),
+                                            args: [
+                                                FieldAccess(
+                                                    Symbol(
+                                                        "self",
+                                                    ),
+                                                    "query",
+                                                ),
+                                                Symbol(
+                                                    "contents",
+                                                ),
+                                            ],
+                                        },
+                                        otherwise: Call {
+                                            name: Symbol(
+                                                "search",
+                                            ),
+                                            args: [
+                                                FieldAccess(
+                                                    Symbol(
+                                                        "self",
+                                                    ),
+                                                    "query",
+                                                ),
+                                                Symbol(
+                                                    "contents",
+                                                ),
+                                            ],
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                },
+                FnDef {
+                    name: "main",
+                    rettype: Generic(
+                        "?_c8c7a99bb88e156b",
+                    ),
+                    args: [],
+                    limits: Some(
+                        [],
+                    ),
+                    body: [
+                        Assignment {
+                            name: Symbol(
+                                "args",
+                            ),
+                            value: Call {
+                                name: FieldAccess(
+                                    Symbol(
+                                        "Env",
+                                    ),
+                                    "read_argsv",
+                                ),
+                                args: [],
+                            },
+                        },
+                        Assignment {
+                            name: Symbol(
+                                "config",
+                            ),
+                            value: Composition {
+                                l: Call {
+                                    name: FieldAccess(
+                                        Symbol(
+                                            "Config",
+                                        ),
+                                        "build",
+                                    ),
+                                    args: [
+                                        Symbol(
+                                            "args",
+                                        ),
+                                    ],
+                                },
+                                r: Call {
+                                    name: Symbol(
+                                        "unwrap_else",
+                                    ),
+                                    args: [
+                                        Closure {
+                                            args: [
+                                                (
+                                                    "e",
+                                                    Generic(
+                                                        "?_e561aacbdf93cfd2",
+                                                    ),
+                                                ),
+                                            ],
+                                            body: [
+                                                Call {
+                                                    name: Symbol(
+                                                        "quit",
+                                                    ),
+                                                    args: [
+                                                        BinAdd {
+                                                            l: Str(
+                                                                "\"Problem parsing arguments: \"",
+                                                            ),
+                                                            r: Symbol(
+                                                                "e",
+                                                            ),
+                                                        },
+                                                        Int(
+                                                            1,
+                                                        ),
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                        If {
+                            condition: Logical {
+                                l: Call {
+                                    name: FieldAccess(
+                                        Symbol(
+                                            "config",
+                                        ),
+                                        "run",
+                                    ),
+                                    args: [],
+                                },
+                                op: Is,
+                                r: Call {
+                                    name: Symbol(
+                                        "Err",
+                                    ),
+                                    args: [
+                                        Symbol(
+                                            "e",
+                                        ),
+                                    ],
+                                },
+                            },
+                            then: Call {
+                                name: Symbol(
+                                    "quit",
+                                ),
+                                args: [
+                                    BinAdd {
+                                        l: Str(
+                                            "\"Application error: \"",
+                                        ),
+                                        r: Symbol(
+                                            "e",
+                                        ),
+                                    },
+                                    Int(
+                                        1,
+                                    ),
+                                ],
+                            },
+                            otherwise: Call {
+                                name: Symbol(
+                                    "exit",
+                                ),
+                                args: [
+                                    Int(
+                                        0,
+                                    ),
+                                ],
+                            },
+                        },
+                    ],
+                },
+            ],
+        },
+        FileModule {
+            name: "slice",
+            body: [
+                WithClause {
+                    include: [
+                        Str(
+                            "\"examples/result\"",
+                        ),
+                    ],
+                },
+                Struct {
+                    name: "Slice",
+                    members: [
+                        (
+                            "start",
+                            Pointer(
+                                Generic(
+                                    "?_T",
+                                ),
+                            ),
+                        ),
+                        (
+                            "len",
+                            Int,
+                        ),
+                        (
+                            "cap",
+                            Int,
+                        ),
+                    ],
+                },
+                TypeDef {
+                    name: Custom(
+                        "Slice",
+                        [
+                            Generic(
+                                "?_T",
+                            ),
+                        ],
+                    ),
+                    funcs: [
+                        MethodDef {
+                            parent: "Slice",
+                            name: "len",
+                            rettype: Generic(
+                                "?_875584f62ed82e73",
+                            ),
+                            args: [
+                                (
+                                    "self",
+                                    Generic(
+                                        "?_2c71bd48d95c9b64",
+                                    ),
+                                ),
+                            ],
+                            limits: Some(
+                                [],
+                            ),
+                            body: [
+                                FieldAccess(
+                                    Symbol(
+                                        "self",
+                                    ),
+                                    "len",
+                                ),
+                            ],
+                        },
+                        MethodDef {
+                            parent: "Slice",
+                            name: "new",
+                            rettype: Generic(
+                                "?_e5e135daabbc9bf2",
+                            ),
+                            args: [
+                                (
+                                    "x",
+                                    Generic(
+                                        "?_735b2f4734cda621",
+                                    ),
+                                ),
+                            ],
+                            limits: Some(
+                                [],
+                            ),
+                            body: [
+                                StructInstance {
+                                    name: Symbol(
+                                        "Slice",
+                                    ),
+                                    fields: [
+                                        (
+                                            "start",
+                                            AddressOf(
+                                                Symbol(
+                                                    "x",
+                                                ),
+                                            ),
+                                        ),
+                                        (
+                                            "len",
+                                            Int(
+                                                1,
+                                            ),
+                                        ),
+                                        (
+                                            "cap",
+                                            Int(
+                                                32,
+                                            ),
+                                        ),
+                                    ],
+                                },
+                            ],
+                        },
+                        MethodDef {
+                            parent: "Slice",
+                            name: "get",
+                            rettype: Generic(
+                                "?_T",
+                            ),
+                            args: [
+                                (
+                                    "self",
+                                    Generic(
+                                        "?_2c71bd48d95c9b64",
+                                    ),
+                                ),
+                                (
+                                    "idx",
+                                    Int,
+                                ),
+                            ],
+                            limits: Some(
+                                [],
+                            ),
+                            body: [
+                                If {
+                                    condition: Logical {
+                                        l: Symbol(
+                                            "idx",
+                                        ),
+                                        op: CLE,
+                                        r: FieldAccess(
+                                            Symbol(
+                                                "self",
+                                            ),
+                                            "len",
+                                        ),
+                                    },
+                                    then: Return {
+                                        value: BinMul {
+                                            l: Symbol(
+                                                "idx",
+                                            ),
+                                            r: FieldAccess(
+                                                Symbol(
+                                                    "self",
+                                                ),
+                                                "start",
+                                            ),
+                                        },
+                                    },
+                                    otherwise: Return {
+                                        value: Flt(
+                                            -1.0,
+                                        ),
+                                    },
+                                },
+                            ],
+                        },
+                        MethodDef {
+                            parent: "Slice",
+                            name: "containshelper",
+                            rettype: Bool,
+                            args: [
+                                (
+                                    "self",
+                                    Generic(
+                                        "?_2c71bd48d95c9b64",
+                                    ),
+                                ),
+                                (
+                                    "e",
+                                    Generic(
+                                        "?_T",
+                                    ),
+                                ),
+                                (
+                                    "c",
+                                    Int,
+                                ),
+                            ],
+                            limits: Some(
+                                [],
+                            ),
+                            body: [
+                                If {
+                                    condition: Logical {
+                                        l: Symbol(
+                                            "c",
+                                        ),
+                                        op: CLT,
+                                        r: Call {
+                                            name: FieldAccess(
+                                                Symbol(
+                                                    "s",
+                                                ),
+                                                "len",
+                                            ),
+                                            args: [],
+                                        },
+                                    },
+                                    then: If {
+                                        condition: Logical {
+                                            l: MethodCall {
+                                                obj: Call {
+                                                    name: FieldAccess(
+                                                        Symbol(
+                                                            "s",
+                                                        ),
+                                                        "get",
+                                                    ),
+                                                    args: [
+                                                        Symbol(
+                                                            "c",
+                                                        ),
+                                                    ],
+                                                },
+                                                name: Symbol(
+                                                    "unwrap",
+                                                ),
+                                                args: [],
+                                            },
+                                            op: CEQ,
+                                            r: Symbol(
+                                                "e",
+                                            ),
+                                        },
+                                        then: Return {
+                                            value: Bool(
+                                                true,
+                                            ),
+                                        },
+                                        otherwise: Return {
+                                            value: Call {
+                                                name: FieldAccess(
+                                                    Symbol(
+                                                        "self",
+                                                    ),
+                                                    "containshelper",
+                                                ),
+                                                args: [
+                                                    Symbol(
+                                                        "s",
+                                                    ),
+                                                    Symbol(
+                                                        "e",
+                                                    ),
+                                                    BinAdd {
+                                                        l: Symbol(
+                                                            "c",
+                                                        ),
+                                                        r: Int(
+                                                            1,
+                                                        ),
+                                                    },
+                                                ],
+                                            },
+                                        },
+                                    },
+                                    otherwise: Return {
+                                        value: Bool(
+                                            false,
+                                        ),
+                                    },
+                                },
+                            ],
+                        },
+                        MethodDef {
+                            parent: "Slice",
+                            name: "contains",
+                            rettype: Bool,
+                            args: [
+                                (
+                                    "self",
+                                    Generic(
+                                        "?_2c71bd48d95c9b64",
+                                    ),
+                                ),
+                                (
+                                    "item",
+                                    Generic(
+                                        "?_T",
+                                    ),
+                                ),
+                            ],
+                            limits: Some(
+                                [],
+                            ),
+                            body: [
+                                Call {
+                                    name: Symbol(
+                                        "containshelper",
+                                    ),
+                                    args: [
+                                        Symbol(
+                                            "self",
+                                        ),
+                                        Symbol(
+                                            "item",
+                                        ),
+                                        Int(
+                                            0,
+                                        ),
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        FileModule {
+            name: "result",
+            body: [
+                Enum {
+                    name: "Result",
+                    members: [
+                        Variant(
+                            "Ok",
+                            [
+                                Generic(
+                                    "?_T",
+                                ),
+                            ],
+                        ),
+                        Variant(
+                            "Err",
+                            [
+                                Generic(
+                                    "?_E",
+                                ),
+                            ],
+                        ),
+                    ],
+                },
+            ],
+        },
+    ],
+    dependencies: {
+        "/workspaces/allegro/allegro/examples/slice.alg",
+        "/workspaces/allegro/allegro/examples/result.alg",
+    },
+}
+Environment {
+    file_table: Table {
+        entries: {
+            (
+                2,
+                "/workspaces/allegro/allegro/examples/slice.alg",
+            ): FileTableEntry {
+                path: "/workspaces/allegro/allegro/examples/slice.alg",
+                src: "with \"examples/result\"\n\ntype Slice<?T> = struct of\n\tstart: ^?T,\n\tlen: int,\n\tcap: int\n\ndef Slice<?T> =\n    let len of self =\n        self.len\n\n    let new of x = \n        Slice {start: %x, len: 1, cap: 32}\n\n    let get of self, idx: int -> ?T =\n        if idx <= self.len then\n            return idx * self.start\n        else \n            return -1\n\n    let containshelper of self, e: ?T, c: int -> bool =\n        if c < s.len() then\n            if s.get(c).unwrap() == e then \n                return true \n            else \n                return self.containshelper(s, e, c + 1)\n        else \n            return false\n\n\n    let contains of self, item: ?T -> bool =\n        containshelper(self, item, 0)\n\nend\n",
+            },
+            (
+                1,
+                "examples/microgrep.alg",
+            ): FileTableEntry {
+                path: "examples/microgrep.alg",
+                src: "--with IO\n--with Env\n--with Iter\n\nwith \"examples/slice\"\nwith \"examples/result\"\n\ntype Config = struct of \n\tquery: str,\n\tfile_path: str,\n\tignore_case: bool\n\nlet search of query: str, contents: str -> Slice<str> =\n\tcontents.lines().filter(fn of line -> line.contains(query))\n\nlet search_case_insensitive of query: str, contents: str -> Slice<str> =\n\tq = query.to_lowercase()\n\tcontents.lines().filter(fn of line -> line.to_lowercase().contains(q))\n\n\ndef Config =\n\tlet build of args: Slice<str> -> Result<Config, str> =\n\t\tif args.len() < 3 then\n\t\t\treturn Err(\"Not enough arguments!\")\n\t\telse \n\t\t\treturn Ok(Config {query: args.get(1), file_path: args.get(2), ignore_case: args.contains(\"-i\")})\n\n\tlet run of self =\n\t\tcontents = self.file_path --& unwrap()\n\t\tres = \n\t\t\tif self.ignore_case then \n\t\t\t\tsearch_case_insensitive(self.query, contents) \n\t\t\telse \n\t\t\t\tsearch(self.query, contents)\n\t\t\t--& foreach(fn -> out(line))\nend\n\n\nlet main =\n\targs = Env.read_argsv()\n\tconfig = Config.build(args) & unwrap_else(fn of e -> quit(\"Problem parsing arguments: \" + e, 1))\n\tif config.run() is Err(e) then quit(\"Application error: \" + e, 1) else exit(0)\n\t",
+            },
+            (
+                4,
+                "/workspaces/allegro/allegro/examples/result.alg",
+            ): FileTableEntry {
+                path: "/workspaces/allegro/allegro/examples/result.alg",
+                src: "type Result<?T, ?E> = enum of \n    Ok(?T),\n    Err(?E)",
+            },
+            (
+                3,
+                "/workspaces/allegro/allegro/examples/result.alg",
+            ): FileTableEntry {
+                path: "/workspaces/allegro/allegro/examples/result.alg",
+                src: "type Result<?T, ?E> = enum of \n    Ok(?T),\n    Err(?E)",
+            },
+        },
+    },
+    module_table: Table {
+        entries: {
+            (
+                11,
+                "slice",
+            ): ModuleTableEntry {
+                imports_from: {},
+                id: 11,
+            },
+            (
+                14,
+                "result",
+            ): ModuleTableEntry {
+                imports_from: {},
+                id: 14,
+            },
+            (
+                5,
+                "microgrep",
+            ): ModuleTableEntry {
+                imports_from: {},
+                id: 5,
+            },
+        },
+    },
+    function_table: Table {
+        entries: {
+            (
+                8,
+                "search_case_insensitive",
+            ): FunctionTableEntry {
+                name: "search_case_insensitive",
+                arity: 2,
+                arg_types: [
+                    Str,
+                    Str,
+                ],
+                return_type: Custom(
+                    "Slice",
+                    [
+                        Str,
+                    ],
+                ),
+            },
+            (
+                7,
+                "search",
+            ): FunctionTableEntry {
+                name: "search",
+                arity: 2,
+                arg_types: [
+                    Str,
+                    Str,
+                ],
+                return_type: Custom(
+                    "Slice",
+                    [
+                        Str,
+                    ],
+                ),
+            },
+            (
+                10,
+                "main",
+            ): FunctionTableEntry {
+                name: "main",
+                arity: 0,
+                arg_types: [],
+                return_type: Generic(
+                    "?_c8c7a99bb88e156b",
+                ),
+            },
+        },
+    },
+    usertype_table: Table {
+        entries: {
+            (
+                9,
+                "Config",
+            ): UserTypeTableEntry {
+                name: "Config",
+                isdefined: true,
+                generics: [],
+                methods: [
+                    FunctionTableEntry {
+                        name: "build",
+                        arity: 1,
+                        arg_types: [
+                            Custom(
+                                "Slice",
+                                [
+                                    Str,
+                                ],
+                            ),
+                        ],
+                        return_type: Custom(
+                            "Result",
+                            [
+                                Custom(
+                                    "Config",
+                                    [],
+                                ),
+                                Str,
+                            ],
+                        ),
+                    },
+                    FunctionTableEntry {
+                        name: "run",
+                        arity: 1,
+                        arg_types: [
+                            Generic(
+                                "?_2c71bd48d95c9b64",
+                            ),
+                        ],
+                        return_type: Generic(
+                            "?_27e9ab0fdb496fa4",
+                        ),
+                    },
+                ],
+                kind: Struct {
+                    fields: [
+                        (
+                            "query",
+                            Str,
+                        ),
+                        (
+                            "file_path",
+                            Str,
+                        ),
+                        (
+                            "ignore_case",
+                            Bool,
+                        ),
+                    ],
+                },
+            },
+            (
+                12,
+                "Slice",
+            ): UserTypeTableEntry {
+                name: "Slice",
+                isdefined: true,
+                generics: [],
+                methods: [],
+                kind: Struct {
+                    fields: [
+                        (
+                            "start",
+                            Pointer(
+                                Generic(
+                                    "?_T",
+                                ),
+                            ),
+                        ),
+                        (
+                            "len",
+                            Int,
+                        ),
+                        (
+                            "cap",
+                            Int,
+                        ),
+                    ],
+                },
+            },
+            (
+                6,
+                "Config",
+            ): UserTypeTableEntry {
+                name: "Config",
+                isdefined: true,
+                generics: [],
+                methods: [],
+                kind: Struct {
+                    fields: [
+                        (
+                            "query",
+                            Str,
+                        ),
+                        (
+                            "file_path",
+                            Str,
+                        ),
+                        (
+                            "ignore_case",
+                            Bool,
+                        ),
+                    ],
+                },
+            },
+            (
+                15,
+                "Result",
+            ): UserTypeTableEntry {
+                name: "Result",
+                isdefined: true,
+                generics: [],
+                methods: [],
+                kind: Enum {
+                    variants: [
+                        Variant(
+                            "Ok",
+                            [
+                                Generic(
+                                    "?_T",
+                                ),
+                            ],
+                        ),
+                        Variant(
+                            "Err",
+                            [
+                                Generic(
+                                    "?_E",
+                                ),
+                            ],
+                        ),
+                    ],
+                },
+            },
+            (
+                13,
+                "Slice",
+            ): UserTypeTableEntry {
+                name: "Slice",
+                isdefined: true,
+                generics: [],
+                methods: [
+                    FunctionTableEntry {
+                        name: "len",
+                        arity: 1,
+                        arg_types: [
+                            Generic(
+                                "?_2c71bd48d95c9b64",
+                            ),
+                        ],
+                        return_type: Generic(
+                            "?_875584f62ed82e73",
+                        ),
+                    },
+                    FunctionTableEntry {
+                        name: "new",
+                        arity: 1,
+                        arg_types: [
+                            Generic(
+                                "?_735b2f4734cda621",
+                            ),
+                        ],
+                        return_type: Generic(
+                            "?_e5e135daabbc9bf2",
+                        ),
+                    },
+                    FunctionTableEntry {
+                        name: "get",
+                        arity: 2,
+                        arg_types: [
+                            Generic(
+                                "?_2c71bd48d95c9b64",
+                            ),
+                            Int,
+                        ],
+                        return_type: Generic(
+                            "?_T",
+                        ),
+                    },
+                    FunctionTableEntry {
+                        name: "containshelper",
+                        arity: 3,
+                        arg_types: [
+                            Generic(
+                                "?_2c71bd48d95c9b64",
+                            ),
+                            Generic(
+                                "?_T",
+                            ),
+                            Int,
+                        ],
+                        return_type: Bool,
+                    },
+                    FunctionTableEntry {
+                        name: "contains",
+                        arity: 2,
+                        arg_types: [
+                            Generic(
+                                "?_2c71bd48d95c9b64",
+                            ),
+                            Generic(
+                                "?_T",
+                            ),
+                        ],
+                        return_type: Bool,
+                    },
+                ],
+                kind: Struct {
+                    fields: [
+                        (
+                            "start",
+                            Pointer(
+                                Generic(
+                                    "?_T",
+                                ),
+                            ),
+                        ),
+                        (
+                            "len",
+                            Int,
+                        ),
+                        (
+                            "cap",
+                            Int,
+                        ),
+                    ],
+                },
+            },
+        },
+    },
+    current_variables: Table {
+        entries: {},
+    },
+    currentfreeid: 15,
+}
+Compiled examples/microgrep.alg in 14.76ms

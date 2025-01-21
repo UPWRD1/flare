@@ -17,20 +17,18 @@ def Slice<?T> =
             return idx * self.start
         else 
             return -1
-end
 
-let containshelper of s: Slice<?T>, e: ?T, c: int -> bool =
-    if c < s.len() then
-       if s.get(c).unwrap() == e then 
-            return true 
-       else 
-            return containshelper(s, e, c + 1)
-    else 
-        return false
+    let containshelper of self, e: ?T, c: int -> bool =
+        if c < s.len() then
+            if s.get(c).unwrap() == e then 
+                return true 
+            else 
+                return self.containshelper(s, e, c + 1)
+        else 
+            return false
 
-def Slice<?T> =
+
     let contains of self, item: ?T -> bool =
         containshelper(self, item, 0)
+
 end
-
-
