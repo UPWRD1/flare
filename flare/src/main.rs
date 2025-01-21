@@ -35,7 +35,7 @@ fn main() -> Result<()>{
         },
         2 => match prog_args[1].as_str() {
             "--help" | "-h" => {
-                println!("Allegro v{VERSION}");
+                println!("Flare v{VERSION}");
                 Ok(())
             }
             &_ => todo!(),

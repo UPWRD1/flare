@@ -53,7 +53,7 @@ pub fn get_dependencies(ctx: &mut Context, mut p: Program) -> Result<Program> {
             resource::ast::Ast::WithClause { include } => {
                 let to_compile = include.first().unwrap().get_lit();
                 let tc = format!(
-                    "{}/{}.alg",
+                    "{}/{}.flr",
                     std::env::current_dir().unwrap().to_string_lossy(),
                     to_compile
                 );
