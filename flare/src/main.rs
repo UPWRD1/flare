@@ -1,6 +1,5 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
-#![feature(hasher_prefixfree_extras)]
 extern crate colored;
 extern crate lazy_static;
 extern crate logos;

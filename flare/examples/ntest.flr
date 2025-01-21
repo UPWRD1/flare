@@ -5,3 +5,4 @@ def Wrapper<?T> =
 	let new of v: ?T -> Self =
 		return Self {value: v}
 end
+
