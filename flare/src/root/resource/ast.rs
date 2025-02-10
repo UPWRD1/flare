@@ -2,11 +2,12 @@ use ordered_float::OrderedFloat;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
+use std::fmt::Display;
 use std::hash::DefaultHasher;
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use crate::root::passes::midend::typechecking::PartialType;
+use crate::root::passes::midend::environment::GenericValue;
 
 pub fn calculate_hash<T: Hash>(t: &String) -> String {
     let mut s = DefaultHasher::new();
@@ -20,7 +21,7 @@ pub struct Program {
     pub dependencies: HashSet<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct FileModule {
     pub name: String,
     pub body: Vec<Ast>,
@@ -46,13 +47,10 @@ pub enum Ast {
     Struct {
         name: String,
         members: Vec<(String, SymbolType)>,
-        methods: Vec<Self>
     },
     Enum {
         name: String,
         members: Vec<SymbolType>,
-        methods: Vec<Self>
-
     },
     // TypeDef {
     //     name: SymbolType,
@@ -249,9 +247,9 @@ impl Expr {
     pub fn get_lit(&self) -> String {
         match self {
             Self::Str(s) => s
-                .strip_prefix("\"")
+                .strip_prefix('"')
                 .unwrap()
-                .strip_suffix("\"")
+                .strip_suffix('"')
                 .unwrap()
                 .to_string(),
             _ => panic!("{:?} is not a string literal", self),
@@ -281,7 +279,7 @@ pub enum SymbolType {
     Naught,
     Pointer(Box<Self>),
     Unknown,
-    Generic(String),
+    Generic(GenericValue),
     Custom(String, Vec<Self>),
     StructRef(String),
     Enum(String, usize, Vec<Self>),
@@ -311,7 +309,10 @@ impl SymbolType {
 
     pub fn get_generic_name(&self) -> String {
         match self {
-            SymbolType::Generic(n) => n.to_string(),
+            SymbolType::Generic(n) => match n {
+                GenericValue::Ref(n) => n.to_string(),
+                GenericValue::Perfect(n, _symbol_type) => panic!(),
+            },
             _ => panic!("{self:?} is not a generic"),
         }
     }
@@ -460,6 +461,7 @@ impl SymbolType {
     pub fn get_generic_count(&self) -> usize {
         match self.extract() {
             SymbolType::Enum(_, c, ..) => c,
+            SymbolType::Custom(_, x) => x.len(),
             _ => panic!("{self:?} is not an enum"),
         }
     }
@@ -506,9 +508,6 @@ impl SymbolType {
             _ => todo!(),
         }
     }
-
-    
-    
 
     //     pub fn compare(&self, rhs: &Self) -> bool {
     //         //println!("{:?} vs {:?}", self, rhs);
@@ -587,4 +586,32 @@ impl SymbolType {
     //             }
     //         }
     //     }
+}
+
+impl Display for SymbolType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let the_string = match self {
+            SymbolType::Int => "int",
+            SymbolType::Flt => "flt",
+            SymbolType::Str => "str",
+            SymbolType::Bool => "bool",
+            SymbolType::Mut(_) => todo!(),
+            SymbolType::Fn(_, _, _) => todo!(),
+            SymbolType::MethodFn { .. } => todo!(),
+            SymbolType::Naught => todo!(),
+            SymbolType::Pointer(_) => todo!(),
+            SymbolType::Unknown => todo!(),
+            SymbolType::Generic(name) => match name {
+                GenericValue::Ref(n) => n,
+                GenericValue::Perfect(n, _symbol_type) => todo!(),
+            },
+            SymbolType::Custom(_, _) => todo!(),
+            SymbolType::StructRef(_) => todo!(),
+            SymbolType::Enum(_, _, _) => todo!(),
+            SymbolType::Variant(_, _) => todo!(),
+            SymbolType::Property => todo!(),
+            _ => todo!(),
+        };
+        write!(f, "{}", the_string)
+    }
 }

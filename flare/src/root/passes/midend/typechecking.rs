@@ -1,46 +1,70 @@
-use rayon::vec;
-use thiserror::Error;
+use std::collections::HashMap;
 
 use anyhow::{Ok, Result};
 
-use crate::root::{passes::midend::environment::UserTypeKind, resource::{ast::{Expr, SymbolType}, errors::TypecheckingError}};
+use crate::root::resource::{
+    ast::{Expr, SymbolType},
+    errors::TypecheckingError,
+};
 
-use super::environment::{Environment, FunctionTableEntry, Table, VariableTableEntry};
+use super::environment::{
+    Environment, FunctionTableEntry, GenericValue, Table, VariableTableEntry,
+};
 
-#[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Copy, PartialOrd, Ord)]
-pub struct TypeVar(pub usize);
-
-#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
-pub enum PartialType {
-    Module,
-    Variable(TypeVar),
-    Record,
-    Field(TypeVar, &'static Self),
-    Enum,
-    Variant,
-    Int,
-    Uint,
-    Byte,
-    Flt,
-    Bool,
-    Char,
-    Str,
-    Naught,
-    Fn(&'static [Self], &'static Self),
-    Mut(&'static Self),
-    Pointer(&'static Self),
-    Generic(&'static str),
-    Custom(usize),
-}
 
 pub struct Typechecker {
     env: Environment,
     current_func: Option<FunctionTableEntry>,
+    current_method_parent: Option<String>,
 }
 
 impl Typechecker {
     pub fn new(env: Environment) -> Self {
-        return Typechecker { env, current_func: None};
+        Typechecker {
+            env,
+            current_func: None,
+            current_method_parent: None,
+        }
+    }
+
+    fn compare_types(&mut self, l: &SymbolType, r: &SymbolType) -> bool {
+        // dbg!(l);
+        // dbg!(r);
+        if l.is_generic() && !r.is_generic() {
+            // self.env.current_generics.entries.insert(
+            //     l.get_generic_name(),
+            //     GenericTableEntry {
+            //         value: GenericValue::Perfect(l.get_generic_name(), Box::new(r.clone())),
+            //     },
+            // );
+
+            true
+        } else if !l.is_generic() && r.is_generic() {
+            // self.env.current_generics.entries.insert(
+            //     r.get_generic_name(),
+            //     GenericTableEntry {
+            //         value: GenericValue::Perfect(r.get_generic_name(), Box::new(l.clone())),
+            //     },
+            // );
+
+            true
+        } else if l.is_generic() && r.is_generic() {
+            if l != r {
+                // self.env.current_generics.set(
+                //     l.get_generic_name(),
+                //     GenericTableEntry {
+                //         value: GenericValue::Ref(r.get_generic_name()),
+                //     },
+                // );
+            }
+            true
+        } else if l.is_custom() && r.is_custom() && r.get_generic_count() == l.get_generic_count() {
+        true            
+}else {
+                return l == r;
+
+            
+        }
     }
 
     fn check_expr(&mut self, e: &Expr) -> Result<SymbolType> {
@@ -58,7 +82,13 @@ impl Typechecker {
             Expr::Logical { l, op, r } => {
                 let lhs_type = self.check_expr(l)?;
                 let rhs_type = self.check_expr(r)?;
-                assert!(lhs_type == rhs_type && rhs_type == SymbolType::Bool);
+                //dbg!(lhs_type.clone());
+                //dbg!(rhs_type.clone());
+
+                match op {
+                    crate::root::resource::ast::LogicOp::Is => todo!(),
+                    _ => assert!(lhs_type == rhs_type),
+                }
                 SymbolType::Bool
             }
             Expr::Assignment { name, value } => self.check_expr_assignment(name, value)?,
@@ -67,162 +97,325 @@ impl Typechecker {
                 condition,
                 then,
                 otherwise,
-            } => todo!(),
+            } => {
+                let condition_ty = self.check_expr(condition)?;
+                let then_type = self.check_expr(then)?;
+                let otherwise_type = self.check_expr(otherwise)?;
+                assert!(then_type == otherwise_type);
+                assert!(condition_ty.is_bool());
+                otherwise_type
+            }
             Expr::Int(_) => SymbolType::Int,
             Expr::Uint(_) => SymbolType::Uint,
             Expr::Byte(_) => SymbolType::Byte,
-            Expr::Flt(ordered_float) => SymbolType::Flt,
+            Expr::Flt(_) => SymbolType::Flt,
             Expr::Str(_) => SymbolType::Str,
             Expr::Char(_) => SymbolType::Char,
             Expr::Bool(_) => SymbolType::Bool,
             Expr::Symbol(name) => self.check_expr_symbol(name)?,
-            Expr::StructInstance { name, fields } => self.check_expr_structinstance(name, fields)?,
-            Expr::FieldAccess(expr, v) => todo!(),
+            Expr::StructInstance { name, fields } => {
+                self.check_expr_structinstance(name, fields)?
+            }
+            Expr::FieldAccess(expr, v) => self.check_expr_field_access(expr, v)?,
             Expr::Call { name, args } => self.check_expr_call(name, args)?,
             Expr::MethodCall { obj, name, args } => self.check_expr_method_call(obj, name, args)?,
             _ => todo!(),
         };
-        return Ok(res);
+        Ok(res)
     }
 
-    fn check_expr_structinstance(&mut self, name: &Box<Expr>, fields: &Vec<(String, Expr)>) -> Result<SymbolType, anyhow::Error> {
+    fn check_expr_structinstance(
+        &mut self,
+        name: &Expr,
+        fields: &Vec<(String, Expr)>,
+    ) -> Result<SymbolType, anyhow::Error> {
         let name_string = name.get_symbol_name();
-        let the_struct = self.env.usertype_table.get_name(&name_string).ok_or(TypecheckingError::UndefinedType { name: name_string.clone() })?;
+        let the_struct = self.env.usertype_table.get_id(&name_string).ok_or(
+            TypecheckingError::UndefinedType {
+                name: name_string.clone(),
+            },
+        )?;
         let defined_fields: Vec<(String, SymbolType)> = the_struct.kind.get_fields()?;
         let mut real_fields: Vec<(String, SymbolType)> = vec![];
         for f in fields {
             real_fields.push((f.0.clone(), self.check_expr(&f.1)?));
         }
         assert!(defined_fields.len() == fields.len());
+        let mut generic_vec: Vec<SymbolType> = vec![];
         for f in defined_fields.into_iter().zip(real_fields) {
-            assert!(f.0 == f.1)
+            if !(f.0 .0 == f.1 .0 && self.compare_types(&f.0 .1, &f.1 .1)) {
+                return Err(TypecheckingError::InvalidStructInstanceField {
+                    obj: name_string,
+                    field: f.0 .0,
+                    expected: f.0 .1,
+                    found: f.1 .1,
+                }
+                .into());
+            }
+            if f.0 .1.is_generic() {
+                if !f.1 .1.is_generic() {
+                    generic_vec.push(SymbolType::Generic(GenericValue::Perfect(
+                        f.0 .1.get_generic_name(),
+                        Box::new(f.1 .1),
+                    )));
+                } else {
+                    generic_vec.push(SymbolType::Generic(GenericValue::Ref(
+                        f.0 .1.get_generic_name(),
+                    )));
+                }
+            }
         }
-        return Ok(SymbolType::Custom(name_string, vec![]))
+
+        Ok(SymbolType::Custom(name_string, generic_vec))
     }
 
-    fn check_expr_return(&mut self, 
-    value: &Box<Expr>) -> Result<SymbolType, anyhow::Error> {
-        let value_type = self.check_expr(&value)?;
-        //dbg!(value_type.clone());
-        //dbg!(self.current_func.clone().unwrap().return_type);
-        assert!(self.current_func.clone().unwrap().return_type == value_type);
+    fn check_expr_return(&mut self, value: &Expr) -> Result<SymbolType, anyhow::Error> {
+        let mut value_type = self.check_expr(value)?;
+        // dbg!(self.current_func.clone());
+
+        // dbg!(value_type.clone());
+        // dbg!(self.current_func.clone().unwrap().return_type);
+        assert!(self.compare_types(&value_type, &self.current_func.clone().unwrap().return_type));
         Ok(value_type)
     }
 
     fn check_expr_assignment(
         &mut self,
-        name: &Box<Expr>,
-        value: &Box<Expr>,
+        name: &Expr,
+        value: &Expr,
     ) -> Result<SymbolType, anyhow::Error> {
         let name = name.get_symbol_name();
-        Ok(match self.env.current_variables.get_name(&name) {
+        Ok(match self.env.current_variables.get_id(&name) {
             Some(_) => return Err(TypecheckingError::NonMutableReassignment { name }.into()),
             None => {
                 let rhs_type = self.check_expr(value)?;
-                let id = self.env.get_new_id();
+                println!(
+                    "Adding variable {} with type {:?} and value {:?}",
+                    name, rhs_type, value
+                );
                 self.env.current_variables.set(
-                    &name.clone(),
-                    id,
+                    name,
                     VariableTableEntry {
-                        name,
                         mytype: rhs_type.clone(),
                     },
                 );
+
                 rhs_type
             }
         })
     }
 
     fn check_expr_symbol(&mut self, name: &String) -> Result<SymbolType, anyhow::Error> {
-        Ok(self
-            .env
-            .current_variables
-            .get_name(&name)
-            .ok_or(TypecheckingError::UndefinedVariable {
-                name: name.to_string(),
+        if name == "self" {
+            let the_name =
+                self.current_method_parent
+                    .clone()
+                    .ok_or(TypecheckingError::SelfOutsideMethod {
+                        the_func: self.current_func.clone().expect("UNREACHABLE").name,
+                    })?;
+            let the_type = self
+                .env
+                .usertype_table
+                .get_id(&the_name)
+                .ok_or(TypecheckingError::UndefinedType { name: the_name })?
+                .raw;
+            Ok(the_type)
+        } else {
+            Ok(self
+                .env
+                .current_variables
+                .get_id(name)
+                .ok_or(TypecheckingError::UndefinedVariable {
+                    name: name.to_string(),
+                })?
+                .mytype)
+        }
+    }
+
+    fn check_expr_field_access(
+        &mut self,
+        obj: &Expr,
+        field: &String,
+    ) -> Result<SymbolType, anyhow::Error> {
+        let the_obj = self
+            .check_expr_symbol(&obj.get_symbol_name())?
+            .get_custom_name();
+        let the_entry =
+            self.env
+                .usertype_table
+                .get_id(&the_obj)
+                .ok_or(TypecheckingError::UndefinedType {
+                    name: the_obj.to_string(),
+                })?;
+        Ok(the_entry
+            .kind
+            .get_fields()?
+            .iter()
+            .filter(|e| e.0 == *field)
+            .nth(0)
+            .ok_or(TypecheckingError::UndefinedField {
+                obj: the_obj.to_string(),
+                field: field.to_string(),
             })?
-            .mytype)
+            .1
+            .clone())
     }
 
     fn check_expr_call(
         &mut self,
-        name: &Box<Expr>,
+        name: &Expr,
         args: &Vec<Expr>,
     ) -> Result<SymbolType, anyhow::Error> {
         let name: String = name.get_symbol_name();
-        let mut the_function = self.env.function_table.get_name(&name).ok_or(
-            TypecheckingError::UndefinedFunction {
-                name: name.to_string(),
-            },
-        )?;
-        if !the_function.is_checked {
-            self.check_function_body(&the_function)?;
-        }
+        let mut the_function =
+            self.env
+                .function_table
+                .get_id(&name)
+                .ok_or(TypecheckingError::UndefinedFunction {
+                    name: name.to_string(),
+                })?;
         let mut generated_call_arg_types: Vec<SymbolType> = vec![];
         for expression in args {
             generated_call_arg_types.push(self.check_expr(expression)?);
         }
-        for arg in generated_call_arg_types.iter().zip(the_function.args) {
-            assert!(*arg.0 == arg.1 .1)
+        if !the_function.is_checked {
+            self.env.function_table[name.clone()].is_checked = true;
+            self.env.function_table[name.clone()].return_type =
+                self.check_function_body(&the_function)?;
         }
-        return Ok(the_function.return_type);
+        for arg in generated_call_arg_types.iter().zip(the_function.args) {
+            //if !(*arg.0 == arg.1 .1 || arg.1 .1.is_generic()) {
+            if !(self.compare_types(arg.0, &arg.1 .1)) {
+                return Err(TypecheckingError::InvalidFunctionArgumentType {
+                    name,
+                    arg: arg.1 .0,
+                    expected: arg.1 .1,
+                    found: arg.0.clone(),
+                }
+                .into());
+            }
+        }
+        Ok(self.env.function_table[name.clone()].return_type.clone())
     }
 
     fn check_expr_method_call(
         &mut self,
-        obj: &Box<Expr>,
-        name: &Box<Expr>,
+        obj: &Expr,
+        name: &Expr,
         args: &Vec<Expr>,
     ) -> Result<SymbolType, anyhow::Error> {
         let obj_name: String = obj.get_symbol_name();
         let func_name = name.get_symbol_name();
-        let the_object: String = match self
-            .env
-            .usertype_table
-            .get_name(&obj_name) {
-                Some(e) => e.name,
-                None => {
-                    if let Some(o) = self.env.current_variables.get_name(&obj_name) {
-                        o.mytype.get_custom_name()
-                    } else {
-                        return Err(TypecheckingError::UndefinedType { name: obj_name.clone() }.into())
+        let the_object: String = match self.env.usertype_table.get_id(&obj_name) {
+            Some(_) => obj_name,
+            None => {
+                if let Some(o) = self.env.current_variables.get_id(&obj_name) {
+                    o.mytype.get_custom_name()
+                } else {
+                    return Err(TypecheckingError::UndefinedType {
+                        name: obj_name.clone(),
                     }
+                    .into());
                 }
-            };
-        let binding = self.env.method_table.get_name(&the_object).ok_or(TypecheckingError::NoMethods {
-             name: the_object.clone(),
-         },)?;
-        let mut the_function = binding.the_functions.iter().filter(|el| el.name == func_name).nth(0).ok_or(TypecheckingError::UndefinedMethod { obj: the_object, name: func_name } )?.clone();
-            if !the_function.is_checked {
-                self.check_function_body(&mut the_function)?;
-                the_function.is_checked = true
             }
-            let mut generated_call_arg_types: Vec<SymbolType> = vec![];
-            for expression in args {
-                generated_call_arg_types.push(self.check_expr(expression)?);
+        };
+        let binding =
+            self.env
+                .method_table
+                .get_id(&the_object)
+                .ok_or(TypecheckingError::NoMethods {
+                    name: the_object.clone(),
+                })?;
+        let mut the_function = binding
+            .the_functions
+            .get_id(&func_name)
+            .ok_or(TypecheckingError::UndefinedMethod {
+                obj: the_object.clone(),
+                name: func_name.clone(),
+            })?
+            .clone();
+        let mut generated_call_arg_types: Vec<SymbolType> = vec![];
+        for expression in args {
+            generated_call_arg_types.push(self.check_expr(expression)?);
+        }
+        //dbg!(generated_call_arg_types.clone());
+        let mut func_generics: HashMap<String, GenericValue> = HashMap::new();
+
+        for (i, arg) in generated_call_arg_types
+            .iter()
+            .zip(the_function.args.clone()).enumerate()
+        {
+            if !(self.compare_types(arg.0, &arg.1.1)) {
+                return Err(TypecheckingError::InvalidFunctionArgumentType {
+                    name: func_name,
+                    arg: arg.1 .0,
+                    expected: arg.1.1,
+                    found: arg.0.clone(),
+                }
+                .into());
             }
-            for arg in generated_call_arg_types.iter().zip(the_function.args) {
-                assert!(*arg.0 == arg.1 .1)
+            the_function.args[i] = (arg.1.0, arg.0.clone());
+            if arg.1.1.is_generic() {
+                func_generics.insert(arg.1.1.get_generic_name(), GenericValue::Perfect(arg.1.1.get_generic_name(), Box::new(arg.0.clone())));
             }
-            return Ok(the_function.return_type);
+        }
+
+        if !the_function.is_checked {
+            self.env.method_table[the_object.clone()].the_functions[func_name.clone()].is_checked =
+                true;
+            let sanitized_rt = self.sanitize_type(&the_function.return_type, func_generics);
+            the_function.return_type = sanitized_rt;
+            self.env.method_table[the_object.clone()].the_functions[func_name.clone()]
+                .return_type = self.check_function_body(&the_function)?;
+        }
+        Ok(
+            self.env.method_table[the_object.clone()].the_functions[func_name.clone()]
+                .return_type
+                .clone(),
+        )
     }
 
-    pub fn check_function_body(&mut self, func: &FunctionTableEntry) -> anyhow::Result<()> {
+    fn sanitize_type(&mut self, ty: &SymbolType, generics: HashMap<String, GenericValue>) -> SymbolType {
+    if ty.is_custom() {
+        let type_generics: Vec<SymbolType> = ty.get_custom_generics();
+        let mut new_generics: Vec<SymbolType> = vec![];
+        for g in type_generics {
+         if generics.contains_key(&g.get_generic_name()) {
+             new_generics.push(SymbolType::Generic(generics.get(&g.get_generic_name()).unwrap().clone()));
+         }
+        }
+        SymbolType::Custom(ty.get_custom_name(), new_generics)
+ 
+    } else {
+        ty.clone()
+    }
+    }
+
+    pub fn check_function_body(&mut self, func: &FunctionTableEntry) -> anyhow::Result<SymbolType> {
         let prev_curr_variables = self.env.current_variables.clone();
         self.env.current_variables = Table::new();
         self.current_func = Some(func.clone());
+        self.current_method_parent.clone_from(&func.method_parent);
         for arg in func.args.clone() {
-            let id = self.env.get_new_id();
             let name = arg.0.clone();
-            self.env.current_variables.set(&name, id, VariableTableEntry { name: arg.0, mytype: arg.1 });
+            self.env
+                .current_variables
+                .set(name, VariableTableEntry { mytype: arg.1 });
         }
-        for e in &func.body {
+        let mut last_expr: SymbolType = func.return_type.clone();
+        for (i, e) in func.body.iter().enumerate() {
             // Check each expression in body
-            self.check_expr(e)?;
+            let t = self.check_expr(e)?;
+            if i == func.body.len() {
+                last_expr = t;
+            }
         }
-//        func.is_checked = true;   
-        self.env.current_variables = prev_curr_variables;
-        Ok(())
+        assert!(self.compare_types(&last_expr, &func.return_type));
+        if func.name != "main" {
+            self.env.current_variables = prev_curr_variables;
+        }
+        self.current_func = None;
+        Ok(last_expr)
     }
 
     pub fn check(&mut self) -> anyhow::Result<Environment, anyhow::Error> {
@@ -230,10 +423,10 @@ impl Typechecker {
         let mut main_func: FunctionTableEntry = self
             .env
             .function_table
-            .get_name("main")
+            .get_id(&"main".to_string())
             .ok_or(TypecheckingError::MissingMainFunction)?;
         self.check_function_body(&main_func)?;
-        main_func.is_checked = true;
-        return Ok(self.env.clone());
+        self.env.function_table["main".to_string()].is_checked = true;
+        Ok(self.env.clone())
     }
 }

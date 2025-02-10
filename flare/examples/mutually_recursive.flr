@@ -1,0 +1,9 @@
+let mutual_recurse_b -> naught =
+    mutual_recurse_a()
+
+
+let mutual_recurse_a -> naught = 
+    mutual_recurse_b()
+
+let main -> naught =
+    mutual_recurse_a()

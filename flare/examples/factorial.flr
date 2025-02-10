@@ -1,0 +1,5 @@
+let factorial of x: int -> int =
+	x + factorial(x - 1)
+
+let main = 
+	factorial(4)

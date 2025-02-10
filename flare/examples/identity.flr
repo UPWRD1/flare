@@ -1,0 +1,6 @@
+let id of x: ?T -> ?T = return x
+
+let main =
+    id(3)
+    id(4.0)
+    

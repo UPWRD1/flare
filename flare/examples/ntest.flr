@@ -1,8 +1,15 @@
 type Wrapper<?T> = struct of
 	value: ?T
-
-def Wrapper<?T> =
-	let new of v: ?T -> Self =
-		return Self {value: v}
 end
+
+let new for Wrapper<?T> of v: ?T -> Wrapper<?T> =
+	return Wrapper {value: v}
+
+let dump for Wrapper<?T> -> ?T =
+	return self.value
+
+let main  =
+	w = Wrapper {value: 3.0}
+	x = Wrapper.new(4)
+	
 
