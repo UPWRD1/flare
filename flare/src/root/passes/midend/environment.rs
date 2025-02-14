@@ -1,4 +1,3 @@
-use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::{
@@ -365,7 +364,7 @@ Ok(())    }
         let entry = UserTypeTableEntry {
             isdefined: true,
             generics: members
-                .par_iter()
+                .iter()
                 .filter(|e| e.1.is_generic())
                 .map(|e| e.0.clone())
                 .collect(),
@@ -396,7 +395,7 @@ Ok(())    }
         let entry = UserTypeTableEntry {
             isdefined: true,
             generics: members
-                .par_iter()
+                .iter()
                 .filter(|e| matches!(e, SymbolType::Generic(..)))
                 .map(|e| e.get_generic_name().clone())
                 .collect(),
