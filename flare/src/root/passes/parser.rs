@@ -117,6 +117,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule expr() -> crate::root::resource::ast::Expr
         = assignment()
         / closure()
+        / variantinstance()
         / structinstance()
         / ifexpr()
         / matchexpr()
@@ -134,6 +135,19 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule r#return() -> crate::root::resource::ast::Expr
         = quiet! {[Token { kind: Tk::TkKwReturn(_), .. }] v: expr() { crate::root::resource::ast::Expr::Return { value: Box::new(v) } }}
         / expected!("a return expression")
+
+    rule structinstance() -> crate::root::resource::ast::Expr
+        = n: simplesymbol() [Token { kind: Tk::TkLbrace(_), .. }] f: fieldinit() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {crate::root::resource::ast::Expr::StructInstance { name: Box::new(n), fields: f }}
+
+    rule fieldinit() -> (String, crate::root::resource::ast::Expr)
+        = n: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] e: expr() {(n.get_symbol_name(), e)}
+
+    rule variantinstance() -> crate::root::resource::ast::Expr
+        = [Token { kind: Tk::TkColon(_), .. }] n: simplesymbol() f: variantfields()? {crate::root::resource::ast::Expr::VariantInstance { name: Box::new(n), fields: f.unwrap_or_else(|| vec![]) }}
+
+    rule variantfields() -> Vec<crate::root::resource::ast::Expr>
+        = [Token { kind: Tk::TkLparen(_), .. }] e: expr() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRparen(_), .. }] {e}
+
 
     rule binary_op() -> crate::root::resource::ast::Expr =
     quiet! {precedence!{
@@ -160,7 +174,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         a: atom() {a}
         --
         l: (@) op: [Token { kind: Tk::TkDot(_), .. }] r: @ {crate::root::resource::ast::Expr::FieldAccess(Box::new(l), r.get_symbol_name())}
-
+        l: (@) op: [Token { kind: Tk::TkDoubleColon(_), .. }] r: @ {crate::root::resource::ast::Expr::Path(Box::new(l), r.get_symbol_name())}
     }}
     / expected!("an arithmetic or comparison operator")
 
@@ -228,12 +242,6 @@ rule call_suffix(lhs: crate::root::resource::ast::Expr) -> crate::root::resource
     rule call_list() -> Vec<crate::root::resource::ast::Expr>
         = expr() ** [Token { kind: Tk::TkComma(_), .. }] //{ expr }
 
-    rule structinstance() -> crate::root::resource::ast::Expr
-        = n: simplesymbol() [Token { kind: Tk::TkLbrace(_), .. }] f: fieldinit() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {crate::root::resource::ast::Expr::StructInstance { name: Box::new(n), fields: f }}
-
-    rule fieldinit() -> (String, crate::root::resource::ast::Expr)
-        = n: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] e: expr() {(n.get_symbol_name(), e)}
-
     // rule field_access() -> crate::root::resource::ast::Expr
     //     = n: simplesymbol() [Token { kind: Tk::TkDot(_), .. }] s: symbol() {crate::root::resource::ast::Expr::FieldAccess(Box::new(n), s.get_symbol_name())}
 
@@ -241,9 +249,6 @@ rule call_suffix(lhs: crate::root::resource::ast::Expr) -> crate::root::resource
         // quiet! {f: field_access() {f}}
         = quiet! {s: simplesymbol() {s}}
         / expected!("an identifier")
-
-        // namespace()
-
 
     rule simplesymbol() -> crate::root::resource::ast::Expr
         = quiet! {[Token { kind: Tk::TkSymbol(_), lit: n,.. }] { crate::root::resource::ast::Expr::Symbol(n.to_string())}}
@@ -268,9 +273,6 @@ rule call_suffix(lhs: crate::root::resource::ast::Expr) -> crate::root::resource
     rule generic_brackets() -> Vec<crate::root::resource::ast::SymbolType>
         = [Token { kind: Tk::TkCLT(_), .. }] a: atype() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkCGT(_), .. }]{a}
 
-    // rule namespace() -> crate::root::resource::ast::Expr
-    //     = s: simplesymbol() ** [Token { kind: Tk::TkDoubleColon(_), .. }] {crate::root::resource::ast::Expr::Namespace(s)}
-
     rule group() -> crate::root::resource::ast::Expr
         = quiet! { [Token { kind: Tk::TkLparen(_), .. }] v:expr() [Token { kind: Tk::TkRparen(_), .. }] { v } }
         / expected!("a grouping expression")
@@ -291,7 +293,9 @@ pub fn parse(tokens: &[Token], filename: String, src: String) -> anyhow::Result<
     match p {
         Ok(file_module) => Ok(file_module),
         Err(e) => {
+            dbg!(e.clone());
             let the_tok: &Token = tokens.get(e.location).or_else(|| tokens.last()).unwrap();
+            dbg!(the_tok);
             let expected: String = e
                 .expected
                 .tokens()
@@ -305,6 +309,7 @@ pub fn parse(tokens: &[Token], filename: String, src: String) -> anyhow::Result<
                 &[
                     error!("Could not parse {filename}")
                         .location(Location::new(file.clone(), the_tok.get_span().start)),
+                        
                     expected!("{}", expected),
                 ],
             )

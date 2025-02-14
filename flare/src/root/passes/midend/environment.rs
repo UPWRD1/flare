@@ -108,6 +108,13 @@ impl GenericValue {
             GenericValue::Perfect(n, _) => n.clone(),
         }
     }
+
+    pub fn get_ty(&self) -> SymbolType {
+        match self {
+            GenericValue::Ref(_) => panic!(),
+            GenericValue::Perfect(_, t) => *t.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -124,11 +131,10 @@ pub struct UserTypeTableEntry {
     pub raw: SymbolType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord)]
 pub enum UserTypeKind {
     Struct { fields: Vec<(String, SymbolType)> },
     Enum { variants: Vec<SymbolType> },
-    Unknown,
 }
 
 impl UserTypeKind {
@@ -366,10 +372,10 @@ Ok(())    }
             kind: UserTypeKind::Struct { fields: members.clone() },
             is_checked: false,
             raw: SymbolType::Custom(name.clone(),  members
-            .par_iter()
-            .filter(|e| e.1.is_generic())
-            .map(|e: &(String, SymbolType)| e.1.clone())
-            .collect(),)
+                .iter()
+                .filter(|e| e.1.is_generic())
+                .map(|e: &(String, SymbolType)| e.1.clone())
+                .collect(),)
         };
 
         if self.usertype_table.get_id(&name).is_none() {
@@ -386,6 +392,7 @@ Ok(())    }
         name: String,
         members: Vec<SymbolType>,
     ) -> anyhow::Result<(), anyhow::Error> {
+        dbg!(members.clone());
         let entry = UserTypeTableEntry {
             isdefined: true,
             generics: members
@@ -393,9 +400,14 @@ Ok(())    }
                 .filter(|e| matches!(e, SymbolType::Generic(..)))
                 .map(|e| e.get_generic_name().clone())
                 .collect(),
-            kind: UserTypeKind::Enum { variants: members },
+            kind: UserTypeKind::Enum { variants: members.clone() },
             is_checked: false,
-            raw: SymbolType::Custom(name.clone(), vec![])
+            raw: SymbolType::Custom(name.clone(), members
+            .iter()
+            .filter(|e| e.is_generic())
+            .map(|e: &SymbolType| e.clone())
+            .collect(),
+        )
         };
 
         if self.usertype_table.get_id(&name).is_none() {

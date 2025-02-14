@@ -8,6 +8,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 use crate::root::passes::midend::environment::GenericValue;
+use crate::root::passes::midend::environment::UserTypeKind;
 
 pub fn calculate_hash<T: Hash>(t: &String) -> String {
     let mut s = DefaultHasher::new();
@@ -192,12 +193,17 @@ pub enum Expr {
     Bool(bool),
     AddressOf(Box<Self>),
     Symbol(String),
-    Namespace(Vec<Self>),
     StructInstance {
         name: Box<Self>,
         fields: Vec<(String, Self)>,
     },
+    VariantInstance {
+        name: Box<Self>,
+        fields: Vec<Self>,
+    },
     FieldAccess(Box<Self>, String),
+    Path(Box<Self>, String),
+
     Call {
         name: Box<Self>,
         args: Vec<Self>,
@@ -281,8 +287,9 @@ pub enum SymbolType {
     Unknown,
     Generic(GenericValue),
     Custom(String, Vec<Self>),
+    User(UserTypeKind),
     StructRef(String),
-    Enum(String, usize, Vec<Self>),
+    Enum(String, Vec<Self>),
     Variant(String, Vec<Self>),
     Property,
     TypeDefSelf,
@@ -341,7 +348,7 @@ impl SymbolType {
         match self.extract() {
             Self::Custom(v, ..) => v.to_string(),
             Self::StructRef(v, ..) => v.to_string(),
-            Self::Enum(v, ..) => v.to_string(),
+            //Self::Enum(v, ..) => v.to_string(),
 
             _ => panic!("{self:?} is not a custom type"),
         }
@@ -453,16 +460,16 @@ impl SymbolType {
 
     pub fn get_variants(&self) -> Vec<Self> {
         match self.extract() {
-            SymbolType::Enum(_, _, v) => v.clone(),
+            SymbolType::Enum(_, v) => v.clone(),
             _ => panic!("{self:?} is not an enum"),
         }
     }
 
     pub fn get_generic_count(&self) -> usize {
         match self.extract() {
-            SymbolType::Enum(_, c, ..) => c,
+            //SymbolType::Enum(_, c, ..) => c,
             SymbolType::Custom(_, x) => x.len(),
-            _ => panic!("{self:?} is not an enum"),
+            _ => panic!("{self:?} is not an custom type"),
         }
     }
 
@@ -607,7 +614,7 @@ impl Display for SymbolType {
             },
             SymbolType::Custom(_, _) => todo!(),
             SymbolType::StructRef(_) => todo!(),
-            SymbolType::Enum(_, _, _) => todo!(),
+            SymbolType::Enum(_, _) => todo!(),
             SymbolType::Variant(_, _) => todo!(),
             SymbolType::Property => todo!(),
             _ => todo!(),

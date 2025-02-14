@@ -8,8 +8,6 @@ let new for Wrapper<?T> of v: ?T -> Wrapper<?T> =
 let dump for Wrapper<?T> -> ?T =
 	return self.value
 
-let main  =
-	w = Wrapper {value: 3.0}
-	x = Wrapper.new(4)
+
 	
 

@@ -80,7 +80,7 @@ pub fn compile_typecheck(ctx: &mut Context, filename: &String) -> Result<()>{
     //println!("{:#?}", np.clone());
 
     ctx.env.build(np)?;
-    //dbg!(ctx.env.clone());
+    dbg!(ctx.env.clone());
 
 
     let mut tc = Typechecker::new(ctx.env.clone());

@@ -1,6 +1,8 @@
+with "examples/wrapper"
+
 let id of x: ?T -> ?T = return x
 
 let main =
-    id(3)
-    id(4.0)
-    
+    a = id(3)
+    b = id(4.0)
+    c = id(Wrapper.new("asdf"))
