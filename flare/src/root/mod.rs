@@ -4,7 +4,7 @@ use itertools::Itertools;
 use logos::Logos;
 use passes::midend::{environment::Environment, typechecking::Typechecker};
 //use passes::midend::typechecking::Typechecker;
-use resource::{ast::{FileModule, Program}, errors::{CompilerError, ParsingError}, lex::LexRes};
+use resource::{ast::{FileModule, Program}, lex::LexRes};
 pub mod resource;
 use anyhow::Result;
 use crate::root::resource::tk::{Tk, Token};
@@ -14,40 +14,32 @@ pub struct Context {
     pub env: Environment,
 }
 
-fn query_lex(ctx: &mut Context, filename: &String) -> LexRes {
-    let src = fs::read_to_string(filename.clone()).unwrap();
-    ctx.env.add_file(filename, PathBuf::from(filename), &src);
+pub fn compile_filename(ctx: &mut Context, filename: &String) -> anyhow::Result<FileModule> {
+    let src: String = fs::read_to_string(filename.clone()).unwrap();
+    ctx.env.add_file(filename, PathBuf::from(filename), &src)?;
     let mut lex = Tk::lexer(&src);
 
     let mut tokens: Vec<Token> = vec![];
-    let mut symbols: HashSet<String> = HashSet::new();
 
 
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a: Tk = lex.next().unwrap().unwrap();
         //println!("{_i} {a:?} '{}'", lex.slice());
-        tokens.push(Token::new(a, lex.slice().to_string()));
-        if matches!(a, Tk::TkSymbol(_)) {
-            symbols.insert(lex.slice().to_owned());
-        }
+        tokens.push(Token::new(a.clone(), lex.slice().to_string()));
     }
 
-    LexRes {tokens, filename: filename.clone(), symbols}
-}
 
-pub fn compile_filename(ctx: &mut Context, filename: &String) -> Result<FileModule, ParsingError> {
-    let res: LexRes = query_lex(ctx, filename);
-    ///dbg!(res.symbols);
+    let res: LexRes = LexRes {tokens, filename: filename.clone()};
+
     use passes::parser::parse;
-    let m = parse(&res.tokens)?;
-
+    let m = parse(&res.tokens, filename.to_string(), src)?;
     Ok(FileModule {
         name: PathBuf::from(filename.clone().as_str()).file_stem().unwrap().to_owned().into_string().unwrap(),
         body: m.body.clone(),
     })
 }
 pub fn get_dependencies(ctx: &mut Context, mut p: Program) -> Result<Program> {
-    let m = p.modules.iter().nth(0).unwrap();
+    let m = p.modules.first().unwrap();
     for a in m.body.clone() {
         match a {
             resource::ast::Ast::WithClause { include } => {
@@ -63,7 +55,7 @@ pub fn get_dependencies(ctx: &mut Context, mut p: Program) -> Result<Program> {
                     dependencies: HashSet::new(),
                 }).unwrap();
                 p.dependencies.insert(tc);
-                p.dependencies = p.dependencies.union(&dep_p.dependencies.iter().map(|e| e.clone()).collect()).map(|e| e.clone()).collect();
+                p.dependencies = p.dependencies.union(&dep_p.dependencies.iter().cloned().collect()).cloned().collect();
                 p.modules.append(&mut dep_p.modules);
                 p.modules = p.modules.into_iter().dedup().collect();
                 //dbg!(p.dependencies.clone());
@@ -85,16 +77,16 @@ pub fn compile_typecheck(ctx: &mut Context, filename: &String) -> Result<()>{
     p.modules.push(root_ast.clone());
 
     let np = get_dependencies(ctx, p)?;
-    println!("{:#?}", np.clone());
+    //println!("{:#?}", np.clone());
 
-    ctx.env.build(np);
+    ctx.env.build(np)?;
     dbg!(ctx.env.clone());
 
 
     let mut tc = Typechecker::new(ctx.env.clone());
     let res = tc.check()?;
     dbg!(res);
-    //let new_p: TypedProgram = np.clone().into();
-    //new_p
+ 
+
     Ok(())
 }

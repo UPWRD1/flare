@@ -1,37 +1,51 @@
 use std::fmt;
 
-use logos::{Lexer, Logos, Skip};
+use logos::{Lexer, Logos, Skip, Span};
 
 /// Update the line count and the char index.
 fn newline_callback(lex: &mut Lexer<Tk>) -> Skip {
-    lex.extras.0 += 1;
-    lex.extras.1 = lex.span().end;
+    lex.extras.line += 1;
+    lex.extras.span = lex.span();
     Skip
 }
 
 fn space_callback(lex: &mut Lexer<Tk>) -> Skip {
-    lex.extras.0 += 1;
+    lex.extras.span = lex.span();
     Skip
 }
 
 fn tab_callback(lex: &mut Lexer<Tk>) -> Skip {
-    lex.extras.0 += 4;
+    lex.extras.span = lex.span();
     Skip
 }
 
 
 /// Compute the line and column position for the current word.
-fn word_callback(lex: &mut Lexer<Tk>) -> (usize, usize) {
-    let line = lex.extras.0;
-    let column = lex.span().start - lex.extras.1;
+fn word_callback(lex: &mut Lexer<Tk>) -> PosInfo {
+let line = lex.extras.line;
+let span =  lex.span();
+    PosInfo {
+        line,
+        span
+    }
+}
 
-    (line, column)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PosInfo {
+    line: usize,
+    span: Span,
+}
+
+impl Default for PosInfo {
+    fn default() -> Self {
+        Self { line: 1, span: Default::default() }
+    }
 }
 
 ///Enum for type of token
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Logos)]
+#[derive(Debug, Clone,  PartialEq, Eq, Logos)]
 #[logos(skip r"[\f]+")] // Ignore this regex pattern between tokens
-#[logos(extras = (usize, usize))]
+#[logos(extras = PosInfo)]
 pub enum Tk {
     #[regex(" ", space_callback)]
     TkSpace,
@@ -39,146 +53,144 @@ pub enum Tk {
     TkTab,
     #[regex("\n", newline_callback)]
     TkNewline,
-    #[regex(r";", word_callback)]
-    TkSemicolon((usize, usize)),
     #[regex("--.*", newline_callback)]
     TkComment,
     #[regex(r"with", word_callback)]
-    TkKwWith((usize, usize)),
+    TkKwWith(PosInfo),
     #[regex(r"let", word_callback)]
-    TkKwLet((usize, usize)),
+    TkKwLet(PosInfo),
     #[regex(r"def", word_callback)]
-    TkKwDef((usize, usize)),
+    TkKwDef(PosInfo),
     #[regex(r"prop", word_callback)]
-    TkKwProp((usize, usize)),
+    TkKwProp(PosInfo),
     #[regex(r"where", word_callback)]
-    TkKwWhere((usize, usize)),
+    TkKwWhere(PosInfo),
     #[regex(r"is", word_callback)]
-    TkKwIs((usize, usize)),
+    TkKwIs(PosInfo),
     #[regex(r"do", word_callback)]
-    TkKwDo((usize, usize)),
+    TkKwDo(PosInfo),
     #[regex(r"end", word_callback)]
-    TkKwEnd((usize, usize)),
+    TkKwEnd(PosInfo),
     #[regex(r"for", word_callback)]
-    TkKwFor((usize, usize)),
+    TkKwFor(PosInfo),
     #[regex(r"devprint", word_callback)]
-    TkKwPrint((usize, usize)),
+    TkKwPrint(PosInfo),
     #[regex(r"of", word_callback)]
-    TkKwOf((usize, usize)),
+    TkKwOf(PosInfo),
     #[regex(r"fn", word_callback)]
-    TkKwFn((usize, usize)),
+    TkKwFn(PosInfo),
     //#[regex(r"mut", word_callback)]
-    //TkKwMut((usize, usize)),
+    //TkKwMut(PosInfo),
     #[regex(r"if", word_callback)]
-    TkKwIf((usize, usize)),
+    TkKwIf(PosInfo),
     #[regex(r"then", word_callback)]
-    TkKwThen((usize, usize)),
+    TkKwThen(PosInfo),
     #[regex(r"else", word_callback)]
-    TkKwElse((usize, usize)),
+    TkKwElse(PosInfo),
     #[regex(r"match", word_callback)]
-    TkKwMatch((usize, usize)),
+    TkKwMatch(PosInfo),
     #[regex(r"return", word_callback)]
-    TkKwReturn((usize, usize)),
+    TkKwReturn(PosInfo),
     #[regex(r"and", word_callback)]
-    TkKwAnd((usize, usize)),
+    TkKwAnd(PosInfo),
     #[regex(r"or", word_callback)]
-    TkKwOr((usize, usize)),
+    TkKwOr(PosInfo),
     #[regex(r"not", word_callback)]
-    TkKwNot((usize, usize)),
+    TkKwNot(PosInfo),
     // #[regex(r"self", word_callback)]
     // TkKwSelf,
     #[regex(r"uint", word_callback)]
-    TkKwUint((usize, usize)),
+    TkKwUint(PosInfo),
     #[regex(r"word", word_callback)]
-    TkKwWord((usize, usize)),
+    TkKwWord(PosInfo),
     #[regex(r"byte", word_callback)]
-    TkKwByte((usize, usize)),
+    TkKwByte(PosInfo),
     #[regex(r"int", word_callback)]
-    TkKwInt((usize, usize)),
+    TkKwInt(PosInfo),
     #[regex(r"flt", word_callback)]
-    TkKwFlt((usize, usize)),
+    TkKwFlt(PosInfo),
     #[regex(r"str", word_callback)]
-    TkKwStr((usize, usize)),
+    TkKwStr(PosInfo),
     #[regex(r"char", word_callback)]
-    TkKwChar((usize, usize)),
+    TkKwChar(PosInfo),
     #[regex(r"Fn", word_callback)]
-    TkKwFnTy((usize, usize)),
+    TkKwFnTy(PosInfo),
     #[regex(r"naught", word_callback)]
-    TkKwNaught((usize, usize)),
+    TkKwNaught(PosInfo),
     #[regex(r"bool", word_callback)]
-    TkKwBool((usize, usize)),
+    TkKwBool(PosInfo),
     #[regex(r"type", word_callback)]
-    TkKwType((usize, usize)),
+    TkKwType(PosInfo),
     #[regex(r"struct", word_callback)]
-    TkKwStruct((usize, usize)),
+    TkKwStruct(PosInfo),
     #[regex(r"enum", word_callback)]
-    TkKwEnum((usize, usize)),
+    TkKwEnum(PosInfo),
     #[regex("([a-zA-Z]|_)+([a-zA-Z0-9]|_)*", priority = 2, callback = word_callback)]
-    TkSymbol((usize, usize)),
+    TkSymbol(PosInfo),
     #[regex("[0-9]+", priority = 4, callback = word_callback)]
-    TkInt((usize, usize)),
+    TkInt(PosInfo),
     #[regex(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?", priority = 2, callback = word_callback)]
-    TkFlt((usize, usize)),
+    TkFlt(PosInfo),
     #[regex("true", priority = 3, callback = word_callback)]
-    TkTrue((usize, usize)),
+    TkTrue(PosInfo),
     #[regex("false", priority = 3, callback = word_callback)]
-    TkFalse((usize, usize)),
+    TkFalse(PosInfo),
     #[regex(r#""([^"\\]|\\["\\bnfrt]|u[a-fA-F0-9]{4})*""#, word_callback)]
-    TkStrLit((usize, usize)),
+    TkStrLit(PosInfo),
     #[regex(r"->", word_callback)]
-    TkArr((usize, usize)),
+    TkArr(PosInfo),
     #[regex(r"!", word_callback)]
-    TkBang((usize, usize)),
+    TkBang(PosInfo),
     #[regex(r"\^", word_callback)]
-    TkPtrArr((usize, usize)),
+    TkPtrArr(PosInfo),
     #[regex(r"\%", word_callback)]
-    TkPtrInit((usize, usize)),
+    TkPtrInit(PosInfo),
     #[regex(r"\?", word_callback)]
-    TkQuestion((usize, usize)),
+    TkQuestion(PosInfo),
     #[regex(r"&", word_callback)]
-    TkFuncComp((usize, usize)),
+    TkFuncComp(PosInfo),
     #[regex(r"\+", word_callback)]
-    TkPlus((usize, usize)),
+    TkPlus(PosInfo),
     #[regex(r"-", word_callback)]
-    TkMinus((usize, usize)),
+    TkMinus(PosInfo),
     #[regex(r"\*", word_callback)]
-    TkStar((usize, usize)),
+    TkStar(PosInfo),
     #[regex(r"/", word_callback)]
-    TkSlash((usize, usize)),
+    TkSlash(PosInfo),
     #[regex(r"\(", word_callback)]
-    TkLparen((usize, usize)),
+    TkLparen(PosInfo),
     #[regex(r"\)", word_callback)]
-    TkRparen((usize, usize)),
+    TkRparen(PosInfo),
     #[regex(r"\[", word_callback)]
-    TkLbracket((usize, usize)),
+    TkLbracket(PosInfo),
     #[regex(r"]", word_callback)]
-    TkRbracket((usize, usize)),
+    TkRbracket(PosInfo),
     #[regex(r"\{", word_callback)]
-    TkLbrace((usize, usize)),
+    TkLbrace(PosInfo),
     #[regex(r"}", word_callback)]
-    TkRbrace((usize, usize)),
+    TkRbrace(PosInfo),
     #[regex(r"=", word_callback)]
-    TkAssign((usize, usize)),
+    TkAssign(PosInfo),
     #[regex(r"==", word_callback)]
-    TkCEQ((usize, usize)),
+    TkCEQ(PosInfo),
     #[regex(r"<", word_callback)]
-    TkCLT((usize, usize)),
+    TkCLT(PosInfo),
     #[regex(r"<=", word_callback)]
-    TkCLE((usize, usize)),
+    TkCLE(PosInfo),
     #[regex(r">", word_callback)]
-    TkCGT((usize, usize)),
+    TkCGT(PosInfo),
     #[regex(r">=", word_callback)]
-    TkCGE((usize, usize)),
+    TkCGE(PosInfo),
     #[regex(r"\,", word_callback)]
-    TkComma((usize, usize)),
+    TkComma(PosInfo),
     #[regex(r":", word_callback)]
-    TkColon((usize, usize)),
+    TkColon(PosInfo),
     #[regex(r"::", word_callback)]
-    TkDoubleColon((usize, usize)),
+    TkDoubleColon(PosInfo),
     #[regex(r"\.", word_callback)]
-    TkDot((usize, usize)),
+    TkDot(PosInfo),
     #[regex(r"@", word_callback)]
-    TkAt((usize, usize)),
+    TkAt(PosInfo),
 }
 
 #[derive(Debug, Clone)]
@@ -194,6 +206,156 @@ impl Token {
             lit,
         }
     }
+
+    pub fn get_span(&self) -> Span {
+        match self.kind.clone() {
+            Tk::TkSpace => todo!(),
+            Tk::TkTab => todo!(),
+            Tk::TkNewline => todo!(),
+            Tk::TkComment => todo!(),
+            Tk::TkKwWith(v) => v.span,
+            Tk::TkKwLet(v) => v.span,
+            Tk::TkKwDef(v) => v.span,
+            Tk::TkKwProp(v) => v.span,
+            Tk::TkKwWhere(v) => v.span,
+            Tk::TkKwIs(v) => v.span,
+            Tk::TkKwDo(v) => v.span,
+            Tk::TkKwEnd(v) => v.span,
+            Tk::TkKwFor(v) => v.span,
+            Tk::TkKwPrint(v) => v.span,
+            Tk::TkKwOf(v) => v.span,
+            Tk::TkKwFn(v) => v.span,
+            Tk::TkKwIf(v) => v.span,
+            Tk::TkKwThen(v) => v.span,
+            Tk::TkKwElse(v) => v.span,
+            Tk::TkKwMatch(v) => v.span,
+            Tk::TkKwReturn(v) => v.span,
+            Tk::TkKwAnd(v) => v.span,
+            Tk::TkKwOr(v) => v.span,
+            Tk::TkKwNot(v) => v.span,
+            Tk::TkKwUint(v) => v.span,
+            Tk::TkKwWord(v) => v.span,
+            Tk::TkKwByte(v) => v.span,
+            Tk::TkKwInt(v) => v.span,
+            Tk::TkKwFlt(v) => v.span,
+            Tk::TkKwStr(v) => v.span,
+            Tk::TkKwChar(v) => v.span,
+            Tk::TkKwFnTy(v) => v.span,
+            Tk::TkKwNaught(v) => v.span,
+            Tk::TkKwBool(v) => v.span,
+            Tk::TkKwType(v) => v.span,
+            Tk::TkKwStruct(v) => v.span,
+            Tk::TkKwEnum(v) => v.span,
+            Tk::TkSymbol(v) => v.span,
+            Tk::TkInt(v) => v.span,
+            Tk::TkFlt(v) => v.span,
+            Tk::TkTrue(v) => v.span,
+            Tk::TkFalse(v) => v.span,
+            Tk::TkStrLit(v) => v.span,
+            Tk::TkArr(v) => v.span,
+            Tk::TkBang(v) => v.span,
+            Tk::TkPtrArr(v) => v.span,
+            Tk::TkPtrInit(v) => v.span,
+            Tk::TkQuestion(v) => v.span,
+            Tk::TkFuncComp(v) => v.span,
+            Tk::TkPlus(v) => v.span,
+            Tk::TkMinus(v) => v.span,
+            Tk::TkStar(v) => v.span,
+            Tk::TkSlash(v) => v.span,
+            Tk::TkLparen(v) => v.span,
+            Tk::TkRparen(v) => v.span,
+            Tk::TkLbracket(v) => v.span,
+            Tk::TkRbracket(v) => v.span,
+            Tk::TkLbrace(v) => v.span,
+            Tk::TkRbrace(v) => v.span,
+            Tk::TkAssign(v) => v.span,
+            Tk::TkCEQ(v) => v.span,
+            Tk::TkCLT(v) => v.span,
+            Tk::TkCLE(v) => v.span,
+            Tk::TkCGT(v) => v.span,
+            Tk::TkCGE(v) => v.span,
+            Tk::TkComma(v) => v.span,
+            Tk::TkColon(v) => v.span,
+            Tk::TkDoubleColon(v) => v.span,
+            Tk::TkDot(v) => v.span,
+            Tk::TkAt(v) => v.span,
+        }
+    }
+
+    pub fn get_line(&self) -> usize {
+        match self.kind.clone() {
+            Tk::TkSpace => todo!(),
+            Tk::TkTab => todo!(),
+            Tk::TkNewline => todo!(),
+            Tk::TkComment => todo!(),
+            Tk::TkKwWith(v) => v.line,
+            Tk::TkKwLet(v) => v.line,
+            Tk::TkKwDef(v) => v.line,
+            Tk::TkKwProp(v) => v.line,
+            Tk::TkKwWhere(v) => v.line,
+            Tk::TkKwIs(v) => v.line,
+            Tk::TkKwDo(v) => v.line,
+            Tk::TkKwEnd(v) => v.line,
+            Tk::TkKwFor(v) => v.line,
+            Tk::TkKwPrint(v) => v.line,
+            Tk::TkKwOf(v) => v.line,
+            Tk::TkKwFn(v) => v.line,
+            Tk::TkKwIf(v) => v.line,
+            Tk::TkKwThen(v) => v.line,
+            Tk::TkKwElse(v) => v.line,
+            Tk::TkKwMatch(v) => v.line,
+            Tk::TkKwReturn(v) => v.line,
+            Tk::TkKwAnd(v) => v.line,
+            Tk::TkKwOr(v) => v.line,
+            Tk::TkKwNot(v) => v.line,
+            Tk::TkKwUint(v) => v.line,
+            Tk::TkKwWord(v) => v.line,
+            Tk::TkKwByte(v) => v.line,
+            Tk::TkKwInt(v) => v.line,
+            Tk::TkKwFlt(v) => v.line,
+            Tk::TkKwStr(v) => v.line,
+            Tk::TkKwChar(v) => v.line,
+            Tk::TkKwFnTy(v) => v.line,
+            Tk::TkKwNaught(v) => v.line,
+            Tk::TkKwBool(v) => v.line,
+            Tk::TkKwType(v) => v.line,
+            Tk::TkKwStruct(v) => v.line,
+            Tk::TkKwEnum(v) => v.line,
+            Tk::TkSymbol(v) => v.line,
+            Tk::TkInt(v) => v.line,
+            Tk::TkFlt(v) => v.line,
+            Tk::TkTrue(v) => v.line,
+            Tk::TkFalse(v) => v.line,
+            Tk::TkStrLit(v) => v.line,
+            Tk::TkArr(v) => v.line,
+            Tk::TkBang(v) => v.line,
+            Tk::TkPtrArr(v) => v.line,
+            Tk::TkPtrInit(v) => v.line,
+            Tk::TkQuestion(v) => v.line,
+            Tk::TkFuncComp(v) => v.line,
+            Tk::TkPlus(v) => v.line,
+            Tk::TkMinus(v) => v.line,
+            Tk::TkStar(v) => v.line,
+            Tk::TkSlash(v) => v.line,
+            Tk::TkLparen(v) => v.line,
+            Tk::TkRparen(v) => v.line,
+            Tk::TkLbracket(v) => v.line,
+            Tk::TkRbracket(v) => v.line,
+            Tk::TkLbrace(v) => v.line,
+            Tk::TkRbrace(v) => v.line,
+            Tk::TkAssign(v) => v.line,
+            Tk::TkCEQ(v) => v.line,
+            Tk::TkCLT(v) => v.line,
+            Tk::TkCLE(v) => v.line,
+            Tk::TkCGT(v) => v.line,
+            Tk::TkCGE(v) => v.line,
+            Tk::TkComma(v) => v.line,
+            Tk::TkColon(v) => v.line,
+            Tk::TkDoubleColon(v) => v.line,
+            Tk::TkDot(v) => v.line,
+            Tk::TkAt(v) => v.line,
+        }
+    }
 }
 
 impl fmt::Display for Token {
@@ -207,7 +369,6 @@ impl fmt::Display for Token {
             Tk::TkSpace => todo!(),
             Tk::TkTab => todo!(),
             Tk::TkNewline => todo!(),
-            Tk::TkSemicolon(_) => todo!(),
             Tk::TkComment => todo!(),
             Tk::TkKwWith(_) => "with",
             Tk::TkKwLet(_) => "let",

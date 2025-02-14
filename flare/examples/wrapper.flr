@@ -1,0 +1,13 @@
+type Wrapper<?T> = struct of
+	value: ?T
+end
+
+let new for Wrapper<?T> of v: ?T -> Wrapper<?T> =
+	return Wrapper {value: v}
+
+let dump for Wrapper<?T> -> ?T =
+	return self.value
+
+
+	
+
