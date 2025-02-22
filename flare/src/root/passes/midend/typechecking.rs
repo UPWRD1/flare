@@ -2,13 +2,13 @@ use std::collections::HashMap;
 
 use anyhow::{Ok, Result};
 
-use crate::root::{passes::midend::environment::UserTypeKind, resource::{
+use crate::root::resource::{
     ast::{Expr, SymbolType},
     errors::TypecheckingError,
-}};
+};
 
 use super::environment::{
-    Environment, FunctionTableEntry, GenericValue, Table, VariableTableEntry,
+    Environment, FunctionTableEntry, GenericValue, VariableTableEntry,
 };
 
 
@@ -187,7 +187,7 @@ impl Typechecker {
                 name: name_string.clone(),
             },
         )?;
-        let mut real_fields: Vec<SymbolType> = vec![];
+        let real_fields: Vec<SymbolType> = vec![];
         
         todo!();
 
@@ -425,14 +425,11 @@ impl Typechecker {
         }
         SymbolType::Custom(ty.get_custom_name(), new_generics)
  
+    } else if ty.is_generic() && generics.contains_key(&ty.get_generic_name()) {
+        return generics.get(&ty.get_generic_name()).unwrap().clone().get_ty();
     } else {
-        
-        if ty.is_generic() && generics.contains_key(&ty.get_generic_name()) {
-            return generics.get(&ty.get_generic_name()).unwrap().clone().get_ty();
-        } else {
-            ty.clone()
+        ty.clone()
 
-        }
     }
     }
 

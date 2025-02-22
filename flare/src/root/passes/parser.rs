@@ -147,7 +147,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         = n: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] e: expr() {(n.get_symbol_name(), e)}
 
     rule variantinstance() -> crate::root::resource::ast::Expr
-        = [Token { kind: Tk::TkColon(_), .. }] n: simplesymbol() f: variantfields()? {crate::root::resource::ast::Expr::VariantInstance { name: Box::new(n), fields: f.unwrap_or_else(|| vec![]) }}
+        = [Token { kind: Tk::TkColon(_), .. }] n: simplesymbol() f: variantfields()? {crate::root::resource::ast::Expr::VariantInstance { name: Box::new(n), fields: f.unwrap_or_else(std::vec::Vec::new) }}
 
     rule variantfields() -> Vec<crate::root::resource::ast::Expr>
         = [Token { kind: Tk::TkLparen(_), .. }] e: expr() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRparen(_), .. }] {e}
