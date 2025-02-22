@@ -2,7 +2,7 @@ pub mod passes;
 use std::{collections::HashSet, fs, path:: PathBuf};
 use itertools::Itertools;
 use logos::Logos;
-use passes::midend::{environment::Environment, typechecking::Typechecker};
+use passes::{backend::gen::Generator, midend::{environment::Environment, typechecking::Typechecker}};
 //use passes::midend::typechecking::Typechecker;
 use resource::{ast::{FileModule, Program}, lex::LexRes};
 pub mod resource;
@@ -68,7 +68,7 @@ pub fn get_dependencies(ctx: &mut Context, mut p: Program) -> Result<Program> {
     Ok(p)
 }
 
-pub fn compile_typecheck(ctx: &mut Context, filename: &String) -> Result<()>{
+pub fn compile_typecheck(ctx: &mut Context, filename: &String) -> Result<String>{
     let mut p = Program {
         modules: vec![],
         dependencies: HashSet::new(),
@@ -80,13 +80,15 @@ pub fn compile_typecheck(ctx: &mut Context, filename: &String) -> Result<()>{
     //println!("{:#?}", np.clone());
 
     ctx.env.build(np)?;
-    dbg!(ctx.env.clone());
+    //dbg!(ctx.env.clone());
 
 
     let mut tc = Typechecker::new(ctx.env.clone());
     let res = tc.check()?;
-    dbg!(res);
+    //dbg!(res.clone());
  
-
-    Ok(())
+    let mut g = Generator::new(res);
+    let code = g.generate().unwrap();
+    //println!("Output: \n{}", code);
+    Ok(code)
 }

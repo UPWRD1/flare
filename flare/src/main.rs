@@ -21,11 +21,9 @@ fn main() -> Result<()>{
             "-c" | "--compile" => {
                 let filename: &String = &prog_args[2];
                 let now: Instant = Instant::now();
-                compile_typecheck(&mut root::Context { env: Environment::new() }, filename)?;
+                let code = compile_typecheck(&mut root::Context { env: Environment::new() }, filename)?;
                 let elapsed = now.elapsed();
-                //println!("{:#?}", res.clone());
-                let serialized = serde_json::to_string_pretty(&()).unwrap();
-                fs::write(format!("{}.json", filename), serialized).expect("Unable to write file");
+                fs::write(format!("{}.ssa", filename), code).expect("Unable to write file");
 
                 println!("Compiled {filename} in {elapsed:.2?}");
                 Ok(())

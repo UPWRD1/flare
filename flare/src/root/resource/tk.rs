@@ -57,6 +57,8 @@ pub enum Tk {
     TkComment,
     #[regex(r"with", word_callback)]
     TkKwWith(PosInfo),
+    #[regex(r"extern", word_callback)]
+    TkKwExtern(PosInfo),
     #[regex(r"let", word_callback)]
     TkKwLet(PosInfo),
     #[regex(r"def", word_callback)]
@@ -214,6 +216,8 @@ impl Token {
             Tk::TkNewline => todo!(),
             Tk::TkComment => todo!(),
             Tk::TkKwWith(v) => v.span,
+            Tk::TkKwExtern(v) => v.span,
+
             Tk::TkKwLet(v) => v.span,
             Tk::TkKwDef(v) => v.span,
             Tk::TkKwProp(v) => v.span,
@@ -289,6 +293,7 @@ impl Token {
             Tk::TkNewline => todo!(),
             Tk::TkComment => todo!(),
             Tk::TkKwWith(v) => v.line,
+            Tk::TkKwExtern(v) => v.line,
             Tk::TkKwLet(v) => v.line,
             Tk::TkKwDef(v) => v.line,
             Tk::TkKwProp(v) => v.line,
@@ -371,6 +376,8 @@ impl fmt::Display for Token {
             Tk::TkNewline => todo!(),
             Tk::TkComment => todo!(),
             Tk::TkKwWith(_) => "with",
+            Tk::TkKwExtern(_) => "extern",
+
             Tk::TkKwLet(_) => "let",
             Tk::TkKwDef(_) => "def",
             Tk::TkKwProp(_) => "prop",

@@ -1,0 +1,7 @@
+extern puts: (str) -> naught
+
+type IO = struct of 
+end
+
+let out for IO of s: str -> naught =
+    puts(s)

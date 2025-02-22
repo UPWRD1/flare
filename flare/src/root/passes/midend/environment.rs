@@ -82,6 +82,7 @@ pub struct FunctionTableEntry {
     pub return_type: SymbolType,
     pub body: Vec<Expr>,
     pub is_checked: bool,
+    pub is_extern: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -159,7 +160,7 @@ pub struct Environment {
     pub function_table: Table<FunctionTableEntry>,
     pub usertype_table: Table<UserTypeTableEntry>,
     pub method_table: Table<MethodTableEntry>,
-    pub current_variables: Table<VariableTableEntry>,
+    pub current_variables: HashMap<String, HashMap<String, VariableTableEntry>>,
     pub current_generics: Table<GenericTableEntry>,
 }
 
@@ -170,7 +171,7 @@ impl Environment {
             module_table: Table::new(),
             function_table: Table::new(),
             method_table: Table::new(),
-            current_variables: Table::new(),
+            current_variables: HashMap::new(),
             current_generics: Table::new(),
             usertype_table: Table::new(),
         }
@@ -279,6 +280,7 @@ impl Environment {
             } => self.build_enumdef(name, members),
             //Ast::TypeDef { name, funcs } => self.build_typedef(name, funcs.into()),
             Ast::WithClause { include: _ } => Ok(()),
+            Ast::ExternClause { name, args, ret } => self.build_externdef(name, ret, args),
             _ => todo!("{astnode:?}"),
         }
     }
@@ -300,6 +302,35 @@ impl Environment {
             return_type: rettype,
             body,
             is_checked: false,
+            is_extern: false,
+        };
+
+        //println!("Adding function '{}()' (id# {})", name, id);
+
+        self.function_table.set(name.clone(), entry);
+        Ok(())
+    }
+
+    fn build_externdef(
+        &mut self,
+        name: String,
+        rettype: SymbolType,
+        args: Vec<SymbolType>,
+    ) -> anyhow::Result<()> {
+        let mut mangled_args = vec![];
+        for arg in args.iter().enumerate() {
+            mangled_args.push((format!("{}_{}", name, arg.0), arg.1.clone()))
+        }
+        let entry = FunctionTableEntry {
+            name: name.clone(),
+            method_parent: None,
+            arity: args.len(),
+            args: mangled_args,
+            limits: vec![],
+            return_type: rettype,
+            body: vec![],
+            is_checked: true, // unsafe?
+            is_extern: true,
         };
 
         //println!("Adding function '{}()' (id# {})", name, id);
@@ -317,7 +348,7 @@ impl Environment {
         limits: Vec<Expr>,
         body: Vec<Expr>,
     ) -> anyhow::Result<()> {
-        println!("Adding method '{}()' to {}", name, parent);
+        //println!("Adding method '{}()' to {}", name, parent);
         if self.method_table.get_id(&parent).is_some() {
             // the type already has some methods
             let the_entry = FunctionTableEntry {
@@ -329,6 +360,7 @@ impl Environment {
                 return_type: rettype,
                 body,
                 is_checked: false,
+                is_extern: false,
             };
             let mut the_method_entry = self.method_table.get_id(&parent).ok_or(TypecheckingError::NoMethods { name: parent.clone() })?;
             the_method_entry.the_functions.entries.insert(name, the_entry);
@@ -344,6 +376,7 @@ impl Environment {
                 return_type: rettype,
                 body,
                 is_checked: false,
+                is_extern: false,
             };
             let mut the_table = Table::new();
             the_table.set(name, the_entry);

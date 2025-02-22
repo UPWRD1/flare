@@ -1,0 +1,9 @@
+with "examples/io"
+
+let add of l: int, r: int -> int = 
+    return l + r
+
+let main = 
+    io = IO {}
+    io.out("3 and 7 is:")
+    
