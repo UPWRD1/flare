@@ -60,6 +60,11 @@ pub enum Ast {
     WithClause {
         include: Vec<Expr>,
     },
+    ExternClause {
+        name: String,
+        args: Vec<SymbolType>,
+        ret: SymbolType,
+    },
     TypeAlias {
         name: String,
         is: SymbolType,
@@ -183,6 +188,7 @@ pub enum Expr {
         arms: Vec<(Predicate, Self)>,
     },
     // Atomics
+    Naught,
     Int(i32),
     Uint(u32),
     Word(usize),

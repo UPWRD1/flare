@@ -106,6 +106,8 @@ impl Typechecker {
                 otherwise_type
             }
             Expr::Int(_) => SymbolType::Int,
+            Expr::Naught => SymbolType::Naught,
+
             Expr::Uint(_) => SymbolType::Uint,
             Expr::Byte(_) => SymbolType::Byte,
             Expr::Flt(_) => SymbolType::Flt,
@@ -144,7 +146,7 @@ impl Typechecker {
         for f in fields {
             real_fields.push((f.0.clone(), self.check_expr(&f.1)?));
         }
-        assert!(defined_fields.len() == fields.len());
+        assert_eq!(defined_fields.len(), fields.len());
         let mut generic_vec: Vec<SymbolType> = vec![];
         for f in defined_fields.into_iter().zip(real_fields) {
             if !(f.0 .0 == f.1 .0 && self.compare_types(&f.0 .1, &f.1 .1)) {
@@ -194,7 +196,7 @@ impl Typechecker {
 
     fn check_expr_return(&mut self, value: &Expr) -> Result<SymbolType, anyhow::Error> {
         let value_type = self.check_expr(value)?;
-        // dbg!(self.current_func.clone());
+         //dbg!(self.current_func.clone());
 
         // dbg!(value_type.clone());
         // dbg!(self.current_func.clone().unwrap().return_type);
@@ -208,15 +210,17 @@ impl Typechecker {
         value: &Expr,
     ) -> Result<SymbolType, anyhow::Error> {
         let name = name.get_symbol_name();
-        Ok(match self.env.current_variables.get_id(&name) {
+        Ok(match self.env.current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap().get(&name) {
             Some(_) => return Err(TypecheckingError::NonMutableReassignment { name }.into()),
             None => {
                 let rhs_type = self.check_expr(value)?;
-                println!(
-                    "Adding variable {} with type {:?} and value {:?}",
-                    name, rhs_type, value
-                );
-                self.env.current_variables.set(
+                //println!(
+                //    "Adding variable {} with type {:?} and value {:?}",
+                //    name, rhs_type, value
+                //);
+                //dbg!(self.env.current_variables.clone());
+                //dbg!(self.current_func.clone());
+                self.env.current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap().insert(
                     name,
                     VariableTableEntry {
                         mytype: rhs_type.clone(),
@@ -246,12 +250,12 @@ impl Typechecker {
         } else {
             Ok(self
                 .env
-                .current_variables
-                .get_id(name)
+                .current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap()
+                .get(name)
                 .ok_or(TypecheckingError::UndefinedVariable {
                     name: name.to_string(),
                 })?
-                .mytype)
+                .mytype.clone())
         }
     }
 
@@ -345,7 +349,7 @@ impl Typechecker {
         let the_object: String = match self.env.usertype_table.get_id(&obj_name) {
             Some(_) => obj_name,
             None => {
-                if let Some(o) = self.env.current_variables.get_id(&obj_name) {
+                if let Some(o) = self.env.current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap().get(&obj_name) {
                     o.mytype.get_custom_name()
                 } else {
                     return Err(TypecheckingError::UndefinedType {
@@ -434,14 +438,15 @@ impl Typechecker {
 
     pub fn check_function_body(&mut self, func: &FunctionTableEntry) -> anyhow::Result<SymbolType> {
         let prev_curr_variables = self.env.current_variables.clone();
-        self.env.current_variables = Table::new();
+        let prev_curr_func = self.current_func.clone();
         self.current_func = Some(func.clone());
         self.current_method_parent.clone_from(&func.method_parent);
+        self.env.current_variables.insert(self.current_func.clone().unwrap().name, HashMap::new());
         for arg in func.args.clone() {
             let name = arg.0.clone();
             self.env
-                .current_variables
-                .set(name, VariableTableEntry { mytype: arg.1 });
+                .current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap()
+                .insert(name, VariableTableEntry { mytype: arg.1 });
         }
         let mut last_expr: SymbolType = func.return_type.clone();
         for (i, e) in func.body.iter().enumerate() {
@@ -452,22 +457,25 @@ impl Typechecker {
             }
         }
         assert!(self.compare_types(&last_expr, &func.return_type));
-        if func.name != "main" {
-            self.env.current_variables = prev_curr_variables;
-        }
-        self.current_func = None;
+        // if func.name != "main" {
+        //     //self.env.current_variables = prev_curr_variables;
+        // }
+        self.current_func = prev_curr_func;
         Ok(last_expr)
     }
 
     pub fn check(&mut self) -> anyhow::Result<Environment, anyhow::Error> {
         //dbg!(self.env.clone());
         let main_func: FunctionTableEntry = self
-            .env
-            .function_table
-            .get_id(&"main".to_string())
+        .env
+        .function_table
+        .get_id(&"main".to_string())
             .ok_or(TypecheckingError::MissingMainFunction)?;
-        self.check_function_body(&main_func)?;
+        self.current_func = Some(main_func.clone());
+        let rt = self.check_function_body(&main_func.clone())?.clone();
         self.env.function_table["main".to_string()].is_checked = true;
+        self.env.function_table["main".to_string()].return_type = rt;
+        self.env.function_table.entries.retain(|_, v| v.is_checked);
         Ok(self.env.clone())
     }
 }

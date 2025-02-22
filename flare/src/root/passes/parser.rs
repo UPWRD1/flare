@@ -1,4 +1,3 @@
-use reporting::*;
 
 use peg::{Parse, ParseElem, RuleResult};
 
@@ -39,6 +38,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / methoddef()
         / typedef()
         / with_clause()
+        / extern_clause()
         // prop_def()
 
     rule typedef() -> crate::root::resource::ast::Ast
@@ -72,13 +72,17 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         = quiet! {[Token { kind: Tk::TkKwWith(_), .. }] s: expr() ** [Token { kind: Tk::TkComma(_), .. }] {crate::root::resource::ast::Ast::WithClause { include: s }}}
         / expected!("a 'with' clause")
 
+    rule extern_clause() -> crate::root::resource::ast::Ast
+        = quiet! {[Token { kind: Tk::TkKwExtern(_), .. }] name: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] [Token { kind: Tk::TkLparen(_), .. }] args: atype() ** [Token { kind: Tk::TkComma(_), .. }][Token { kind: Tk::TkRparen(_), .. }] [Token { kind: Tk::TkArr(_), .. }] ret: atype() {crate::root::resource::ast::Ast::ExternClause {name: name.get_symbol_name(), args, ret}}}
+        / expected!("an 'extern' clause")
+
     rule funcdef() -> crate::root::resource::ast::Ast
-        = [Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() args: func_args() r: func_ret_type()? limits: where_limit() [Token { kind: Tk::TkAssign(_), .. }] start: position!() body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.get_symbol_name().to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::ast::SymbolType::Generic(crate::root::passes::midend::environment::GenericValue::Ref(format!("?_{}", crate::root::resource::ast::calculate_hash::<String>(&name.get_symbol_name()) )))}, limits, body } }
-        / [Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() [Token { kind: Tk::TkAssign(_), .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.get_symbol_name().to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body } }
+        = [Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() args: func_args() r: func_ret_type()? limits: where_limit() [Token { kind: Tk::TkAssign(_), .. }] start: position!() body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.get_symbol_name().to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::ast::SymbolType::Naught}, limits, body } }
+        // [Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() [Token { kind: Tk::TkAssign(_), .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.get_symbol_name().to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body } }
 
     rule methoddef() -> crate::root::resource::ast::Ast
-        = quiet!{[Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() [Token { kind: Tk::TkKwFor(_), .. }] parent: atype() args: func_args() r: func_ret_type()? limits: where_limit() [Token { kind: Tk::TkAssign(_), .. }] start: position!() body: expr()+ { crate::root::resource::ast::Ast::MethodDef { parent: parent.get_custom_name().to_string(), name: name.get_symbol_name().to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::ast::SymbolType::Generic(crate::root::passes::midend::environment::GenericValue::Ref(format!("?_{}", crate::root::resource::ast::calculate_hash::<String>(&name.get_symbol_name()) )))}, limits, body } }}
-        / quiet!{[Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() [Token { kind: Tk::TkKwFor(_), .. }] parent: atype() [Token { kind: Tk::TkAssign(_), .. }] body: expr()+ { crate::root::resource::ast::Ast::MethodDef {parent: parent.get_custom_name().to_string(), name: name.get_symbol_name().to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body } }}
+        = quiet!{[Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() [Token { kind: Tk::TkKwFor(_), .. }] parent: atype() args: func_args() r: func_ret_type()? limits: where_limit() [Token { kind: Tk::TkAssign(_), .. }] start: position!() body: expr()+ { crate::root::resource::ast::Ast::MethodDef { parent: parent.get_custom_name().to_string(), name: name.get_symbol_name().to_string(), args: if args.is_some() {args.unwrap()} else {vec![]}, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::ast::SymbolType::Naught}, limits, body } }}
+        // quiet!{[Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() [Token { kind: Tk::TkKwFor(_), .. }] parent: atype() [Token { kind: Tk::TkAssign(_), .. }] body: expr()+ { crate::root::resource::ast::Ast::MethodDef {parent: parent.get_custom_name().to_string(), name: name.get_symbol_name().to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body } }}
         / expected!("a function definition")
 
     rule func_ret_type() -> crate::root::resource::ast::SymbolType
@@ -221,6 +225,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         / quiet! {[Token { kind: Tk::TkStrLit(_), lit: n,.. }] { crate::root::resource::ast::Expr::Str(n.parse().unwrap() )}}
         / quiet! {[Token { kind: Tk::TkFalse(_), lit: n,.. }] { crate::root::resource::ast::Expr::Bool(false)}}
         / quiet! {[Token { kind: Tk::TkTrue(_), lit: n,.. }] { crate::root::resource::ast::Expr::Bool(true)}}
+        / quiet! {[Token { kind: Tk::TkKwNaught(_), lit: n,.. }] { crate::root::resource::ast::Expr::Naught}}
         / quiet! {[Token { kind: Tk::TkPtrInit(_), .. }] e: expr() {crate::root::resource::ast::Expr::AddressOf(Box::new(e))}}
         / expected!("a value")
 
@@ -280,7 +285,6 @@ rule call_suffix(lhs: crate::root::resource::ast::Expr) -> crate::root::resource
 });
 
 use lang::program;
-use reporting::Location;
 
 use crate::root::resource::{
     ast::FileModule,
@@ -302,19 +306,7 @@ pub fn parse(tokens: &[Token], filename: String, src: String) -> anyhow::Result<
                 .map(|x| x.to_string())
                 .collect::<Vec<String>>()
                 .join(", ");
-            let styles = Styles::styled();
-            let file = File::new(filename.clone(), src);
-            let msg = Renderer::new(
-                &styles,
-                &[
-                    error!("Could not parse {filename}")
-                        .location(Location::new(file.clone(), the_tok.get_span().start)),
-                        
-                    expected!("{}", expected),
-                ],
-            )
-            .to_string();
-
+            let msg = the_tok.lit.clone();
             Err(ParsingError::NonspecificParsingError { msg }.into())
         }
     }

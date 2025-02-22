@@ -1,0 +1,14 @@
+type :IO = align 1 {  }
+export function $out(l %tmp.2, :IO %tmp.3) {
+@start
+	%tmp.4 =w call $puts(l %tmp.2)
+	ret
+}
+export function $main() {
+@start
+	%tmp.6 =l alloc8 0
+	%tmp.5 =l copy %tmp.6
+	%tmp.8 =w call $out(l $string.7, :IO %tmp.5)
+	ret
+}
+export data $string.7 = { b 34, b "3 and 7 is:", b 34, b 0 }
