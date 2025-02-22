@@ -324,7 +324,7 @@ impl SymbolType {
         match self {
             SymbolType::Generic(n) => match n {
                 GenericValue::Ref(n) => n.to_string(),
-                GenericValue::Perfect(n, _symbol_type) => panic!(),
+                GenericValue::Perfect(_n, _symbol_type) => panic!(),
             },
             _ => panic!("{self:?} is not a generic"),
         }

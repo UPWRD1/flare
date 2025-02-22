@@ -121,7 +121,7 @@ impl Typechecker {
             Expr::FieldAccess(expr, v) => self.check_expr_field_access(expr, v)?,
             Expr::Call { name, args } => self.check_expr_call(name, args)?,
             Expr::MethodCall { obj, name, args } => self.check_expr_method_call(obj, name, args)?,
-            Expr::VariantInstance { name, fields } => {
+            Expr::VariantInstance { name: _, fields: _ } => {
                 todo!();
                 //self.check_expr_variantinstance(name, fields)?
             }
@@ -175,24 +175,24 @@ impl Typechecker {
         Ok(SymbolType::Custom(name_string, generic_vec))
     }
 
-    fn check_expr_variantinstance(
-        &mut self,
-        name: &Expr,
-        fields: &Vec<Expr>,
-    ) -> Result<SymbolType, anyhow::Error> {
-        dbg!(name, fields);
-        let name_string = name.get_symbol_name();
-        let the_enum = self.env.usertype_table.get_id(&name_string).ok_or(
-            TypecheckingError::UndefinedType {
-                name: name_string.clone(),
-            },
-        )?;
-        let real_fields: Vec<SymbolType> = vec![];
+//     fn check_expr_variantinstance(
+//         &mut self,
+//         name: &Expr,
+//         fields: &Vec<Expr>,
+//     ) -> Result<SymbolType, anyhow::Error> {
+//         dbg!(name, fields);
+//         let name_string = name.get_symbol_name();
+//         let the_enum = self.env.usertype_table.get_id(&name_string).ok_or(
+//             TypecheckingError::UndefinedType {
+//                 name: name_string.clone(),
+//             },
+//         )?;
+//         let real_fields: Vec<SymbolType> = vec![];
         
-        todo!();
+//         todo!();
 
-//        Ok(SymbolType::Custom(name_string, generic_vec))
-    }
+// //        Ok(SymbolType::Custom(name_string, generic_vec))
+//     }
 
     fn check_expr_return(&mut self, value: &Expr) -> Result<SymbolType, anyhow::Error> {
         let value_type = self.check_expr(value)?;
@@ -434,7 +434,7 @@ impl Typechecker {
     }
 
     pub fn check_function_body(&mut self, func: &FunctionTableEntry) -> anyhow::Result<SymbolType> {
-        let prev_curr_variables = self.env.current_variables.clone();
+        //let prev_curr_variables = self.env.current_variables.clone();
         let prev_curr_func = self.current_func.clone();
         self.current_func = Some(func.clone());
         self.current_method_parent.clone_from(&func.method_parent);
