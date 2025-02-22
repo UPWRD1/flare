@@ -1,10 +1,10 @@
 use anyhow::{format_err, Result};
-use qbe::{DataDef, Function, Instr, Linkage, Module, Type, TypeDef, Value};
+use qbe::{DataDef, Function, Instr, Linkage, Type, TypeDef, Value};
 use std::{cmp, collections::HashMap};
 
 use crate::root::{
     passes::midend::environment::{Environment, FunctionTableEntry, UserTypeTableEntry},
-    resource::ast::{self, Expr, Program, SymbolType},
+    resource::ast::{Expr, SymbolType},
 };
 
 #[derive(Debug, Clone)]
@@ -61,7 +61,7 @@ impl<'a> Generator<'a> {
             .rev()
             .filter_map(|s| s.get(&name))
             .next()
-            .ok_or_else(|| format_err!("Undefined variable '{}'", name).into())
+            .ok_or_else(|| format_err!("Undefined variable '{}'", name))
     }
 
     fn convert_symboltype(&self, t: &SymbolType) -> Type<'a> {
@@ -143,7 +143,7 @@ todo!()
                 func.assign_instr(tmp.clone(), lty.clone(), Instr::Div(lhs_val, rhs_val));
                 Ok((lty, tmp))
             }
-            Expr::Symbol(name) => self.get_var(name).map(|v| v.clone()),
+            Expr::Symbol(name) => self.get_var(name).cloned(),
             Expr::StructInstance { name, fields } => {
                 self.generate_struct_init(func, &name.get_symbol_name(), fields)
             }
@@ -413,7 +413,7 @@ todo!()
             qbe::Type::Halfword => 2,
             qbe::Type::Word | qbe::Type::Single => 4,
             qbe::Type::Long | qbe::Type::Double => 8,
-            qbe::Type::Aggregate(ref name) => {
+            qbe::Type::Aggregate(name) => {
                 let td = self
                     .typedefs
                     .iter()
@@ -477,7 +477,7 @@ todo!()
     fn generate_typedef(&mut self, t: &UserTypeTableEntry) -> Result<()> {
         self.tmp_counter += 1;
         let mut typedef: TypeDef<'a> = TypeDef {
-            name: format!("{}", t.raw.get_custom_name()),
+            name: t.raw.get_custom_name().to_string(),
             align: None, // We'll set this after calculating max alignment
             items: Vec::new(),
         };

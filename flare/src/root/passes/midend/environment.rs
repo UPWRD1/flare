@@ -14,6 +14,12 @@ pub struct Table<Entry> {
     pub entries: HashMap<String, Entry>,
 }
 
+impl<Entry: std::clone::Clone + Debug> Default for Table<Entry> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<Entry: std::clone::Clone + Debug> Table<Entry> {
     pub fn new() -> Self {
         Self {
@@ -162,6 +168,12 @@ pub struct Environment {
     pub method_table: Table<MethodTableEntry>,
     pub current_variables: HashMap<String, HashMap<String, VariableTableEntry>>,
     pub current_generics: Table<GenericTableEntry>,
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Environment {
@@ -436,8 +448,7 @@ Ok(())    }
             is_checked: false,
             raw: SymbolType::Custom(name.clone(), members
             .iter()
-            .filter(|e| e.is_generic())
-            .map(|e: &SymbolType| e.clone())
+            .filter(|e| e.is_generic()).cloned()
             .collect(),
         )
         };
