@@ -148,18 +148,26 @@ impl<'a> Generator<'a> {
             Expr::Call { name, args } => {
                 let mut new_args: Vec<(Type<'a>, Value)> = Vec::new();
                 for arg in args.iter() {
-                    new_args.push(self.generate_expr(func, arg.clone())?);
-                }
+                    let arg_ty =self.generate_expr(func, arg.clone())?;
+                    if matches!(arg_ty.0, Type::Aggregate(_)) {
+                        new_args.push((Type::Long, arg_ty.1));
 
+                    } else {
+                        new_args.push(arg_ty);
+
+                    }
+                }
+                let the_ty = self.convert_symboltype(&self.env.function_table.entries.get(&name.get_symbol_name()?).unwrap().return_type);
                 let tmp = self.new_temporary();
                 func.assign_instr(
                     tmp.clone(),
                     // TODO: get that type properly
-                    qbe::Type::Word, //self.convert_symboltype(&self.env.function_table.entries.get(&name.get_symbol_name()?).unwrap().return_type),
+                    the_ty.clone(),
                     Instr::Call(name.get_symbol_name()?.clone(), new_args, None),
                 );
 
-                Ok((qbe::Type::Word, tmp))
+                Ok((the_ty.clone(),
+                tmp))
             }
             Expr::MethodCall { obj, name, args } => {
                 let mut new_args: Vec<(Type<'a>, Value)> = Vec::new();

@@ -3,9 +3,21 @@ with "examples/io"
 let add of x: int, y: int -> int = 
     return x + y
 
+type Wrapper = struct of
+    value: int
+end
+
+let wrap of x: int -> Wrapper =
+    return Wrapper {value: x}
+
+let unwrap of w: Wrapper -> int =
+    return w.value
+
 let main =
-    a = 3
-    b = 5
-    result = add(a,b)
-    IO.new().print_int(a).print_str(" + ").print_int(b).print_str(" = ").print_int(result).out("")
+    a = wrap(3)
+    b = wrap(5)
+    a2 = unwrap(a)
+    b2 = unwrap(b)
+    result = add(a2, b2)
+    IO.new().print_int(a2).print_str(" + ").print_int(b2).print_str(" = ").print_int(result).out("")
 
