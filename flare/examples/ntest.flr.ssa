@@ -1,14 +1,63 @@
-type :IO = align 1 {  }
-export function $out(l %tmp.2, :IO %tmp.3) {
+type :IO = align 4 { w }
+export function :IO $print_int(:IO %tmp.2, w %tmp.3) {
 @start
-	%tmp.4 =w call $puts(l %tmp.2)
-	ret
+	%tmp.5 =w call $printf(l $string.4, w %tmp.3)
+	%tmp.6 =l alloc8 4
+	%tmp.7 =w copy 0
+	%tmp.8 =l add %tmp.6, 0
+	storew %tmp.7, %tmp.8
+	ret %tmp.6
+}
+export function :IO $out(:IO %tmp.9, l %tmp.10) {
+@start
+	%tmp.11 =w call $puts(l %tmp.10)
+	%tmp.12 =l alloc8 4
+	%tmp.13 =w copy 0
+	%tmp.14 =l add %tmp.12, 0
+	storew %tmp.13, %tmp.14
+	ret %tmp.12
+}
+export function :IO $new() {
+@start
+	%tmp.15 =l alloc8 4
+	%tmp.16 =w copy 0
+	%tmp.17 =l add %tmp.15, 0
+	storew %tmp.16, %tmp.17
+	ret %tmp.15
+}
+export function :IO $print_str(:IO %tmp.18, l %tmp.19) {
+@start
+	%tmp.21 =w call $printf(l $string.20, l %tmp.19)
+	%tmp.22 =l alloc8 4
+	%tmp.23 =w copy 0
+	%tmp.24 =l add %tmp.22, 0
+	storew %tmp.23, %tmp.24
+	ret %tmp.22
 }
 export function $main() {
 @start
-	%tmp.6 =l alloc8 0
-	%tmp.5 =l copy %tmp.6
-	%tmp.8 =w call $out(l $string.7, :IO %tmp.5)
+	%tmp.26 =w copy 3
+	%tmp.25 =w copy %tmp.26
+	%tmp.28 =w copy 5
+	%tmp.27 =w copy %tmp.28
+	%tmp.30 =w call $add(w %tmp.25, w %tmp.27)
+	%tmp.29 =w copy %tmp.30
+	%tmp.31 =l call $new()
+	%tmp.32 =l call $print_int(l %tmp.31, w %tmp.25)
+	%tmp.34 =l call $print_str(l %tmp.32, l $string.33)
+	%tmp.35 =l call $print_int(l %tmp.34, w %tmp.27)
+	%tmp.37 =l call $print_str(l %tmp.35, l $string.36)
+	%tmp.38 =l call $print_int(l %tmp.37, w %tmp.29)
+	%tmp.40 =l call $out(l %tmp.38, l $string.39)
 	ret
 }
-export data $string.7 = { b 34, b "3 and 7 is:", b 34, b 0 }
+export function w $add(w %tmp.41, w %tmp.42) {
+@start
+	%tmp.43 =w add %tmp.41, %tmp.42
+	ret %tmp.43
+}
+export data $string.4 = { b "%d", b 0 }
+export data $string.20 = { b "%s", b 0 }
+export data $string.33 = { b " + ", b 0 }
+export data $string.36 = { b " = ", b 0 }
+export data $string.39 = { b 0 }

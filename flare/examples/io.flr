@@ -1,7 +1,22 @@
 extern puts: (str) -> naught
+extern printf: (str, ...) -> naught
 
 type IO = struct of 
+    v: int
 end
 
-let out for IO of s: str -> naught =
+let new for IO -> IO = 
+    return IO {v: 0}
+
+let out for IO of self, s: str -> IO =
     puts(s)
+    return IO {v: 0}
+
+let print_int for IO of self, v: int -> IO = 
+    printf("%d", v)
+    return IO {v: 0}
+
+let print_str for IO of self, v: str -> IO = 
+    printf("%s", v)
+    return IO {v: 0}
+

@@ -189,6 +189,8 @@ pub enum Tk {
     TkColon(PosInfo),
     #[regex(r"::", word_callback)]
     TkDoubleColon(PosInfo),
+    #[token("...", word_callback)]
+    TkTripleDot(PosInfo),
     #[regex(r"\.", word_callback)]
     TkDot(PosInfo),
     #[regex(r"@", word_callback)]
@@ -282,6 +284,7 @@ impl Token {
             Tk::TkColon(v) => v.span,
             Tk::TkDoubleColon(v) => v.span,
             Tk::TkDot(v) => v.span,
+            Tk::TkTripleDot(v) => v.span,
             Tk::TkAt(v) => v.span,
         }
     }
@@ -358,6 +361,8 @@ impl Token {
             Tk::TkColon(v) => v.line,
             Tk::TkDoubleColon(v) => v.line,
             Tk::TkDot(v) => v.line,
+            Tk::TkTripleDot(v) => v.line,
+
             Tk::TkAt(v) => v.line,
         }
     }
@@ -442,6 +447,7 @@ impl fmt::Display for Token {
             Tk::TkColon(_) => todo!(),
             Tk::TkDoubleColon(_) => todo!(),
             Tk::TkDot(_) => todo!(),
+            Tk::TkTripleDot(_) => todo!(),
             Tk::TkAt(_) => todo!(),
         };
         write!(f, "{}", val)

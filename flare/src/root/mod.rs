@@ -24,7 +24,7 @@ pub fn compile_filename(ctx: &mut Context, filename: &String) -> anyhow::Result<
 
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, ()>>>().len() {
         let a: Tk = lex.next().unwrap().unwrap();
-        //println!("{_i} {a:?} '{}'", lex.slice());
+       // println!("{_i} {a:?} '{}'", lex.slice());
         tokens.push(Token::new(a.clone(), lex.slice().to_string()));
     }
 

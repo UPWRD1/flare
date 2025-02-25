@@ -1,3 +1,4 @@
+use anyhow::format_err;
 use ordered_float::OrderedFloat;
 use serde::Deserialize;
 use serde::Serialize;
@@ -63,6 +64,7 @@ pub enum Ast {
     ExternClause {
         name: String,
         args: Vec<SymbolType>,
+        variadic: bool, // TODO: unlimited variadics
         ret: SymbolType,
     },
     TypeAlias {
@@ -227,24 +229,24 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn get_symbol_name(&self) -> String {
+    pub fn get_symbol_name(&self) -> anyhow::Result<String> {
         match self {
-            Expr::Symbol(s) => s.to_string(),
-            Expr::FieldAccess(_s, f) => f.to_string(),
-            _ => panic!("{self:?} is not a symbol"),
+            Expr::Symbol(s) => Ok(s.to_string()),
+            Expr::FieldAccess(_s, f) => Ok(f.to_string()),
+            _ => Err(format_err!("{self:?} is not a symbol")) //panic!("{self:?} is not a symbol"),
         }
     }
 
     pub fn get_assignment(&self) -> (String, Self) {
         match self {
-            Expr::Assignment { name, value } => (name.get_symbol_name(), *value.clone()),
+            Expr::Assignment { name, value } => (name.get_symbol_name().expect("cannot assign to a non-symbol"), *value.clone()),
             _ => panic!(),
         }
     }
 
     pub fn get_callee(&self) -> String {
         match self {
-            Expr::Call { name, .. } => name.get_symbol_name(),
+            Expr::Call { name, .. } => name.get_symbol_name().unwrap(),
             _ => panic!(),
         }
     }
@@ -252,6 +254,14 @@ impl Expr {
     pub fn get_call_args(&self) -> Vec<Self> {
         match self {
             Expr::Call { name: _, args, .. } => args.to_vec(),
+            _ => panic!(),
+        }
+    }
+
+    pub fn get_parent_name(&self) -> String {
+        match self {
+            Expr::MethodCall { obj, .. } => obj.get_parent_name(),
+            Expr::Symbol(s) => s.clone(),
             _ => panic!(),
         }
     }
@@ -329,6 +339,16 @@ impl SymbolType {
             _ => panic!("{self:?} is not a generic"),
         }
     }
+
+    pub fn get_generic_value(&self) -> GenericValue {
+        match self {
+            SymbolType::Generic(v) => match v {
+                GenericValue::Ref(n) => panic!(),
+                GenericValue::Perfect(_n, _symbol_type) => return v.clone(),            },
+            _ => panic!("{self:?} is not a generic"),
+        }
+    }
+
 
     // pub fn is_str(&self) -> bool {
     //     matches!(self, Self::Str)
@@ -608,10 +628,12 @@ impl Display for SymbolType {
             SymbolType::Flt => "flt",
             SymbolType::Str => "str",
             SymbolType::Bool => "bool",
+            SymbolType::Bool => "char",
+
             SymbolType::Mut(_) => todo!(),
             SymbolType::Fn(_, _, _) => todo!(),
             SymbolType::MethodFn { .. } => todo!(),
-            SymbolType::Naught => todo!(),
+            SymbolType::Naught => "naught",
             SymbolType::Pointer(_) => todo!(),
             SymbolType::Unknown => todo!(),
             SymbolType::Generic(name) => match name {

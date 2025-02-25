@@ -69,6 +69,7 @@ impl<'a> Generator<'a> {
             SymbolType::Int => Type::Word,
             SymbolType::Flt => Type::Double,
             SymbolType::Custom(name, _) => {
+                //dbg!(self.struct_map.clone());
                 let (ty, ..) = self
                     .struct_map
                     .get(name)
@@ -77,12 +78,8 @@ impl<'a> Generator<'a> {
                     .to_owned();
                 ty
             }
-            SymbolType::Naught => {
-                Type::Zero
-            }
-            SymbolType::Str => {
-                Type::Long
-            }
+            SymbolType::Naught => Type::Word,
+            SymbolType::Str => Type::Long,
             _ => todo!("{t:?}"),
         }
     }
@@ -96,8 +93,10 @@ impl<'a> Generator<'a> {
                 Ok((Type::Word, tmp))
             }
             Expr::Naught => {
-todo!()            
-}
+                let tmp = self.new_temporary();
+                func.assign_instr(tmp.clone(), Type::Word, Instr::Copy(Value::Const(0)));
+                Ok((Type::Word, tmp))
+            }
             Expr::Flt(v) => {
                 let tmp = self.new_temporary();
                 func.assign_instr(
@@ -107,9 +106,7 @@ todo!()
                 );
                 Ok((Type::Double, tmp))
             }
-            Expr::Str(v) => {
-                self.generate_string(&v)
-            }
+            Expr::Str(v) => self.generate_string(&v),
 
             Expr::BinAdd { l, r } => {
                 let (lty, lhs_val) = self.generate_expr(func, *l)?;
@@ -145,11 +142,9 @@ todo!()
             }
             Expr::Symbol(name) => self.get_var(name).cloned(),
             Expr::StructInstance { name, fields } => {
-                self.generate_struct_init(func, &name.get_symbol_name(), fields)
+                self.generate_struct_init(func, &name.get_symbol_name().unwrap(), fields)
             }
-            Expr::FieldAccess(parent, field) => {
-                self.generate_field_access(func, *parent, field)
-            }
+            Expr::FieldAccess(parent, field) => self.generate_field_access(func, *parent, field),
             Expr::Call { name, args } => {
                 let mut new_args: Vec<(Type<'a>, Value)> = Vec::new();
                 for arg in args.iter() {
@@ -160,33 +155,39 @@ todo!()
                 func.assign_instr(
                     tmp.clone(),
                     // TODO: get that type properly
-                    qbe::Type::Word,
-                    Instr::Call(name.get_symbol_name().clone(), new_args, None),
+                    qbe::Type::Word, //self.convert_symboltype(&self.env.function_table.entries.get(&name.get_symbol_name()?).unwrap().return_type),
+                    Instr::Call(name.get_symbol_name()?.clone(), new_args, None),
                 );
 
                 Ok((qbe::Type::Word, tmp))
-
             }
             Expr::MethodCall { obj, name, args } => {
                 let mut new_args: Vec<(Type<'a>, Value)> = Vec::new();
 
-                let obj = self.generate_expr(func, *obj)?;
+                let the_obj: (Type<'a>, Value) = match self.generate_expr(func, *obj.clone()) {
+                    Ok(e) => {new_args.push((Type::Long, e.1.clone())); e}
+                    Err(_) => {
+                        (self.struct_map.iter().filter(|t| *t.0 == obj.get_symbol_name().unwrap()).nth(0).unwrap().1.0.clone(), Value::Temporary(obj.get_symbol_name().unwrap()))
+                    }
+                };
+                //new_args.push(the_obj);
 
                 for arg in args.iter() {
                     new_args.push(self.generate_expr(func, arg.clone())?);
                 }
-                new_args.push(obj);
                 let tmp = self.new_temporary();
+                
+        
                 func.assign_instr(
                     tmp.clone(),
                     // TODO: get that type properly
-                    qbe::Type::Word,
-                    Instr::Call(name.get_symbol_name().clone(), new_args, None),
+                    the_obj.0.clone(),//self.convert_symboltype(&self.env.usertype_table.get(&obj.get_symbol_name()?).unwrap().methods.get(&name.get_symbol_name().unwrap()).unwrap().return_type),
+                    Instr::Call(name.get_symbol_name().unwrap().clone(), new_args, None),
                 );
 
-                Ok((qbe::Type::Word, tmp))
+                Ok((the_obj.0, tmp))
             }
-            
+
             _ => todo!("{ex:?}"),
         }
     }
@@ -194,9 +195,9 @@ todo!()
     fn generate_string(&mut self, string: &str) -> Result<(Type<'a>, Value)> {
         self.tmp_counter += 1;
         let name = format!("string.{}", self.tmp_counter);
-
         let mut items: Vec<(Type<'a>, qbe::DataItem)> = Vec::new();
         let mut buf = String::new();
+        let string = string.strip_prefix("\"").unwrap().strip_suffix("\"").unwrap();
         for ch in string.chars() {
             if ch.is_ascii() && !ch.is_ascii_control() && ch != '"' {
                 buf.push(ch)
@@ -274,7 +275,7 @@ todo!()
                             (qbe::Type::Long, expr_tmp),
                             (qbe::Type::Long, qbe::Value::Const(sz)),
                         ],
-                        None
+                        None,
                     ));
                 }
                 _ => {
@@ -291,7 +292,6 @@ todo!()
         }
 
         Ok((ty, base))
-
     }
 
     fn generate_field_access(
@@ -310,11 +310,7 @@ todo!()
         );
 
         let tmp = self.new_temporary();
-        func.assign_instr(
-            tmp.clone(),
-            ty.clone(),
-            Instr::Load(ty.clone(), field_ptr),
-        );
+        func.assign_instr(tmp.clone(), ty.clone(), Instr::Load(ty.clone(), field_ptr));
 
         Ok((ty, tmp))
     }
@@ -329,7 +325,7 @@ todo!()
                 let (ty, src) = self.get_var(var.to_string())?.to_owned();
                 (src, ty, 0)
             }
-            Expr::FieldAccess(expr, field ) => self.resolve_field_access(expr, field)?,
+            Expr::FieldAccess(expr, field) => self.resolve_field_access(expr, field)?,
             other => {
                 return Err(format_err!(
                     "Invalid field access type: expected variable, field access or 'self', got {:?}",
@@ -361,7 +357,6 @@ todo!()
 
         Ok((src, ty, offset + off))
     }
-
 
     fn generate_assignment(&mut self, func: &mut Function<'a>, lhs: Expr, rhs: Expr) -> Result<()> {
         match lhs {
@@ -440,7 +435,11 @@ todo!()
 
             nargs.push((arg_t, tmp));
         }
-        let func_rt = if f.return_type.is_naught() {None} else {Some(self.convert_symboltype(&f.return_type))};
+        let func_rt = if f.return_type.is_naught() {
+            None
+        } else {
+            Some(self.convert_symboltype(&f.return_type))
+        };
         let mut func: Function<'a> =
             Function::new(Linkage::public(), f.name.clone(), nargs, func_rt);
         func.add_block("start");
@@ -448,12 +447,15 @@ todo!()
             self.generate_stmt(&mut func, e.clone())?;
         }
 
-        let returns = func.blocks.last().unwrap().items.last().map_or(false, |i: &qbe::BlockItem<'a>| {
-            match i {
-                qbe::BlockItem::Statement(statement) => matches!(statement, qbe::Statement::Volatile(qbe::Instr::Ret(_))),
+        let returns = func.blocks.last().unwrap().items.last().map_or(
+            false,
+            |i: &qbe::BlockItem<'a>| match i {
+                qbe::BlockItem::Statement(statement) => {
+                    matches!(statement, qbe::Statement::Volatile(qbe::Instr::Ret(_)))
+                }
                 qbe::BlockItem::Comment(_) => todo!(),
-            }
-        });
+            },
+        );
         // Automatically add return in void functions unless it already returns,
         // non-void functions raise an error
         if !returns {
@@ -467,82 +469,79 @@ todo!()
             }
         }
 
-
         self.buf.push_str(&format!("{}\n", func));
         self.scopes.pop();
-
         Ok(())
     }
 
     fn generate_typedef(&mut self, t: &UserTypeTableEntry) -> Result<()> {
-        self.tmp_counter += 1;
-        let mut typedef: TypeDef<'a> = TypeDef {
-            name: t.raw.get_custom_name().to_string(),
-            align: None, // We'll set this after calculating max alignment
-            items: Vec::new(),
-        };
-        let mut meta: StructMeta<'a> = StructMeta::new();
-        let mut offset = 0_u64;
-        let mut max_align = 1_u64;
 
-        for field in &t.kind.get_fields()? {
-            let ty = self.convert_symboltype(&field.1);
+            self.tmp_counter += 1;
+            let mut typedef: TypeDef<'a> = TypeDef {
+                name: t.raw.get_custom_name().to_string(),
+                align: None, // We'll set this after calculating max alignment
+                items: Vec::new(),
+            };
+            let mut meta: StructMeta<'a> = StructMeta::new();
+            let mut offset = 0_u64;
+            let mut max_align = 1_u64;
 
-            let field_align = self.type_alignment(&ty);
-            max_align = cmp::max(max_align, field_align);
+            for field in &t.kind.get_fields()? {
+                let ty = self.convert_symboltype(&field.1);
 
-            // Align the current offset for this field
-            offset = self.align_offset(offset, field_align);
+                let field_align = self.type_alignment(&ty);
+                max_align = cmp::max(max_align, field_align);
 
-            meta.insert(field.0.clone(), (ty.clone(), offset));
-            typedef.items.push((ty.clone(), 1));
+                // Align the current offset for this field
+                offset = self.align_offset(offset, field_align);
 
-            offset += &ty.size();
-        }
+                meta.insert(field.0.clone(), (ty.clone(), offset));
+                typedef.items.push((ty.clone(), 1));
 
-        // Final size needs to be aligned to the struct's alignment
-        offset = self.align_offset(offset, max_align);
+                offset += &ty.size();
+            }
 
-        // Set the typedef's alignment
-        typedef.align = Some(max_align);
-        self.typedefs.push(typedef.clone());
-        self.struct_map.insert(
-            t.raw.get_custom_name().clone(),
-            (
-                qbe::Type::Aggregate(Box::leak(Box::new(typedef.clone()))),
-                meta,
-                offset,
-            ),
-        );
-        self.buf.push_str(&format!("{}\n", typedef));
+            // Final size needs to be aligned to the struct's alignment
+            offset = self.align_offset(offset, max_align);
 
-        Ok(())
+            // Set the typedef's alignment
+            typedef.align = Some(max_align);
+            self.typedefs.push(typedef.clone());
+            self.struct_map.insert(
+                t.raw.get_custom_name().clone().split(".").nth(0).unwrap().to_string(),
+                (
+                    qbe::Type::Aggregate(Box::leak(Box::new(typedef.clone()))),
+                    meta,
+                    offset,
+                ),
+            );
+            self.buf.push_str(&format!("{}\n", typedef));
+
+            Ok(())
+
     }
 
     pub fn generate(&'a mut self) -> Result<String> {
-        for (_, t) in self.env.usertype_table.entries.clone().iter() {
+        for (_, t) in self.env.usertype_table.clone().iter() {
             self.generate_typedef(t)?;
-
         }
-        for (n, ty) in self.env.method_table.entries.clone().iter() {
-            for (_, func) in ty.the_functions.entries.clone().iter() {
-                let mut new_func = func.clone();
-                new_func.args.push(("self".to_string(), SymbolType::Custom(n.to_string(), vec![])));
-                self.generate_function(&new_func)?;
-
-            }
+        for (n, ty) in self.env.usertype_table.clone().iter() {
+            for (_, func) in ty.methods.clone().iter() {
+                if func.is_checked {
+                    self.generate_function(func)?;
+                }
+                }
         }
         for (_, func) in self.env.function_table.entries.clone().iter() {
-            if !func.is_extern {
+            if !func.is_extern && func.is_checked {
                 self.generate_function(func)?;
             }
         }
         for def in &self.datadefs {
             //self.module.add_data(def.clone());
             self.buf.push_str(&format!("{}\n", def));
-
         }
-        
+
         Ok(self.buf.clone())
     }
 }

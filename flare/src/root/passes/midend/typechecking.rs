@@ -2,15 +2,15 @@ use std::collections::HashMap;
 
 use anyhow::{Ok, Result};
 
-use crate::root::resource::{
-    ast::{Expr, SymbolType},
-    errors::TypecheckingError,
+use crate::root::{
+    passes::midend::environment::{GenericTableEntry, UserTypeKind, UserTypeTableEntry},
+    resource::{
+        ast::{Expr, SymbolType},
+        errors::TypecheckingError,
+    },
 };
 
-use super::environment::{
-    Environment, FunctionTableEntry, GenericValue, VariableTableEntry,
-};
-
+use super::environment::{Environment, FunctionTableEntry, GenericValue, VariableTableEntry};
 
 pub struct Typechecker {
     env: Environment,
@@ -59,11 +59,9 @@ impl Typechecker {
             }
             true
         } else if l.is_custom() && r.is_custom() && r.get_generic_count() == l.get_generic_count() {
-        true            
-}else {
-                return l == r;
-
-            
+            true
+        } else {
+            return l == r;
         }
     }
 
@@ -135,12 +133,15 @@ impl Typechecker {
         name: &Expr,
         fields: &Vec<(String, Expr)>,
     ) -> Result<SymbolType, anyhow::Error> {
-        let name_string = name.get_symbol_name();
-        let the_struct = self.env.usertype_table.get_id(&name_string).ok_or(
-            TypecheckingError::UndefinedType {
+        let name_string = name.get_symbol_name()?;
+        let mut the_struct = self
+            .env
+            .usertype_table
+            .get(&name_string)
+            .ok_or(TypecheckingError::UndefinedType {
                 name: name_string.clone(),
-            },
-        )?;
+            })?
+            .clone();
         let defined_fields: Vec<(String, SymbolType)> = the_struct.kind.get_fields()?;
         let mut real_fields: Vec<(String, SymbolType)> = vec![];
         for f in fields {
@@ -148,58 +149,73 @@ impl Typechecker {
         }
         assert_eq!(defined_fields.len(), fields.len());
         let mut generic_vec: Vec<SymbolType> = vec![];
-        for f in defined_fields.into_iter().zip(real_fields) {
-            if !(f.0 .0 == f.1 .0 && self.compare_types(&f.0 .1, &f.1 .1)) {
+        for ((def_fld_name, def_fld_ty), (fnd_fld_name, fnd_fld_ty)) in
+            defined_fields.into_iter().zip(real_fields)
+        {
+            if !(def_fld_name == fnd_fld_name && self.compare_types(&def_fld_ty, &fnd_fld_ty)) {
                 return Err(TypecheckingError::InvalidStructInstanceField {
                     obj: name_string,
-                    field: f.0 .0,
-                    expected: f.0 .1,
-                    found: f.1 .1,
+                    field: def_fld_name,
+                    expected: def_fld_ty,
+                    found: fnd_fld_ty,
                 }
                 .into());
             }
-            if f.0 .1.is_generic() {
-                if !f.1 .1.is_generic() {
-                    generic_vec.push(SymbolType::Generic(GenericValue::Perfect(
-                        f.0 .1.get_generic_name(),
-                        Box::new(f.1 .1),
-                    )));
+            if def_fld_ty.is_generic() {
+                if !fnd_fld_ty.is_generic() {
+                    let v = SymbolType::Generic(GenericValue::Perfect(
+                        def_fld_ty.get_generic_name(),
+                        Box::new(fnd_fld_ty),
+                    ));
+                    generic_vec.push(v.clone());
                 } else {
                     generic_vec.push(SymbolType::Generic(GenericValue::Ref(
-                        f.0 .1.get_generic_name(),
+                        def_fld_ty.get_generic_name(),
                     )));
                 }
             }
         }
+        the_struct.generic_monomorphs.push(
+            generic_vec
+                .clone()
+                .iter()
+                .map(|x| x.get_generic_value())
+                .collect(),
+        );
 
+        self.env
+            .usertype_table
+            .get_mut(&name_string)
+            .unwrap()
+            .generic_monomorphs = the_struct.generic_monomorphs;
         Ok(SymbolType::Custom(name_string, generic_vec))
     }
 
-//     fn check_expr_variantinstance(
-//         &mut self,
-//         name: &Expr,
-//         fields: &Vec<Expr>,
-//     ) -> Result<SymbolType, anyhow::Error> {
-//         dbg!(name, fields);
-//         let name_string = name.get_symbol_name();
-//         let the_enum = self.env.usertype_table.get_id(&name_string).ok_or(
-//             TypecheckingError::UndefinedType {
-//                 name: name_string.clone(),
-//             },
-//         )?;
-//         let real_fields: Vec<SymbolType> = vec![];
-        
-//         todo!();
+    //     fn check_expr_variantinstance(
+    //         &mut self,
+    //         name: &Expr,
+    //         fields: &Vec<Expr>,
+    //     ) -> Result<SymbolType, anyhow::Error> {
+    //         dbg!(name, fields);
+    //         let name_string = name.get_symbol_name();
+    //         let the_enum = self.env.usertype_table.get_id(&name_string).ok_or(
+    //             TypecheckingError::UndefinedType {
+    //                 name: name_string.clone(),
+    //             },
+    //         )?;
+    //         let real_fields: Vec<SymbolType> = vec![];
 
-// //        Ok(SymbolType::Custom(name_string, generic_vec))
-//     }
+    //         todo!();
+
+    // //        Ok(SymbolType::Custom(name_string, generic_vec))
+    //     }
 
     fn check_expr_return(&mut self, value: &Expr) -> Result<SymbolType, anyhow::Error> {
         let value_type = self.check_expr(value)?;
-         //dbg!(self.current_func.clone());
+        //dbg!(self.current_func.clone());
 
-        // dbg!(value_type.clone());
-        // dbg!(self.current_func.clone().unwrap().return_type);
+        //dbg!(value_type.clone());
+        //dbg!(self.current_func.clone().unwrap().return_type);
         assert!(self.compare_types(&value_type, &self.current_func.clone().unwrap().return_type));
         Ok(value_type)
     }
@@ -209,27 +225,38 @@ impl Typechecker {
         name: &Expr,
         value: &Expr,
     ) -> Result<SymbolType, anyhow::Error> {
-        let name = name.get_symbol_name();
-        Ok(match self.env.current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap().get(&name) {
-            Some(_) => return Err(TypecheckingError::NonMutableReassignment { name }.into()),
-            None => {
-                let rhs_type = self.check_expr(value)?;
-                //println!(
-                //    "Adding variable {} with type {:?} and value {:?}",
-                //    name, rhs_type, value
-                //);
-                //dbg!(self.env.current_variables.clone());
-                //dbg!(self.current_func.clone());
-                self.env.current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap().insert(
-                    name,
-                    VariableTableEntry {
-                        mytype: rhs_type.clone(),
-                    },
-                );
+        let name = name.get_symbol_name()?;
+        Ok(
+            match self
+                .env
+                .current_variables
+                .get_mut(&self.current_func.clone().unwrap().name).unwrap()
+                .get(&name)
+            {
+                Some(_) => return Err(TypecheckingError::NonMutableReassignment { name }.into()),
+                None => {
+                    let rhs_type = self.check_expr(value)?;
+                    //println!(
+                    //    "Adding variable {} with type {:?} and value {:?}",
+                    //    name, rhs_type, value
+                    //);
+                    //dbg!(self.env.current_variables.clone());
+                    //dbg!(self.current_func.clone());
+                    self.env
+                        .current_variables
+                        .get_mut(&self.current_func.clone().unwrap().name)
+                        .unwrap()
+                        .insert(
+                            name,
+                            VariableTableEntry {
+                                mytype: rhs_type.clone(),
+                            },
+                        );
 
-                rhs_type
-            }
-        })
+                    rhs_type
+                }
+            },
+        )
     }
 
     fn check_expr_symbol(&mut self, name: &String) -> Result<SymbolType, anyhow::Error> {
@@ -243,19 +270,23 @@ impl Typechecker {
             let the_type = self
                 .env
                 .usertype_table
-                .get_id(&the_name)
+                .get(&the_name)
                 .ok_or(TypecheckingError::UndefinedType { name: the_name })?
-                .raw;
+                .raw
+                .clone();
             Ok(the_type)
         } else {
             Ok(self
                 .env
-                .current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap()
+                .current_variables
+                .get_mut(&self.current_func.clone().unwrap().name)
+                .unwrap()
                 .get(name)
                 .ok_or(TypecheckingError::UndefinedVariable {
                     name: name.to_string(),
                 })?
-                .mytype.clone())
+                .mytype
+                .clone())
         }
     }
 
@@ -265,12 +296,12 @@ impl Typechecker {
         field: &String,
     ) -> Result<SymbolType, anyhow::Error> {
         let the_obj = self
-            .check_expr_symbol(&obj.get_symbol_name())?
+            .check_expr_symbol(&obj.get_symbol_name()?)?
             .get_custom_name();
         let the_entry =
             self.env
                 .usertype_table
-                .get_id(&the_obj)
+                .get(&the_obj)
                 .ok_or(TypecheckingError::UndefinedType {
                     name: the_obj.to_string(),
                 })?;
@@ -293,7 +324,7 @@ impl Typechecker {
         name: &Expr,
         args: &Vec<Expr>,
     ) -> Result<SymbolType, anyhow::Error> {
-        let name: String = name.get_symbol_name();
+        let name: String = name.get_symbol_name()?;
         let mut the_function =
             self.env
                 .function_table
@@ -301,41 +332,51 @@ impl Typechecker {
                 .ok_or(TypecheckingError::UndefinedFunction {
                     name: name.to_string(),
                 })?;
-        let mut generated_call_arg_types: Vec<SymbolType> = vec![];
-        let mut func_generics: HashMap<String, GenericValue> = HashMap::new();
+        if !the_function.is_extern {
+            let mut generated_call_arg_types: Vec<SymbolType> = vec![];
+            let mut func_generics: HashMap<String, GenericValue> = HashMap::new();
 
-        for expression in args {
-            generated_call_arg_types.push(self.check_expr(expression)?);
-        }
+            for expression in args {
+                generated_call_arg_types.push(self.check_expr(expression)?);
+            }
 
-        
-        for (i,arg) in generated_call_arg_types.iter().zip(the_function.args.clone()).enumerate() {
-            //if !(*arg.0 == arg.1 .1 || arg.1 .1.is_generic()) {
-            if !(self.compare_types(arg.0, &arg.1 .1)) {
-                return Err(TypecheckingError::InvalidFunctionArgumentType {
-                    name,
-                    arg: arg.1 .0,
-                    expected: arg.1 .1,
-                    found: arg.0.clone(),
+            for (i, arg) in generated_call_arg_types
+                .iter()
+                .zip(the_function.args.clone())
+                .enumerate()
+            {
+                //if !(*arg.0 == arg.1 .1 || arg.1 .1.is_generic()) {
+                if !(self.compare_types(arg.0, &arg.1 .1)) {
+                    return Err(TypecheckingError::InvalidFunctionArgumentType {
+                        name,
+                        arg: arg.1 .0,
+                        expected: arg.1 .1,
+                        found: arg.0.clone(),
+                    }
+                    .into());
                 }
-                .into());
+                the_function.args[i] = (arg.1 .0, arg.0.clone());
+                if arg.1 .1.is_generic() {
+                    func_generics.insert(
+                        arg.1 .1.get_generic_name(),
+                        GenericValue::Perfect(arg.1 .1.get_generic_name(), Box::new(arg.0.clone())),
+                    );
+                }
             }
-            the_function.args[i] = (arg.1.0, arg.0.clone());
-            if arg.1.1.is_generic() {
-                func_generics.insert(arg.1.1.get_generic_name(), GenericValue::Perfect(arg.1.1.get_generic_name(), Box::new(arg.0.clone())));
+            let sanitized_rt = self.sanitize_type(&the_function.return_type, func_generics);
+
+            if !the_function.is_checked {
+                self.env.function_table[name.clone()].is_checked = true;
+                let mut sanitized_func = the_function.clone();
+
+                sanitized_func.return_type = sanitized_rt.clone();
+                self.check_function_body(&sanitized_func)?;
             }
-
+            Ok(sanitized_rt)
+        } else {
+            assert!(args.len() >= the_function.args.len());
+            Ok(the_function.return_type) // VERY UNSAFE
         }
-        let sanitized_rt = self.sanitize_type(&the_function.return_type, func_generics);
-
-        if !the_function.is_checked {
-            self.env.function_table[name.clone()].is_checked = true;
-            let mut sanitized_func = the_function.clone();
-
-            sanitized_func.return_type = sanitized_rt.clone();
-            self.check_function_body(&sanitized_func)?;
-        }
-        Ok(sanitized_rt)
     }
 
     fn check_expr_method_call(
@@ -344,12 +385,18 @@ impl Typechecker {
         name: &Expr,
         args: &Vec<Expr>,
     ) -> Result<SymbolType, anyhow::Error> {
-        let obj_name: String = obj.get_symbol_name();
-        let func_name = name.get_symbol_name();
-        let the_object: String = match self.env.usertype_table.get_id(&obj_name) {
-            Some(_) => obj_name,
+        let obj_name: String = self.check_expr(obj).map_or(obj.get_parent_name(), |ty| ty.get_custom_name());
+        let func_name = name.get_symbol_name()?;
+        let the_object: String = match self.env.usertype_table.get(&obj_name) {
+            Some(_) => obj_name.clone(),
             None => {
-                if let Some(o) = self.env.current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap().get(&obj_name) {
+                if let Some(o) = self
+                    .env
+                    .current_variables
+                    .get_mut(&self.current_func.clone().unwrap().name)
+                    .unwrap()
+                    .get(&obj_name)
+                {
                     o.mytype.get_custom_name()
                 } else {
                     return Err(TypecheckingError::UndefinedType {
@@ -359,22 +406,35 @@ impl Typechecker {
                 }
             }
         };
-        let binding =
-            self.env
-                .method_table
-                .get_id(&the_object)
-                .ok_or(TypecheckingError::NoMethods {
-                    name: the_object.clone(),
-                })?;
+        let binding = self
+            .env
+            .usertype_table
+            .get(&the_object)
+            .ok_or(TypecheckingError::NoMethods {
+                name: the_object.clone(),
+            })?
+            .methods
+            .clone();
         let mut the_function = binding
-            .the_functions
-            .get_id(&func_name)
+            .get(&func_name)
             .ok_or(TypecheckingError::UndefinedMethod {
                 obj: the_object.clone(),
                 name: func_name.clone(),
             })?
             .clone();
         let mut generated_call_arg_types: Vec<SymbolType> = vec![];
+        generated_call_arg_types.push(match self.env.usertype_table.get(&obj_name) {
+            Some(ty) => ty.raw.clone(),
+            None => self
+                .env
+                .current_variables
+                .get_mut(&self.current_func.clone().unwrap().name)
+                .unwrap()
+                .get(&obj_name)
+                .unwrap()
+                .mytype
+                .clone(),
+        });
         for expression in args {
             generated_call_arg_types.push(self.check_expr(expression)?);
         }
@@ -383,54 +443,70 @@ impl Typechecker {
 
         for (i, arg) in generated_call_arg_types
             .iter()
-            .zip(the_function.args.clone()).enumerate()
+            .zip(the_function.args.clone())
+            .enumerate()
         {
-            if !(self.compare_types(arg.0, &arg.1.1)) {
+            if !(self.compare_types(arg.0, &arg.1 .1)) {
                 return Err(TypecheckingError::InvalidFunctionArgumentType {
                     name: func_name,
                     arg: arg.1 .0,
-                    expected: arg.1.1,
+                    expected: arg.1 .1,
                     found: arg.0.clone(),
                 }
                 .into());
             }
-            the_function.args[i] = (arg.1.0, arg.0.clone());
-            if arg.1.1.is_generic() {
-                func_generics.insert(arg.1.1.get_generic_name(), GenericValue::Perfect(arg.1.1.get_generic_name(), Box::new(arg.0.clone())));
+            the_function.args[i] = (arg.1 .0, arg.0.clone());
+            if arg.1 .1.is_generic() {
+                func_generics.insert(
+                    arg.1 .1.get_generic_name(),
+                    GenericValue::Perfect(arg.1 .1.get_generic_name(), Box::new(arg.0.clone())),
+                );
             }
         }
-        let sanitized_rt = self.sanitize_type(&the_function.return_type, func_generics);
+        let sanitized_rt = the_function.return_type.clone(); //self.sanitize_type(&the_function.return_type, func_generics);
 
         if !the_function.is_checked {
-            self.env.method_table[the_object.clone()].the_functions[func_name.clone()].is_checked =
-                true;
-                let mut sanitized_func = the_function.clone();
+            self.env
+                .usertype_table
+                .get_mut(&the_object)
+                .unwrap()
+                .methods
+                .get_mut(&func_name)
+                .unwrap()
+                .is_checked = true;
+            let mut sanitized_func = the_function.clone();
 
-                sanitized_func.return_type = sanitized_rt.clone();
-                self.check_function_body(&sanitized_func)?;
+            sanitized_func.return_type = sanitized_rt.clone();
+            self.check_function_body(&sanitized_func)?;
         }
-        Ok(
-            sanitized_rt,
-        )
+        Ok(sanitized_rt)
     }
 
-    fn sanitize_type(&mut self, ty: &SymbolType, generics: HashMap<String, GenericValue>) -> SymbolType {
-    if ty.is_custom() {
-        let type_generics: Vec<SymbolType> = ty.get_custom_generics();
-        let mut new_generics: Vec<SymbolType> = vec![];
-        for g in type_generics {
-         if generics.contains_key(&g.get_generic_name()) {
-             new_generics.push(SymbolType::Generic(generics.get(&g.get_generic_name()).unwrap().clone()));
-         }
+    fn sanitize_type(
+        &mut self,
+        ty: &SymbolType,
+        generics: HashMap<String, GenericValue>,
+    ) -> SymbolType {
+        if ty.is_custom() {
+            let type_generics: Vec<SymbolType> = ty.get_custom_generics();
+            let mut new_generics: Vec<SymbolType> = vec![];
+            for g in type_generics {
+                if g.is_generic() && generics.contains_key(&g.get_generic_name()) {
+                    new_generics.push(SymbolType::Generic(
+                        generics.get(&g.get_generic_name()).unwrap().clone(),
+                    ));
+                }
+            }
+            SymbolType::Custom(ty.get_custom_name(), new_generics)
+        } else if ty.is_generic() && generics.contains_key(&ty.get_generic_name()) {
+            return generics
+                .get(&ty.get_generic_name())
+                .unwrap()
+                .clone()
+                .get_ty();
+        } else {
+            ty.clone()
         }
-        SymbolType::Custom(ty.get_custom_name(), new_generics)
- 
-    } else if ty.is_generic() && generics.contains_key(&ty.get_generic_name()) {
-        return generics.get(&ty.get_generic_name()).unwrap().clone().get_ty();
-    } else {
-        ty.clone()
-
-    }
     }
 
     pub fn check_function_body(&mut self, func: &FunctionTableEntry) -> anyhow::Result<SymbolType> {
@@ -438,11 +514,15 @@ impl Typechecker {
         let prev_curr_func = self.current_func.clone();
         self.current_func = Some(func.clone());
         self.current_method_parent.clone_from(&func.method_parent);
-        self.env.current_variables.insert(self.current_func.clone().unwrap().name, HashMap::new());
+        self.env
+            .current_variables
+            .insert(self.current_func.clone().unwrap().name, HashMap::new());
         for arg in func.args.clone() {
             let name = arg.0.clone();
             self.env
-                .current_variables.get_mut(&self.current_func.clone().unwrap().name).unwrap()
+                .current_variables
+                .get_mut(&self.current_func.clone().unwrap().name)
+                .unwrap()
                 .insert(name, VariableTableEntry { mytype: arg.1 });
         }
         let mut last_expr: SymbolType = func.return_type.clone();
@@ -464,15 +544,26 @@ impl Typechecker {
     pub fn check(&mut self) -> anyhow::Result<Environment, anyhow::Error> {
         //dbg!(self.env.clone());
         let main_func: FunctionTableEntry = self
-        .env
-        .function_table
-        .get_id(&"main".to_string())
+            .env
+            .function_table
+            .get_id(&"main".to_string())
             .ok_or(TypecheckingError::MissingMainFunction)?;
+
         self.current_func = Some(main_func.clone());
         let rt = self.check_function_body(&main_func.clone())?.clone();
         self.env.function_table["main".to_string()].is_checked = true;
         self.env.function_table["main".to_string()].return_type = rt;
         self.env.function_table.entries.retain(|_, v| v.is_checked);
+        for (n, ty) in &self.env.usertype_table.clone() {
+            if !ty.generics.is_empty() {
+                self.env.usertype_table.remove(n);
+                for morph in ty.collapse_generics() {
+                    self.env
+                        .usertype_table
+                        .insert(morph.raw.get_custom_name(), morph);
+                }
+            }
+        }
         Ok(self.env.clone())
     }
 }

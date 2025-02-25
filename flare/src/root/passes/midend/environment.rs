@@ -1,7 +1,13 @@
+use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
+use std::hash::Hash;
 use std::{
-    borrow::Borrow, collections::{HashMap, HashSet}, fmt::{self, Debug}, ops::{Index, IndexMut}, path::PathBuf,
+    borrow::Borrow,
+    collections::{HashMap, HashSet},
+    fmt::{self, Debug},
+    ops::{Index, IndexMut},
+    path::PathBuf,
 };
 
 use crate::root::resource::{
@@ -29,18 +35,19 @@ impl<Entry: std::clone::Clone + Debug> Table<Entry> {
 
     pub fn set(&mut self, name: String, v: Entry) {
         //println!("setting {name} : {id} to {v:?}");
-        if let std::collections::hash_map::Entry::Vacant(e) = self.entries.entry(name.clone()) {   
-            e.insert(v);   
+        if let std::collections::hash_map::Entry::Vacant(e) = self.entries.entry(name.clone()) {
+            e.insert(v);
         } else {
-            panic!("Cannot overwrite {name} with {v:?}, {name} already exists with value {:?}", self.entries[&name])
+            panic!(
+                "Cannot overwrite {name} with {v:?}, {name} already exists with value {:?}",
+                self.entries[&name]
+            )
         }
     }
 
     pub fn get_id(&self, k: &String) -> Option<Entry> {
         self.entries.get(k).cloned()
-
     }
-
 }
 
 impl<Entry: std::clone::Clone + Debug> fmt::Display for Table<Entry>
@@ -56,22 +63,27 @@ where
     }
 }
 
-
-impl <T, Entry> Index<T> for Table<Entry> where T: std::hash::Hash + Eq, std::string::String: Borrow<T> {
+impl<T, Entry> Index<T> for Table<Entry>
+where
+    T: std::hash::Hash + Eq,
+    std::string::String: Borrow<T>,
+{
     type Output = Entry;
 
-    fn index(&self, key: T)-> &Self::Output {
+    fn index(&self, key: T) -> &Self::Output {
         return self.entries.get(&key).expect("Invalid Key!");
     }
 }
 
-impl <T, Entry>IndexMut<T> for Table<Entry> where T: std::hash::Hash + Eq, std::string::String: Borrow<T>  {
-
+impl<T, Entry> IndexMut<T> for Table<Entry>
+where
+    T: std::hash::Hash + Eq,
+    std::string::String: Borrow<T>,
+{
     fn index_mut(&mut self, key: T) -> &mut Self::Output {
         return self.entries.get_mut(&key).expect("Invalid Key!");
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct ModuleTableEntry {
@@ -89,6 +101,7 @@ pub struct FunctionTableEntry {
     pub body: Vec<Expr>,
     pub is_checked: bool,
     pub is_extern: bool,
+    pub variadic: bool
 }
 
 #[derive(Debug, Clone)]
@@ -125,7 +138,7 @@ impl GenericValue {
 
 #[derive(Debug, Clone, Hash)]
 pub struct GenericTableEntry {
-    pub value: GenericValue
+    pub to_gen: Vec<SymbolType>,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +148,27 @@ pub struct UserTypeTableEntry {
     pub kind: UserTypeKind,
     pub is_checked: bool,
     pub raw: SymbolType,
+    pub generic_monomorphs: Vec<Vec<GenericValue>>,
+    pub methods: HashMap<String, FunctionTableEntry>
+}
+
+impl UserTypeTableEntry {
+    pub fn collapse_generics(&self) -> Vec<Self> {
+        let mut accum = vec![];
+        for morph in &self.generic_monomorphs {
+                accum.push(UserTypeTableEntry {
+                    isdefined: true,
+                    generics: vec![],
+                    kind: self.kind.collapse_generics(morph),
+                    is_checked: true,
+                    raw: SymbolType::Custom(format!("{}.{}", self.raw.get_custom_name(), morph.iter().map(|x| x.get_ty()).join("_")), vec![]),
+                    generic_monomorphs: vec![],
+                    methods: self.methods.clone(),
+                });
+            
+        }
+        return accum;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord)]
@@ -148,6 +182,23 @@ impl UserTypeKind {
         match self {
             UserTypeKind::Struct { fields } => Ok(fields.clone()),
             _ => panic!(),
+        }
+    }
+
+    pub fn collapse_generics(&self, generics: &Vec<GenericValue>) -> Self {
+        match self {
+            UserTypeKind::Struct { fields } => {
+                let generic_names: Vec<(String, SymbolType)> = generics.iter().map(|x| (x.get_name(), x.get_ty())).collect();
+                let map: HashMap<String, SymbolType> = generic_names.iter().cloned().collect();
+                let mut new_fields: Vec<(String, SymbolType)> = vec![];
+                for field in fields {
+                    if field.1.is_generic() {
+                        new_fields.push((field.0.clone(), map.get(&field.1.get_generic_name()).unwrap().clone()).clone());
+                    }
+                }
+                Self::Struct { fields: new_fields}
+            }
+            UserTypeKind::Enum { variants } => todo!(),
         }
     }
 }
@@ -164,7 +215,7 @@ pub struct Environment {
     pub file_table: Table<FileTableEntry>,
     pub module_table: Table<ModuleTableEntry>,
     pub function_table: Table<FunctionTableEntry>,
-    pub usertype_table: Table<UserTypeTableEntry>,
+    pub usertype_table: HashMap<String, UserTypeTableEntry>,
     pub method_table: Table<MethodTableEntry>,
     pub current_variables: HashMap<String, HashMap<String, VariableTableEntry>>,
     pub current_generics: Table<GenericTableEntry>,
@@ -185,14 +236,16 @@ impl Environment {
             method_table: Table::new(),
             current_variables: HashMap::new(),
             current_generics: Table::new(),
-            usertype_table: Table::new(),
+            usertype_table: HashMap::new(),
         }
     }
 
     pub fn add_file(&mut self, name: &str, path: PathBuf, src: &str) -> anyhow::Result<()> {
         let the_name = path
             .file_name()
-            .ok_or_else(|| EnvironmentError::BadFile { name: name.to_string() })?
+            .ok_or_else(|| EnvironmentError::BadFile {
+                name: name.to_string(),
+            })?
             .to_str()
             .unwrap()
             .to_string();
@@ -239,7 +292,7 @@ impl Environment {
     //         _ => todo!("{t:?}")
     //     }
     // }
-    pub fn build(&mut self, p: Program) -> anyhow::Result<()>{
+    pub fn build(&mut self, p: Program) -> anyhow::Result<()> {
         let reversed_modules: Vec<&FileModule> = p.modules.iter().rev().collect();
         for module in reversed_modules {
             //println!("Building {:?}", module.name);
@@ -282,17 +335,11 @@ impl Environment {
                 limits,
                 body,
             } => self.build_methoddef(parent, name, rettype, args, limits.unwrap_or(vec![]), body),
-            Ast::Struct {
-                name,
-                members,
-            } => self.build_structdef(name, members),
-            Ast::Enum {
-                name,
-                members,
-            } => self.build_enumdef(name, members),
+            Ast::Struct { name, members } => self.build_structdef(name, members),
+            Ast::Enum { name, members } => self.build_enumdef(name, members),
             //Ast::TypeDef { name, funcs } => self.build_typedef(name, funcs.into()),
             Ast::WithClause { include: _ } => Ok(()),
-            Ast::ExternClause { name, args, ret } => self.build_externdef(name, ret, args),
+            Ast::ExternClause { name, args, variadic, ret } => self.build_externdef(name, ret, args, variadic),
             _ => todo!("{astnode:?}"),
         }
     }
@@ -315,6 +362,7 @@ impl Environment {
             body,
             is_checked: false,
             is_extern: false,
+            variadic: false
         };
 
         //println!("Adding function '{}()' (id# {})", name, id);
@@ -328,6 +376,7 @@ impl Environment {
         name: String,
         rettype: SymbolType,
         args: Vec<SymbolType>,
+        variadic: bool,
     ) -> anyhow::Result<()> {
         let mut mangled_args = vec![];
         for arg in args.iter().enumerate() {
@@ -343,6 +392,7 @@ impl Environment {
             body: vec![],
             is_checked: true, // unsafe?
             is_extern: true,
+            variadic,
         };
 
         //println!("Adding function '{}()' (id# {})", name, id);
@@ -360,8 +410,9 @@ impl Environment {
         limits: Vec<Expr>,
         body: Vec<Expr>,
     ) -> anyhow::Result<()> {
+        let args: Vec<(String, SymbolType)> = args.iter().map(|e| if e.0 == "self" {return (e.0.clone(), self.usertype_table.get(&parent).unwrap().raw.clone())} else {return  e.clone();}).collect();
         //println!("Adding method '{}()' to {}", name, parent);
-        if self.method_table.get_id(&parent).is_some() {
+        if self.usertype_table.get(&parent).is_some() && !self.usertype_table.get(&parent).unwrap().methods.is_empty() {
             // the type already has some methods
             let the_entry = FunctionTableEntry {
                 name: name.clone(),
@@ -373,10 +424,13 @@ impl Environment {
                 body,
                 is_checked: false,
                 is_extern: false,
+                variadic: false,
             };
-            let mut the_method_entry = self.method_table.get_id(&parent).ok_or(TypecheckingError::NoMethods { name: parent.clone() })?;
-            the_method_entry.the_functions.entries.insert(name, the_entry);
-            self.method_table.entries.insert(parent, the_method_entry);
+                self.usertype_table.get_mut(&parent)
+                    .ok_or(TypecheckingError::NoMethods {
+                        name: parent.clone(),
+                    })?.methods
+                .insert(name, the_entry);
         } else {
             // the type has no methods defined yet
             let the_entry = FunctionTableEntry {
@@ -389,17 +443,17 @@ impl Environment {
                 body,
                 is_checked: false,
                 is_extern: false,
+                variadic: false,
             };
-            let mut the_table = Table::new();
-            the_table.set(name, the_entry);
-            self.method_table.entries.insert( // using raw access to ensure the method is applied
-                parent,
-                MethodTableEntry {
-                    the_functions: the_table,
-                },
+            self.usertype_table.get_mut(&parent).unwrap().methods.insert(
+                // using raw access to ensure the method is applied
+                name,
+                the_entry,
+                
             );
         }
-Ok(())    }
+        Ok(())
+    }
 
     fn build_structdef(
         &mut self,
@@ -413,18 +467,25 @@ Ok(())    }
                 .filter(|e| e.1.is_generic())
                 .map(|e| e.0.clone())
                 .collect(),
-            kind: UserTypeKind::Struct { fields: members.clone() },
+            kind: UserTypeKind::Struct {
+                fields: members.clone(),
+            },
             is_checked: false,
-            raw: SymbolType::Custom(name.clone(),  members
-                .iter()
-                .filter(|e| e.1.is_generic())
-                .map(|e: &(String, SymbolType)| e.1.clone())
-                .collect(),)
+            raw: SymbolType::Custom(
+                name.clone(),
+                members
+                    .iter()
+                    .filter(|e| e.1.is_generic())
+                    .map(|e: &(String, SymbolType)| e.1.clone())
+                    .collect(),
+            ),
+            generic_monomorphs: vec![],
+            methods: HashMap::new(),
         };
 
-        if self.usertype_table.get_id(&name).is_none() {
+        if self.usertype_table.get(&name).is_none() {
             //println!("Adding struct '{}' (id# {})", name, id);
-            self.usertype_table.set(name, entry);
+            self.usertype_table.insert(name, entry);
         } else {
             return Err(TypecheckingError::RedefinedType { name: name.clone() })?;
         }
@@ -444,18 +505,21 @@ Ok(())    }
                 .filter(|e| matches!(e, SymbolType::Generic(..)))
                 .map(|e| e.get_generic_name().clone())
                 .collect(),
-            kind: UserTypeKind::Enum { variants: members.clone() },
+            kind: UserTypeKind::Enum {
+                variants: members.clone(),
+            },
             is_checked: false,
-            raw: SymbolType::Custom(name.clone(), members
-            .iter()
-            .filter(|e| e.is_generic()).cloned()
-            .collect(),
-        )
+            raw: SymbolType::Custom(
+                name.clone(),
+                members.iter().filter(|e| e.is_generic()).cloned().collect(),
+            ),
+            generic_monomorphs: vec![],
+            methods: HashMap::new(),
         };
 
-        if self.usertype_table.get_id(&name).is_none() {
+        if self.usertype_table.get(&name).is_none() {
             //println!("Adding enum '{}' (id# {})", name, id);
-            self.usertype_table.set(name, entry);
+            self.usertype_table.insert(name, entry);
         } else {
             return Err(TypecheckingError::RedefinedType { name })?;
         }
