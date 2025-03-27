@@ -1,0 +1,9 @@
+type Vec<?T> = struct of
+    ptr: ^?T,
+    cap: int,
+    len: int
+end
+
+let new for Vec<?T> -> Vec<?T> = 
+asdf = 3
+    return Vec {ptr: %0, cap: 0, len: 0 }

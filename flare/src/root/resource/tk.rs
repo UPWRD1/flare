@@ -1,5 +1,5 @@
 use std::fmt;
-
+use super::errors::LexingError;
 use logos::{Lexer, Logos, Skip, Span};
 
 /// Update the line count and the char index.
@@ -43,9 +43,10 @@ impl Default for PosInfo {
 }
 
 ///Enum for type of token
-#[derive(Debug, Clone,  PartialEq, Eq, Logos)]
+#[derive(Debug, Clone, PartialEq, Eq, Logos)]
 #[logos(skip r"[\f]+")] // Ignore this regex pattern between tokens
 #[logos(extras = PosInfo)]
+#[logos(error = LexingError)]
 pub enum Tk {
     #[regex(" ", space_callback)]
     TkSpace,
@@ -59,10 +60,14 @@ pub enum Tk {
     TkKwWith(PosInfo),
     #[regex(r"extern", word_callback)]
     TkKwExtern(PosInfo),
+    #[regex(r"effect", word_callback)]
+    TkKwEffect(PosInfo),
     #[regex(r"let", word_callback)]
     TkKwLet(PosInfo),
     #[regex(r"def", word_callback)]
     TkKwDef(PosInfo),
+    #[regex(r"in", word_callback)]
+    TkKwIn(PosInfo),
     #[regex(r"prop", word_callback)]
     TkKwProp(PosInfo),
     #[regex(r"where", word_callback)]
@@ -99,10 +104,10 @@ pub enum Tk {
     TkKwOr(PosInfo),
     #[regex(r"not", word_callback)]
     TkKwNot(PosInfo),
-    // #[regex(r"self", word_callback)]
-    // TkKwSelf,
-    #[regex(r"uint", word_callback)]
-    TkKwUint(PosInfo),
+    #[regex(r"self", word_callback)]
+    TkKwSelf(PosInfo),
+    #[regex(r"usize", word_callback)]
+    TkKwUsize(PosInfo),
     #[regex(r"word", word_callback)]
     TkKwWord(PosInfo),
     #[regex(r"byte", word_callback)]
@@ -117,8 +122,8 @@ pub enum Tk {
     TkKwChar(PosInfo),
     #[regex(r"Fn", word_callback)]
     TkKwFnTy(PosInfo),
-    #[regex(r"naught", word_callback)]
-    TkKwNaught(PosInfo),
+    #[regex(r"unit", word_callback)]
+    TkKwUnit(PosInfo),
     #[regex(r"bool", word_callback)]
     TkKwBool(PosInfo),
     #[regex(r"type", word_callback)]
@@ -143,9 +148,9 @@ pub enum Tk {
     TkArr(PosInfo),
     #[regex(r"!", word_callback)]
     TkBang(PosInfo),
-    #[regex(r"\^", word_callback)]
+    #[token(r"^", word_callback)]
     TkPtrArr(PosInfo),
-    #[regex(r"\%", word_callback)]
+    #[token(r"%", word_callback)]
     TkPtrInit(PosInfo),
     #[regex(r"\?", word_callback)]
     TkQuestion(PosInfo),
@@ -195,6 +200,9 @@ pub enum Tk {
     TkDot(PosInfo),
     #[regex(r"@", word_callback)]
     TkAt(PosInfo),
+    #[token("|", word_callback)]
+    TkPipe(PosInfo),
+
 }
 
 #[derive(Debug, Clone)]
@@ -219,9 +227,12 @@ impl Token {
             Tk::TkComment => todo!(),
             Tk::TkKwWith(v) => v.span,
             Tk::TkKwExtern(v) => v.span,
+            Tk::TkKwEffect(v) => v.span,
+            Tk::TkKwSelf(v) => v.span,
 
             Tk::TkKwLet(v) => v.span,
             Tk::TkKwDef(v) => v.span,
+            Tk::TkKwIn(v) => v.span,
             Tk::TkKwProp(v) => v.span,
             Tk::TkKwWhere(v) => v.span,
             Tk::TkKwIs(v) => v.span,
@@ -239,7 +250,7 @@ impl Token {
             Tk::TkKwAnd(v) => v.span,
             Tk::TkKwOr(v) => v.span,
             Tk::TkKwNot(v) => v.span,
-            Tk::TkKwUint(v) => v.span,
+            Tk::TkKwUsize(v) => v.span,
             Tk::TkKwWord(v) => v.span,
             Tk::TkKwByte(v) => v.span,
             Tk::TkKwInt(v) => v.span,
@@ -247,7 +258,7 @@ impl Token {
             Tk::TkKwStr(v) => v.span,
             Tk::TkKwChar(v) => v.span,
             Tk::TkKwFnTy(v) => v.span,
-            Tk::TkKwNaught(v) => v.span,
+            Tk::TkKwUnit(v) => v.span,
             Tk::TkKwBool(v) => v.span,
             Tk::TkKwType(v) => v.span,
             Tk::TkKwStruct(v) => v.span,
@@ -286,6 +297,8 @@ impl Token {
             Tk::TkDot(v) => v.span,
             Tk::TkTripleDot(v) => v.span,
             Tk::TkAt(v) => v.span,
+            Tk::TkPipe(v) => v.span,
+
         }
     }
 
@@ -297,8 +310,13 @@ impl Token {
             Tk::TkComment => todo!(),
             Tk::TkKwWith(v) => v.line,
             Tk::TkKwExtern(v) => v.line,
+            Tk::TkKwEffect(v) => v.line,
+            Tk::TkKwSelf(v) => v.line,
+
             Tk::TkKwLet(v) => v.line,
             Tk::TkKwDef(v) => v.line,
+
+            Tk::TkKwIn(v) => v.line,
             Tk::TkKwProp(v) => v.line,
             Tk::TkKwWhere(v) => v.line,
             Tk::TkKwIs(v) => v.line,
@@ -316,7 +334,7 @@ impl Token {
             Tk::TkKwAnd(v) => v.line,
             Tk::TkKwOr(v) => v.line,
             Tk::TkKwNot(v) => v.line,
-            Tk::TkKwUint(v) => v.line,
+            Tk::TkKwUsize(v) => v.line,
             Tk::TkKwWord(v) => v.line,
             Tk::TkKwByte(v) => v.line,
             Tk::TkKwInt(v) => v.line,
@@ -324,7 +342,7 @@ impl Token {
             Tk::TkKwStr(v) => v.line,
             Tk::TkKwChar(v) => v.line,
             Tk::TkKwFnTy(v) => v.line,
-            Tk::TkKwNaught(v) => v.line,
+            Tk::TkKwUnit(v) => v.line,
             Tk::TkKwBool(v) => v.line,
             Tk::TkKwType(v) => v.line,
             Tk::TkKwStruct(v) => v.line,
@@ -362,8 +380,9 @@ impl Token {
             Tk::TkDoubleColon(v) => v.line,
             Tk::TkDot(v) => v.line,
             Tk::TkTripleDot(v) => v.line,
-
             Tk::TkAt(v) => v.line,
+            Tk::TkPipe(v) => v.line,
+
         }
     }
 }
@@ -382,9 +401,13 @@ impl fmt::Display for Token {
             Tk::TkComment => todo!(),
             Tk::TkKwWith(_) => "with",
             Tk::TkKwExtern(_) => "extern",
+            Tk::TkKwEffect(_) => "effect",
+            Tk::TkKwSelf(_) => "self",
 
             Tk::TkKwLet(_) => "let",
             Tk::TkKwDef(_) => "def",
+
+            Tk::TkKwIn(_) => "in",
             Tk::TkKwProp(_) => "prop",
             Tk::TkKwWhere(_) => "where",
             Tk::TkKwIs(_) => "is",
@@ -402,7 +425,7 @@ impl fmt::Display for Token {
             Tk::TkKwAnd(_) => todo!(),
             Tk::TkKwOr(_) => todo!(),
             Tk::TkKwNot(_) => todo!(),
-            Tk::TkKwUint(_) => todo!(),
+            Tk::TkKwUsize(_) => todo!(),
             Tk::TkKwWord(_) => todo!(),
             Tk::TkKwByte(_) => todo!(),
             Tk::TkKwInt(_) => todo!(),
@@ -410,7 +433,7 @@ impl fmt::Display for Token {
             Tk::TkKwStr(_) => todo!(),
             Tk::TkKwChar(_) => todo!(),
             Tk::TkKwFnTy(_) => todo!(),
-            Tk::TkKwNaught(_) => todo!(),
+            Tk::TkKwUnit(_) => todo!(),
             Tk::TkKwBool(_) => todo!(),
             Tk::TkKwType(_) => todo!(),
             Tk::TkKwStruct(_) => todo!(),
@@ -449,6 +472,8 @@ impl fmt::Display for Token {
             Tk::TkDot(_) => todo!(),
             Tk::TkTripleDot(_) => todo!(),
             Tk::TkAt(_) => todo!(),
+            Tk::TkPipe(_) => todo!(),
+
         };
         write!(f, "{}", val)
     }

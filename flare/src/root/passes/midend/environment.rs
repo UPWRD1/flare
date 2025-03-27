@@ -1,88 +1,95 @@
-use itertools::Itertools;
+use anyhow::anyhow;
 use serde::Deserialize;
 use serde::Serialize;
+use std::fmt::Display;
 use std::hash::Hash;
 use std::{
-    borrow::Borrow,
     collections::{HashMap, HashSet},
-    fmt::{self, Debug},
-    ops::{Index, IndexMut},
+    fmt::Debug,
     path::PathBuf,
 };
 
 use crate::root::resource::{
-    ast::{Ast, Expr, FileModule, Program, SymbolType},
-    errors::{EnvironmentError, TypecheckingError},
+    cst::{Cst, Expr, Program, SymbolType},
+    errors::TypecheckingError,
 };
 
-#[derive(Debug, Clone)]
-pub struct Table<Entry> {
-    pub entries: HashMap<String, Entry>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Quantifier {
+    Root(Box<Self>),
+    Module(&'static str, Box<Self>),
+    Type(&'static str, Box<Self>),
+    Effect(&'static str, Box<Self>),
+    Func(&'static str, Box<Self>),
+    Variable(&'static str),
+    End,
 }
 
-impl<Entry: std::clone::Clone + Debug> Default for Table<Entry> {
-    fn default() -> Self {
-        Self::new()
+impl Quantifier {
+    pub fn append(&self, a: Self) -> Self {
+        let res = match self {
+            Self::Root(quantifier) => Self::Root(Box::new(quantifier.append(a))),
+            Self::Module(n, quantifier) => Self::Module(n, Box::new(quantifier.append(a))),
+            Self::Type(n, quantifier) => Self::Type(n, Box::new(quantifier.append(a))),
+            Self::Effect(n, quantifier) => Self::Type(n, Box::new(quantifier.append(a))),
+            Self::Func(n, quantifier) => Self::Func(n, Box::new(quantifier.append(a))),
+            Self::Variable(_) => todo!(),
+            Self::End => a,
+        };
+        return res
     }
 }
 
-impl<Entry: std::clone::Clone + Debug> Table<Entry> {
-    pub fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
+impl Display for Quantifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Quantifier::Root(quantifier) => {f.write_str("Root, ")?; Display::fmt(quantifier, f)},
+            Quantifier::Module(n, quantifier) => {f.write_str(&format!("Module {n}, "))?; Display::fmt(quantifier, f)},
+            Quantifier::Type(n, quantifier) => {f.write_str(&format!("Type {n}, "))?; Display::fmt(quantifier, f)},
+            Quantifier::Effect(n, quantifier) => {f.write_str(&format!("Effect {n}, "))?; Display::fmt(quantifier, f)},
+
+            Quantifier::Func(n, quantifier) => {f.write_str(&format!("Func {n}, "))?; Display::fmt(quantifier, f)},
+            Quantifier::Variable(n) => {f.write_str(&format!("Variable {n}, "))?; Ok(())},
+            Quantifier::End => {f.write_str(&format!("End"))?; Ok(())},
         }
     }
-
-    pub fn set(&mut self, name: String, v: Entry) {
-        //println!("setting {name} : {id} to {v:?}");
-        if let std::collections::hash_map::Entry::Vacant(e) = self.entries.entry(name.clone()) {
-            e.insert(v);
-        } else {
-            panic!(
-                "Cannot overwrite {name} with {v:?}, {name} already exists with value {:?}",
-                self.entries[&name]
-            )
-        }
-    }
-
-    pub fn get_id(&self, k: &String) -> Option<Entry> {
-        self.entries.get(k).cloned()
-    }
 }
 
-impl<Entry: std::clone::Clone + Debug> fmt::Display for Table<Entry>
-where
-    Entry: fmt::Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{{")?;
-        for (key, value) in &self.entries {
-            write!(f, "{}: {}, ", key, value)?;
-        }
-        write!(f, "}}")
-    }
-}
+#[macro_export]
+macro_rules! quantifier {
+    // Base case: just End
+    (End) => {
+        Quantifier::End
+    };
+    
+    // Variable case (no children)
+    (Variable($name:expr)) => {
+        Quantifier::Variable($name)
+    };
+    
+    // Root with child
+    (Root, $($rest:tt)*) => {
+        Quantifier::Root(Box::new(quantifier!($($rest)*)))
+    };
+    
+    // Module with child
+    (Module($name:expr), $($rest:tt)*) => {
+        Quantifier::Module(Box::leak(Box::new($name.clone())), Box::new(quantifier!($($rest)*)))
+    };
+    
+    // Type with child
+    (Type($name:expr), $($rest:tt)*) => {
+        Quantifier::Type(Box::leak(Box::new($name.clone())), Box::new(quantifier!($($rest)*)))
+    };
 
-impl<T, Entry> Index<T> for Table<Entry>
-where
-    T: std::hash::Hash + Eq,
-    std::string::String: Borrow<T>,
-{
-    type Output = Entry;
-
-    fn index(&self, key: T) -> &Self::Output {
-        return self.entries.get(&key).expect("Invalid Key!");
-    }
-}
-
-impl<T, Entry> IndexMut<T> for Table<Entry>
-where
-    T: std::hash::Hash + Eq,
-    std::string::String: Borrow<T>,
-{
-    fn index_mut(&mut self, key: T) -> &mut Self::Output {
-        return self.entries.get_mut(&key).expect("Invalid Key!");
-    }
+    (Effect($name:expr), $($rest:tt)*) => {
+        Quantifier::Effect(Box::leak(Box::new($name.clone())), Box::new(quantifier!($($rest)*)))
+    };
+    
+    // Func with child
+    (Func($name:expr), $($rest:tt)*) => {
+        Quantifier::Func(Box::leak(Box::new($name)), Box::new(quantifier!($($rest)*)))
+    };
 }
 
 #[derive(Debug, Clone)]
@@ -90,28 +97,27 @@ pub struct ModuleTableEntry {
     pub imports_from: HashSet<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionTableEntry {
     pub name: String,
-    pub method_parent: Option<String>,
+    pub method_parent: Option<Quantifier>,
     pub arity: usize,
     pub args: Vec<(String, SymbolType)>,
     pub limits: Vec<Expr>,
+    pub effect: Option<EffectEntry>,
     pub return_type: SymbolType,
-    pub body: Vec<Expr>,
+    pub body: Expr,
     pub is_checked: bool,
     pub is_extern: bool,
-    pub variadic: bool
+    pub variadic: bool,
+    pub variables: HashMap<String, VariableTableEntry>,
+    //pub generic_monomorphs: HashSet<Vec<GenericValue>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct MethodTableEntry {
-    pub the_functions: Table<FunctionTableEntry>,
-}
-
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct VariableTableEntry {
     pub mytype: SymbolType,
+    pub myvalue: Expr,
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -141,35 +147,17 @@ pub struct GenericTableEntry {
     pub to_gen: Vec<SymbolType>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserTypeTableEntry {
     pub isdefined: bool,
     pub generics: Vec<String>,
     pub kind: UserTypeKind,
     pub is_checked: bool,
     pub raw: SymbolType,
-    pub generic_monomorphs: Vec<Vec<GenericValue>>,
-    pub methods: HashMap<String, FunctionTableEntry>
+    //pub generic_monomorphs: HashSet<Vec<GenericValue>>,
+    pub methods: HashSet<Quantifier>,
 }
 
-impl UserTypeTableEntry {
-    pub fn collapse_generics(&self) -> Vec<Self> {
-        let mut accum = vec![];
-        for morph in &self.generic_monomorphs {
-                accum.push(UserTypeTableEntry {
-                    isdefined: true,
-                    generics: vec![],
-                    kind: self.kind.collapse_generics(morph),
-                    is_checked: true,
-                    raw: SymbolType::Custom(format!("{}.{}", self.raw.get_custom_name(), morph.iter().map(|x| x.get_ty()).join("_")), vec![]),
-                    generic_monomorphs: vec![],
-                    methods: self.methods.clone(),
-                });
-            
-        }
-        return accum;
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, PartialOrd, Eq, Ord)]
 pub enum UserTypeKind {
@@ -188,15 +176,24 @@ impl UserTypeKind {
     pub fn collapse_generics(&self, generics: &Vec<GenericValue>) -> Self {
         match self {
             UserTypeKind::Struct { fields } => {
-                let generic_names: Vec<(String, SymbolType)> = generics.iter().map(|x| (x.get_name(), x.get_ty())).collect();
+                let generic_names: Vec<(String, SymbolType)> = generics
+                    .iter()
+                    .map(|x| (x.get_name(), x.get_ty()))
+                    .collect();
                 let map: HashMap<String, SymbolType> = generic_names.iter().cloned().collect();
                 let mut new_fields: Vec<(String, SymbolType)> = vec![];
                 for field in fields {
                     if field.1.is_generic() {
-                        new_fields.push((field.0.clone(), map.get(&field.1.get_generic_name()).unwrap().clone()).clone());
+                        new_fields.push(
+                            (
+                                field.0.clone(),
+                                map.get(&field.1.get_generic_name()).unwrap().clone(),
+                            )
+                                .clone(),
+                        );
                     }
                 }
-                Self::Struct { fields: new_fields}
+                Self::Struct { fields: new_fields }
             }
             UserTypeKind::Enum { variants } => todo!(),
         }
@@ -210,15 +207,101 @@ pub struct FileTableEntry {
     src: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectDeps {
+    Root,
+    Product(Vec<String>),
+    Unsolved,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectEntry {
+    pub name: String,
+    pub deps: EffectDeps,
+}
+
+#[derive(Debug, Clone)]
+pub enum Entry {
+    Module,
+    Func(FunctionTableEntry),
+    Type(UserTypeTableEntry),
+    Effect(EffectEntry),
+}
+
+impl From<FunctionTableEntry> for Entry {
+    fn from(value: FunctionTableEntry) -> Self {
+            Entry::Func(value)
+    }
+}
+
+
+impl From<UserTypeTableEntry> for Entry {
+    fn from(value: UserTypeTableEntry) -> Self {
+            Entry::Type(value)
+    }
+}
+
+impl From<Entry> for FunctionTableEntry {
+    fn from(value: Entry) -> Self {
+        match value {
+            Entry::Func(f) => f,
+            _ => panic!()
+        }
+    }
+}
+
+
+impl Entry {
+    pub fn to_func(&self) -> FunctionTableEntry {
+        if let Self::Func(f) = self {
+            f.clone()
+        } else {
+            panic!()
+        }
+    }
+
+    pub fn to_mut_func(&mut self) -> &mut FunctionTableEntry {
+        match self {
+            Self::Func(ref mut f) => f,
+            _ => panic!()
+        }
+    }
+
+    pub fn to_ty(&self) -> UserTypeTableEntry {
+        if let Self::Type(t) = self {
+            t.clone()
+        } else {
+            panic!()
+        }
+    }
+
+    pub fn to_mut_ty(&mut self) -> &mut UserTypeTableEntry {
+        match self {
+            Self::Type(ref mut t) => t,
+            _ => panic!()
+        }
+    }
+
+    pub fn to_effect(&self) -> EffectEntry {
+        if let Self::Effect(e) = self {
+            e.clone()
+        } else {
+            panic!()
+        }
+    }
+
+    pub fn to_mut_effect(&mut self) -> &mut EffectEntry {
+        match self {
+            Self::Effect(ref mut e) => e,
+            _ => panic!()
+        }
+    }
+
+}
+
 #[derive(Debug, Clone)]
 pub struct Environment {
-    pub file_table: Table<FileTableEntry>,
-    pub module_table: Table<ModuleTableEntry>,
-    pub function_table: Table<FunctionTableEntry>,
-    pub usertype_table: HashMap<String, UserTypeTableEntry>,
-    pub method_table: Table<MethodTableEntry>,
-    pub current_variables: HashMap<String, HashMap<String, VariableTableEntry>>,
-    pub current_generics: Table<GenericTableEntry>,
+    pub items: HashMap<Quantifier, Entry>,
 }
 
 impl Default for Environment {
@@ -229,117 +312,64 @@ impl Default for Environment {
 
 impl Environment {
     pub fn new() -> Self {
-        Self {
-            file_table: Table::new(),
-            module_table: Table::new(),
-            function_table: Table::new(),
-            method_table: Table::new(),
-            current_variables: HashMap::new(),
-            current_generics: Table::new(),
-            usertype_table: HashMap::new(),
+        let mut me = Self {
+            items: HashMap::new(),
+        };
+        me.items.insert(quantifier!(Root, Effect("$ROOT"), End), Entry::Effect(EffectEntry { name: "$ROOT".to_string(), deps: EffectDeps::Root }));
+
+        me.items.insert(quantifier!(Root, Effect("IO"), End), Entry::Effect(EffectEntry { name: "IO".to_string(), deps: EffectDeps::Product(vec!["$ROOT".to_string()]) }));
+        me
+    }
+
+    pub fn add_func(&mut self, f: FunctionTableEntry, current_module: &Quantifier) -> anyhow::Result<Quantifier> {
+        let n = Box::leak(Box::new(f.name.clone()));
+        let q = current_module.append(quantifier!(Func(n), End));
+        if let Some(e) = self.items.insert(q.clone(), Entry::Func(f)) {
+            Err(anyhow!("Cannot overwrite {e:?}"))
+        } else {
+            Ok(q)
         }
     }
 
-    pub fn add_file(&mut self, name: &str, path: PathBuf, src: &str) -> anyhow::Result<()> {
-        let the_name = path
-            .file_name()
-            .ok_or_else(|| EnvironmentError::BadFile {
-                name: name.to_string(),
-            })?
-            .to_str()
-            .unwrap()
-            .to_string();
-        self.file_table.set(
-            the_name,
-            FileTableEntry {
-                name: name.to_string(),
-                path,
-                src: src.to_string(),
-            },
-        );
-        Ok(())
-    }
-
-    // pub fn convert_symboltype(&self, t: &SymbolType) -> PartialType {
-    //     match t {
-    //         SymbolType::Int => PartialType::Int,
-    //         SymbolType::Uint => PartialType::Uint,
-    //         SymbolType::Word => todo!(),
-    //         SymbolType::Byte => PartialType::Byte,
-    //         SymbolType::Flt => PartialType::Flt,
-    //         SymbolType::Str => PartialType::Str,
-    //         SymbolType::Char => PartialType::Char,
-    //         SymbolType::Bool => PartialType::Bool,
-    //         SymbolType::Mut(symbol_type) => {
-    //             PartialType::Mut(Box::leak(Box::new(self.convert_symboltype(symbol_type))))
-    //         }
-    //         SymbolType::Fn(vec, symbol_type, _) => PartialType::Fn(
-    //             Box::leak(Box::new(
-    //                 vec.iter()
-    //                     .map(|e| self.convert_symboltype(e))
-    //                     .collect::<Vec<PartialType>>(),
-    //             )),
-    //             Box::leak(Box::new(self.convert_symboltype(symbol_type))),
-    //         ),
-    //         SymbolType::MethodFn { parent, f } => self.convert_symboltype(f),
-    //         SymbolType::Naught => PartialType::Naught,
-    //         SymbolType::Pointer(symbol_type) => PartialType::Pointer(Box::leak(Box::new(self.convert_symboltype(symbol_type)))),
-    //         SymbolType::Custom(name, generics) => self.usertype_table.get_name(&name).ok_or(TypecheckingError::UndefinedType{name: name.to_string()}).unwrap().kind.convert(),
-    //         SymbolType::Generic(name) => {
-    //             PartialType::Generic(Box::leak(Box::new(name.clone())))
-    //         }
-    //             ,
-    //         _ => todo!("{t:?}")
-    //     }
-    // }
     pub fn build(&mut self, p: Program) -> anyhow::Result<()> {
-        let reversed_modules: Vec<&FileModule> = p.modules.iter().rev().collect();
-        for module in reversed_modules {
-            //println!("Building {:?}", module.name);
-            self.build_module(module)?;
+        let rev_modules: Vec<&Cst> = p.modules.iter().rev().collect();
+        for module in rev_modules {
+            //println!("Building {:?}", module.get_module_name());
+            self.build_ast(&module, &quantifier!(Root, /*Module(module.get_module_name()),*/ End), false)?;
         }
         Ok(())
         //println!("{:#?}",self);
     }
 
-    fn build_module(&mut self, m: &FileModule) -> anyhow::Result<()> {
-        let imports_from: HashSet<u64> = HashSet::new();
-        // for i in m.imports_from.clone().unwrap() {
-        //     let import_id = self.module_table.get_name(&i);
-        //     dbg!(&import_id);
-        //     if import_id.is_some() {
-        //         imports_from.insert(import_id.unwrap().id);
-        //     }
-        // }
-        self.module_table
-            .set(m.name.clone(), ModuleTableEntry { imports_from });
-        for astnode in &m.body {
-            self.build_ast(astnode)?
-        }
-        Ok(())
-    }
-    fn build_ast(&mut self, astnode: &Ast) -> anyhow::Result<()> {
+    fn build_ast(&mut self, astnode: &Cst, current_module: &Quantifier, is_in_defblock: bool) -> anyhow::Result<()> {
+        //dbg!(&current_module);
         match astnode.clone() {
-            Ast::FnDef {
+            Cst::Module { name, body } => {
+                for cst in body {
+                    self.build_ast(&cst, current_module /*&current_module.append(quantifier!(Module(name.clone()), End))*/, false)?
+                }
+                Ok(())
+            }
+            Cst::FnDef {
                 name,
                 rettype,
                 args,
                 limits,
+                effect,
                 body,
-            } => self.build_funcdef(name, rettype, args, limits.unwrap_or(vec![]), body),
-            Ast::MethodDef {
-                parent,
+            } => self.build_funcdef(name, rettype, args, limits.unwrap_or(vec![]), effect, body, current_module, is_in_defblock),
+
+            Cst::Struct { name, members } => self.build_structdef(name, members, current_module),
+            Cst::Enum { name, members } => self.build_enumdef(name, members, current_module),
+            Cst::DefBlock { name, funcs } => self.build_defblock(name, funcs, current_module),
+            Cst::WithClause { include: _ } => Ok(()),
+            Cst::ExternClause {
                 name,
-                rettype,
                 args,
-                limits,
-                body,
-            } => self.build_methoddef(parent, name, rettype, args, limits.unwrap_or(vec![]), body),
-            Ast::Struct { name, members } => self.build_structdef(name, members),
-            Ast::Enum { name, members } => self.build_enumdef(name, members),
-            //Ast::TypeDef { name, funcs } => self.build_typedef(name, funcs.into()),
-            Ast::WithClause { include: _ } => Ok(()),
-            Ast::ExternClause { name, args, variadic, ret } => self.build_externdef(name, ret, args, variadic),
+                variadic,
+                ret,
+                effect,
+            } => self.build_externdef(name, ret, args, variadic, effect),
             _ => todo!("{astnode:?}"),
         }
     }
@@ -350,24 +380,29 @@ impl Environment {
         rettype: SymbolType,
         args: Vec<(String, SymbolType)>,
         limits: Vec<Expr>,
-        body: Vec<Expr>,
+        effect: Option<Expr>,
+        body: Expr,
+        current_module: &Quantifier,
+        is_in_defblock: bool
     ) -> anyhow::Result<()> {
         let entry = FunctionTableEntry {
             name: name.clone(),
-            method_parent: None,
+            method_parent: if is_in_defblock {Some(current_module.clone())} else {None},
             arity: args.len(),
             args,
             limits,
+            effect: effect.clone().and_then(|x| Some(EffectEntry{name: x.get_symbol_name().expect("Expected a symbol"), deps: EffectDeps::Unsolved})),
             return_type: rettype,
             body,
             is_checked: false,
             is_extern: false,
-            variadic: false
+            variadic: false,
+            variables: HashMap::new(),
+            //generic_monomorphs: HashSet::new(),
         };
 
         //println!("Adding function '{}()' (id# {})", name, id);
-
-        self.function_table.set(name.clone(), entry);
+        self.add_func(entry, current_module)?;
         Ok(())
     }
 
@@ -377,6 +412,7 @@ impl Environment {
         rettype: SymbolType,
         args: Vec<SymbolType>,
         variadic: bool,
+        effect: Option<Expr>,
     ) -> anyhow::Result<()> {
         let mut mangled_args = vec![];
         for arg in args.iter().enumerate() {
@@ -388,70 +424,117 @@ impl Environment {
             arity: args.len(),
             args: mangled_args,
             limits: vec![],
+            effect: effect.clone().and_then(|x| Some(EffectEntry{name: x.get_symbol_name().expect("Expected a symbol"), deps: EffectDeps::Unsolved})),
             return_type: rettype,
-            body: vec![],
+            body: Expr::Naught,
             is_checked: true, // unsafe?
             is_extern: true,
             variadic,
+            variables: HashMap::new(),
+
+            //generic_monomorphs: HashSet::new(),
         };
 
         //println!("Adding function '{}()' (id# {})", name, id);
 
-        self.function_table.set(name.clone(), entry);
+        self.items.insert(quantifier!(Root, Func(name.clone()), End), Entry::Func(entry));
         Ok(())
     }
 
-    fn build_methoddef(
+    // fn build_methoddef(
+    //     &mut self,
+    //     parent: Quantifier,
+    //     name: String,
+    //     rettype: SymbolType,
+    //     args: Vec<(String, SymbolType)>,
+    //     limits: Vec<Expr>,
+    //     body: Vec<Expr>,
+    // ) -> anyhow::Result<()> {
+    //     let mut nargs: Vec<(String, SymbolType)> = vec![];
+    //     nargs.push(("self".to_string(), self.items.get(&parent).unwrap().to_ty().raw.clone()));
+    //     nargs.append(&mut args.clone());
+    //     //println!("Adding method '{}()' to {}", name, parent);
+        
+
+    //             //generic_monomorphs: HashSet::new(),
+
+    //         // the type has no methods defined yet
+    //         let the_entry = FunctionTableEntry {
+    //             name: name.clone(),
+    //             method_parent: Some(parent.clone()),
+    //             arity: args.len(),
+    //             args: nargs,
+    //             limits,
+    //             return_type: rettype,
+    //             body,
+    //             is_checked: false,
+    //             is_extern: false,
+    //             variadic: false,
+    //             variables: HashMap::new(),
+
+    //             //generic_monomorphs: HashSet::new(),
+    //         };
+    //         self.items
+    //             .insert(
+    //                 // using raw access to ensure the method is applied
+    //                 parent,
+    //                 the_entry.into()
+    //             );
+        
+    //     Ok(())
+    // }
+
+    fn build_defblock(&mut self,
+        parent: SymbolType,
+        funcs: Vec<Cst>,
+        current_module: &Quantifier,
+    ) -> anyhow::Result<()> {
+        let new_current = current_module.append(quantifier!(Type(parent.get_custom_name()), End));
+        for node in funcs {
+            self.build_ast(&node, &new_current, true)?;
+        }
+        Ok(())
+    }
+
+    fn build_assocdef(
         &mut self,
-        parent: String,
+        parent: Quantifier,
         name: String,
         rettype: SymbolType,
         args: Vec<(String, SymbolType)>,
         limits: Vec<Expr>,
-        body: Vec<Expr>,
+        effect: Option<Expr>,
+        body: Expr,
     ) -> anyhow::Result<()> {
-        let args: Vec<(String, SymbolType)> = args.iter().map(|e| if e.0 == "self" {return (e.0.clone(), self.usertype_table.get(&parent).unwrap().raw.clone())} else {return  e.clone();}).collect();
         //println!("Adding method '{}()' to {}", name, parent);
-        if self.usertype_table.get(&parent).is_some() && !self.usertype_table.get(&parent).unwrap().methods.is_empty() {
-            // the type already has some methods
-            let the_entry = FunctionTableEntry {
-                name: name.clone(),
-                method_parent: Some(parent.clone()),
-                arity: args.len(),
-                args,
-                limits,
-                return_type: rettype,
-                body,
-                is_checked: false,
-                is_extern: false,
-                variadic: false,
-            };
-                self.usertype_table.get_mut(&parent)
-                    .ok_or(TypecheckingError::NoMethods {
-                        name: parent.clone(),
-                    })?.methods
-                .insert(name, the_entry);
-        } else {
+        
+
+                //generic_monomorphs: HashSet::new(),
+
             // the type has no methods defined yet
             let the_entry = FunctionTableEntry {
                 name: name.clone(),
                 method_parent: Some(parent.clone()),
                 arity: args.len(),
-                args,
+                args: args,
                 limits,
+                effect: effect.clone().and(Some(EffectEntry{name: effect.unwrap().get_symbol_name().expect("Expected a symbol"), deps: EffectDeps::Unsolved})),
                 return_type: rettype,
                 body,
                 is_checked: false,
                 is_extern: false,
                 variadic: false,
+                variables: HashMap::new(),
+
+                //generic_monomorphs: HashSet::new(),
             };
-            self.usertype_table.get_mut(&parent).unwrap().methods.insert(
-                // using raw access to ensure the method is applied
-                name,
-                the_entry,
-                
-            );
-        }
+            self.items
+                .insert(
+                    // using raw access to ensure the method is applied
+                    parent.append(Quantifier::Func(Box::leak(Box::new(name)), Box::new(Quantifier::End))),
+                    the_entry.into()
+                );
+        
         Ok(())
     }
 
@@ -459,6 +542,7 @@ impl Environment {
         &mut self,
         name: String,
         members: Vec<(String, SymbolType)>,
+        current_module: &Quantifier,
     ) -> anyhow::Result<()> {
         let entry = UserTypeTableEntry {
             isdefined: true,
@@ -479,13 +563,13 @@ impl Environment {
                     .map(|e: &(String, SymbolType)| e.1.clone())
                     .collect(),
             ),
-            generic_monomorphs: vec![],
-            methods: HashMap::new(),
+            //generic_monomorphs: HashSet::new(),
+            methods: HashSet::new(),
         };
-
-        if self.usertype_table.get(&name).is_none() {
+        let quant_name = current_module.append(quantifier!(Type(name), End));
+        if self.items.get(&quant_name).is_none() {
             //println!("Adding struct '{}' (id# {})", name, id);
-            self.usertype_table.insert(name, entry);
+            self.items.insert(quant_name, entry.into());
         } else {
             return Err(TypecheckingError::RedefinedType { name: name.clone() })?;
         }
@@ -496,6 +580,7 @@ impl Environment {
         &mut self,
         name: String,
         members: Vec<SymbolType>,
+        current_module: &Quantifier
     ) -> anyhow::Result<(), anyhow::Error> {
         dbg!(members.clone());
         let entry = UserTypeTableEntry {
@@ -513,13 +598,13 @@ impl Environment {
                 name.clone(),
                 members.iter().filter(|e| e.is_generic()).cloned().collect(),
             ),
-            generic_monomorphs: vec![],
-            methods: HashMap::new(),
+            //generic_monomorphs: HashSet::new(),
+            methods: HashSet::new(),
         };
-
-        if self.usertype_table.get(&name).is_none() {
+        let quant = current_module.append(quantifier!(Type(name), End));
+        if self.items.get(&quant).is_none() {
             //println!("Adding enum '{}' (id# {})", name, id);
-            self.usertype_table.insert(name, entry);
+            self.items.insert(quant, Entry::Type(entry));
         } else {
             return Err(TypecheckingError::RedefinedType { name })?;
         }

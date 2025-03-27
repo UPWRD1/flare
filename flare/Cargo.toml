@@ -10,6 +10,7 @@ itertools = "0.13.0"
 lazy_static = "1.4.0"
 logos = "0.14.1"
 ordered-float = { version = "4.5.0", features = ["serde"] }
+ordermap = "0.5.5"
 peg = "0.8.4"
 qbe = "2.3.0"
 # rayon = "1.10.0"

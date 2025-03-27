@@ -1,10 +1,18 @@
-use std::error::Error;
 use thiserror::Error;
 
 
-use super::ast::SymbolType;
+use super::cst::SymbolType;
 
-pub trait CompilerError: Error {}
+#[derive(Error, Debug)]
+pub enum CompilerError {
+    #[error("Error while typechecking")]
+    TypecheckingError(#[from] TypecheckingError),
+    #[error("Error while parsing")]
+    ParseError(#[from] ParsingError),
+    #[error("Error while lexing")]
+    LexError(#[from] LexingError),
+
+}
 
 
 #[derive(Error, Debug)]
@@ -33,6 +41,9 @@ pub enum TypecheckingError {
     #[error("The type '{obj}' has no method '{name}'")]
     UndefinedMethod { obj: String, name: String },
 
+    #[error("The type '{obj}' has no associated function '{name}'")]
+    UndefinedAssoc { obj: String, name: String },
+
     #[error("The type '{name}' is not defined")]
     UndefinedType { name: String },
 
@@ -41,7 +52,6 @@ pub enum TypecheckingError {
 
     #[error("The struct type '{obj}' expects its field '{field}' to be of type '{expected}', found '{found}'")]
     InvalidStructInstanceField { obj: String, field: String, expected: SymbolType, found: SymbolType },
-
 
     #[error("Variable '{name}' has already been defined and is immutable")]
     NonMutableReassignment { name: String },
@@ -56,15 +66,33 @@ pub enum TypecheckingError {
     SelfOutsideMethod {the_func: String},
 }
 
-impl CompilerError for TypecheckingError {}
 
 #[derive(Error, Debug)]
 pub enum ParsingError {
-    #[error("{msg}")]
-    NonspecificParsingError { msg: String }
+    #[error(transparent)]
+    ParseFail(ParsingFailError),
 }
 
-impl CompilerError for ParsingError {}
+#[derive(Error, Debug)]
+pub struct ParsingFailError {
+    pub modulename: String,
+    pub source: peg::error::ParseError<usize>,
+}
+
+impl std::fmt::Display for ParsingFailError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("Failed to parse module '{}'", self.modulename))
+    }
+}
+
+
+#[derive(Error, Debug, Clone, PartialEq, Default)]
+pub enum LexingError {
+    #[error("")]
+    #[default]
+    LexError
+}
+
 
 #[derive(Error, Debug)]
 pub enum EnvironmentError {

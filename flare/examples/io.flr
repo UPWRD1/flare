@@ -1,22 +1,27 @@
-extern puts: (str) -> naught
-extern printf: (str, ...) -> naught
+extern puts: (str) -> unit
+extern printf: (str, ...) -> unit
 
-type IO = struct of 
-    v: int
-end
+type IO[?T] = struct of 
+    v: ?T
 
-let new for IO -> IO = 
-    return IO {v: 0}
+def IO[?T]
+    in new: () -> IO[?T] = 
+        return IO {v: 0}
 
-let out for IO of self, s: str -> IO =
-    puts(s)
-    return IO {v: 0}
+    in new_with: (x: ?T) -> IO [?T] = 
+        IO {v: x}
 
-let print_int for IO of self, v: int -> IO = 
-    printf("%d", v)
-    return IO {v: 0}
+    in out: (self, s: str) -> IO[unit] =
+        puts(s)
+        IO {v: unit}
 
-let print_str for IO of self, v: str -> IO = 
-    printf("%s", v)
-    return IO {v: 0}
+    in print_int: (self, v: int) -> IO[unit] = 
+        printf("%d", v)
+        IO {v: unit}
+
+    in print_str: (self, v: str) -> IO[unit] = 
+        printf("%s", v)
+        IO {v: unit}
+
+
 

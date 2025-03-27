@@ -1,4 +1,8 @@
 #! /usr/bin/bash
-cargo run -- -c examples/ntest.flr
-qbe -o ntest.s examples/ntest.flr.ssa && gcc -g -o ntest ntest.s && ./ntest
-# echo $?
+
+if cargo run -- -c examples/ntest.flr; then
+    qbe -o ntest.s examples/ntest.flr.ssa && gcc -Wall -g -o ntest ntest.s && ./ntest
+else
+    echo "Build Failed";
+fi
+echo "Exit Code:" $?

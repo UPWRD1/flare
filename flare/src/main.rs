@@ -7,7 +7,7 @@ extern crate peg;
 
 pub mod root;
 
-use std::{env, fs, time::Instant};
+use std::{env, fs, path::PathBuf, time::Instant};
 
 use anyhow::Result;
 use root::{compile_typecheck, passes::midend::environment::Environment};
@@ -19,13 +19,13 @@ fn main() -> Result<()>{
     match prog_args.len() {
         3 => match prog_args[1].as_str() {
             "-c" | "--compile" => {
-                let filename: &String = &prog_args[2];
+                let filename: PathBuf = PathBuf::from(&prog_args[2]).canonicalize()?;
                 let now: Instant = Instant::now();
-                let code = compile_typecheck(&mut root::Context { env: Environment::new() }, filename)?;
+                let code = compile_typecheck(&mut root::Context { env: Environment::new() }, &filename)?;
                 let elapsed = now.elapsed();
-                fs::write(format!("{}.ssa", filename), code).expect("Unable to write file");
+                fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
 
-                println!("Compiled {filename} in {elapsed:.2?}");
+                println!("Compiled {} in {elapsed:.2?}", filename.display());
                 Ok(())
             }
 

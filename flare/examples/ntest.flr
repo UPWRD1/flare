@@ -1,23 +1,11 @@
-with "examples/io"
+--with io
+-- with "examples/vec"
+-- with "examples/wrapper"
+--with container
+with lambdacalc
 
-let add of x: int, y: int -> int = 
-    return x + y
-
-type Wrapper = struct of
-    value: int
-end
-
-let wrap of x: int -> Wrapper =
-    return Wrapper {value: x}
-
-let unwrap of w: Wrapper -> int =
-    return w.value
-
-let main =
-    a = wrap(3)
-    b = wrap(5)
-    a2 = unwrap(a)
-    b2 = unwrap(b)
-    result = add(a2, b2)
-    IO.new().print_int(a2).print_str(" + ").print_int(b2).print_str(" = ").print_int(result).out("")
-
+let main: () -> int do IO =
+    a = 3
+    b = 2
+    c = 4
+    add(a, b) + c

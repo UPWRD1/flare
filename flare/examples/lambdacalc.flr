@@ -1,0 +1,14 @@
+type Term = enum of
+    Var{str},
+    Lambda{str, Term},
+    Apply{Term, Term}
+
+let cbn: (t: Term) -> Term =
+    match t
+        | :Var{x} then :Var{x}
+        | :Lambda{x, e} then :Lambda{x, e}
+        | :Apply{e1, e2} then
+            e1_prime = cbn(e1)
+            match e1_prime
+                | :Lambda{x, e} then cbn(subst(e2, :Lambda{x, e}))
+                else :Apply{e1_prime, e2}

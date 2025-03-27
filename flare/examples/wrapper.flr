@@ -1,13 +1,21 @@
-type Wrapper<?T> = struct of
+type Wrapper[?T] = struct of
 	value: ?T
 end
 
-let new for Wrapper<?T> of v: ?T -> Wrapper<?T> =
+let new in Wrapper[?T] of v: ?T -> Wrapper[?T] =
 	return Wrapper {value: v}
 
-let dump for Wrapper<?T> -> ?T =
+let dump for Wrapper[?T] of self -> ?T =
 	return self.value
 
+type IntWrapper = struct of
+	value: int
+end
 
-	
+let new in IntWrapper of v: int -> IntWrapper =
+	return IntWrapper {value: v}
+
+let dump for IntWrapper of self -> int =
+	return self.value
+
 
