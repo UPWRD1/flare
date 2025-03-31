@@ -1,2 +1,2 @@
 # Flare
-Flare is a functional, fast, fearless, and friendly programming language for the future.
+Flare is a functional programming language designed to efficiently describe and safely implement complex systems.
