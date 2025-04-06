@@ -1,5 +1,5 @@
-let factorial of x: int -> int =
+let factorial: (x: int) -> int =
 	x + factorial(x - 1)
 
-let main = 
+let main: () -> int do IO = 
 	factorial(4)

@@ -65,8 +65,8 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule enumdef(name: String) -> crate::root::resource::cst::Cst
         = [Token { kind: Tk::TkKwEnum(_), .. }] [Token { kind: Tk::TkKwOf(_), .. }] m: variantlist() { crate::root::resource::cst::Cst::Enum { name: name.to_string(), members: m}}
 
-    rule variantlist() -> Vec<(crate::root::resource::cst::SymbolType)>
-        = v: ([Token { kind: Tk::TkSymbol(_), lit: name,.. }] a: varianttype()? {crate::root::resource::cst::SymbolType::Variant(name.to_string(), if a.is_some() {a.unwrap()} else {vec![]})}) ** [Token { kind: Tk::TkComma(_), .. }]
+    rule variantlist() -> Vec<(String, Vec<crate::root::resource::cst::SymbolType>)>
+        = v: ([Token { kind: Tk::TkSymbol(_), lit: name,.. }] a: varianttype()? {(name.to_string(), if a.is_some() {a.unwrap()} else {vec![]})}) ** [Token { kind: Tk::TkComma(_), .. }]
 
     rule varianttype() -> Vec<crate::root::resource::cst::SymbolType>
         = [Token { kind: Tk::TkLbrace(_), .. }] a: atype() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {a}
@@ -135,11 +135,8 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule expr() -> crate::root::resource::cst::Expr
         = assignment()
         / closure()
-        / variantinstance()
-        / structinstance()
         / ifexpr()
         / matchexpr()
-        / r#return()
         / binary_op()
 
     rule assignment() -> crate::root::resource::cst::Expr
@@ -149,10 +146,6 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule closure() -> crate::root::resource::cst::Expr
         = quiet! {[Token { kind: Tk::TkKwFn(_), .. }] args: func_args() [Token { kind: Tk::TkArr(_), .. }] body: expr()+ { crate::root::resource::cst::Expr::Closure { args, body } }}
         / expected!("a closure")
-
-    rule r#return() -> crate::root::resource::cst::Expr
-        = quiet! {[Token { kind: Tk::TkKwReturn(_), .. }] v: expr() { crate::root::resource::cst::Expr::Return { value: Box::new(v) } }}
-        / expected!("a return expression")
 
     rule structinstance() -> crate::root::resource::cst::Expr
         = n: simplesymbol() [Token { kind: Tk::TkLbrace(_), .. }] f: fieldinit() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {crate::root::resource::cst::Expr::StructInstance { name: Box::new(n), fields: f }}
@@ -171,7 +164,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     quiet! {precedence!{
 
 
-        l: (@) op: [Token { kind: Tk::TkFuncComp(_), .. }] r: @ {crate::root::resource::cst::Expr::Composition { l: Box::new(l), r: Box::new(r) }}
+        l: (@) op: [Token { kind: Tk::TkFuncComp(_), .. }] r: @ {crate::root::resource::cst::Expr::SeqComp { l: Box::new(l), r: Box::new(r) }}
         --
         l: (@) op: [Token { kind: Tk::TkKwIs(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::Is, r: Box::new(r) }}
         l: (@) op: [Token { kind: Tk::TkKwOr(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::Is, r: Box::new(r) }}
@@ -191,8 +184,10 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         --
         a: atom() {a}
         --
-        l: (@) op: [Token { kind: Tk::TkDot(_), .. }] r: @ {crate::root::resource::cst::Expr::FieldAccess(Box::new(l), Box::new(r))}
-        l: (@) op: [Token { kind: Tk::TkDoubleColon(_), .. }] r: @ {crate::root::resource::cst::Expr::Path(Box::new(l), Box::new(r))}
+       // l: (@) op: [Token { kind: Tk::TkDot(_), .. }] r: @ {crate::root::resource::cst::Expr::FieldAccess(Box::new(l), Box::new(r))}
+        l: (@) op: [Token { kind: Tk::TkDot(_), .. }] r: @ {crate::root::resource::cst::Expr::Path(Box::new(l), Box::new(r))}
+
+        //l: (@) op: [Token { kind: Tk::TkDoubleColon(_), .. }] r: @ {crate::root::resource::cst::Expr::Path(Box::new(l), Box::new(r))}
     }}
     / expected!("an arithmetic or comparison operator")
 
@@ -201,6 +196,9 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
     rule atom() -> crate::root::resource::cst::Expr
         = intrinsic()
         / call()
+        / variantinstance()
+        / structinstance()
+
         / symbol()
         / group()
 

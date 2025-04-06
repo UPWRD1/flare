@@ -78,10 +78,11 @@ pub fn compile_typecheck(ctx: &mut Context, filename: &PathBuf) -> Result<String
     // let mut flattener = Flattener::new(res.clone());
     // let flat = flattener.flatten();
     // let main_func: FunctionTableEntry = flat.items.get(&quantifier!(Root, Func("main"), End)).cloned().unwrap().into();
-    //dbg!(&main_func);
+    // dbg!(&main_func);
 
-    let mut g = Generator::new(res);
-    let code = g.generate().unwrap();
+    //let mut g = Generator::new(res);
+    //let code = g.generate().unwrap();
     //println!("Output: \n{}", code);
-    Ok(code)
+    //todo!();
+    Ok("".to_string())
 }

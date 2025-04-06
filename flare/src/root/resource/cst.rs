@@ -9,6 +9,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 use crate::root::passes::midend::environment::GenericValue;
+use crate::root::passes::midend::environment::Quantifier;
 use crate::root::passes::midend::environment::UserTypeKind;
 
 pub fn calculate_hash<T: Hash>(t: &String) -> String {
@@ -67,7 +68,7 @@ pub enum Cst {
     },
     Enum {
         name: String,
-        members: Vec<SymbolType>,
+        members: Vec<(String, Vec<SymbolType>)>,
     },
     DefBlock {
         name: SymbolType,
@@ -211,12 +212,9 @@ pub enum Expr {
         args: Vec<(String, SymbolType)>,
         body: Vec<Self>,
     },
-    Composition {
+    SeqComp {
         l: Box<Self>,
         r: Box<Self>,
-    },
-    Return {
-        value: Box<Self>,
     },
     If {
         condition: Box<Self>,
@@ -272,6 +270,7 @@ impl Expr {
         match self {
             Expr::Symbol(s) => Some(s.to_string()),
             Expr::FieldAccess(_s, f) => Some(f.get_symbol_name()?),
+            Expr::Int(i) => Some(i.to_string()),
             _ => None //Err(format_err!("{self:?} is not a symbol")) //panic!("{self:?} is not a symbol"),
         }
     }
@@ -440,11 +439,12 @@ pub enum SymbolType {
     Pointer(Box<Self>),
     Unknown,
     Generic(GenericValue),
+    Quant(Quantifier),
     Custom(String, Vec<Self>),
-    User(UserTypeKind),
-    StructRef(String),
-    Enum(String, Vec<Self>),
-    Variant(String, Vec<Self>),
+    //User(UserTypeKind),
+    //Enum(String, Vec<Self>),
+    //Variant(String, Vec<Self>),
+    //EnumInstance(Box<Self>, Box<Self>),
     Property,
     TypeDefSelf,
 }
@@ -515,7 +515,7 @@ impl SymbolType {
     pub fn get_custom_name(&self) -> String {
         match self.extract() {
             Self::Custom(v, ..) => v.to_string(),
-            Self::StructRef(v, ..) => v.to_string(),
+            // Self::StructRef(v, ..) => v.to_string(),
             //Self::Enum(v, ..) => v.to_string(),
 
             _ => panic!("{self:?} is not a custom type"),
@@ -558,10 +558,10 @@ impl SymbolType {
             | SymbolType::Char
             | SymbolType::Bool
             | SymbolType::Unit
-            | SymbolType::Generic(..)
-            | SymbolType::StructRef(..)
-            | SymbolType::Enum(..)
-            | SymbolType::Variant(_, _) => self.clone(),
+            | SymbolType::Generic(..) => self.clone(),
+            // | SymbolType::StructRef(..)
+            // | SymbolType::Enum(..)
+            // | SymbolType::Variant(_, _) => self.clone(),
             SymbolType::Fn(.., _rt, _v) => {
                     self.clone()
                 
@@ -593,9 +593,9 @@ impl SymbolType {
         }
     }
 
-    pub fn is_obj(&self) -> bool {
-        matches!(self.extract(), Self::StructRef(..))
-    }
+    // pub fn is_obj(&self) -> bool {
+    //     matches!(self.extract(), Self::StructRef(..))
+    // }
 
     // pub fn get_members(&self) -> Vec<(String, Self)> {
     //     match self.extract() {
@@ -604,23 +604,23 @@ impl SymbolType {
     //     }
     // }
 
-    pub fn get_obj_name(&self) -> String {
-        match self.extract() {
-            SymbolType::StructRef(n, ..) => n.clone(),
-            _ => panic!("{self:?} is not an object"),
-        }
-    }
+    // pub fn get_obj_name(&self) -> String {
+    //     match self.extract() {
+    //         SymbolType::StructRef(n, ..) => n.clone(),
+    //         _ => panic!("{self:?} is not an object"),
+    //     }
+    // }
 
-    pub fn is_enum(&self) -> bool {
-        matches!(self, Self::Enum(..))
-    }
+    // pub fn is_enum(&self) -> bool {
+    //     matches!(self, Self::Enum(..))
+    // }
 
-    pub fn get_variants(&self) -> Vec<Self> {
-        match self.extract() {
-            SymbolType::Enum(_, v) => v.clone(),
-            _ => panic!("{self:?} is not an enum"),
-        }
-    }
+    // pub fn get_variants(&self) -> Vec<Self> {
+    //     match self.extract() {
+    //         SymbolType::Enum(_, v) => v.clone(),
+    //         _ => panic!("{self:?} is not an enum"),
+    //     }
+    // }
 
     pub fn get_generic_count(&self) -> usize {
         match self.extract() {
@@ -630,23 +630,23 @@ impl SymbolType {
         }
     }
 
-    pub fn is_variant(&self) -> bool {
-        matches!(self, Self::Variant(..))
-    }
+    // pub fn is_variant(&self) -> bool {
+    //     matches!(self, Self::Variant(..))
+    // }
 
-    pub fn get_variant_name(&self) -> String {
-        match self {
-            SymbolType::Variant(n, ..) => n.clone(),
-            _ => panic!("{self:?} is not a variant"),
-        }
-    }
+    // pub fn get_variant_name(&self) -> String {
+    //     match self {
+    //         SymbolType::Variant(n, ..) => n.clone(),
+    //         _ => panic!("{self:?} is not a variant"),
+    //     }
+    // }
 
-    pub fn get_variant_members(&self) -> Vec<Self> {
-        match self {
-            SymbolType::Variant(_, v) => v.clone(),
-            _ => panic!("{self:?} is not a variant"),
-        }
-    }
+    // pub fn get_variant_members(&self) -> Vec<Self> {
+    //     match self {
+    //         SymbolType::Variant(_, v) => v.clone(),
+    //         _ => panic!("{self:?} is not a variant"),
+    //     }
+    // }
 
     pub fn is_pointer(&self) -> bool {
         matches!(self, Self::Pointer(..))
@@ -659,6 +659,13 @@ impl SymbolType {
         }
     }
 
+    pub fn get_quant(&self) -> Quantifier {
+        match self {
+            SymbolType::Quant(q) => q.clone(),
+            _ => panic!("{self:?} is not a quantified type"),
+        }
+    }
+
     pub fn get_raw(&self) -> Self {
         match self {
             Self::Unit | Self::Unknown | Self::Int | Self::Flt | Self::Str | Self::Bool => {
@@ -668,7 +675,7 @@ impl SymbolType {
             Self::Fn(_, t ) => t.clone().get_raw(),
             Self::Generic(_) => self.clone(),
             Self::Custom(..) => panic!("Custom type here!"),
-            Self::StructRef(..) | Self::Variant(..) => todo!(),
+            // Self::StructRef(..) | Self::Variant(..) => todo!(),
             _ => todo!(),
         }
     }
@@ -772,10 +779,10 @@ impl Display for SymbolType {
                 GenericValue::Ref(n) => n,
                 GenericValue::Perfect(_n, _symbol_type) => todo!(),
             },
-            SymbolType::Custom(n, _v) => Box::leak(Box::new(format!("{n}"))),
-            SymbolType::StructRef(_) => todo!(),
-            SymbolType::Enum(_, _) => todo!(),
-            SymbolType::Variant(_, _) => todo!(),
+            SymbolType::Quant(q) => Box::leak(Box::new(format!("{q}"))),
+            // SymbolType::Custom(n, _v) => Box::leak(Box::new(format!("{n}"))),
+            // SymbolType::Enum(_, _) => todo!(),
+            // SymbolType::Variant(_, _) => todo!(),
             SymbolType::Property => todo!(),
             _ => todo!("{self:?}"),
         };

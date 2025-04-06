@@ -2,10 +2,17 @@
 -- with "examples/vec"
 -- with "examples/wrapper"
 --with container
+
 with lambdacalc
 
-let main: () -> int do IO =
-    a = 3
-    b = 2
-    c = 4
-    add(a, b) + c
+type Catagory = enum of
+    A{int},
+    B,
+    C
+
+let add: (l: int, r: int) -> int =
+    l + r
+
+let main: () -> int =
+    a = Catagory.:A{3}
+    a.0

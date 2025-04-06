@@ -32,7 +32,7 @@ impl Flattener {
                 is_checked: false,
                 is_extern: false,
                 variadic: false,
-                variables: HashMap::new(),
+                // variables: HashMap::new(),
             },
             env,
             current_parent: None,
@@ -187,17 +187,7 @@ impl Flattener {
                     //panic!()
                 }
                 Expr::Closure { args, body } => todo!(),
-                Expr::Composition { l, r } => todo!(),
-                Expr::Return { value } => {
-                    let k = self.flatten_expr(value);
-                    let res = Expr::Return { value: Box::new(k) };
-                    self.scopes
-                        .last_mut()
-                        .unwrap()
-                        .insert(e.clone(), res.clone());
-                    res
-                    //panic!()
-                }
+                Expr::SeqComp { l, r } => todo!(),
                 Expr::If {
                     condition,
                     then,
@@ -410,9 +400,7 @@ impl Flattener {
             .get_mut(&quantifier!(Root, Func("main"), End))
             .unwrap()
             .to_mut_func()
-            .body = Expr::Return {
-            value: Box::new(res),
-        };
+            .body = res;
         return self.env.clone();
     }
 }

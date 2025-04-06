@@ -1,24 +1,24 @@
 with "examples/result"
 
-type Slice<?T> = struct of
+type Slice[?T] = struct of
 	start: ^?T,
 	len: int,
 	cap: int
 
-def Slice<?T> =
-    let len of self =
+def Slice[?T]
+    in len: (self) -> int =
         self.len
 
-    let new of x = 
+    in new: (x: ?T) -> Slice[?T] = 
         Slice {start: %x, len: 1, cap: 32}
 
-    let get of self, idx: int -> ?T =
+    in get: (self, idx: int) -> ?T =
         if idx <= self.len then
             return idx * self.start
         else 
             return -1
 
-    let containshelper of self, e: ?T, c: int -> bool =
+    in containshelper: (self, e: ?T, c: int) -> bool =
         if c < s.len() then
             if s.get(c).unwrap() == e then 
                 return true 
@@ -27,8 +27,5 @@ def Slice<?T> =
         else 
             return false
 
-
-    let contains of self, item: ?T -> bool =
+    in contains: (self, item: ?T) -> bool =
         containshelper(self, item, 0)
-
-end

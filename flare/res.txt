@@ -1,0 +1,250 @@
+items: {
+        Root(
+            Func(
+                "main",
+                End,
+            ),
+        ): Func(
+            FunctionTableEntry {
+                name: "main",
+                method_parent: None,
+                arity: 0,
+                args: [],
+                limits: [],
+                effect: None,
+                return_type: Int,
+                body: Assignment {
+                    name: Symbol(
+                        "a",
+                    ),
+                    value: Path(
+                        Symbol(
+                            "Catagory",
+                        ),
+                        VariantInstance {
+                            name: Symbol(
+                                "A",
+                            ),
+                            fields: [
+                                Int(
+                                    3,
+                                ),
+                            ],
+                        },
+                    ),
+                    and_in: Path(
+                        Symbol(
+                            "a",
+                        ),
+                        Int(
+                            0,
+                        ),
+                    ),
+                },
+                is_checked: true,
+                is_extern: false,
+                variadic: false,
+            },
+        ),
+        Root(
+            Effect(
+                "IO",
+                End,
+            ),
+        ): Effect(
+            EffectEntry {
+                name: "IO",
+                deps: Product(
+                    [
+                        "$ROOT",
+                    ],
+                ),
+            },
+        ),
+        Root(
+            Func(
+                "main",
+                Variable(
+                    "a",
+                ),
+            ),
+        ): Variable(
+            VariableTableEntry {
+                mytype: Quant(
+                    Root(
+                        Type(
+                            "Catagory",
+                            Type(
+                                "A",
+                                End,
+                            ),
+                        ),
+                    ),
+                ),
+                myvalue: Path(
+                    Symbol(
+                        "Catagory",
+                    ),
+                    VariantInstance {
+                        name: Symbol(
+                            "A",
+                        ),
+                        fields: [
+                            Int(
+                                3,
+                            ),
+                        ],
+                    },
+                ),
+            },
+        ),
+        Root(
+            Type(
+                "Catagory",
+                Type(
+                    "C",
+                    End,
+                ),
+            ),
+        ): Type(
+            UserTypeTableEntry {
+                name: "C",
+                isdefined: true,
+                kind: VariantInstance {
+                    parent: Root(
+                        Type(
+                            "Catagory",
+                            End,
+                        ),
+                    ),
+                    ident: "C",
+                },
+                is_checked: false,
+            },
+        ),
+        Root(
+            Effect(
+                "$ROOT",
+                End,
+            ),
+        ): Effect(
+            EffectEntry {
+                name: "$ROOT",
+                deps: Root,
+            },
+        ),
+        Root(
+            Type(
+                "Catagory",
+                End,
+            ),
+        ): Type(
+            UserTypeTableEntry {
+                name: "Catagory",
+                isdefined: true,
+                kind: Enum {
+                    variants: [
+                        (
+                            "A",
+                            [
+                                Int,
+                            ],
+                        ),
+                        (
+                            "B",
+                            [],
+                        ),
+                        (
+                            "C",
+                            [],
+                        ),
+                    ],
+                },
+                is_checked: false,
+            },
+        ),
+        Root(
+            Func(
+                "add",
+                End,
+            ),
+        ): Func(
+            FunctionTableEntry {
+                name: "add",
+                method_parent: None,
+                arity: 2,
+                args: [
+                    (
+                        "l",
+                        Int,
+                    ),
+                    (
+                        "r",
+                        Int,
+                    ),
+                ],
+                limits: [],
+                effect: None,
+                return_type: Int,
+                body: BinAdd {
+                    l: Symbol(
+                        "l",
+                    ),
+                    r: Symbol(
+                        "r",
+                    ),
+                },
+                is_checked: false,
+                is_extern: false,
+                variadic: false,
+            },
+        ),
+        Root(
+            Type(
+                "Catagory",
+                Type(
+                    "B",
+                    End,
+                ),
+            ),
+        ): Type(
+            UserTypeTableEntry {
+                name: "B",
+                isdefined: true,
+                kind: VariantInstance {
+                    parent: Root(
+                        Type(
+                            "Catagory",
+                            End,
+                        ),
+                    ),
+                    ident: "B",
+                },
+                is_checked: false,
+            },
+        ),
+        Root(
+            Type(
+                "Catagory",
+                Type(
+                    "A",
+                    End,
+                ),
+            ),
+        ): Type(
+            UserTypeTableEntry {
+                name: "A",
+                isdefined: true,
+                kind: VariantInstance {
+                    parent: Root(
+                        Type(
+                            "Catagory",
+                            End,
+                        ),
+                    ),
+                    ident: "A",
+                },
+                is_checked: false,
+            },
+        ),
+    },

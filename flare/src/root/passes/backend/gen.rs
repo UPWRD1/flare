@@ -2,9 +2,14 @@ use anyhow::{format_err, Result};
 use qbe::{DataDef, Function, Instr, Linkage, Type, TypeDef, Value};
 use std::{cmp, collections::HashMap};
 
-use crate::{quantifier, root::{
-    passes::midend::environment::{Entry, Environment, FunctionTableEntry, UserTypeTableEntry}, resource::cst::{Expr, SymbolType}, Quantifier
-}};
+use crate::{
+    quantifier,
+    root::{
+        passes::midend::environment::{Entry, Environment, FunctionTableEntry, UserTypeTableEntry},
+        resource::cst::{Expr, SymbolType},
+        Quantifier,
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct Generator<'a> {
@@ -63,19 +68,20 @@ impl<'a> Generator<'a> {
             .ok_or_else(|| format_err!("Undefined variable '{}'", name))
     }
 
-    fn convert_symboltype(&self, t: &SymbolType) -> Type<'a> {
+    fn convert_symboltype(&mut self, t: &SymbolType) -> Type<'a> {
         match t {
             SymbolType::Int => Type::Word,
             SymbolType::Usize => Type::Word,
 
             SymbolType::Flt => Type::Double,
-            SymbolType::Custom(name, _t) => {
+            SymbolType::Quant(name) => {
                 //dbg!(t);
                 //dbg!(self.struct_map.clone());
+                let name = self.env.get_q(name).unwrap().to_ty().name;
                 let (ty, ..) = self
                     .struct_map
-                    .get(name)
-                    .ok_or_else(|| format!("Use of undeclared struct '{}'", name))
+                    .get(&name)
+                    .ok_or_else(|| format!("Use of undeclared type '{}'", name))
                     .unwrap()
                     .to_owned();
                 ty
@@ -84,7 +90,7 @@ impl<'a> Generator<'a> {
             SymbolType::Str => Type::Long,
             SymbolType::Generic(_) => Type::Long,
             SymbolType::Pointer(_) => Type::Long,
-
+            //SymbolType::Variant(id, fields) => Type::Long,
             _ => todo!("{t:?}"),
         }
     }
@@ -196,7 +202,13 @@ impl<'a> Generator<'a> {
                     &self
                         .env
                         .items
-                        .get(&quantifier!(Root, Func(name.get_symbol_name().unwrap()), End)).ok_or(format_err!("{name:?}"))?.to_func()
+                        .get(&quantifier!(
+                            Root,
+                            Func(name.get_symbol_name().unwrap()),
+                            End
+                        ))
+                        .ok_or(format_err!("{name:?}"))?
+                        .to_func()
                         .return_type,
                 );
                 let tmp = self.new_temporary();
@@ -204,11 +216,7 @@ impl<'a> Generator<'a> {
                     tmp.clone(),
                     // TODO: get that type properly
                     the_ty.clone(),
-                    Instr::Call(
-                        name.get_symbol_name().unwrap().clone(),
-                        new_args,
-                        None,
-                    ),
+                    Instr::Call(name.get_symbol_name().unwrap().clone(), new_args, None),
                 );
 
                 Ok((the_ty.clone(), tmp))
@@ -223,7 +231,7 @@ impl<'a> Generator<'a> {
                     }
                     Err(_) => panic!(),
                 };
-        
+
                 self.generate_methodcall(func, new_args, the_obj, name, args)
             }
             Expr::Path(l, r) => {
@@ -244,7 +252,7 @@ impl<'a> Generator<'a> {
                     Expr::Call { name, args } => {
                         self.generate_methodcall(func, new_args, the_obj, name, args)
                     }
-                    _ => panic!()
+                    _ => panic!(),
                 }
             }
             Expr::If {
@@ -269,34 +277,37 @@ impl<'a> Generator<'a> {
         }
     }
 
-    fn generate_methodcall(&mut self, func: &mut Function<'a>, new_args: Vec<(Type<'a>, Value)>, the_obj: (Type<'a>, Value), name: &Box<Expr>, args: &Vec<Expr>) -> std::result::Result<(Type<'a>, Value), anyhow::Error> {
+    fn generate_methodcall(
+        &mut self,
+        func: &mut Function<'a>,
+        new_args: Vec<(Type<'a>, Value)>,
+        the_obj: (Type<'a>, Value),
+        name: &Box<Expr>,
+        args: &Vec<Expr>,
+    ) -> std::result::Result<(Type<'a>, Value), anyhow::Error> {
         let mut new_args: Vec<(Type<'_>, Value)> = new_args.clone();
-    
+
         // let the_obj_name: String = obj.get_parent_name();
         // dbg!(&the_obj_name);
         //let obj_type = self.env.usertype_table.get(&func.name).unwrap();
         //dbg!(obj_type);
         //new_args.push(the_obj);
-    
+
         for arg in args.iter() {
             new_args.push(self.generate_expr(func, arg)?);
         }
         let tmp = self.new_temporary();
-    
+
         func.assign_instr(
             tmp.clone(),
             // TODO: get that type properly
             the_obj.0.clone(), //self.convert_symboltype(&self.env.usertype_table.get(&obj.get_symbol_name()?).unwrap().methods.get(&name.get_symbol_name().unwrap()).unwrap().return_type),
-            Instr::Call(
-                    name.get_symbol_name().unwrap().clone(),
-                new_args,
-                None,
-            ),
+            Instr::Call(name.get_symbol_name().unwrap().clone(), new_args, None),
         );
-    
+
         Ok((the_obj.0, tmp))
     }
-    
+
     fn generate_string(&mut self, string: &str) -> Result<(Type<'a>, Value)> {
         self.tmp_counter += 1;
         let name = format!("string.{}", self.tmp_counter);
@@ -424,11 +435,7 @@ impl<'a> Generator<'a> {
         Ok((ty, tmp))
     }
 
-    fn resolve_field_access(
-        &mut self,
-        obj: &Expr,
-        field: &Expr,
-    ) -> Result<(Value, Type<'a>, u64)> {
+    fn resolve_field_access(&mut self, obj: &Expr, field: &Expr) -> Result<(Value, Type<'a>, u64)> {
         let (src, ty, off) = match obj {
             Expr::Symbol(var) => {
                 let (ty, src) = self.get_var(var.to_string())?.to_owned();
@@ -462,7 +469,13 @@ impl<'a> Generator<'a> {
 
         let (ty, offset) = meta
             .get(&field.get_symbol_name().unwrap())
-            .ok_or_else(|| format_err!("No field '{}' on struct {}", field.get_symbol_name().unwrap(), name))?
+            .ok_or_else(|| {
+                format_err!(
+                    "No field '{}' on struct {}",
+                    field.get_symbol_name().unwrap(),
+                    name
+                )
+            })?
             .to_owned();
 
         Ok((src, ty, offset + off))
@@ -474,15 +487,21 @@ impl<'a> Generator<'a> {
         lhs: &Expr,
         rhs: &Expr,
     ) -> Result<()> {
-        match lhs {
+        match lhs.clone() {
             Expr::Symbol(name) => {
                 let ty = self.convert_symboltype(
-                    &self
+                    &&self
                         .env
                         .items
-                        .get(&quantifier!(Root, Func(func.name.clone()), End))
-                        .unwrap().to_func().variables.get(name).unwrap()
-                        .mytype,
+                        .get(&quantifier!(
+                            Root,
+                            Func(func.name.clone()),
+                            Variable(name.clone())
+                        ))
+                        .unwrap()
+                        .to_variable()
+                        .mytype
+                        .clone(),
                 );
                 let tmp = self.new_var(ty, &name)?;
                 let (ty, result) = self.generate_expr(func, &rhs)?;
@@ -533,16 +552,17 @@ impl<'a> Generator<'a> {
 
     fn generate_stmt(&mut self, func: &mut Function<'a>, ex: &Expr) -> Result<()> {
         match ex {
-            Expr::Return { value } => {
-                let (_, res) = self.generate_expr(func, &value)?;
-                func.add_instr(qbe::Instr::Ret(Some(res)));
-            }
-            Expr::Assignment { name, value, and_in } => {
+            Expr::Assignment {
+                name,
+                value,
+                and_in,
+            } => {
                 self.generate_assignment(func, name, value)?;
                 self.generate_stmt(func, and_in)?;
             }
             _ => {
-                self.generate_expr(func, &ex)?;
+                let val = self.generate_expr(func, &ex)?.1;
+                func.add_instr(Instr::Ret(Some(val)));
             }
         }
         Ok(())
@@ -591,40 +611,41 @@ impl<'a> Generator<'a> {
         } else {
             Some(self.convert_symboltype(&f.return_type))
         };
-        let mut func: Function<'a> = Function::new(Linkage::public(), f.name.clone(), nargs, func_rt);
+        let mut func: Function<'a> =
+            Function::new(Linkage::public(), f.name.clone(), nargs, func_rt);
         // if let Some(p) = &f.method_parent {
         //     func.name = format!("{}.{}", f.name, f.method_parent.clone().unwrap())
         //}
 
         func.add_block("start");
-        
-        self.generate_stmt(&mut func, &f.body)?;
-        
 
-        let returns = func.blocks.last().unwrap().items.last().map_or(
-            false,
-            |i: &qbe::BlockItem<'a>| match i {
-                qbe::BlockItem::Statement(statement) => {
-                    matches!(statement, qbe::Statement::Volatile(qbe::Instr::Ret(_)))
-                }
-                qbe::BlockItem::Comment(_) => todo!(),
-            },
-        );
-        // Automatically add return in void functions unless it already returns,
-        // non-void functions raise an error
-        if !returns {
-            if f.return_type.is_unit() {
-                func.add_instr(qbe::Instr::Ret(None));
-            } else {
-                return Err(format_err!(
-                    "Function '{}' does not return in all code paths",
-                    &func.name
-                ));
-            }
-        }
+        self.generate_stmt(&mut func, &f.body)?;
+
+        // let returns = func.blocks.last().unwrap().items.last().map_or(
+        //     false,
+        //     |i: &qbe::BlockItem<'a>| match i {
+        //         qbe::BlockItem::Statement(statement) => {
+        //             matches!(statement, qbe::Statement::Volatile(qbe::Instr::Ret()))
+        //         }
+        //         qbe::BlockItem::Comment(_) => todo!(),
+        //     },
+        // );
+        // // Automatically add return in void functions unless it already returns,
+        // // non-void functions raise an error
+        // if !returns {
+        //     if f.return_type.is_unit() {
+        //         func.add_instr(qbe::Instr::Ret(func.blocks.last().unwrap().items.last().unwrap().));
+        //     } else {
+        //         func.add_instr(Instr::Ret(self.scopes));
+        //     //     return Err(format_err!(
+        //     //         "Function '{}' does not return in all code paths",
+        //     //         &func.name
+        //     //     ));
+        //     }
+        // }
         // if f.method_parent.is_some() {
         //     func.name = format!("{}_{}", f.name, f.method_parent.clone().unwrap());
-        // } 
+        // }
         self.buf.push_str(&format!("{}\n", func));
 
         self.scopes.pop();
@@ -634,7 +655,7 @@ impl<'a> Generator<'a> {
     fn generate_typedef(&mut self, t: &UserTypeTableEntry) -> Result<()> {
         self.tmp_counter += 1;
         let mut typedef: TypeDef<'a> = TypeDef {
-            name: t.raw.get_custom_name().to_string(),
+            name: t.name.clone(),
             align: None, // We'll set this after calculating max alignment
             items: Vec::new(),
         };
@@ -664,13 +685,7 @@ impl<'a> Generator<'a> {
         typedef.align = Some(max_align);
         self.typedefs.push(typedef.clone());
         self.struct_map.insert(
-            t.raw
-                .get_custom_name()
-                .clone()
-                .split(".")
-                .nth(0)
-                .unwrap()
-                .to_string(),
+            t.name.clone(),
             (
                 qbe::Type::Aggregate(Box::leak(Box::new(typedef.clone()))),
                 meta,
@@ -687,11 +702,17 @@ impl<'a> Generator<'a> {
             match t {
                 Entry::Type(ty) => {
                     self.generate_typedef(&ty)?;
-                },
-                _ => {},
+                }
+                Entry::Func(f) => {
+                    if f.is_checked {
+                        self.generate_function(&f)?;
+                    }
+                }
+                _ => {}
             }
         }
-        self.generate_function(&self.env.items.get(&quantifier!(Root, Func("main"), End)).unwrap().to_func())?;
+        //self.generate_function(&self.env.items.get(&quantifier!(Root, Func("main"), End)).unwrap().to_func())?;
+
         for def in &self.datadefs {
             //self.module.add_data(def.clone());
             self.buf.push_str(&format!("{}\n", def));

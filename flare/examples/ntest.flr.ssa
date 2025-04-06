@@ -1,5 +1,0 @@
-export function w $main() {
-@start
-	%tmp.1 =w copy 9
-	ret %tmp.1
-}

@@ -7,6 +7,7 @@ use crate::{
     },
 };
 use anyhow::{ensure, Ok, Result};
+use ordermap::Equivalent;
 use std::collections::HashMap;
 
 use super::environment::{Environment, FunctionTableEntry, GenericValue, VariableTableEntry};
@@ -74,21 +75,21 @@ impl Typechecker {
         }
     }
 
-    fn check_expr(&mut self, e: &Expr, func: &mut FunctionTableEntry) -> Result<SymbolType> {
+    fn check_expr(&mut self, e: &Expr, func_id: &Quantifier) -> Result<SymbolType> {
         //dbg!(e);
         let res = match e {
             Expr::BinAdd { l, r }
             | Expr::BinSub { l, r }
             | Expr::BinMul { l, r }
             | Expr::BinDiv { l, r } => {
-                let lhs_type = self.check_expr(l, func)?;
-                let rhs_type = self.check_expr(r, func)?;
+                let lhs_type = self.check_expr(l, func_id)?;
+                let rhs_type = self.check_expr(r, func_id)?;
                 ensure!(lhs_type == rhs_type);
                 lhs_type
             }
             Expr::Logical { l, op, r } => {
-                let lhs_type = self.check_expr(l, func)?;
-                let rhs_type = self.check_expr(r, func)?;
+                let lhs_type = self.check_expr(l, func_id)?;
+                let rhs_type = self.check_expr(r, func_id)?;
                 //dbg!(lhs_type.clone());
                 //dbg!(rhs_type.clone());
 
@@ -98,18 +99,21 @@ impl Typechecker {
                 }
                 SymbolType::Bool
             }
-            Expr::Assignment { name, value, and_in } => self.check_expr_assignment(name, value, func)?,
-            Expr::Return { value } => self.check_expr_return(value, func)?,
+            Expr::Assignment {
+                name,
+                value,
+                and_in,
+            } => self.check_expr_assignment(name, value, &and_in, func_id)?,
             Expr::If {
                 condition,
                 then,
                 otherwise,
             } => {
-                let condition_ty = self.check_expr(condition, func)?;
-                let then_type = self.check_expr(then, func)?;
-                let otherwise_type = self.check_expr(otherwise, func)?;
+                let condition_ty = self.check_expr(condition, func_id)?;
+                let then_type = self.check_expr(then, func_id)?;
+                let otherwise_type = self.check_expr(otherwise, func_id)?;
                 ensure!(then_type == otherwise_type);
-                ensure!(condition_ty.is_bool());
+                ensure!(&condition_ty.is_bool());
                 otherwise_type
             }
             Expr::Int(_) => SymbolType::Int,
@@ -121,23 +125,23 @@ impl Typechecker {
             Expr::Str(_) => SymbolType::Str,
             Expr::Char(_) => SymbolType::Char,
             Expr::Bool(_) => SymbolType::Bool,
-            Expr::Symbol(name) => self.check_expr_symbol(name, func)?,
+            Expr::Symbol(name) => self.check_expr_symbol(name, func_id)?,
             Expr::StructInstance { name, fields } => {
-                self.check_expr_structinstance(name, fields, func)?
+                self.check_expr_structinstance(name, fields, func_id)?
             }
-            Expr::FieldAccess(expr, v) => self.check_expr_field_access(expr, v, func)?,
-            Expr::Call { name, args } => self.check_expr_call(name, args, func)?,
+            Expr::FieldAccess(expr, v) => self.check_expr_field_access(expr, v, func_id)?,
+            Expr::Call { name, args } => self.check_expr_call(name, args, func_id)?,
             Expr::MethodCall { obj, name, args } => {
                 //dbg!(e);
                 //dbg!(func.clone());
-                self.check_expr_method_call(obj, name, args, func)?
+                self.check_expr_method_call(obj, name, args, func_id)?
             }
-            Expr::VariantInstance { name: _, fields: _ } => {
+            Expr::VariantInstance { name, fields } => {
                 todo!();
-                //self.check_expr_variantinstance(name, fields)?
+                //self.check_expr_variantinstance(name, fields, func_id)?
             }
-            Expr::Path(l, r) => self.check_path(l, r, func)?,
-            Expr::AddressOf(t) => SymbolType::Pointer(Box::new(self.check_expr(t, func)?)),
+            Expr::Path(l, r) => self.check_path(l, r, func_id)?,
+            Expr::AddressOf(t) => SymbolType::Pointer(Box::new(self.check_expr(t, func_id)?)),
             _ => todo!("{e:?}"),
         };
         Ok(res)
@@ -147,7 +151,7 @@ impl Typechecker {
         &mut self,
         name: &Expr,
         fields: &Vec<(String, Expr)>,
-        func: &mut FunctionTableEntry,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
         let name_string = name.get_symbol_name().unwrap();
         let the_struct = self
@@ -161,14 +165,17 @@ impl Typechecker {
         let defined_fields: Vec<(String, SymbolType)> = the_struct.to_ty().kind.get_fields()?;
         let mut real_fields: Vec<(String, SymbolType)> = vec![];
         for f in fields {
-            real_fields.push((f.0.clone(), self.check_expr(&f.1, func)?));
+            let checked = self.check_expr(&f.1, func_id)?;
+            real_fields.push((f.0.clone(), checked));
         }
         assert_eq!(defined_fields.len(), fields.len());
         let mut generic_vec: Vec<SymbolType> = vec![];
         for ((def_fld_name, def_fld_ty), (fnd_fld_name, fnd_fld_ty)) in
             defined_fields.into_iter().zip(real_fields)
         {
-            if !(def_fld_name == fnd_fld_name && self.compare_types(&def_fld_ty, &fnd_fld_ty, false)) {
+            if !(def_fld_name == fnd_fld_name
+                && self.compare_types(&def_fld_ty, &fnd_fld_ty, false))
+            {
                 return Err(TypecheckingError::InvalidStructInstanceField {
                     obj: name_string,
                     field: def_fld_name,
@@ -204,68 +211,135 @@ impl Typechecker {
         //     .get_mut(&name_string)
         //     .unwrap()
         //     .generic_monomorphs = the_struct.generic_monomorphs;
-        Ok(SymbolType::Custom(name_string, generic_vec))
+        Ok(SymbolType::Quant(quantifier!(
+            Root,
+            Type(name_string.clone()),
+            End
+        )))
     }
 
-    //     fn check_expr_variantinstance(
-    //         &mut self,
-    //         name: &Expr,
-    //         fields: &Vec<Expr>,
-    //     ) -> Result<SymbolType, anyhow::Error> {
-    //         dbg!(name, fields);
-    //         let name_string = name.get_symbol_name();
-    //         let the_enum = self.env.usertype_table.get_id(&name_string).ok_or(
-    //             TypecheckingError::UndefinedType {
-    //                 name: name_string.clone(),
-    //             },
-    //         )?;
-    //         let real_fields: Vec<SymbolType> = vec![];
-
-    //         todo!();
-
-    // //        Ok(SymbolType::Custom(name_string, generic_vec))
-    //     }
-
-    fn check_expr_return(
+    fn check_expr_variantinstance(
         &mut self,
-        value: &Expr,
-        func: &mut FunctionTableEntry,
+        parent: &Expr,
+        name: &Expr,
+        fields: &Vec<Expr>,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
-        let value_type = self.check_expr(value, func)?;
-        //dbg!(self.current_func.clone());
+        //dbg!(parent, name, fields);
+        // let name_string = name.get_symbol_name();
+        // let the_enum = self.env.usertype_table.get_id(&name_string).ok_or(
+        //     TypecheckingError::UndefinedType {
+        //         name: name_string.clone(),
+        //     },
+        // )?;
+        // let real_fields: Vec<SymbolType> = vec![];
 
-        // dbg!(value_type.clone());
-        // dbg!(self.current_func.clone().unwrap().return_type);
-        assert!(self.compare_types(&value_type, &func.return_type.clone(), func.method_parent.is_some()));
-        Ok(value_type)
+        // todo!();
+
+        let parent_name_string = parent.get_symbol_name().unwrap();
+        let variant_name_string = name.get_symbol_name().unwrap();
+
+        let the_enum = self
+            .env
+            .items
+            .get(&quantifier!(Root, Type(parent_name_string.clone()), End))
+            .ok_or(TypecheckingError::UndefinedType {
+                name: parent_name_string.clone(),
+            })?
+            .clone();
+        let variants: Vec<(String, Vec<SymbolType>)> = the_enum.to_ty().kind.get_variants()?;
+        //dbg!(&variants);
+        //dbg!(&variant_name_string);
+        let the_variant = variants
+            .iter()
+            .find(|x| x.0 == variant_name_string)
+            .unwrap(); // FIXME
+        let mut real_fields: Vec<(String, SymbolType)> = vec![];
+        for (i, f) in fields.iter().enumerate() {
+            real_fields.push((i.to_string().clone(), self.check_expr(&f, func_id)?));
+        }
+        //dbg!(&real_fields);
+        // assert_eq!(defined_fields.len(), fields.len());
+        let mut generic_vec: Vec<SymbolType> = vec![];
+        // for ((def_fld_name, def_fld_ty), (fnd_fld_name, fnd_fld_ty)) in
+        //     defined_fields.into_iter().zip(real_fields)
+        // {
+        //     if !(def_fld_name == fnd_fld_name
+        //         && self.compare_types(&def_fld_ty, &fnd_fld_ty, false))
+        //     {
+        //         return Err(TypecheckingError::InvalidStructInstanceField {
+        //             obj: name_string,
+        //             field: def_fld_name,
+        //             expected: def_fld_ty,
+        //             found: fnd_fld_ty,
+        //         }
+        //         .into());
+        //     }
+        //     if def_fld_ty.is_generic() {
+        //         if !fnd_fld_ty.is_generic() {
+        //             let v = SymbolType::Generic(GenericValue::Perfect(
+        //                 def_fld_ty.get_generic_name(),
+        //                 Box::new(fnd_fld_ty),
+        //             ));
+        //             generic_vec.push(v.clone());
+        //         } else {
+        //             generic_vec.push(SymbolType::Generic(GenericValue::Ref(
+        //                 def_fld_ty.get_generic_name(),
+        //             )));
+        //         }
+        //     }
+        // }
+        // the_struct.generic_monomorphs.insert(
+        //     generic_vec
+        //         .clone()
+        //         .iter()
+        //         .map(|x| x.get_generic_value())
+        //         .collect(),
+        // );
+
+        // self.env
+        //     .usertype_table
+        //     .get_mut(&name_string)
+        //     .unwrap()
+        //     .generic_monomorphs = the_struct.generic_monomorphs;
+        Ok(SymbolType::Quant(quantifier!(
+            Root,
+            Type(parent_name_string.clone()),
+            Type(the_variant.0),
+            End
+        )))
+
+        //        Ok(SymbolType::Custom(name_string, generic_vec))
     }
 
     fn check_expr_assignment(
         &mut self,
         name: &Expr,
         value: &Expr,
-        func: &mut FunctionTableEntry,
+        and_in: &Expr,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
         let name = name.get_symbol_name().unwrap();
-        Ok(match func.variables.get(&name) {
+        let the_ident = func_id.append(Quantifier::Variable(name.clone()));
+        Ok(match self.env.get_q(&the_ident) {
             Some(_) => return Err(TypecheckingError::NonMutableReassignment { name }.into()),
             None => {
-                let rhs_type = self.check_expr(value, func)?;
+                let rhs_type = self.check_expr(value, func_id)?;
                 //println!(
                 //    "Adding variable {} with type {:?} and value {:?}",
                 //    name, rhs_type, value
                 //);
                 //dbg!(self.env.current_variables.clone());
-                func.variables.insert(
-                    name.clone(),
+                self.env.add(
+                    the_ident,
                     VariableTableEntry {
                         mytype: rhs_type.clone(),
                         myvalue: value.clone(),
                     },
                 );
                 //dbg!(func.clone());
-
-                rhs_type
+                self.check_expr(and_in, func_id)?
+                //rhs_type
             }
         })
     }
@@ -273,7 +347,7 @@ impl Typechecker {
     fn check_expr_symbol(
         &mut self,
         name: &String,
-        func: &mut FunctionTableEntry,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
         //dbg!(name);
         //dbg!(&func);
@@ -293,17 +367,15 @@ impl Typechecker {
         //         .clone();
         //     Ok(the_type)
         // } else {
-        Ok(func
-            .variables
-            .get(name)
-            .map_or_else( || {
-                func.args.iter().find(|e| e.0 == *name).ok_or(
-                    TypecheckingError::UndefinedVariable {
-                        name: name.to_string(),
-                    },
-                ).unwrap().1.clone()
-            }, |x| x.mytype.clone(),)
-            .clone())
+        let the_name = func_id.append(Quantifier::Variable(name.clone()));
+        if let Some(entry) = self.env.items.iter().find(|x| x.0.equivalent(&the_name)) {
+            Ok(entry.1.to_variable().mytype)
+        } else {
+            anyhow::bail!(TypecheckingError::UndefinedVariable {
+                name: name.to_string()
+            })
+        }
+
         // }
     }
 
@@ -311,50 +383,85 @@ impl Typechecker {
         &mut self,
         obj: &Expr,
         field: &Expr,
-        func: &mut FunctionTableEntry,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
         let fieldname = field.get_symbol_name().unwrap();
+        let the_func = self.env.get_q(func_id).unwrap().to_func();
         let the_obj = if let Expr::Selff = obj {
-            func.method_parent.clone().unwrap()
+            the_func.method_parent.clone().unwrap()
         } else {
+            func_id.append(Quantifier::Variable(obj.get_symbol_name().unwrap()))
             // if let Some(vtable_entry) = func.variables.get(&obj.get_symbol_name().unwrap()) {
             //     vtable_entry.mytype.get_custom_name()
             // } else {
-            panic!()
+            // panic!()
             // }
         };
-        let the_entry = self
+        let the_entry = match self
             .env
-            .items
-            .get(&the_obj)
+            .get_q(&the_obj)
             .ok_or(TypecheckingError::UndefinedType {
                 name: the_obj.to_string(),
-            })?
-            .to_ty();
-        Ok(the_entry
-            .kind
-            .get_fields()?
-            .iter()
-            .filter(|e| e.0 == *fieldname)
-            .nth(0)
-            .ok_or(TypecheckingError::UndefinedField {
-                obj: the_obj.to_string(),
-                field: fieldname.to_string(),
-            })?
-            .1
-            .clone())
+            })? {
+            super::environment::Entry::Type(t) => t,
+            super::environment::Entry::Variable(v) => {
+                self.env.get_q(&v.mytype.get_quant()).unwrap().to_ty()
+            }
+            _ => panic!(),
+        };
+        //dbg!(&the_entry);
+        //dbg!(&the_obj);
+        match the_entry.kind {
+            super::environment::UserTypeKind::Struct { fields } => Ok(fields
+                .iter()
+                .filter(|e| e.0 == *fieldname)
+                .nth(0)
+                .ok_or(TypecheckingError::UndefinedField {
+                    obj: the_obj.to_string(),
+                    field: fieldname.to_string(),
+                })?
+                .1
+                .clone()),
+            super::environment::UserTypeKind::Enum { variants } => {
+                todo!()
+            }
+            super::environment::UserTypeKind::VariantInstance { parent, ident } => {
+                let parent_entry = self.env.get_q(&parent).unwrap().to_ty();
+                let the_variant = parent_entry
+                    .kind
+                    .get_variants()
+                    .unwrap()
+                    .iter()
+                    .find(|x| x.0 == ident)
+                    .unwrap().clone();
+                let idx = match field {
+                    Expr::Int(i) => i,
+                    _ => panic!(),
+                };
+                let the_field = the_variant.1.get(*idx as usize).unwrap().clone();
+                Ok(the_field)
+            }
+        }
     }
 
     fn check_path(
         &mut self,
         l: &Expr,
         r: &Expr,
-        func: &mut FunctionTableEntry,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
         //let lty = self.check_expr(l, func);
+        //dbg!(&r);
         let rty = match r {
-            Expr::Call { name, args } => self.check_expr_path_call(l, name, args, func),
-            Expr::MethodCall { name, args, obj } => self.check_expr_path_call(l, name, args, func),
+            Expr::Call { name, args } => self.check_expr_path_call(l, name, args, func_id),
+            Expr::MethodCall { name, args, obj } => {
+                self.check_expr_path_call(l, name, args, func_id)
+            }
+            Expr::VariantInstance { name, fields } => {
+                self.check_expr_variantinstance(l, name, fields, func_id)
+            }
+            Expr::Int(_) => self.check_expr_field_access(l, r, func_id),
+            Expr::Symbol(_) => self.check_expr_field_access(l, r, func_id),
 
             _ => panic!("{r:?}"),
         };
@@ -367,13 +474,14 @@ impl Typechecker {
         &mut self,
         name: &Expr,
         args: &Vec<Expr>,
-        func: &mut FunctionTableEntry,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
         let name: String = name.get_symbol_name().unwrap();
+        let quant_name = quantifier!(Root, Func(name.clone()), End);
         let mut the_function = self
             .env
             .items
-            .get(&quantifier!(Root, Func(name.clone()), End))
+            .get(&quant_name)
             .ok_or(TypecheckingError::UndefinedFunction {
                 name: name.to_string(),
             })?
@@ -383,7 +491,7 @@ impl Typechecker {
             let mut func_generics: HashMap<String, GenericValue> = HashMap::new();
 
             for expression in args {
-                generated_call_arg_types.push(self.check_expr(expression, func)?);
+                generated_call_arg_types.push(self.check_expr(expression, func_id)?);
             }
 
             for (i, arg) in generated_call_arg_types
@@ -418,7 +526,7 @@ impl Typechecker {
                     .unwrap()
                     .to_mut_func()
                     .is_checked = true;
-                self.check_function_body(&mut the_function, args)?;
+                self.check_function_body(&quant_name, args)?;
             }
             Ok(the_function.return_type)
         } else {
@@ -433,10 +541,10 @@ impl Typechecker {
         obj: &Expr,
         name: &Expr,
         args: &Vec<Expr>,
-        func: &mut FunctionTableEntry,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
         let obj_name: String = obj.get_parent_name();
-        let obj_ty = self.check_expr(obj, func)?;
+        let obj_ty = self.check_expr(obj, func_id)?;
         let func_name = name.get_symbol_name().unwrap();
         let quant_name = quantifier!(
             Root,
@@ -457,7 +565,7 @@ impl Typechecker {
         let mut generated_call_arg_types: Vec<SymbolType> = vec![];
         generated_call_arg_types.push(obj_ty);
         for expression in args {
-            generated_call_arg_types.push(self.check_expr(expression, func)?);
+            generated_call_arg_types.push(self.check_expr(expression, func_id)?);
         }
 
         //dbg!(&args);
@@ -499,7 +607,7 @@ impl Typechecker {
                 .to_mut_func()
                 .is_checked = true;
 
-            self.check_function_body(&mut the_function, args)?;
+            self.check_function_body(&quant_name, args)?;
         }
         Ok(the_function.return_type)
     }
@@ -509,7 +617,7 @@ impl Typechecker {
         obj: &Expr,
         name: &Expr,
         args: &Vec<Expr>,
-        func: &mut FunctionTableEntry,
+        func_id: &Quantifier,
     ) -> Result<SymbolType, anyhow::Error> {
         let obj_name: String = obj.get_parent_name();
         let func_name = name.get_symbol_name().unwrap();
@@ -526,7 +634,7 @@ impl Typechecker {
             .to_func();
         let mut generated_call_arg_types: Vec<SymbolType> = vec![];
         for expression in args {
-            generated_call_arg_types.push(self.check_expr(expression, func)?);
+            generated_call_arg_types.push(self.check_expr(expression, func_id)?);
         }
         ensure!(the_function.args.len() == args.len());
         //dbg!(generated_call_arg_types.clone());
@@ -563,17 +671,27 @@ impl Typechecker {
                 .to_mut_func()
                 .is_checked = true;
 
-            self.check_function_body(&mut the_function, args)?;
+            self.check_function_body(&quant_name, args)?;
         }
         Ok(the_function.return_type)
     }
 
     pub fn check_function_body(
         &mut self,
-        func: &mut FunctionTableEntry,
+        func_id: &Quantifier,
         args: &Vec<Expr>,
     ) -> anyhow::Result<SymbolType> {
-        func.effect = if func.effect.is_some() {Some(self.env.items.get(&quantifier!(Root, Effect(func.effect.clone().unwrap().name), End)).unwrap().to_effect())} else {None};
+        let mut func = self.env.get_q(func_id).unwrap().to_func();
+        func.effect = if let Some(effect) = func.effect {
+            Some(
+                self.env
+                    .get_q(&quantifier!(Root, Effect(effect.name), End))
+                    .unwrap()
+                    .to_effect(),
+            )
+        } else {
+            None
+        };
         //let prev_curr_variables = self.env.current_variables.clone();
         // let mut prev_curr_func = self.current_func.cloned();
         // self.current_func = Some(func);
@@ -583,8 +701,8 @@ impl Typechecker {
         //     .insert(self.current_func.clone().unwrap().name, HashMap::new());
         for (arg, v) in func.args.iter().zip(args) {
             let name = arg.0.clone();
-            func.variables.insert(
-                name,
+            self.env.add(
+                func_id.append(Quantifier::Variable(name)),
                 VariableTableEntry {
                     mytype: arg.1.clone(),
                     myvalue: v.clone(),
@@ -592,10 +710,9 @@ impl Typechecker {
             );
         }
         let mut last_expr: SymbolType = func.return_type.clone();
-        let t = self.check_expr(&func.body.clone(), func)?;
+        let t = self.check_expr(&func.body.clone(), func_id)?;
         last_expr = t;
-            
-        
+
         ensure!(
             self.compare_types(&last_expr, &func.return_type, func.method_parent.is_some()),
             TypecheckingError::InvalidFunctionReturnType {
@@ -615,30 +732,23 @@ impl Typechecker {
 
     pub fn check(&mut self, main_mod_name: String) -> anyhow::Result<Environment, anyhow::Error> {
         //dbg!(self.env.clone());
-        let main_func: FunctionTableEntry = self
-            .env
-            .items
-            .get(&quantifier!(
-                Root,
-                /*Module(main_mod_name),*/ Func("main".to_string()),
-                End
-            ))
-            .ok_or(TypecheckingError::MissingMainFunction)?
-            .to_func();
+        let main_func = quantifier!(
+            Root,
+            /*Module(main_mod_name),*/ Func("main".to_string()),
+            End
+        );
 
         //self.current_func = Some(Box::leak(Box::new(main_func.clone())));
-        let rt = self
-            .check_function_body(&mut main_func.clone(), &vec![])?
-            .clone();
+        let rt = self.check_function_body(&main_func, &vec![])?.clone();
         self.env
             .items
-            .get_mut(&quantifier!(Root, Func("main"), End))
+            .get_mut(&main_func)
             .unwrap()
             .to_mut_func()
             .is_checked = true;
         self.env
             .items
-            .get_mut(&quantifier!(Root, Func("main"), End))
+            .get_mut(&main_func)
             .unwrap()
             .to_mut_func()
             .return_type = rt;

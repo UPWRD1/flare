@@ -96,8 +96,6 @@ pub enum Tk {
     TkKwElse(PosInfo),
     #[regex(r"match", word_callback)]
     TkKwMatch(PosInfo),
-    #[regex(r"return", word_callback)]
-    TkKwReturn(PosInfo),
     #[regex(r"and", word_callback)]
     TkKwAnd(PosInfo),
     #[regex(r"or", word_callback)]
@@ -246,7 +244,6 @@ impl Token {
             Tk::TkKwThen(v) => v.span,
             Tk::TkKwElse(v) => v.span,
             Tk::TkKwMatch(v) => v.span,
-            Tk::TkKwReturn(v) => v.span,
             Tk::TkKwAnd(v) => v.span,
             Tk::TkKwOr(v) => v.span,
             Tk::TkKwNot(v) => v.span,
@@ -330,7 +327,6 @@ impl Token {
             Tk::TkKwThen(v) => v.line,
             Tk::TkKwElse(v) => v.line,
             Tk::TkKwMatch(v) => v.line,
-            Tk::TkKwReturn(v) => v.line,
             Tk::TkKwAnd(v) => v.line,
             Tk::TkKwOr(v) => v.line,
             Tk::TkKwNot(v) => v.line,
@@ -421,7 +417,6 @@ impl fmt::Display for Token {
             Tk::TkKwThen(_) => "then",
             Tk::TkKwElse(_) => todo!(),
             Tk::TkKwMatch(_) => todo!(),
-            Tk::TkKwReturn(_) => todo!(),
             Tk::TkKwAnd(_) => todo!(),
             Tk::TkKwOr(_) => todo!(),
             Tk::TkKwNot(_) => todo!(),

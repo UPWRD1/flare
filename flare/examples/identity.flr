@@ -1,6 +1,6 @@
 with "examples/wrapper"
 
-let id of x: ?T -> ?T = return x
+let id: (x: ?T -> ?T) = x
 
 let main =
     a = id(3)
