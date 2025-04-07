@@ -115,7 +115,7 @@ impl Cst {
 
     pub fn get_module_body(&self) -> Vec<Self> {
         match self {
-            Self::Module { name , body } => body.clone(),
+            Self::Module { name: _ , body } => body.clone(),
             //Self::MethodDef { name, .. } => name.to_string(),
 
             _ => panic!("{:?} is not a module", self),
@@ -277,7 +277,7 @@ impl Expr {
 
     pub fn get_assignment(&self) -> (String, Self) {
         match self {
-            Expr::Assignment { name, value, and_in } => (name.get_symbol_name().expect("cannot assign to a non-symbol"), *value.clone()),
+            Expr::Assignment { name, value, and_in: _ } => (name.get_symbol_name().expect("cannot assign to a non-symbol"), *value.clone()),
             _ => panic!(),
         }
     }
@@ -570,6 +570,8 @@ impl SymbolType {
             SymbolType::Unknown => self.clone(),
             SymbolType::Pointer(t) => t.extract(),
             Self::Custom(..) => self.clone(),
+            Self::Quant(..) => self.clone(),
+
             _ => todo!("{:?}", self),
         }
     }

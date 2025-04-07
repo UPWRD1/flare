@@ -1,3 +1,9 @@
-type Opt[?T] = enum of
+type Option[?T] = enum of
     Some{?T},
     None
+
+def Option[?T]
+    in is_some: (self) -> bool =
+        match self 
+            | Some {x} then true
+            else false

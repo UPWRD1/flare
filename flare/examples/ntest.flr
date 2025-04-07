@@ -3,16 +3,14 @@
 -- with "examples/wrapper"
 --with container
 
-with lambdacalc
+-- with lambdacalc
 
-type Catagory = enum of
-    A{int},
-    B,
-    C
+with option
 
 let add: (l: int, r: int) -> int =
     l + r
 
-let main: () -> int =
-    a = Catagory.:A{3}
-    a.0
+let main: () -> bool =
+    a = Option.Some{3}
+    a.is_some()
+

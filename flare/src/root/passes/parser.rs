@@ -66,9 +66,9 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         = [Token { kind: Tk::TkKwEnum(_), .. }] [Token { kind: Tk::TkKwOf(_), .. }] m: variantlist() { crate::root::resource::cst::Cst::Enum { name: name.to_string(), members: m}}
 
     rule variantlist() -> Vec<(String, Vec<crate::root::resource::cst::SymbolType>)>
-        = v: ([Token { kind: Tk::TkSymbol(_), lit: name,.. }] a: varianttype()? {(name.to_string(), if a.is_some() {a.unwrap()} else {vec![]})}) ** [Token { kind: Tk::TkComma(_), .. }]
+        = v: ([Token { kind: Tk::TkSymbol(_), lit: name,.. }] a: variantdata()? {(name.to_string(), if a.is_some() {a.unwrap()} else {vec![]})}) ** [Token { kind: Tk::TkComma(_), .. }]
 
-    rule varianttype() -> Vec<crate::root::resource::cst::SymbolType>
+    rule variantdata() -> Vec<crate::root::resource::cst::SymbolType>
         = [Token { kind: Tk::TkLbrace(_), .. }] a: atype() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {a}
 
     rule type_alias(name: String) -> crate::root::resource::cst::Cst
@@ -147,18 +147,7 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
         = quiet! {[Token { kind: Tk::TkKwFn(_), .. }] args: func_args() [Token { kind: Tk::TkArr(_), .. }] body: expr()+ { crate::root::resource::cst::Expr::Closure { args, body } }}
         / expected!("a closure")
 
-    rule structinstance() -> crate::root::resource::cst::Expr
-        = n: simplesymbol() [Token { kind: Tk::TkLbrace(_), .. }] f: fieldinit() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {crate::root::resource::cst::Expr::StructInstance { name: Box::new(n), fields: f }}
-
-    rule fieldinit() -> (String, crate::root::resource::cst::Expr)
-        = n: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] e: expr() {(n.get_symbol_name().unwrap(), e)}
-
-    rule variantinstance() -> crate::root::resource::cst::Expr
-        = [Token { kind: Tk::TkColon(_), .. }] n: simplesymbol() f: variantfields()? {crate::root::resource::cst::Expr::VariantInstance { name: Box::new(n), fields: f.unwrap_or_else(std::vec::Vec::new) }}
-
-    rule variantfields() -> Vec<crate::root::resource::cst::Expr>
-        = [Token { kind: Tk::TkLbrace(_), .. }] e: expr() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {e}
-
+    
 
     rule binary_op() -> crate::root::resource::cst::Expr =
     quiet! {precedence!{
@@ -237,6 +226,18 @@ peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
             v: variantinstance() {crate::root::resource::cst::Predicate::Variant { name: v.get_variant_name(), membervars: v.get_variant_fields() }}
         }
         / expected!("a predicate")
+
+        rule structinstance() -> crate::root::resource::cst::Expr
+        = n: simplesymbol() [Token { kind: Tk::TkLbrace(_), .. }] f: fieldinit() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {crate::root::resource::cst::Expr::StructInstance { name: Box::new(n), fields: f }}
+
+    rule fieldinit() -> (String, crate::root::resource::cst::Expr)
+        = n: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] e: expr() {(n.get_symbol_name().unwrap(), e)}
+
+    rule variantinstance() -> crate::root::resource::cst::Expr
+        = n: simplesymbol() f: variantfields()? {crate::root::resource::cst::Expr::VariantInstance { name: Box::new(n), fields: f.unwrap_or_else(std::vec::Vec::new) }}
+
+    rule variantfields() -> Vec<crate::root::resource::cst::Expr>
+        = [Token { kind: Tk::TkLbrace(_), .. }] e: expr() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {e}
 
 
     rule intrinsic() -> crate::root::resource::cst::Expr

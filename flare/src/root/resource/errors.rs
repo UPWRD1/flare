@@ -48,7 +48,11 @@ pub enum TypecheckingError {
     UndefinedType { name: String },
 
     #[error("The struct type '{obj}' has no field '{field}'")]
-    UndefinedField { obj: String, field: String },
+    UndefinedStructField { obj: String, field: String },
+
+    #[error("The variant '{v}' of enum type '{t}' has no field '{field}'")]
+    UndefinedVariantField { v: String, t: String, field: String },
+
 
     #[error("The struct type '{obj}' expects its field '{field}' to be of type '{expected}', found '{found}'")]
     InvalidStructInstanceField { obj: String, field: String, expected: SymbolType, found: SymbolType },

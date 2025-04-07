@@ -416,7 +416,7 @@ impl Typechecker {
                 .iter()
                 .filter(|e| e.0 == *fieldname)
                 .nth(0)
-                .ok_or(TypecheckingError::UndefinedField {
+                .ok_or(TypecheckingError::UndefinedStructField {
                     obj: the_obj.to_string(),
                     field: fieldname.to_string(),
                 })?
@@ -438,7 +438,7 @@ impl Typechecker {
                     Expr::Int(i) => i,
                     _ => panic!(),
                 };
-                let the_field = the_variant.1.get(*idx as usize).unwrap().clone();
+                let the_field = the_variant.1.get(*idx as usize).ok_or(TypecheckingError::UndefinedVariantField { v: the_variant.0, t: parent_entry.name, field: idx.to_string() })?.clone();
                 Ok(the_field)
             }
         }
@@ -546,12 +546,15 @@ impl Typechecker {
         let obj_name: String = obj.get_parent_name();
         let obj_ty = self.check_expr(obj, func_id)?;
         let func_name = name.get_symbol_name().unwrap();
-        let quant_name = quantifier!(
-            Root,
-            Type(obj_ty.get_custom_name()),
-            Func(func_name.clone()),
-            End
-        );
+        let quant_name = if let SymbolType::Quant(q) = obj_ty.clone() {q.append(Quantifier::Func(func_name.clone(), Box::new(Quantifier::End)))} else {
+            quantifier!(
+                    Root,
+                    Type(obj_ty.get_custom_name()),
+                    Func(func_name.clone()),
+                    End
+                )
+        };
+        // let quant_name = 
         let mut the_function = self
             .env
             .items
@@ -730,7 +733,7 @@ impl Typechecker {
         Ok(last_expr)
     }
 
-    pub fn check(&mut self, main_mod_name: String) -> anyhow::Result<Environment, anyhow::Error> {
+    pub fn check(&mut self) -> anyhow::Result<Environment, anyhow::Error> {
         //dbg!(self.env.clone());
         let main_func = quantifier!(
             Root,

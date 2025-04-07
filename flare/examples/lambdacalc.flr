@@ -6,16 +6,16 @@ type Term = enum of
 def Term
     in subst: (self, sub: Term) -> Term =
         match self 
-            | :Var{x} then sub
-            | :Lambda{x, e} then :Lambda{x, subst(e)}
-            | :Apply{l, r} then :Apply{l.subst(sub), r.subst(sub)}
+            | Var{x} then sub
+            | Lambda{x, e} then :Lambda{x, subst(e)}
+            | Apply{l, r} then :Apply{l.subst(sub), r.subst(sub)}
 
     in cbn: (self) -> Term =
         match self
-            | :Var{x} then :Var{x}
-            | :Lambda{x, e} then :Lambda{x, e}
-            | :Apply{e1, e2} then
+            | Var{x} then :Var{x}
+            | Lambda{x, e} then :Lambda{x, e}
+            | Apply{e1, e2} then
                 e1_prime = cbn(e1)
                 match e1_prime
-                    | :Lambda{x, e} then cbn(e1_prime.subst(e2))
-                    else :Apply{e1_prime, e2}
+                    | Lambda{x, e} then cbn(e1_prime.subst(e2))
+                    else Apply{e1_prime, e2}

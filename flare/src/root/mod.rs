@@ -6,7 +6,7 @@ use passes::{backend::{flatten::Flattener, gen::Generator}, midend::{environment
 use resource::{cst::{Cst, Program}, errors::LexingError};
 pub mod resource;
 use anyhow::{bail, Result};
-use crate::{quantifier, root::resource::tk::{Tk, Token}};
+use crate::{root::resource::tk::{Tk, Token}};
 
 
 pub struct Context {
@@ -27,7 +27,7 @@ pub fn compile_module(ctx: &mut Context, src_path: PathBuf) -> anyhow::Result<Cs
     for _i in 0..lex.clone().collect::<Vec<Result<Tk, LexingError>>>().len() {
         match lex.next().unwrap() {
             Ok(a) => tokens.push(Token::new(a.clone(), lex.slice().to_string())),
-            Err(e) => bail!("Unidentified character '{}'", lex.slice())
+            Err(_) => bail!("Unidentified character '{}'", lex.slice())
         }
        // println!("{_i} {a:?} '{}'", lex.slice());
     }
@@ -47,7 +47,7 @@ pub fn compile_typecheck(ctx: &mut Context, filename: &PathBuf) -> Result<String
     p.modules.push(root_ast.clone());
 
     match root_ast {
-        Cst::Module { name, body } => {
+        Cst::Module { name:_, body } => {
             for c in body {
                 match c {
                     Cst::WithClause { include } => {
@@ -72,7 +72,7 @@ pub fn compile_typecheck(ctx: &mut Context, filename: &PathBuf) -> Result<String
 
 
     let mut tc = Typechecker::new(ctx.env.clone());
-    let res = tc.check(filename.file_stem().unwrap().to_str().unwrap().to_string())?;
+    let res = tc.check()?;
     dbg!(res.clone());
  
     // let mut flattener = Flattener::new(res.clone());

@@ -300,14 +300,15 @@ impl Entry {
         if let Self::Func(f) = self {
             f.clone()
         } else {
-            panic!()
+            panic!("{self:?}")
         }
     }
 
     pub fn to_mut_func(&mut self) -> &mut FunctionTableEntry {
         match self {
             Self::Func(ref mut f) => f,
-            _ => panic!(),
+            _ => panic!("{self:?}")
+            ,
         }
     }
 

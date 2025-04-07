@@ -186,7 +186,7 @@ impl Flattener {
                     res
                     //panic!()
                 }
-                Expr::Closure { args, body } => todo!(),
+                Expr::Closure { args: _, body: _ } => todo!(),
                 Expr::SeqComp { l, r } => todo!(),
                 Expr::If {
                     condition,
