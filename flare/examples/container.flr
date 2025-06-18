@@ -1,4 +1,4 @@
-type Container = struct of
+struct Container =
     capacity: int,
     contents: int
 

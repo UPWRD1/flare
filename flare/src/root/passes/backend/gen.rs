@@ -173,7 +173,7 @@ impl<'a> Generator<'a> {
                             crate::root::resource::cst::LogicOp::CLE => qbe::Cmp::Sle,
                             crate::root::resource::cst::LogicOp::CGT => qbe::Cmp::Sgt,
                             crate::root::resource::cst::LogicOp::CGE => qbe::Cmp::Sge,
-                            crate::root::resource::cst::LogicOp::Is => todo!(),
+                            _ => todo!(),
                         },
                         lhs_val,
                         rhs_val,

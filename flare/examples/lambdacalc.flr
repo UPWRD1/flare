@@ -1,4 +1,4 @@
-type Term = enum of
+enum Term = 
     Var{str},
     Lambda{str, Term},
     Apply{Term, Term}

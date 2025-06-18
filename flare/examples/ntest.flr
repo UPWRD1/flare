@@ -1,16 +1,10 @@
---with io
--- with "examples/vec"
--- with "examples/wrapper"
---with container
+struct Demo =
+    x: int,
+    y: flt
 
--- with lambdacalc
+def Demo
+    in new: (x: int, y: flt) -> Demo =
+        Demo { x: x, y: y }
 
-with option
-
-let add: (l: int, r: int) -> int =
-    l + r
-
-let main: () -> bool =
-    a = Option.Some{3}
-    a.is_some()
-
+let main: (x: int) -> int =
+    Demo.new(3, 4.6)

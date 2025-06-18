@@ -3,15 +3,25 @@ name = "flare"
 version = "0.1.0"
 edition = "2021"
 
+[build-dependencies]
+cfgrammar = "0.13.10"
+lrlex = "0.13"
+lrpar = "0.13"
+
 [dependencies]
 anyhow = "1.0.94"
+ariadne = {version = "0.5.1", features = ["auto-color"] }
+cfgrammar = "0.13.10"
+#codesnake = "0.2.1"
 colored = "2.1.0"
 itertools = "0.13.0"
 lazy_static = "1.4.0"
-logos = "0.14.1"
+#logos = "0.14.1"
+lrlex = "0.13"
+lrpar = "0.13"
 ordered-float = { version = "4.5.0", features = ["serde"] }
 ordermap = "0.5.5"
-peg = "0.8.4"
+#peg = "0.8.4"
 qbe = "2.3.0"
 # rayon = "1.10.0"
 serde = {version = "1.0.210", features = ["derive"]}

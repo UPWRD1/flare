@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use anyhow::bail;
 use serde::Deserialize;
 use serde::Serialize;
 use std::fmt::Display;
@@ -490,6 +491,23 @@ impl Environment {
         current_module: &Quantifier,
         is_in_defblock: bool,
     ) -> anyhow::Result<()> {
+        let rettype: SymbolType = match rettype {
+            SymbolType::Selff => todo!(),
+            SymbolType::Unknown => panic!(),
+            SymbolType::Generic(generic_value) => todo!(),
+            SymbolType::Custom(name, symbol_types) => {
+                let query= self.get_q(&quantifier!(Root, Type(name), End));
+                if query.is_some() {
+                    SymbolType::Quant(quantifier!(Root, Type(name), End))
+                } else {
+                    bail!("Undefined Type {}", name)
+                }
+            },
+            SymbolType::Property => panic!(),
+            SymbolType::TypeDefSelf => todo!(),
+            _ => rettype
+        };
+
         let entry = FunctionTableEntry {
             name: name.clone(),
             method_parent: if is_in_defblock {
@@ -514,7 +532,7 @@ impl Environment {
             // variables: HashMap::new(),
             //generic_monomorphs: HashSet::new(),
         };
-
+        dbg!(entry.clone());
         //println!("Adding function '{}()' (id# {})", name, id);
         self.add_func(entry, current_module)?;
         Ok(())
@@ -615,55 +633,6 @@ impl Environment {
         for node in funcs {
             self.build_ast(&node, &new_current, true)?;
         }
-        Ok(())
-    }
-
-    fn build_assocdef(
-        &mut self,
-        parent: Quantifier,
-        name: String,
-        rettype: SymbolType,
-        args: Vec<(String, SymbolType)>,
-        limits: Vec<Expr>,
-        effect: Option<Expr>,
-        body: Expr,
-    ) -> anyhow::Result<()> {
-        //println!("Adding method '{}()' to {}", name, parent);
-
-        //generic_monomorphs: HashSet::new(),
-
-        // the type has no methods defined yet
-        let the_entry = FunctionTableEntry {
-            name: name.clone(),
-            method_parent: Some(parent.clone()),
-            arity: args.len(),
-            args: args,
-            limits,
-            effect: effect.clone().and(Some(EffectEntry {
-                name: effect
-                    .unwrap()
-                    .get_symbol_name()
-                    .expect("Expected a symbol"),
-                deps: EffectDeps::Unsolved,
-            })),
-            return_type: rettype,
-            body,
-            is_checked: false,
-            is_extern: false,
-            variadic: false,
-            // variables: HashMap::new(),
-
-            //generic_monomorphs: HashSet::new(),
-        };
-        self.items.insert(
-            // using raw access to ensure the method is applied
-            parent.append(Quantifier::Func(
-                name,
-                Box::new(Quantifier::End),
-            )),
-            the_entry.into(),
-        );
-
         Ok(())
     }
 

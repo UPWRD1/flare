@@ -1,6 +1,6 @@
 with "examples/container"
 
-type TreeNode = struct of
+struct TreeNode =
     left: Option<Self>,
     right: Option<Self>,
     data: Container

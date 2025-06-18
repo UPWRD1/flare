@@ -166,6 +166,8 @@ pub enum LogicOp {
     CGT,
     CGE,
     Is,
+    And,
+    Or
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Predicate {
@@ -782,7 +784,7 @@ impl Display for SymbolType {
                 GenericValue::Perfect(_n, _symbol_type) => todo!(),
             },
             SymbolType::Quant(q) => Box::leak(Box::new(format!("{q}"))),
-            // SymbolType::Custom(n, _v) => Box::leak(Box::new(format!("{n}"))),
+            SymbolType::Custom(n, _v) => Box::leak(Box::new(format!("{n}"))),
             // SymbolType::Enum(_, _) => todo!(),
             // SymbolType::Variant(_, _) => todo!(),
             SymbolType::Property => todo!(),

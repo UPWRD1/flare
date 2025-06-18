@@ -1,4 +1,4 @@
-type Option[?T] = enum of
+enum Option[?T] =
     Some{?T},
     None
 

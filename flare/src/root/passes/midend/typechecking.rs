@@ -1,3 +1,4 @@
+use crate::root::resource::errors::CompResult;
 use crate::root::Quantifier;
 use crate::{
     quantifier,
@@ -6,11 +7,11 @@ use crate::{
         errors::TypecheckingError,
     },
 };
-use anyhow::{ensure, Ok, Result};
+// use anyhow::{ensure, Ok, Result};
 use ordermap::Equivalent;
 use std::collections::HashMap;
 
-use super::environment::{Environment, FunctionTableEntry, GenericValue, VariableTableEntry};
+use super::environment::{Environment, GenericValue, VariableTableEntry};
 
 pub struct Typechecker {
     env: Environment,
@@ -75,17 +76,24 @@ impl Typechecker {
         }
     }
 
-    fn check_expr(&mut self, e: &Expr, func_id: &Quantifier) -> Result<SymbolType> {
+    fn check_expr(&mut self, e: &Expr, func_id: &Quantifier) -> CompResult<SymbolType> {
         //dbg!(e);
-        let res = match e {
+        match e {
             Expr::BinAdd { l, r }
             | Expr::BinSub { l, r }
             | Expr::BinMul { l, r }
             | Expr::BinDiv { l, r } => {
                 let lhs_type = self.check_expr(l, func_id)?;
                 let rhs_type = self.check_expr(r, func_id)?;
-                ensure!(lhs_type == rhs_type);
-                lhs_type
+                if lhs_type != rhs_type {
+                    Err(TypecheckingError::IncompatibleTypes {
+                        l: lhs_type,
+                        r: rhs_type,
+                    }
+                    .into())
+                } else {
+                    Ok(lhs_type)
+                }
             }
             Expr::Logical { l, op, r } => {
                 let lhs_type = self.check_expr(l, func_id)?;
@@ -97,13 +105,13 @@ impl Typechecker {
                     crate::root::resource::cst::LogicOp::Is => todo!(),
                     _ => assert!(lhs_type == rhs_type),
                 }
-                SymbolType::Bool
+                Ok(SymbolType::Bool)
             }
             Expr::Assignment {
                 name,
                 value,
                 and_in,
-            } => self.check_expr_assignment(name, value, &and_in, func_id)?,
+            } => self.check_expr_assignment(name, value, &and_in, func_id),
             Expr::If {
                 condition,
                 then,
@@ -112,39 +120,52 @@ impl Typechecker {
                 let condition_ty = self.check_expr(condition, func_id)?;
                 let then_type = self.check_expr(then, func_id)?;
                 let otherwise_type = self.check_expr(otherwise, func_id)?;
-                ensure!(then_type == otherwise_type);
-                ensure!(&condition_ty.is_bool());
-                otherwise_type
+                if then_type == otherwise_type {
+                    if condition_ty.is_bool() {
+                        Ok(otherwise_type)
+                    } else {
+                        Err(TypecheckingError::ExpectedType {
+                            expected: SymbolType::Bool,
+                            found: condition_ty,
+                        }
+                        .into())
+                    }
+                } else {
+                    Err(TypecheckingError::IncompatibleTypes {
+                        l: then_type,
+                        r: otherwise_type,
+                    }
+                    .into())
+                }
             }
-            Expr::Int(_) => SymbolType::Int,
-            Expr::Naught => SymbolType::Unit,
+            Expr::Int(_) => Ok(SymbolType::Int),
+            Expr::Naught => Ok(SymbolType::Unit),
 
-            Expr::Uint(_) => SymbolType::Usize,
-            Expr::Byte(_) => SymbolType::Byte,
-            Expr::Flt(_) => SymbolType::Flt,
-            Expr::Str(_) => SymbolType::Str,
-            Expr::Char(_) => SymbolType::Char,
-            Expr::Bool(_) => SymbolType::Bool,
-            Expr::Symbol(name) => self.check_expr_symbol(name, func_id)?,
+            Expr::Uint(_) => Ok(SymbolType::Usize),
+            Expr::Byte(_) => Ok(SymbolType::Byte),
+            Expr::Flt(_) => Ok(SymbolType::Flt),
+            Expr::Str(_) => Ok(SymbolType::Str),
+            Expr::Char(_) => Ok(SymbolType::Char),
+            Expr::Bool(_) => Ok(SymbolType::Bool),
+            Expr::Symbol(name) => self.check_expr_symbol(name, func_id),
             Expr::StructInstance { name, fields } => {
-                self.check_expr_structinstance(name, fields, func_id)?
+                self.check_expr_structinstance(name, fields, func_id)
             }
-            Expr::FieldAccess(expr, v) => self.check_expr_field_access(expr, v, func_id)?,
-            Expr::Call { name, args } => self.check_expr_call(name, args, func_id)?,
+            Expr::FieldAccess(expr, v) => self.check_expr_field_access(expr, v, func_id),
+            Expr::Call { name, args } => self.check_expr_call(name, args, func_id),
             Expr::MethodCall { obj, name, args } => {
                 //dbg!(e);
                 //dbg!(func.clone());
-                self.check_expr_method_call(obj, name, args, func_id)?
+                self.check_expr_method_call(obj, name, args, func_id)
             }
             Expr::VariantInstance { name, fields } => {
                 todo!();
                 //self.check_expr_variantinstance(name, fields, func_id)?
             }
-            Expr::Path(l, r) => self.check_path(l, r, func_id)?,
-            Expr::AddressOf(t) => SymbolType::Pointer(Box::new(self.check_expr(t, func_id)?)),
+            Expr::Path(l, r) => self.check_path(l, r, func_id),
+            Expr::AddressOf(t) => Ok(SymbolType::Pointer(Box::new(self.check_expr(t, func_id)?))),
             _ => todo!("{e:?}"),
-        };
-        Ok(res)
+        }
     }
 
     fn check_expr_structinstance(
@@ -152,7 +173,7 @@ impl Typechecker {
         name: &Expr,
         fields: &Vec<(String, Expr)>,
         func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    ) -> CompResult<SymbolType> {
         let name_string = name.get_symbol_name().unwrap();
         let the_struct = self
             .env
@@ -224,7 +245,7 @@ impl Typechecker {
         name: &Expr,
         fields: &Vec<Expr>,
         func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    ) -> CompResult<SymbolType> {
         //dbg!(parent, name, fields);
         // let name_string = name.get_symbol_name();
         // let the_enum = self.env.usertype_table.get_id(&name_string).ok_or(
@@ -318,7 +339,7 @@ impl Typechecker {
         value: &Expr,
         and_in: &Expr,
         func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    ) -> CompResult<SymbolType> {
         let name = name.get_symbol_name().unwrap();
         let the_ident = func_id.append(Quantifier::Variable(name.clone()));
         Ok(match self.env.get_q(&the_ident) {
@@ -344,11 +365,7 @@ impl Typechecker {
         })
     }
 
-    fn check_expr_symbol(
-        &mut self,
-        name: &String,
-        func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    fn check_expr_symbol(&mut self, name: &String, func_id: &Quantifier) -> CompResult<SymbolType> {
         //dbg!(name);
         //dbg!(&func);
         // if name == "self" {
@@ -371,9 +388,10 @@ impl Typechecker {
         if let Some(entry) = self.env.items.iter().find(|x| x.0.equivalent(&the_name)) {
             Ok(entry.1.to_variable().mytype)
         } else {
-            anyhow::bail!(TypecheckingError::UndefinedVariable {
-                name: name.to_string()
-            })
+            Err(TypecheckingError::UndefinedVariable {
+                name: name.to_string(),
+            }
+            .into())
         }
 
         // }
@@ -384,12 +402,13 @@ impl Typechecker {
         obj: &Expr,
         field: &Expr,
         func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    ) -> CompResult<SymbolType> {
         let fieldname = field.get_symbol_name().unwrap();
         let the_func = self.env.get_q(func_id).unwrap().to_func();
         let the_obj = if let Expr::Selff = obj {
             the_func.method_parent.clone().unwrap()
         } else {
+            dbg!(&obj);
             func_id.append(Quantifier::Variable(obj.get_symbol_name().unwrap()))
             // if let Some(vtable_entry) = func.variables.get(&obj.get_symbol_name().unwrap()) {
             //     vtable_entry.mytype.get_custom_name()
@@ -433,25 +452,29 @@ impl Typechecker {
                     .unwrap()
                     .iter()
                     .find(|x| x.0 == ident)
-                    .unwrap().clone();
+                    .unwrap()
+                    .clone();
                 let idx = match field {
                     Expr::Int(i) => i,
                     _ => panic!(),
                 };
-                let the_field = the_variant.1.get(*idx as usize).ok_or(TypecheckingError::UndefinedVariantField { v: the_variant.0, t: parent_entry.name, field: idx.to_string() })?.clone();
+                let the_field = the_variant
+                    .1
+                    .get(*idx as usize)
+                    .ok_or(TypecheckingError::UndefinedVariantField {
+                        v: the_variant.0,
+                        t: parent_entry.name,
+                        field: idx.to_string(),
+                    })?
+                    .clone();
                 Ok(the_field)
             }
         }
     }
 
-    fn check_path(
-        &mut self,
-        l: &Expr,
-        r: &Expr,
-        func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    fn check_path(&mut self, l: &Expr, r: &Expr, func_id: &Quantifier) -> CompResult<SymbolType> {
         //let lty = self.check_expr(l, func);
-        //dbg!(&r);
+        dbg!(&r);
         let rty = match r {
             Expr::Call { name, args } => self.check_expr_path_call(l, name, args, func_id),
             Expr::MethodCall { name, args, obj } => {
@@ -475,7 +498,7 @@ impl Typechecker {
         name: &Expr,
         args: &Vec<Expr>,
         func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    ) -> CompResult<SymbolType> {
         let name: String = name.get_symbol_name().unwrap();
         let quant_name = quantifier!(Root, Func(name.clone()), End);
         let mut the_function = self
@@ -500,16 +523,15 @@ impl Typechecker {
                 .enumerate()
             {
                 //if !(*arg.0 == arg.1 .1 || arg.1 .1.is_generic()) {
-                ensure!(
-                    self.compare_types(arg.0, &arg.1 .1, false),
-                    TypecheckingError::InvalidFunctionArgumentType {
+                if !self.compare_types(arg.0, &arg.1 .1, false) {
+                    return Err(TypecheckingError::InvalidFunctionArgumentType {
                         name,
                         arg: arg.1 .0,
                         expected: arg.1 .1,
                         found: arg.0.clone(),
                     }
-                );
-
+                    .into());
+                }
                 the_function.args[i] = (arg.1 .0, arg.0.clone());
                 if arg.1 .1.is_generic() {
                     func_generics.insert(
@@ -542,19 +564,24 @@ impl Typechecker {
         name: &Expr,
         args: &Vec<Expr>,
         func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    ) -> CompResult<SymbolType> {
         let obj_name: String = obj.get_parent_name();
         let obj_ty = self.check_expr(obj, func_id)?;
         let func_name = name.get_symbol_name().unwrap();
-        let quant_name = if let SymbolType::Quant(q) = obj_ty.clone() {q.append(Quantifier::Func(func_name.clone(), Box::new(Quantifier::End)))} else {
+        let quant_name = if let SymbolType::Quant(q) = obj_ty.clone() {
+            q.append(Quantifier::Func(
+                func_name.clone(),
+                Box::new(Quantifier::End),
+            ))
+        } else {
             quantifier!(
-                    Root,
-                    Type(obj_ty.get_custom_name()),
-                    Func(func_name.clone()),
-                    End
-                )
+                Root,
+                Type(obj_ty.get_custom_name()),
+                Func(func_name.clone()),
+                End
+            )
         };
-        // let quant_name = 
+        // let quant_name =
         let mut the_function = self
             .env
             .items
@@ -584,15 +611,16 @@ impl Typechecker {
             .zip(the_function.args.clone())
             .enumerate()
         {
-            ensure!(
-                self.compare_types(found, &expected, true),
-                TypecheckingError::InvalidFunctionArgumentType {
+            if !self.compare_types(found, &expected, true) {
+                return Err(TypecheckingError::InvalidFunctionArgumentType {
                     name: func_name,
                     arg: name,
                     expected: expected,
                     found: found.clone(),
                 }
-            );
+                .into());
+            }
+
             the_function.args[i] = (name, found.clone());
             if expected.is_generic() {
                 func_generics.insert(
@@ -621,7 +649,7 @@ impl Typechecker {
         name: &Expr,
         args: &Vec<Expr>,
         func_id: &Quantifier,
-    ) -> Result<SymbolType, anyhow::Error> {
+    ) -> CompResult<SymbolType> {
         let obj_name: String = obj.get_parent_name();
         let func_name = name.get_symbol_name().unwrap();
         let quant_name = quantifier!(Root, Type(obj_name), Func(func_name.clone()), End);
@@ -639,7 +667,14 @@ impl Typechecker {
         for expression in args {
             generated_call_arg_types.push(self.check_expr(expression, func_id)?);
         }
-        ensure!(the_function.args.len() == args.len());
+        if !(the_function.args.len() == args.len()) {
+            return Err(TypecheckingError::InvalidFunctionArgumentLen {
+                name: the_function.name,
+                expected: the_function.args.len(),
+                found: args.len(),
+            }
+            .into());
+        };
         //dbg!(generated_call_arg_types.clone());
         let mut func_generics: HashMap<String, GenericValue> = HashMap::new();
 
@@ -683,7 +718,7 @@ impl Typechecker {
         &mut self,
         func_id: &Quantifier,
         args: &Vec<Expr>,
-    ) -> anyhow::Result<SymbolType> {
+    ) -> CompResult<SymbolType> {
         let mut func = self.env.get_q(func_id).unwrap().to_func();
         func.effect = if let Some(effect) = func.effect {
             Some(
@@ -716,13 +751,14 @@ impl Typechecker {
         let t = self.check_expr(&func.body.clone(), func_id)?;
         last_expr = t;
 
-        ensure!(
-            self.compare_types(&last_expr, &func.return_type, func.method_parent.is_some()),
-            TypecheckingError::InvalidFunctionReturnType {
+        if !(self.compare_types(&last_expr, &func.return_type, func.method_parent.is_some())) {
+            return Err(TypecheckingError::InvalidFunctionReturnType {
                 expected: func.return_type.clone(),
-                found: last_expr
+                found: last_expr,
             }
-        );
+            .into());
+        }
+
         // if func.name != "main" {
         //     self.env.current_variables = prev_curr_variables;
         // }

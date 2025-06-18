@@ -150,7 +150,7 @@ impl Flattener {
                             crate::root::resource::cst::LogicOp::CLE => leftval <= rightval,
                             crate::root::resource::cst::LogicOp::CGT => leftval > rightval,
                             crate::root::resource::cst::LogicOp::CGE => leftval >= rightval,
-                            crate::root::resource::cst::LogicOp::Is => todo!(),
+                            _ => todo!(),
                         };
                         let res = Expr::Bool(eval);
                         self.scopes
