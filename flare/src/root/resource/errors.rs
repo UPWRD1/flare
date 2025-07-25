@@ -1,7 +1,5 @@
 use std::{fmt::Display, io::BufWriter};
 
-use lrlex::DefaultLexerTypes;
-use lrpar::LexParseError;
 use thiserror::Error;
 
 pub type CompResult<T> = Result<T, CompilerErr>;
@@ -149,54 +147,53 @@ impl ReportableError for ParseErrorCollection {
 #[derive(Error, Debug)]
 pub struct ParseErr {
     pub msg: String,
-    pub source: Option<Box<(dyn std::error::Error + Send + Sync)>>,
+    pub source: Option<anyhow::Error>,
 }
 
 impl ParseErr {
-    pub fn new(msg: impl Into<String>, source: Option<Box<(dyn std::error::Error + Send + Sync)>>) -> Self {
+    pub fn new(msg: impl Into<String>, source: Option<anyhow::Error> ) -> Self {
         Self {msg: msg.into(), source}
     }
 
-    pub fn new_from_lrpar_err(e: LexParseError<u32, DefaultLexerTypes>, filename: impl Into<String> + Clone, src_string: &str,) -> Self {
-        use ariadne::{Color, ColorGenerator, Label, Report, ReportKind, Source};
-        use lrpar::{ParseRepair, Lexeme};
-        let mut colors = ColorGenerator::new();
+    // pub fn new_from_lrpar_err(e: LexParseError<u32, DefaultLexerTypes>, filename: impl Into<String> + Clone, src_string: &str,) -> Self {
+    //     use ariadne::{Color, ColorGenerator, Label, Report, ReportKind, Source};
+    //     let mut colors = ColorGenerator::new();
     
-        // Generate & choose some colours for each of our elements
-        let a = colors.next();
-        let out = Color::Fixed(81);
-        let mut report = BufWriter::new(vec![]);
+    //     // Generate & choose some colours for each of our elements
+    //     let a = colors.next();
+    //     let out = Color::Fixed(81);
+    //     let mut report = BufWriter::new(vec![]);
 
-        if let LexParseError::ParseError(pe) = e {
-                //println!("{}", e.pp(&lexer, &crate::flare_y::token_epp));
+    //     if let LexParseError::ParseError(pe) = e {
+    //             //println!("{}", e.pp(&lexer, &crate::flare_y::token_epp));
                 
-                let lexeme_span = pe.lexeme().span();
-                let suggestion = match &pe.repairs().first().unwrap().first().unwrap() {
-                    ParseRepair::Insert(tidx) => format!("insert '{}'", crate::flare_y::token_epp(*tidx).unwrap()),
-                    ParseRepair::Delete(l) => format!("delete the offending token"),
-                    ParseRepair::Shift(l) => todo!(),
-                };
-                let ariadne_span: (String, std::ops::Range<usize>) = (filename.clone().into(), lexeme_span.start()..lexeme_span.end());
+    //             let lexeme_span = pe.lexeme().span();
+    //             let suggestion = match &pe.repairs().first().unwrap().first().unwrap() {
+    //                 ParseRepair::Insert(tidx) => format!("insert '{}'", crate::flare_y::token_epp(*tidx).unwrap()),
+    //                 ParseRepair::Delete(l) => format!("delete the offending token"),
+    //                 ParseRepair::Shift(l) => todo!(),
+    //             };
+    //             let ariadne_span: (String, std::ops::Range<usize>) = (filename.clone().into(), lexeme_span.start()..lexeme_span.end());
 
-                Report::build(ReportKind::Error, ariadne_span.clone()).with_message("Parsing Error")
-                .with_label(
-                    Label::new(ariadne_span.clone())
-                        .with_message(format!("Error occured here"))
-                        .with_color(a),
-                )
-                // .with_label(
-                //     Label::new((ariadne_span.clone().0, ariadne_span.clone().1.start - 5..ariadne_span.clone().1.end))
-                //         .with_message("In this clause")
-                // )
-                .with_help(suggestion).finish().write_for_stdout((filename.into(), Source::from(src_string)), &mut report).unwrap();
-            let report_string = String::from_utf8_lossy(&report.into_inner().unwrap()).to_string();
-            //dbg!(&report_string);
-                Self::new(report_string, Some(Box::new(pe)))
-        } else {
-            unreachable!()
-        }
+    //             Report::build(ReportKind::Error, ariadne_span.clone()).with_message("Parsing Error")
+    //             .with_label(
+    //                 Label::new(ariadne_span.clone())
+    //                     .with_message(format!("Error occured here"))
+    //                     .with_color(a),
+    //             )
+    //             // .with_label(
+    //             //     Label::new((ariadne_span.clone().0, ariadne_span.clone().1.start - 5..ariadne_span.clone().1.end))
+    //             //         .with_message("In this clause")
+    //             // )
+    //             .with_help(suggestion).finish().write_for_stdout((filename.into(), Source::from(src_string)), &mut report).unwrap();
+    //         let report_string = String::from_utf8_lossy(&report.into_inner().unwrap()).to_string();
+    //         //dbg!(&report_string);
+    //             Self::new(report_string, Some(Box::new(pe)))
+    //     } else {
+    //         unreachable!()
+    //     }
 
-    }
+    // }
 }
 
 impl std::fmt::Display for ParseErr {

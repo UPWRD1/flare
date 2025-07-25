@@ -36,16 +36,7 @@ pub enum Cst {
         name: String,
         body: Vec<Self>,
     },
-    FnDef {
-        name: String,
-        rettype: SymbolType,
-        args: Vec<(String, SymbolType)>,
-        limits: Option<Vec<Expr>>,
-        effect: Option<Expr>,
-        //body: Vec<Expr>,
-        body: Expr,
-
-    },
+    
     // MethodDef {
     //     parent: String,
     //     name: String,
@@ -78,14 +69,14 @@ pub enum Cst {
         include: Expr,
     },
     ExternClause {
-        name: String,
+        name: Expr,
         args: Vec<SymbolType>,
         variadic: bool, // TODO: unlimited variadics
         ret: SymbolType,
         effect: Option<Expr>,
     },
     TypeAlias {
-        name: String,
+        name: Expr,
         is: SymbolType,
     },
     Propdef {
@@ -95,12 +86,13 @@ pub enum Cst {
 
 impl Cst {
     pub fn get_fnname(&self) -> String {
-        match self {
-            Self::FnDef { name, .. } => name.to_string(),
-            //Self::MethodDef { name, .. } => name.to_string(),
+        // match self {
+        //     Self::FnDef { name, .. } => name.to_string(),
+        //     //Self::MethodDef { name, .. } => name.to_string(),
 
-            _ => panic!("{:?} is not a function", self),
-        }
+        //     _ => panic!("{:?} is not a function", self),
+        // }
+        todo!()
     }
 
     pub fn get_module_name(&self) -> String {
@@ -184,22 +176,10 @@ pub enum Predicate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Expr {
-    BinAdd {
-        l: Box<Self>,
-        r: Box<Self>,
-    },
-    BinSub {
-        l: Box<Self>,
-        r: Box<Self>,
-    },
-    BinMul {
-        l: Box<Self>,
-        r: Box<Self>,
-    },
-    BinDiv {
-        l: Box<Self>,
-        r: Box<Self>,
-    },
+    BinAdd (Box<Self>, Box<Self>),
+    BinSub (Box<Self>, Box<Self>),
+    BinMul (Box<Self>, Box<Self>),
+    BinDiv (Box<Self>, Box<Self>),
     Logical {
         l: Box<Self>,
         op: LogicOp,
@@ -229,11 +209,11 @@ pub enum Expr {
     },
     // Atomics
     Naught,
-    Int(i32),
-    Uint(u32),
-    Word(usize),
-    Byte(u8),
-    Flt(OrderedFloat<f32>),
+    // Int(i32),
+    // Uint(u32),
+    // Word(usize),
+    // Byte(u8),
+    Num(OrderedFloat<f64>),
     Str(String),
     Char(char),
     Bool(bool),
@@ -250,7 +230,10 @@ pub enum Expr {
     },
     FieldAccess(Box<Self>, Box<Self>),
     Path(Box<Self>, Box<Self>),
-
+    Apply {
+        func: Box<Self>,
+        arg: Box<Self>,
+    },
     Call {
         name: Box<Self>,
         args: Vec<Self>,
@@ -265,6 +248,22 @@ pub enum Expr {
         name: Box<Self>,
         args: Vec<Self>,
     },
+    LetDef {
+        lhs: Box<Self>,
+        rhs: Box<Self>,
+        then: Box<Self>,
+
+    },
+    FnDef {
+        name: Box<Self>,
+        rettype: SymbolType,
+        args: Vec<(Expr, SymbolType)>,
+        limits: Option<Vec<Expr>>,
+        effect: Option<Box<Self>>,
+        //body: Vec<Expr>,
+        body: Box<Self>,
+
+    },
 }
 
 impl Expr {
@@ -272,7 +271,7 @@ impl Expr {
         match self {
             Expr::Symbol(s) => Some(s.to_string()),
             Expr::FieldAccess(_s, f) => Some(f.get_symbol_name()?),
-            Expr::Int(i) => Some(i.to_string()),
+            Expr::Num(i) => Some(i.to_string()),
             _ => None //Err(format_err!("{self:?} is not a symbol")) //panic!("{self:?} is not a symbol"),
         }
     }
@@ -322,11 +321,7 @@ impl Expr {
 
     pub fn is_constant(&self) -> bool {
         match self {
-            Expr::Int(_) => true,
-            Expr::Uint(_) => true,
-            Expr::Word(_) => true,
-            Expr::Byte(_) => true,
-            Expr::Flt(ordered_float) => true,
+            Expr::Num(_) => true,
             Expr::Str(_) => true,
             Expr::Char(_) => true,
             Expr::Bool(_) => true,
@@ -342,13 +337,9 @@ impl Expr {
         }
     }
 
-    pub fn get_numeric(&self) -> Option<OrderedFloat<f32>> {
+    pub fn get_numeric(&self) -> Option<OrderedFloat<f64>> {
         match self {
-            Expr::Int(v) => Some((v.clone() as f32).into()),
-            Expr::Uint(v) => Some((v.clone() as f32).into()),
-            Expr::Word(v) => Some((v.clone() as f32).into()),
-            Expr::Byte(v) => Some((v.clone() as f32).into()),
-            Expr::Flt(v) => Some(*v),
+            Expr::Num(v) => Some(v.clone()),
             _ => None,
         }
     }
@@ -372,6 +363,12 @@ impl Expr {
 
 }
 
+impl Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
 impl From<Box<Expr>> for Expr {
     fn from(value: Box<Expr>) -> Self {
         *value
@@ -383,7 +380,7 @@ impl std::ops::Add for Expr {
 
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (Expr::Int(l), Expr::Int(r)) => Expr::Int(l + r),
+            (Expr::Num(l), Expr::Num(r)) => Expr::Num(l + r),
             _ => panic!()
         }
     }
@@ -394,7 +391,7 @@ impl std::ops::Sub for Expr {
 
     fn sub(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (Expr::Int(l), Expr::Int(r)) => Expr::Int(l - r),
+            (Expr::Num(l), Expr::Num(r)) => Expr::Num(l - r),
             _ => panic!()
         }
     }
@@ -405,7 +402,7 @@ impl std::ops::Mul for Expr {
 
     fn mul(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (Expr::Int(l), Expr::Int(r)) => Expr::Int(l * r),
+            (Expr::Num(l), Expr::Num(r)) => Expr::Num(l * r),
             _ => panic!()
         }
     }
@@ -416,7 +413,7 @@ impl std::ops::Div for Expr {
 
     fn div(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (Expr::Int(l), Expr::Int(r)) => Expr::Int(l / r),
+            (Expr::Num(l), Expr::Num(r)) => Expr::Num(l / r),
             _ => panic!()
         }
     }
@@ -425,11 +422,11 @@ impl std::ops::Div for Expr {
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum SymbolType {
-    Int,
-    Usize,
-    Word,
-    Byte,
-    Flt,
+    // Int,
+    // Usize,
+    // Word,
+    // Byte,
+    Num,
     Str,
     Char,
     Bool,
@@ -766,8 +763,7 @@ impl SymbolType {
 impl Display for SymbolType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let the_string = match self {
-            SymbolType::Int => "int",
-            SymbolType::Flt => "flt",
+            SymbolType::Num => "num",
             SymbolType::Str => "str",
             SymbolType::Bool => "bool",
             SymbolType::Char => "char",

@@ -1,0 +1,112 @@
+
+pub fn flare_parser<'src>() -> impl Parser<'src, &'src str, Cst> {
+    let ident = text::ascii::ident()
+        .padded()
+        .map(|i: &str| Expr::Symbol(i.to_string()));
+
+    let symboltype = recursive(|this| {
+        choice((
+            text::ascii::keyword("int").padded().to(SymbolType::Int),
+            text::ascii::keyword("flt").padded().to(SymbolType::Flt),
+            text::ascii::keyword("str").padded().to(SymbolType::Str),
+            text::ascii::keyword("unit").padded().to(SymbolType::Unit),
+            this.clone()
+                .separated_by(just(',').padded())
+                .collect::<Vec<_>>()
+                .then_ignore(just("->").padded())
+                .then(this)
+                .map(|(args, ret_type)| SymbolType::Fn(args, Box::new(ret_type))),
+        ))
+    });
+
+    let type_signature = ident.then_ignore(just(':').padded()).then(symboltype.clone());
+
+    let expr = recursive(|expr| {
+        let int = text::int(10).map(|s: &str| Expr::Int(s.parse().unwrap()));
+
+        let call = ident
+            .then(
+                expr.clone()
+                    .separated_by(just(',').padded())
+                    .allow_trailing()
+                    .collect::<Vec<_>>()
+                    .delimited_by(just('(').padded(), just(')').padded()),
+            )
+            .map(|(f, args)| Expr::Call {
+                name: Box::new(f),
+                args: args,
+            });
+
+        let atom = int
+            .or(expr.clone().delimited_by(just('(').padded(), just(')').padded()))
+            .or(call)
+            .or(ident)
+            .padded();
+
+        let op = |c| just(c).padded();
+
+        // let unary = op('-')
+        //     .repeated()
+        //     .foldr(atom, |_op, rhs| Expr::Neg(Box::new(rhs)));
+
+        let product = atom.clone().foldl(
+            choice((
+                op('*').to(Expr::BinMul as fn(_, _) -> _),
+                op('/').to(Expr::BinDiv as fn(_, _) -> _),
+            ))
+            .then(atom)
+            .repeated(),
+            |lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)),
+        );
+
+        let sum = product.clone().foldl(
+            choice((
+                op('+').to(Expr::BinAdd as fn(_, _) -> _),
+                op('-').to(Expr::BinSub as fn(_, _) -> _),
+            ))
+            .then(product)
+            .repeated(),
+            |lhs, (op, rhs)| op(Box::new(lhs), Box::new(rhs)),
+        );
+        let vardef = ident
+            .then_ignore(just('='))
+            .then(expr.clone())
+            .then(expr.clone())
+            .map(|((name, rhs), then)| Expr::Assignment {
+                name: Box::new(name),
+                value: Box::new(rhs),
+                and_in: Box::new(then),
+            });
+        vardef
+    });
+
+    let func_args = type_signature
+        .separated_by(just(',').padded())
+        .allow_trailing()
+        .collect::<Vec<_>>()
+        .delimited_by(just('(').padded(), just(')').padded())
+        .then_ignore(just("->").padded())
+        .then(symboltype)
+        .map(|v| v);
+
+    let decl = recursive(|decl| {
+        let funcdef = text::ascii::keyword("let").padded()
+            .ignore_then(ident)
+            .then_ignore(just(':').padded())
+            .then(func_args)
+            .then_ignore(just('=').padded())
+            .then(expr)
+            .map(|((name, (args, rettype)), body)| Cst::FnDef {
+                name: name,
+                rettype,
+                args: args,
+                limits: None,
+                effect: None,
+                body: body,
+            });
+
+        funcdef.padded()
+    });
+
+    decl
+}

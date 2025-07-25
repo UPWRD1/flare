@@ -1,10 +1,9 @@
-struct Demo =
-    x: int,
-    y: flt
+let item_def = 
+    ...
 
-def Demo
-    in new: (x: int, y: flt) -> Demo =
-        Demo { x: x, y: y }
+let item_definition: fn of arg1, arg2 =
+    as temp = ...
+    as 
 
-let main: (x: int) -> int =
-    Demo.new(3, 4.6)
+let other
+other s my d

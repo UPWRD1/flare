@@ -8,13 +8,6 @@ use std::{env, fs, path::PathBuf, process::exit, time::Instant};
 
 use root::{compile_typecheck, passes::midend::environment::Environment, resource::errors::{CompResult, ReportableError}};
 
-use lrlex::lrlex_mod;
-lrlex_mod!("flare.l");
-
-use lrpar::lrpar_mod;
-lrpar_mod!("flare.y");
-
-
 fn main() -> CompResult<()>{
     const VERSION: &str = "0.0.1";
     let prog_args: Vec<String> = env::args().collect();

@@ -79,10 +79,10 @@ impl Typechecker {
     fn check_expr(&mut self, e: &Expr, func_id: &Quantifier) -> CompResult<SymbolType> {
         //dbg!(e);
         match e {
-            Expr::BinAdd { l, r }
-            | Expr::BinSub { l, r }
-            | Expr::BinMul { l, r }
-            | Expr::BinDiv { l, r } => {
+            Expr::BinAdd(l, r)
+            | Expr::BinSub(l, r)
+            | Expr::BinMul(l, r)
+            | Expr::BinDiv(l, r) => {
                 let lhs_type = self.check_expr(l, func_id)?;
                 let rhs_type = self.check_expr(r, func_id)?;
                 if lhs_type != rhs_type {
@@ -138,12 +138,12 @@ impl Typechecker {
                     .into())
                 }
             }
-            Expr::Int(_) => Ok(SymbolType::Int),
+            Expr::Num(_) => Ok(SymbolType::Num),
             Expr::Naught => Ok(SymbolType::Unit),
 
-            Expr::Uint(_) => Ok(SymbolType::Usize),
-            Expr::Byte(_) => Ok(SymbolType::Byte),
-            Expr::Flt(_) => Ok(SymbolType::Flt),
+            // Expr::Uint(_) => Ok(SymbolType::Usize),
+            // Expr::Byte(_) => Ok(SymbolType::Byte),
+            // Expr::Flt(_) => Ok(SymbolType::Flt),
             Expr::Str(_) => Ok(SymbolType::Str),
             Expr::Char(_) => Ok(SymbolType::Char),
             Expr::Bool(_) => Ok(SymbolType::Bool),
@@ -455,12 +455,12 @@ impl Typechecker {
                     .unwrap()
                     .clone();
                 let idx = match field {
-                    Expr::Int(i) => i,
+                    Expr::Num(i) => i,
                     _ => panic!(),
                 };
                 let the_field = the_variant
                     .1
-                    .get(*idx as usize)
+                    .get(idx.0 as usize)
                     .ok_or(TypecheckingError::UndefinedVariantField {
                         v: the_variant.0,
                         t: parent_entry.name,
@@ -483,7 +483,7 @@ impl Typechecker {
             Expr::VariantInstance { name, fields } => {
                 self.check_expr_variantinstance(l, name, fields, func_id)
             }
-            Expr::Int(_) => self.check_expr_field_access(l, r, func_id),
+            Expr::Num(_) => self.check_expr_field_access(l, r, func_id),
             Expr::Symbol(_) => self.check_expr_field_access(l, r, func_id),
 
             _ => panic!("{r:?}"),
@@ -526,7 +526,7 @@ impl Typechecker {
                 if !self.compare_types(arg.0, &arg.1 .1, false) {
                     return Err(TypecheckingError::InvalidFunctionArgumentType {
                         name,
-                        arg: arg.1 .0,
+                        arg: arg.1.0.to_string(),
                         expected: arg.1 .1,
                         found: arg.0.clone(),
                     }
@@ -614,7 +614,7 @@ impl Typechecker {
             if !self.compare_types(found, &expected, true) {
                 return Err(TypecheckingError::InvalidFunctionArgumentType {
                     name: func_name,
-                    arg: name,
+                    arg: name.to_string(),
                     expected: expected,
                     found: found.clone(),
                 }
@@ -669,7 +669,7 @@ impl Typechecker {
         }
         if !(the_function.args.len() == args.len()) {
             return Err(TypecheckingError::InvalidFunctionArgumentLen {
-                name: the_function.name,
+                name: the_function.name.to_string(),
                 expected: the_function.args.len(),
                 found: args.len(),
             }
@@ -686,7 +686,7 @@ impl Typechecker {
             if !(self.compare_types(arg.0, &arg.1 .1, false)) {
                 return Err(TypecheckingError::InvalidFunctionArgumentType {
                     name: func_name,
-                    arg: arg.1 .0,
+                    arg: arg.1 .0.to_string(),
                     expected: arg.1 .1,
                     found: arg.0.clone(),
                 }
@@ -740,7 +740,7 @@ impl Typechecker {
         for (arg, v) in func.args.iter().zip(args) {
             let name = arg.0.clone();
             self.env.add(
-                func_id.append(Quantifier::Variable(name)),
+                func_id.append(Quantifier::Variable(name.to_string())),
                 VariableTableEntry {
                     mytype: arg.1.clone(),
                     myvalue: v.clone(),

@@ -1,15 +1,18 @@
 pub mod passes;
-use lrlex::DefaultLexerTypes;
 use std::{collections::HashSet, fs::File, io::Read, path::PathBuf};
+use anyhow::anyhow;
+use chumsky::Parser;
 //use logos::Logos;
-use passes::
+use passes::{
     //backend::{flatten::Flattener, gen::Generator},
     midend::{
         environment::{Environment, Quantifier},
         typechecking::Typechecker,
-    };
+    }, parser};
 //use passes::midend::typechecking::Typechecker;
 use resource::{cst::{Cst, Program}, errors::{CompResult, ParseErr, ParseErrorCollection}};
+
+use crate::root::resource::cst;
 pub mod resource;
 
 //use crate::root::resource::tk::{Tk, Token};
@@ -24,28 +27,12 @@ pub fn compile_module(ctx: &mut Context, src_path: PathBuf) -> CompResult<Cst> {
     let mut src = File::open(src_path.clone())?;
     let module_name = src_path.file_stem().unwrap();
     src.read_to_string(&mut src_string)?;
+    let parse_result: (cst::Expr, chumsky::prelude::SimpleSpan) = parser::parse(&src_string);
 
-    let lexerdef = crate::flare_l::lexerdef();
-    let lexer: lrlex::LRNonStreamingLexer<'_, '_, DefaultLexerTypes> = lexerdef.lexer(&src_string);
-    // Pass the lexer to the parser and lex and parse the input.
-    let (res, errs) = crate::flare_y::parse(&lexer);
+    dbg!(&parse_result);
     let filename = src_path.file_name().unwrap().to_str().unwrap().to_string();
     let mut error_stream: Vec<ParseErr> = vec![];
-    for e in errs {
-        error_stream.push(ParseErr::new_from_lrpar_err(e, &filename, &src_string))
-    }
-    if !error_stream.is_empty() {
-        
-        return Err(ParseErrorCollection::from(error_stream).into())
-    
-    }
-
-    match res {
-        Some(r) => Ok(r.unwrap()),
-        _ => {
-            Err(ParseErr::new("Could not parse file", None).into())
-        }
-    }
+    todo!()
     // let mut lex = Tk::lexer(&src_string);
 
     // let mut tokens: Vec<Token> = vec![];

@@ -121,10 +121,10 @@ pub struct ModuleTableEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionTableEntry {
-    pub name: String,
+    pub name: Expr,
     pub method_parent: Option<Quantifier>,
     pub arity: usize,
-    pub args: Vec<(String, SymbolType)>,
+    pub args: Vec<(Expr, SymbolType)>,
     pub limits: Vec<Expr>,
     pub effect: Option<EffectEntry>,
     pub return_type: SymbolType,
@@ -482,9 +482,9 @@ impl Environment {
 
     fn build_funcdef(
         &mut self,
-        name: String,
+        name: Expr,
         rettype: SymbolType,
-        args: Vec<(String, SymbolType)>,
+        args: Vec<(Expr, SymbolType)>,
         limits: Vec<Expr>,
         effect: Option<Expr>,
         body: Expr,
@@ -509,7 +509,7 @@ impl Environment {
         };
 
         let entry = FunctionTableEntry {
-            name: name.clone(),
+            name,
             method_parent: if is_in_defblock {
                 Some(current_module.clone())
             } else {
@@ -540,7 +540,7 @@ impl Environment {
 
     fn build_externdef(
         &mut self,
-        name: String,
+        name: Expr,
         rettype: SymbolType,
         args: Vec<SymbolType>,
         variadic: bool,
@@ -548,7 +548,7 @@ impl Environment {
     ) -> anyhow::Result<()> {
         let mut mangled_args = vec![];
         for arg in args.iter().enumerate() {
-            mangled_args.push((format!("{}_{}", name, arg.0), arg.1.clone()))
+            mangled_args.push((Expr::Symbol(format!("{}_{}", name, arg.0)), arg.1.clone()))
         }
         let entry = FunctionTableEntry {
             name: name.clone(),
