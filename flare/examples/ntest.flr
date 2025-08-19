@@ -1,9 +1,14 @@
-let item_def = 
-    ...
+package Main =
+    use {Random, IO, Collections}
 
-let item_definition: fn of arg1, arg2 =
-    as temp = ...
-    as 
+    struct User =
+        name: String,
+        id: Num
 
-let other
-other s my d
+    let mul l r = l * r 
+
+    let main =
+        let the_factory = Factory.via fn f => f.count.to_string in
+        let result = Vec.from the_factory.make 3 in
+        res.foreach IO.dbg
+        

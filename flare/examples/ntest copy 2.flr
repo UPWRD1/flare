@@ -1,0 +1,15 @@
+package Main =
+    use {Random, IO, Collections}
+
+    struct User =
+        name: String,
+        id: Num
+
+    let mul = fn lhs rhs => lhs * rhs
+
+    let main =
+        # let the_factory = Factory.via fn f => f.count.to_string
+        # let result = Vec.from the_factory.make 3
+        res.foreach IO.dbg
+
+    3

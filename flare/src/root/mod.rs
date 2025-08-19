@@ -1,7 +1,5 @@
 pub mod passes;
 use std::{collections::HashSet, fs::File, io::Read, path::PathBuf};
-use anyhow::anyhow;
-use chumsky::Parser;
 //use logos::Logos;
 use passes::{
     //backend::{flatten::Flattener, gen::Generator},
@@ -10,9 +8,8 @@ use passes::{
         typechecking::Typechecker,
     }, parser};
 //use passes::midend::typechecking::Typechecker;
-use resource::{cst::{Cst, Program}, errors::{CompResult, ParseErr, ParseErrorCollection}};
+use resource::{cst::{Cst, Program}, errors::CompResult};
 
-use crate::root::resource::cst;
 pub mod resource;
 
 //use crate::root::resource::tk::{Tk, Token};
@@ -25,14 +22,13 @@ pub fn compile_module(ctx: &mut Context, src_path: PathBuf) -> CompResult<Cst> {
     let mut src_string = String::new();
 
     let mut src = File::open(src_path.clone())?;
-    let module_name = src_path.file_stem().unwrap();
     src.read_to_string(&mut src_string)?;
-    let parse_result: (cst::Expr, chumsky::prelude::SimpleSpan) = parser::parse(&src_string);
-
-    dbg!(&parse_result);
-    let filename = src_path.file_name().unwrap().to_str().unwrap().to_string();
-    let mut error_stream: Vec<ParseErr> = vec![];
+    let res = parser::parse(&src_string);
+    dbg!(res.clone());
     todo!()
+
+    // let filename = src_path.file_name().unwrap().to_str().unwrap().to_string();
+    // let mut error_stream: Vec<ParseErr> = vec![];
     // let mut lex = Tk::lexer(&src_string);
 
     // let mut tokens: Vec<Token> = vec![];

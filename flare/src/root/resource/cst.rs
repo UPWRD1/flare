@@ -82,6 +82,17 @@ pub enum Cst {
     Propdef {
         p: Property,
     },
+
+        FnDef {
+        name: Expr,
+        rettype: SymbolType,
+        args: Vec<(Expr, SymbolType)>,
+        limits: Option<Vec<Expr>>,
+        effect: Option<Expr>,
+        //body: Vec<Expr>,
+        body: Expr,
+
+    },
 }
 
 impl Cst {
@@ -491,13 +502,11 @@ impl SymbolType {
     //     matches!(self, Self::Str)
     // }
 
-    pub fn is_int(&self) -> bool {
-        matches!(self, Self::Int)
+    pub fn is_num(&self) -> bool {
+        matches!(self, Self::Num)
     }
 
-    pub fn is_flt(&self) -> bool {
-        matches!(self, Self::Flt)
-    }
+
 
     pub fn is_bool(&self) -> bool {
         matches!(self, Self::Bool)
@@ -549,10 +558,7 @@ impl SymbolType {
 
     pub fn extract(&self) -> Self {
         match self {
-            SymbolType::Int
-            | SymbolType::Usize
-            | SymbolType::Byte
-            | SymbolType::Flt
+            SymbolType::Num
             | SymbolType::Str
             | SymbolType::Char
             | SymbolType::Bool
@@ -669,7 +675,7 @@ impl SymbolType {
 
     pub fn get_raw(&self) -> Self {
         match self {
-            Self::Unit | Self::Unknown | Self::Int | Self::Flt | Self::Str | Self::Bool => {
+            Self::Unit | Self::Unknown | Self::Num | Self::Str | Self::Bool => {
                 self.clone()
             }
             Self::Mut(t) => t.clone().get_raw(),

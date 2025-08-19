@@ -1,0 +1,164 @@
+[src/root/passes/parser.rs:377:5] packg = Program {
+    packages: [
+        Package {
+            name: (
+                Ident(
+                    "Main",
+                ),
+            ),
+            items: [
+                Import(
+                    ImportItem {
+                        path: [
+                            (
+                                Ident(
+                                    "Random",
+                                ),
+                            ),
+                        ],
+                        items: None,
+                    },
+                ),
+                Import(
+                    ImportItem {
+                        path: [
+                            (
+                                Ident(
+                                    "IO",
+                                ),
+                                38..40,
+                            ),
+                        ],
+                        items: None,
+                    },
+                ),
+                Import(
+                    ImportItem {
+                        path: [
+                            (
+                                Ident(
+                                    "Iter",
+                                ),
+                                49..53,
+                            ),
+                        ],
+                        items: None,
+                    },
+                ),
+                Let(
+                    (
+                        Ident(
+                            "main",
+                        ),
+                        63..67,
+                    ),
+                    (
+                        Let(
+                            (
+                                Ident(
+                                    "result",
+                                ),
+                                82..88,
+                            ),
+                            (
+                                Call(
+                                    (
+                                        FieldAccess(
+                                            (
+                                                Ident(
+                                                    "Vec",
+                                                ),
+                                                91..94,
+                                            ),
+                                            (
+                                                Ident(
+                                                    "from",
+                                                ),
+                                                95..99,
+                                            ),
+                                        ),
+                                        91..99,
+                                    ),
+                                    (
+                                        Call(
+                                            (
+                                                FieldAccess(
+                                                    (
+                                                        Ident(
+                                                            "the_factory",
+                                                        ),
+                                                        100..111,
+                                                    ),
+                                                    (
+                                                        Ident(
+                                                            "make",
+                                                        ),
+                                                        112..116,
+                                                    ),
+                                                ),
+                                                100..116,
+                                            ),
+                                            (
+                                                Call(
+                                                    (
+                                                        Number(
+                                                            3.0,
+                                                        ),
+                                                        117..118,
+                                                    ),
+                                                    (
+                                                        Call(
+                                                            (
+                                                                FieldAccess(
+                                                                    (
+                                                                        Ident(
+                                                                            "result",
+                                                                        ),
+                                                                        127..133,
+                                                                    ),
+                                                                    (
+                                                                        Ident(
+                                                                            "foreach",
+                                                                        ),
+                                                                        134..141,
+                                                                    ),
+                                                                ),
+                                                                127..141,
+                                                            ),
+                                                            (
+                                                                FieldAccess(
+                                                                    (
+                                                                        Ident(
+                                                                            "IO",
+                                                                        ),
+                                                                        142..144,
+                                                                    ),
+                                                                    (
+                                                                        Ident(
+                                                                            "dbg",
+                                                                        ),
+                                                                        145..148,
+                                                                    ),
+                                                                ),
+                                                                142..148,
+                                                            ),
+                                                        ),
+                                                        127..148,
+                                                    ),
+                                                ),
+                                                117..148,
+                                            ),
+                                        ),
+                                        100..148,
+                                    ),
+                                ),
+                                91..148,
+                            ),
+                        ),
+                        78..148,
+                    ),
+                ),
+            ],
+        },
+    ],
+}
