@@ -1,10 +1,41 @@
-use std::{fmt::Display, io::BufWriter};
 
+use std::{fmt::Display, io::{BufWriter, Cursor}};
+
+use ariadne::{sources, Color, Label, Report, ReportKind};
+
+use chumsky::span::SimpleSpan;
 use thiserror::Error;
+
+use crate::root::resource::cst::SymbolType;
 
 pub type CompResult<T> = Result<T, CompilerErr>;
 
-use super::cst::SymbolType;
+
+pub fn failure(
+    msg: String,
+    label: (String, SimpleSpan),
+    extra_labels: impl IntoIterator<Item = (String, SimpleSpan)>,
+    src: &str,
+) -> ! {
+    let fname = "example";
+    Report::build(ReportKind::Error, (fname, label.1.into_range()))
+        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+        .with_message(&msg)
+        .with_label(
+            Label::new((fname, label.1.into_range()))
+                .with_message(label.0)
+                .with_color(Color::Red),
+        )
+        .with_labels(extra_labels.into_iter().map(|label2| {
+            Label::new((fname, label2.1.into_range()))
+                .with_message(label2.0)
+                .with_color(Color::Yellow)
+        }))
+        .finish()
+        .print(sources([(fname, src)]))
+        .unwrap();
+    std::process::exit(1)
+}
 
 pub trait ReportableError {
     fn report(&self);
@@ -16,7 +47,7 @@ pub enum CompilerErr {
     Parse(#[from] ParseErr),
 
     #[error(transparent)]
-    ParseCollection(#[from] ParseErrorCollection),
+    ErrorCollection(#[from] ErrorCollection),
 
     #[error(transparent)]
     Typecheck(#[from] TypecheckingError),
@@ -33,7 +64,7 @@ impl ReportableError for CompilerErr {
     fn report(&self) {
         match self {
             CompilerErr::Parse(error) => error.report(),
-            CompilerErr::ParseCollection(errors) => errors.report(),
+            CompilerErr::ErrorCollection(errors) => errors.report(),
 
             CompilerErr::Typecheck(error) => eprintln!("{}", error),
             CompilerErr::Environment(environment_error) => todo!(),
@@ -117,11 +148,11 @@ pub enum TypecheckingError {
 }
 
 #[derive(Error, Debug)]
-pub struct ParseErrorCollection {
-    errors: Vec<ParseErr>
+pub struct ErrorCollection {
+    pub errors: Vec<CompilerErr>
 }
 
-impl Display for ParseErrorCollection {
+impl Display for ErrorCollection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for e in &self.errors {
             e.fmt(f)?
@@ -130,13 +161,13 @@ impl Display for ParseErrorCollection {
     }
 }
 
-impl From<Vec<ParseErr>> for ParseErrorCollection {
-    fn from(value: Vec<ParseErr>) -> Self {
+impl From<Vec<CompilerErr>> for ErrorCollection {
+    fn from(value: Vec<CompilerErr>) -> Self {
         Self {errors: value}
     }
 }
 
-impl ReportableError for ParseErrorCollection {
+impl ReportableError for ErrorCollection {
     fn report(&self) {
         for e in &self.errors {
             e.report();
@@ -146,59 +177,41 @@ impl ReportableError for ParseErrorCollection {
 
 #[derive(Error, Debug)]
 pub struct ParseErr {
+    pub filename: String,
     pub msg: String,
-    pub source: Option<anyhow::Error>,
+    pub label: (String, SimpleSpan),
+    pub extra_labels: Vec<(String, SimpleSpan)>,
+    pub src: String,
 }
 
 impl ParseErr {
-    pub fn new(msg: impl Into<String>, source: Option<anyhow::Error> ) -> Self {
-        Self {msg: msg.into(), source}
+    pub fn new(filename: impl Into<String>, msg: impl Into<String>, label: (String, SimpleSpan), extra_labels: Vec<(String, SimpleSpan)>, src: String) -> Self {
+        Self { filename: filename.into(), msg: msg.into(), label, extra_labels, src }
     }
 
-    // pub fn new_from_lrpar_err(e: LexParseError<u32, DefaultLexerTypes>, filename: impl Into<String> + Clone, src_string: &str,) -> Self {
-    //     use ariadne::{Color, ColorGenerator, Label, Report, ReportKind, Source};
-    //     let mut colors = ColorGenerator::new();
-    
-    //     // Generate & choose some colours for each of our elements
-    //     let a = colors.next();
-    //     let out = Color::Fixed(81);
-    //     let mut report = BufWriter::new(vec![]);
-
-    //     if let LexParseError::ParseError(pe) = e {
-    //             //println!("{}", e.pp(&lexer, &crate::flare_y::token_epp));
-                
-    //             let lexeme_span = pe.lexeme().span();
-    //             let suggestion = match &pe.repairs().first().unwrap().first().unwrap() {
-    //                 ParseRepair::Insert(tidx) => format!("insert '{}'", crate::flare_y::token_epp(*tidx).unwrap()),
-    //                 ParseRepair::Delete(l) => format!("delete the offending token"),
-    //                 ParseRepair::Shift(l) => todo!(),
-    //             };
-    //             let ariadne_span: (String, std::ops::Range<usize>) = (filename.clone().into(), lexeme_span.start()..lexeme_span.end());
-
-    //             Report::build(ReportKind::Error, ariadne_span.clone()).with_message("Parsing Error")
-    //             .with_label(
-    //                 Label::new(ariadne_span.clone())
-    //                     .with_message(format!("Error occured here"))
-    //                     .with_color(a),
-    //             )
-    //             // .with_label(
-    //             //     Label::new((ariadne_span.clone().0, ariadne_span.clone().1.start - 5..ariadne_span.clone().1.end))
-    //             //         .with_message("In this clause")
-    //             // )
-    //             .with_help(suggestion).finish().write_for_stdout((filename.into(), Source::from(src_string)), &mut report).unwrap();
-    //         let report_string = String::from_utf8_lossy(&report.into_inner().unwrap()).to_string();
-    //         //dbg!(&report_string);
-    //             Self::new(report_string, Some(Box::new(pe)))
-    //     } else {
-    //         unreachable!()
-    //     }
-
-    // }
 }
 
 impl std::fmt::Display for ParseErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&format!("{}", self.msg))
+    let fname = self.filename.clone();
+    let mut buf = Cursor::new(vec![]);
+    Report::build(ReportKind::Error, (fname.clone() ,self.label.1.into_range()))
+        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+        .with_message(&self.msg)
+        .with_label(
+            Label::new((fname.clone(), self.label.1.into_range()))
+                .with_message(self.label.0.as_str())
+                .with_color(Color::Red),
+        )
+        .with_labels(self.extra_labels.clone().into_iter().map(|label2| {
+            Label::new((fname.clone(), label2.1.into_range()))
+                .with_message(label2.0)
+                .with_color(Color::Yellow)
+        }))
+        .finish()
+        .write(sources([(fname, self.src.clone())]), &mut buf)
+        .unwrap();
+    write!(f, "{}", String::from_utf8_lossy(buf.into_inner().as_slice()))
     }
 }
 
@@ -206,13 +219,6 @@ impl ReportableError for ParseErr {
     fn report(&self) {
         eprintln!("{}", self);
     }
-}
-
-#[derive(Error, Debug, Clone, PartialEq, Default)]
-pub enum LexingError {
-    #[error("")]
-    #[default]
-    LexError
 }
 
 

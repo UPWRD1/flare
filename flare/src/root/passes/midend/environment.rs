@@ -10,15 +10,15 @@ use std::{
     path::PathBuf,
 };
 
+use crate::root::resource::errors::TypecheckingError;
 use crate::root::resource::{
     cst::{Cst, Expr, Program, SymbolType},
-    errors::TypecheckingError,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Quantifier {
     Root(Box<Self>),
-    Module(String, Box<Self>),
+    Package(String, Box<Self>),
     Type(String, Box<Self>),
     Effect(String, Box<Self>),
     Func(String, Box<Self>),
@@ -30,7 +30,7 @@ impl Quantifier {
     pub fn append(&self, a: Self) -> Self {
         let res = match self {
             Self::Root(quantifier) => Self::Root(Box::new(quantifier.append(a))),
-            Self::Module(n, quantifier) => Self::Module(n.to_string(), Box::new(quantifier.append(a))),
+            Self::Package(n, quantifier) => Self::Package(n.to_string(), Box::new(quantifier.append(a))),
             Self::Type(n, quantifier) => Self::Type(n.to_string(), Box::new(quantifier.append(a))),
             Self::Effect(n, quantifier) => Self::Type(n.to_string(), Box::new(quantifier.append(a))),
             Self::Func(n, quantifier) => Self::Func(n.to_string(), Box::new(quantifier.append(a))),
@@ -48,7 +48,7 @@ impl Display for Quantifier {
                 f.write_str("Root, ")?;
                 Display::fmt(quantifier, f)
             }
-            Quantifier::Module(n, quantifier) => {
+            Quantifier::Package(n, quantifier) => {
                 f.write_str(&format!("Module {n}, "))?;
                 Display::fmt(quantifier, f)
             }

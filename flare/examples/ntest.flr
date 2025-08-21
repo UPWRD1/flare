@@ -1,14 +1,14 @@
 package Main =
-    use {Random, IO, Collections}
+    use {Math}
+    # use {Random, IO, Collections}
 
-    struct User =
+     struct User =
         name: String,
         id: Num
-
-    let mul l r = l * r 
 
     let main =
         let the_factory = Factory.via fn f => f.count.to_string in
         let result = Vec.from the_factory.make 3 in
+        let test_string = "this is a string" in
         res.foreach IO.dbg
         

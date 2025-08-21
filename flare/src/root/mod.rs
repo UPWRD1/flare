@@ -5,10 +5,11 @@ use passes::{
     //backend::{flatten::Flattener, gen::Generator},
     midend::{
         environment::{Environment, Quantifier},
-        typechecking::Typechecker,
     }, parser};
 //use passes::midend::typechecking::Typechecker;
-use resource::{cst::{Cst, Program}, errors::CompResult};
+use resource::errors::CompResult;
+
+use crate::root::passes::parser::Program;
 
 pub mod resource;
 
@@ -18,14 +19,13 @@ pub struct Context {
     pub env: Environment,
 }
 
-pub fn compile_module(ctx: &mut Context, src_path: PathBuf) -> CompResult<Cst> {
+pub fn parse_file(src_path: &PathBuf) -> CompResult<Program> {
     let mut src_string = String::new();
 
-    let mut src = File::open(src_path.clone())?;
+    let mut src = File::open(src_path)?;
     src.read_to_string(&mut src_string)?;
-    let res = parser::parse(&src_string);
-    dbg!(res.clone());
-    todo!()
+    let res = parser::parse(&src_string)?; //TODO: handle errors properly
+    Ok(res)
 
     // let filename = src_path.file_name().unwrap().to_str().unwrap().to_string();
     // let mut error_stream: Vec<ParseErr> = vec![];
@@ -45,61 +45,84 @@ pub fn compile_module(ctx: &mut Context, src_path: PathBuf) -> CompResult<Cst> {
     // Ok(parse(&tokens, &module_name.to_str().unwrap().to_string())?)
 }
 
-pub fn compile_typecheck(ctx: &mut Context, filename: &PathBuf) -> CompResult<String> {
-    let mut p = Program {
-        modules: vec![],
-        dependencies: HashSet::new(),
+pub fn parse_program(src_path: &PathBuf) -> CompResult<Program> {
+    let path = src_path.canonicalize().unwrap();
+    let parent_dir = path.parent().unwrap();
+    let dir_contents = std::fs::read_dir(parent_dir)?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
+        .collect::<Vec<_>>();
+
+    let mut program = Program {
+        packages: vec![],
     };
 
-    let root_ast = compile_module(ctx, filename.clone())?;
-    p.modules.push(root_ast.clone());
-
-    match root_ast {
-        Cst::Module { name: _, body } => {
-            for c in body {
-                match c {
-                    Cst::WithClause { include } => {
-                        let parent_path = PathBuf::from_iter(
-                            filename
-                                .canonicalize()?
-                                .components()
-                                .clone()
-                                .into_iter()
-                                .take(filename.canonicalize()?.components().count() - 1)
-                                .collect::<Vec<std::path::Component>>()
-                                .iter()
-                                .map(|x| x.as_os_str()),
-                        );
-                        let include_path =
-                            parent_path.join(format!("{}.flr", include.get_symbol_name().unwrap()));
-
-                        let include_ast = compile_module(ctx, include_path)?;
-                        p.modules.push(include_ast.clone());
-                    }
-                    _ => {}
-                }
-            }
-        }
-        _ => panic!("Should be a module"),
+    for entry in dir_contents {
+        let file_path = entry.path();
+        let new_prog = parse_file(&file_path)?;
+        program = program + new_prog;
     }
 
-    //println!("{:#?}", p.clone());
+    dbg!(program.clone());
+    Ok(program)
+}
 
-    ctx.env.build(p.clone())?;
-    //dbg!(ctx.env.clone());
+pub fn compile_typecheck(ctx: &mut Context, filename: &PathBuf) -> CompResult<String> {
+    todo!()
+    // let mut p = Program {
+    //     modules: vec![],
+    //     dependencies: HashSet::new(),
+    // };
 
-    let mut tc = Typechecker::new(ctx.env.clone());
-    let res = tc.check()?;
-    dbg!(res.clone());
+    // let root_ast = parse_file(ctx, filename.clone())?;
+    // p.modules.push(root_ast.clone());
 
-    // let mut flattener = Flattener::new(res.clone());
-    // let flat = flattener.flatten();
-    // let main_func: FunctionTableEntry = flat.items.get(&quantifier!(Root, Func("main"), End)).cloned().unwrap().into();
-    // dbg!(&main_func);
+    // match root_ast {
+    //     Cst::Module { name: _, body } => {
+    //         for c in body {
+    //             match c {
+    //                 Cst::WithClause { include } => {
+    //                     let parent_path = PathBuf::from_iter(
+    //                         filename
+    //                             .canonicalize()?
+    //                             .components()
+    //                             .clone()
+    //                             .into_iter()
+    //                             .take(filename.canonicalize()?.components().count() - 1)
+    //                             .collect::<Vec<std::path::Component>>()
+    //                             .iter()
+    //                             .map(|x| x.as_os_str()),
+    //                     );
+    //                     let include_path =
+    //                         parent_path.join(format!("{}.flr", include.get_symbol_name().unwrap()));
 
-    //let mut g = Generator::new(res);
-    //let code = g.generate().unwrap();
-    //println!("Output: \n{}", code);
-    //todo!();
-    Ok("".to_string())
+    //                     let include_ast = parse_file(ctx, include_path)?;
+    //                     p.modules.push(include_ast.clone());
+    //                 }
+    //                 _ => {}
+    //             }
+    //         }
+    //     }
+    //     _ => panic!("Should be a module"),
+    // }
+
+    // //println!("{:#?}", p.clone());
+
+    // ctx.env.build(p.clone())?;
+    // //dbg!(ctx.env.clone());
+
+    // // let mut tc = Typechecker::new(ctx.env.clone());
+    // // let res = tc.check()?;
+    // // dbg!(res.clone());
+
+    // // let mut flattener = Flattener::new(res.clone());
+    // // let flat = flattener.flatten();
+    // // let main_func: FunctionTableEntry = flat.items.get(&quantifier!(Root, Func("main"), End)).cloned().unwrap().into();
+    // // dbg!(&main_func);
+
+    // //let mut g = Generator::new(res);
+    // //let code = g.generate().unwrap();
+    // //println!("Output: \n{}", code);
+    // //todo!();
+    // Ok("".to_string())
 }

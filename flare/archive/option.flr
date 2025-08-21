@@ -1,9 +1,9 @@
 enum Option[?T] =
-    Some{?T},
+    Some {?T},
     None
 
 def Option[?T]
-    in is_some: (self) -> bool =
+    in is_some self =
         match self 
-            | Some {x} then true
+            | Option.Some {x} then true
             else false

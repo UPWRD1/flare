@@ -1,9 +1,12 @@
-use ariadne::{sources, Color, Label, Report, ReportKind};
 use chumsky::input::BorrowInput;
 use chumsky::pratt::*;
 use chumsky::prelude::*;
 
 use crate::root::passes::midend::environment::Quantifier;
+use crate::root::resource::errors::CompResult;
+use crate::root::resource::errors::CompilerErr;
+use crate::root::resource::errors::ErrorCollection;
+use crate::root::resource::errors::ParseErr;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'src> {
@@ -148,19 +151,57 @@ pub struct Program {
     pub packages: Vec<Package>,
 }
 
+impl std::ops::Add for Program {
+    type Output = Self;
+
+    fn add(mut self, other: Self) -> Self::Output {
+        self.packages.extend(other.packages);
+        let mut the_prog = Self {
+            packages: self.packages,
+        };
+        the_prog.packages.dedup();
+        the_prog
+    }
+}
+
+pub trait ProgWalk {
+    fn walk_program<T>(&mut self, prog: &Program) -> Result<(), String> {
+        for package in &prog.packages {
+            self.walk_package(package)?;
+        }
+        Ok(())
+    }
+
+    fn walk_package(&mut self, package: &Package) -> Result<(), String> {
+        for item in &package.items {
+            self.walk_definition(item)?;
+        }
+        Ok(())
+    }
+    fn walk_definition(&mut self, definition: &Definition) -> Result<(), String> {
+        match definition {
+            Definition::Import(_) => Ok(()),
+            Definition::Struct(struct_def) => Ok(()),
+            Definition::Let(lhs, rhs) => {
+                self.walk_expr(lhs)?;
+                self.walk_expr(rhs)
+            }
+        }
+    }
+
+    fn walk_expr(&mut self, expr: &Spanned<Expr>) -> Result<(), String>;
+}
+
 pub type Spanned<T> = (T, SimpleSpan<usize>);
 
 fn lexer<'src>(
 ) -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char>>> {
-    let ws = one_of(" \t")
-                .repeated().at_least(1)
-                .ignored()
-                .labelled("whitespace")
-                .to(Token::Whitespace);
-
+    let comment = just("#")
+        .then_ignore(any().and_is(just('\n').not()).repeated())
+        .labelled("comment")
+        .padded();
     recursive(|token| {
         choice((
-            ws, 
             text::ident().map(|s| match s {
                 "let" => Token::Let,
                 "in" => Token::In,
@@ -170,7 +211,6 @@ fn lexer<'src>(
                 "package" => Token::Package,
                 "use" => Token::Use,
                 "struct" => Token::Struct,
-                "in" => Token::In,
 
                 s => Token::Ident(s),
             }),
@@ -193,31 +233,23 @@ fn lexer<'src>(
                 .then(just('.').then(text::digits(10)).or_not())
                 .to_slice()
                 .map(|s: &str| Token::Num(s.parse().unwrap())),
-            text::ident()
-                .delimited_by(just('"'), just('"'))
+            just('"')
+                .ignore_then(none_of('"').repeated().to_slice())
+                .then_ignore(just('"'))
                 .labelled("string literal")
                 .map(Token::Strlit),
-            // Comment
-            just("#")
-                .then_ignore(any().and_is(just('\n').not()).repeated())
-                .labelled("comment")
-                .map(Token::Comment),
             token
+                .padded()
                 .repeated()
                 .collect()
                 .delimited_by(just('('), just(')'))
                 .labelled("token tree")
                 .as_context()
                 .map(Token::Parens),
-
-                            just("\n")
-                .or(just("\r\n"))
-                .labelled("newline")
-                .to(Token::Separator),
-
         ))
         .map_with(|t, e| (t, e.span()))
     })
+    .padded_by(comment.repeated())
     .padded()
     .repeated()
     .collect()
@@ -234,7 +266,7 @@ where
 {
     // Basic tokens
 
-//    let whitespace = select_ref! { Token::Whitespace => () }.ignored();
+    //    let whitespace = select_ref! { Token::Whitespace => () }.ignored();
 
     let ident = select_ref! { Token::Ident(x) => *x }
         .map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
@@ -245,6 +277,8 @@ where
         let ident = rname.map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
         let atom = choice((
             select_ref! { Token::Num(x) => Expr::Number(*x) }.map_with(|x, e| (x, e.span())),
+            select_ref! { Token::Strlit(x) => Expr::String(x.to_string()) }.map_with(|x, e| (x, e.span())),
+
             just(Token::True).map_with(|_, e| (Expr::Bool(true), e.span())),
             just(Token::False).map_with(|_, e| (Expr::Bool(false), e.span())),
             ident.pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
@@ -295,9 +329,19 @@ where
                 (Expr::Mul(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
+            // Divide
+            infix(left(10), just(Token::Slash), |x, _, y, e| {
+                (Expr::Div(Box::new(x), Box::new(y)), e.span())
+            })
+            .boxed(),
             // Add
             infix(left(9), just(Token::Plus), |x, _, y, e| {
                 (Expr::Add(Box::new(x), Box::new(y)), e.span())
+            })
+            .boxed(),
+            // Subtract
+            infix(left(9), just(Token::Minus), |x, _, y, e| {
+                (Expr::Sub(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Calls
@@ -354,7 +398,6 @@ where
             .map(|items| Definition::Import(ImportItem { items }));
 
         choice((import, let_binding, struct_def))
-            
     });
 
     let package = just(Token::Package)
@@ -375,34 +418,9 @@ where
         .then_ignore(end())
 }
 
-fn failure(
-    msg: String,
-    label: (String, SimpleSpan),
-    extra_labels: impl IntoIterator<Item = (String, SimpleSpan)>,
-    src: &str,
-) -> ! {
-    let fname = "example";
-    Report::build(ReportKind::Error, (fname, label.1.into_range()))
-        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-        .with_message(&msg)
-        .with_label(
-            Label::new((fname, label.1.into_range()))
-                .with_message(label.0)
-                .with_color(Color::Red),
-        )
-        .with_labels(extra_labels.into_iter().map(|label2| {
-            Label::new((fname, label2.1.into_range()))
-                .with_message(label2.0)
-                .with_color(Color::Yellow)
-        }))
-        .finish()
-        .print(sources([(fname, src)]))
-        .unwrap();
-    std::process::exit(1)
-}
-
-fn parse_failure(err: &Rich<impl std::fmt::Display>, src: &str) -> () {
-    failure(
+fn parse_failure(err: &Rich<impl std::fmt::Display>, src: &str) -> CompilerErr {
+    CompilerErr::Parse(ParseErr::new(
+        "test",
         err.reason().to_string(),
         (
             err.found()
@@ -411,10 +429,10 @@ fn parse_failure(err: &Rich<impl std::fmt::Display>, src: &str) -> () {
             *err.span(),
         ),
         err.contexts()
-            .map(|(l, s)| (format!("while parsing this {l}"), *s)),
-        src,
-    );
-    ()
+            .map(|(l, s)| (format!("while parsing this {l}"), *s))
+            .collect(),
+        src.to_string(),
+    ))
 }
 
 fn make_input<'src>(
@@ -425,86 +443,27 @@ fn make_input<'src>(
 }
 
 // Public API
-pub fn parse(input: &str) -> Result<Program, Vec<Rich<Token>>> {
+pub fn parse(input: &str) -> CompResult<Program> {
     let tokens = lexer().parse(input).into_result().unwrap_or_else(|errs| {
         parse_failure(&errs[0], input);
         std::process::exit(1)
     });
 
-    dbg!(&tokens);
+    //dbg!(&tokens);
 
     let packg = match parser(make_input)
         .parse(make_input((0..input.len()).into(), &tokens))
         .into_result()
     {
-        Ok(p) => p,
+        Ok(p) => Ok(p),
         Err(e) => {
-            let _ = e.iter().for_each(|e| parse_failure(&e, input));
-            std::process::exit(1);
+            let errors = e
+                .iter()
+                .map(|e| parse_failure(&e, input))
+                .collect::<Vec<_>>();
+            Err(ErrorCollection { errors })
         }
     };
 
-    Ok(packg)
+    Ok(packg?)
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn test_simple_package() {
-//         let input = r#"
-//             package Main =
-//                 use Random
-//                 let x = 42
-//         "#;
-
-//         let result = parse_program(input);
-//         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
-//     }
-
-//     #[test]
-//     fn test_struct_def() {
-//         let input = r#"
-//             package Main =
-//                 struct User =
-//                     name: String,
-//                     id: Number
-//         "#;
-
-//         let result = parse_program(input);
-//         assert!(result.is_ok());
-//     }
-
-//     #[test]
-//     fn test_field_access() {
-//         let input = r#"
-//             package Main =
-//                 let result = user.name
-//         "#;
-
-//         let result = parse_program(input);
-//         assert!(result.is_ok());
-//     }
-// }
-
-// Example usage
-// pub fn example() {
-//     let code = r#"
-//         package Main =
-//             use Random
-//             struct User =
-//                 name: String,
-//                 id: Number
-//             let main = Random.gen_string
-//     "#;
-
-//     match parse(code) {
-//         Ok(program) => println!("Success! Found {} packages", program.packages.len()),
-//         Err(errors) => {
-//             for error in errors {
-//                 println!("Error: {}", error);
-//             }
-//         }
-//     }
-// }

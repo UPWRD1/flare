@@ -1,0 +1,8 @@
+package Math =
+    let add l r = l + r 
+    let sub l r = l - r 
+    let mul l r = l * r 
+    let div l r = l / r 
+
+    let factorial x =
+	    x + factorial (x - 1)

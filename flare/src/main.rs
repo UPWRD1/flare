@@ -6,7 +6,9 @@ pub mod root;
 
 use std::{env, fs, path::PathBuf, process::exit, time::Instant};
 
-use root::{compile_typecheck, passes::midend::environment::Environment, resource::errors::{CompResult, ReportableError}};
+use root::{parse_program, /*passes::midend::environment::Environment*/ resource::errors::{CompResult, ReportableError}};
+
+use crate::root::passes::midend::environment::Environment;
 
 fn main() -> CompResult<()>{
     const VERSION: &str = "0.0.1";
@@ -17,9 +19,9 @@ fn main() -> CompResult<()>{
             "-c" | "--compile" => {
                 let filename: PathBuf = PathBuf::from(&prog_args[2]).canonicalize()?;
                 let now: Instant = Instant::now();
-                let code = compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
+                let code = parse_program(&filename).inspect_err(|e| e.report());//compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
                 let elapsed = now.elapsed();
-                fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
+                //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
 
                 println!("Compiled {} in {elapsed:.2?}", filename.display());
                 Ok(())
