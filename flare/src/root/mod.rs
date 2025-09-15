@@ -3,13 +3,13 @@ use std::{collections::HashSet, fs::File, io::Read, path::PathBuf};
 //use logos::Logos;
 use passes::{
     //backend::{flatten::Flattener, gen::Generator},
-    midend::{
-        environment::{Environment, Quantifier},
-    }, parser};
+    midend::environment::{Environment, Quantifier},
+    parser,
+};
 //use passes::midend::typechecking::Typechecker;
 use resource::errors::CompResult;
 
-use crate::root::passes::parser::Program;
+use crate::root::{resource::rep::{Package, Program}, resource::errors::CompilerErr};
 
 pub mod resource;
 
@@ -19,13 +19,14 @@ pub struct Context {
     pub env: Environment,
 }
 
-pub fn parse_file(src_path: &PathBuf) -> CompResult<Program> {
+pub fn parse_file(src_path: &PathBuf) -> CompResult<(Package, String)> {
     let mut src_string = String::new();
 
     let mut src = File::open(src_path)?;
     src.read_to_string(&mut src_string)?;
-    let res = parser::parse(&src_string)?; //TODO: handle errors properly
-    Ok(res)
+    let res = parser::parse(&src_string).map_err(|e| e.get_dyn().src(&src_string))?; //TODO: handle errors properly
+
+    Ok((res, src_string))
 
     // let filename = src_path.file_name().unwrap().to_str().unwrap().to_string();
     // let mut error_stream: Vec<ParseErr> = vec![];
@@ -53,17 +54,30 @@ pub fn parse_program(src_path: &PathBuf) -> CompResult<Program> {
         .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
         .collect::<Vec<_>>();
 
-    let mut program = Program {
-        packages: vec![],
-    };
+    let mut program = Program { packages: vec![] };
 
     for entry in dir_contents {
         let file_path = entry.path();
-        let new_prog = parse_file(&file_path)?;
-        program = program + new_prog;
+        let new_prog = parse_file(&file_path).map_err(|e| e.get_dyn().filename(file_path.file_name().unwrap().to_str().unwrap()))?;
+        program.packages.push((new_prog.0, file_path, new_prog.1));
     }
 
+    //dbg!(program.clone());
     dbg!(program.clone());
+    let mut e = Environment::new();
+    e.build(program.clone())?;
+
+
+    for item in e.items.iter() {
+        //println!("{:?} => {:?}", item.0, item.1);
+        match item.1 {
+            
+            passes::midend::environment::Entry::Let { name, sig, body } => todo!(),
+        _=> todo!(),
+
+        }
+    }
+
     Ok(program)
 }
 

@@ -1,0 +1,22 @@
+package Main =
+    # use {Math}
+    # use {Random, IO, Collections}
+
+    # struct User =
+    #    name: String,
+    #    id: Num
+
+
+    let ingify f = 
+	    let content = Iter.map (File.open String.from f).lines 
+		    fn l => String.concat l "ing\n"
+	    in File.write f String.from content
+
+    let main =
+        0 * 3
+    
+       # let the_factory = Factory.via fn f => f.count.to_string in
+       # let result = Vec.from the_factory.make 3 in
+       # let test_string = "this is a string" in
+    # res.foreach IO.dbg
+        

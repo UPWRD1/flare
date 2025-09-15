@@ -1,14 +1,10 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
-extern crate colored;
-extern crate lazy_static;
 pub mod root;
 
-use std::{env, fs, path::PathBuf, process::exit, time::Instant};
+use std::{env, path::PathBuf, time::Instant};
 
 use root::{parse_program, /*passes::midend::environment::Environment*/ resource::errors::{CompResult, ReportableError}};
-
-use crate::root::passes::midend::environment::Environment;
 
 fn main() -> CompResult<()>{
     const VERSION: &str = "0.0.1";
