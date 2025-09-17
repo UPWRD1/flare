@@ -1,0 +1,99 @@
+<program>       ::= <package> | <program> <package>
+<package>       ::= "package" <ID> "=" (<definition>+ | <package>+)
+<definition>    ::= <let_def> 
+				| <struct_def> 
+				| <enum_def>
+				| <use>
+				| <extern>
+
+<extern>        ::= "extern" <str_lit> <ID> ":" <type>
+
+<use>           ::= "use" <use_body>
+<use_body>      ::= <path> /* ex: use Iter */
+				|  "{" (<path>)+{","} "}" /* ex: use {Iter, Collections.Vec} */
+
+<struct_def>    ::= "struct" <ID> "=" (<struct_member>)+{","}
+<struct_member> ::= <ID> ":" <type>
+
+<enum_def>      ::= "enum" <ID> "=" (<enum_member>)+{","}
+<enum_member>   ::= <enum_member_simple> 
+				| <enum_member_tuple_like> 
+				| <enum_member_struct_like>
+<enum_member_simple> 
+				::= <ID>
+<enum_member_tuple_like>
+				::= <ID> "{" (<type>)+{","} "}"
+<enum_member_struct_like>
+				::= <ID> "{" (<struct_member>)+{","} "}"
+
+
+<let_def>       ::= "pub"? "let" <ID> <ID>* (":" <type>)? "=" <expr>
+
+<expr>          ::= <bin_expr>
+<bin_expr>      ::= <product>
+
+/* Pratt parsing should be used here, this is written in recursive-descent style
+*/
+/*product: left(9) */
+<product>       ::= <sum>
+				| <sum> "*" <sum> 
+				| <sum> "/" <sum>
+
+/* sum: left(8) */
+<sum>           ::= <apply>
+				| <apply> "+" <apply>
+				| <apply> "-" <apply>
+
+/* apply: left(10) */
+<apply>         ::= <term> <term>
+
+<term>          ::= <atom> 
+				| "fn" <ID>* "=" <expr>
+
+<atom>          ::= <num> 
+				| <str_lit>
+				| <constructor>
+				| "true" 
+				| "false" 
+				| <path>
+				| "let" <ID> "=" <expr> "in" <expr>
+				| "if" <expr> "then" <expr> "else" <expr>
+				| "match" <expr> <match_arm>+
+
+<match_arm>     ::= "|" <pattern> "then" <expr>
+				| "else" <ID> "then" <expr>
+
+
+<constructor>   ::= "{" <expr>*{","} "}"
+				| <path> (
+					  "{" <expr>*{","} "}" 
+					| "{" (<ID> "=" <expr>){","} "}" 
+					)
+				| <path>
+
+
+<pattern_cons>  ::= "{" <pattern>*{","} "}"
+				| <path> "{" <pattern>*{","} "}"
+
+<pattern>       ::= <pat_constructor> 
+				| <atom> /* variable / constant */
+
+
+<ID>            ::= (
+					[a-z] | 
+					[A-Z] | 
+					"_" | 
+					/* valid unicode codepoint */ 
+					)+
+
+<path>          ::= <ID> "." <path> | <ID> 
+<num>           ::= "-"? [0-9]+ ("." [0-9]+)?
+<str_lit>       ::= "\"" (
+	/*any well-formed unicode codepoint */
+				)* "\""
+
+<ty_list>       ::= <type> "," <ty_list> | <type> 
+<type>          ::= <path> ("[" <type> "]")?
+				| <type> "->" <type> /* function */
+				| "{" <ty_list> "}" /* tuple */
+				| "?" <ID> /* generics */

@@ -212,7 +212,7 @@ where
             // This is super hacky, but it does give us a nice infix operator
         ident.clone().pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
-            }).boxed()]).or(ident.clone());
+            }).boxed()]).or(ident.clone()).memoized();
         choice((
             // User Types
             path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name, generics.unwrap_or_default()), e.span())),
@@ -235,7 +235,7 @@ where
             // This is super hacky, but it does give us a nice infix operator
         ident.clone().pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
-            }).boxed()]).or(ident.clone());
+            }).boxed()]).or(ident.clone()).memoized();
         choice((
             pat.clone().separated_by(just(Token::Comma)).collect::<Vec<Spanned<Pattern>>>().delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
@@ -271,7 +271,7 @@ where
             // This is super hacky, but it does give us a nice infix operator
         ident.clone().pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
-            }).boxed()]);
+            }).boxed()]).memoized();
         
         let atom =         recursive(|atom| {
             
@@ -355,7 +355,7 @@ where
                 .ignore_then(expr.clone())
                 .then(just(Token::Pipe).ignore_then(pattern).then_ignore(just(Token::Then)).then(expr.clone()).map(|(p,e)| (p, Box::new(e))).repeated().collect::<Vec<_>>()).map_with(|(matchee, arms), e| {(Expr::Match(Box::new(matchee), arms), e.span())})
         ))})  
-        .boxed();
+        .boxed().memoized();
 
         choice((
             atom.boxed(), //.map_with(|expr, e| (expr, e.span())),
