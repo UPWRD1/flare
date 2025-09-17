@@ -123,7 +123,7 @@ impl<'a> Generator<'a> {
             }
             Expr::Str(v) => self.generate_string(&v),
 
-            Expr::BinAdd { l, r } => {
+            Expr::BinAdd(l, r) => {
                 let (lty, lhs_val) = self.generate_expr(func, l)?;
                 let (rty, rhs_val) = self.generate_expr(func, r)?;
                 let tmp = self.new_temporary();
@@ -131,7 +131,7 @@ impl<'a> Generator<'a> {
                 func.assign_instr(tmp.clone(), lty.clone(), Instr::Add(lhs_val, rhs_val));
                 Ok((lty, tmp))
             }
-            Expr::BinSub { l, r } => {
+            Expr::BinSub(l, r) => {
                 let (lty, lhs_val) = self.generate_expr(func, l)?;
                 let (rty, rhs_val) = self.generate_expr(func, r)?;
                 let tmp = self.new_temporary();
@@ -139,7 +139,7 @@ impl<'a> Generator<'a> {
                 func.assign_instr(tmp.clone(), lty.clone(), Instr::Sub(lhs_val, rhs_val));
                 Ok((lty, tmp))
             }
-            Expr::BinMul { l, r } => {
+            Expr::BinMul(l, r) => {
                 let (lty, lhs_val) = self.generate_expr(func, l)?;
                 let (rty, rhs_val) = self.generate_expr(func, r)?;
                 let tmp = self.new_temporary();
@@ -147,7 +147,7 @@ impl<'a> Generator<'a> {
                 func.assign_instr(tmp.clone(), lty.clone(), Instr::Mul(lhs_val, rhs_val));
                 Ok((lty, tmp))
             }
-            Expr::BinDiv { l, r } => {
+            Expr::BinDiv(l, r) => {
                 let (lty, lhs_val) = self.generate_expr(func, l)?;
                 let (rty, rhs_val) = self.generate_expr(func, r)?;
                 let tmp = self.new_temporary();
@@ -173,7 +173,7 @@ impl<'a> Generator<'a> {
                             crate::root::resource::cst::LogicOp::CLE => qbe::Cmp::Sle,
                             crate::root::resource::cst::LogicOp::CGT => qbe::Cmp::Sgt,
                             crate::root::resource::cst::LogicOp::CGE => qbe::Cmp::Sge,
-                            crate::root::resource::cst::LogicOp::Is => todo!(),
+                            _ => todo!(),
                         },
                         lhs_val,
                         rhs_val,

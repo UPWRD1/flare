@@ -1,7 +1,7 @@
 extern puts: (str) -> unit
 extern printf: (str, ...) -> unit
 
-type IO[?T] = struct of 
+struct IO[?T] =
     v: ?T
 
 def IO[?T]

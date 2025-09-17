@@ -1,0 +1,9 @@
+enum Option[?T] =
+    Some {?T},
+    None
+
+def Option[?T]
+    in is_some self =
+        match self 
+            | Option.Some {x} then true
+            else false

@@ -1,327 +1,538 @@
 
-use peg::{Parse, ParseElem, RuleResult};
+use chumsky::input::BorrowInput;
+use chumsky::pratt::*;
+use chumsky::prelude::*;
+use ordered_float::OrderedFloat;
 
-pub struct SliceByRef<'a, T>(pub &'a [T]);
+use crate::root::passes::midend::environment::Quantifier;
+use crate::root::resource::errors::CompResult;
+use crate::root::resource::errors::CompilerErr;
+use crate::root::resource::errors::DynamicErr;
+use crate::root::resource::rep::Pattern;
+use crate::root::resource::rep::PatternAtom;
+use crate::root::resource::rep::Ty;
+use crate::root::resource::rep::{Definition, Expr, ImportItem, Package, Spanned, StructDef};
 
-impl<'a, T> Parse for SliceByRef<'a, T> {
-    type PositionRepr = usize;
-    fn start(&self) -> usize {
-        0
-    }
+/// Type representing the tokens produced by the lexer. Is private, since tokens are only used in the first stage of parsing.
+#[derive(Debug, Clone, PartialEq)]
+enum Token<'src> {
+    Ident(&'src str),
+    Num(f64),
+    Strlit(&'src str),
+    Comment(&'src str),
+    Parens(Vec<Spanned<Self>>),
 
-    fn is_eof(&self, pos: usize) -> bool {
-        pos >= self.0.len()
-    }
+    Separator,
+    Whitespace,
 
-    fn position_repr(&self, pos: usize) -> usize {
-        pos
-    }
+    Colon,
+    Eq,
+    Dot,
+    FatArrow,
+    Arrow,
+    Comma,
+    Pipe,
+
+    Asterisk,
+    Slash,
+    Plus,
+    Minus,
+
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    LParen,
+    RParen,
+    Question,
+
+    Else,
+    Enum,
+    Extern,
+    False,
+    Fn,
+    If,
+    In,
+    Let,
+    Match,
+    Package,
+    Pub,
+    Struct,
+    Then,
+    True,
+    Use,
 }
 
-impl<'a, T: 'a> ParseElem<'a> for SliceByRef<'a, T> {
-    type Element = &'a T;
+impl std::fmt::Display for Token<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Token::Ident(x) => write!(f, "{x}"),
+            Token::Num(x) => write!(f, "{x}"),
+            Token::Eq => write!(f, "="),
+            Token::Let => write!(f, "let"),
+            Token::In => write!(f, "in"),
+            Token::Parens(_) => write!(f, "(...)"),
+            Token::Asterisk => write!(f, "*"),
+            Token::Slash => write!(f, "/"),
+            Token::Plus => write!(f, "+"),
+            Token::Minus => write!(f, "-"),
+            Token::Fn => write!(f, "fn"),
+            Token::True => write!(f, "true"),
+            Token::False => write!(f, "false"),
+            Token::Strlit(s) => write!(f, "\"{s}\""),
+            Token::Comment(c) => write!(f, "{c}"),
+            Token::Colon => write!(f, ":"),
+            Token::Separator => write!(f, "newline"),
+            Token::Whitespace => write!(f, "whitespace"),
+            Token::Dot => write!(f, "."),
+            Token::FatArrow => write!(f, "=>"),
+            Token::Arrow => write!(f, "->"),
+            Token::Question => write!(f, "?"),
 
-    fn parse_elem(&'a self, pos: usize) -> RuleResult<&'a T> {
-        match self.0[pos..].first() {
-            Some(c) => RuleResult::Matched(pos + 1, c),
-            None => RuleResult::Failed,
+
+            Token::Comma => write!(f, ","),
+            Token::Pipe => write!(f, "|"),
+            Token::LBrace => write!(f, "{{"),
+            Token::RBrace => write!(f, "}}"),
+            Token::LBracket => write!(f, "["),
+            Token::RBracket => write!(f, "]"),
+            Token::LParen => write!(f, "("),
+            Token::RParen => write!(f, ")"),
+            Token::Package => write!(f, "package"),
+            Token::Use => write!(f, "use"),
+            Token::Struct => write!(f, "struct"),
+            Token::Else => write!(f, "else"),
+            Token::Enum => write!(f, "enum"),
+            Token::Extern => write!(f, "extern"),
+            Token::If => write!(f, "if"),
+            Token::Match => write!(f, "match"),
+            Token::Pub => write!(f, "pub"),
+            Token::Then => write!(f, "then"),
         }
     }
 }
 
-peg::parser!( grammar lang<'a>() for SliceByRef<'a, Token> {
-    pub rule module(modname: &String) -> crate::root::resource::cst::Cst
-        = a: clause()* {crate::root::resource::cst::Cst::Module {body: a, name: modname.clone()}}
-
-    rule clause() -> crate::root::resource::cst::Cst
-        = let_func()
-        / defblock()
-        / typedef()
-        / with_clause()
-        / extern_clause()
-
-    rule defblock_clause() -> crate::root::resource::cst::Cst
-        = [Token { kind: Tk::TkKwIn(_), .. }] f: funcdef() {f}
-        / typedef()
-        / with_clause()
-        / extern_clause()
-        // prop_def()
-
-    rule typedef() -> crate::root::resource::cst::Cst
-        = quiet! {[Token { kind: Tk::TkKwType(_), .. }] name: simplesymbol() t: generic_brackets()? [Token { kind: Tk::TkAssign(_), .. }] v: typedef_choice(name.get_symbol_name().unwrap().to_string())  {v}}
-        / expected!("a 'type' clause")
-
-    rule typedef_choice(name: String) -> crate::root::resource::cst::Cst
-        = structdef(name.clone())
-        / enumdef(name.clone())
-        / type_alias(name.clone())
-
-    rule structdef(name: String) -> crate::root::resource::cst::Cst
-        = [Token { kind: Tk::TkKwStruct(_), .. }] [Token { kind: Tk::TkKwOf(_), .. }] m: memberlist(name.clone())  { crate::root::resource::cst::Cst::Struct { name: name.to_string(), members: m }}
-
-    rule memberlist(parent: String) -> Vec<(String, crate::root::resource::cst::SymbolType)>
-        = v: ([Token { kind: Tk::TkSymbol(_), lit: name,.. }] [Token { kind: Tk::TkColon(_), .. }] a: atype() {(name.to_string(), a)}) ** [Token { kind: Tk::TkComma(_), .. }]
-
-    rule enumdef(name: String) -> crate::root::resource::cst::Cst
-        = [Token { kind: Tk::TkKwEnum(_), .. }] [Token { kind: Tk::TkKwOf(_), .. }] m: variantlist() { crate::root::resource::cst::Cst::Enum { name: name.to_string(), members: m}}
-
-    rule variantlist() -> Vec<(String, Vec<crate::root::resource::cst::SymbolType>)>
-        = v: ([Token { kind: Tk::TkSymbol(_), lit: name,.. }] a: variantdata()? {(name.to_string(), if a.is_some() {a.unwrap()} else {vec![]})}) ** [Token { kind: Tk::TkComma(_), .. }]
-
-    rule variantdata() -> Vec<crate::root::resource::cst::SymbolType>
-        = [Token { kind: Tk::TkLbrace(_), .. }] a: atype() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {a}
-
-    rule type_alias(name: String) -> crate::root::resource::cst::Cst
-        = a: atype() {crate::root::resource::cst::Cst::TypeAlias{name, is: a}}
-
-    rule with_clause() -> crate::root::resource::cst::Cst
-        = quiet! {[Token { kind: Tk::TkKwWith(_), .. }] s: expr()  {crate::root::resource::cst::Cst::WithClause { include: s }}}
-        / expected!("a 'with' clause")
-
-    rule extern_clause() -> crate::root::resource::cst::Cst
-        = quiet! {[Token { kind: Tk::TkKwExtern(_), .. }] name: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] [Token { kind: Tk::TkLparen(_), .. }] args: atype() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRparen(_), .. }] [Token { kind: Tk::TkArr(_), .. }] ret: atype() effect: do_effect() {crate::root::resource::cst::Cst::ExternClause {name: name.get_symbol_name().unwrap(), args, variadic: false, ret, effect}}}
-        / quiet! {[Token { kind: Tk::TkKwExtern(_), .. }] name: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] [Token { kind: Tk::TkLparen(_), .. }] args: atype() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkTripleDot(_), .. }] [Token { kind: Tk::TkRparen(_), .. }] [Token { kind: Tk::TkArr(_), .. }] ret: atype() effect: do_effect() {crate::root::resource::cst::Cst::ExternClause {name: name.get_symbol_name().unwrap(), args, variadic: true, ret, effect}}}
-
-        / expected!("an 'extern' clause")
-
-    rule let_func() -> crate::root::resource::cst::Cst
-        = quiet! {[Token { kind: Tk::TkKwLet(_), .. }] f: funcdef() {f}}
-        / expected!("a 'let' clause")
-
-    rule funcdef() -> crate::root::resource::cst::Cst
-        = name: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] args: func_args() r: func_ret_type() limits: where_limit() effect: do_effect() [Token { kind: Tk::TkAssign(_), .. }] start: position!() body: expr() { crate::root::resource::cst::Cst::FnDef { name: name.get_symbol_name().unwrap().to_string(), args, rettype: r, limits, effect, body } }
-        // [Token { kind: Tk::TkKwLet(_), .. }] name: simplesymbol() [Token { kind: Tk::TkAssign(_), .. }] body: expr()+ { crate::root::resource::ast::Ast::FnDef { name: name.get_symbol_name().to_string(), args: vec![], rettype: crate::root::resource::ast::SymbolType::Naught, limits: None, body } }
-
-    rule func_ret_type() -> crate::root::resource::cst::SymbolType
-        = [Token { kind: Tk::TkArr(_), .. }] r: atype() {r}
-
-    rule func_args() -> Vec<(String, crate::root::resource::cst::SymbolType)>
-        =  ([Token { kind: Tk::TkLparen(_), .. }] l: func_args_list() [Token { kind: Tk::TkRparen(_), .. }] {l})
-
-    rule where_limit() -> Option<Vec<crate::root::resource::cst::Expr>> =
-        (([Token { kind: Tk::TkKwWhere(_), .. }] e: expr() {e}) ** [Token { kind: Tk::TkComma(_), .. }])?
-
-    rule do_effect() -> Option<crate::root::resource::cst::Expr> =
-        ([Token { kind: Tk::TkKwDo(_), .. }] s: simplesymbol() {s})?
-
-    rule func_args_list() -> Vec<(String, crate::root::resource::cst::SymbolType)>
-        = a: (type_arg() / [Token { kind: Tk::TkKwSelf(_), .. }]{ ("self".to_string(), crate::root::resource::cst::SymbolType::Selff)}) ** [Token { kind: Tk::TkComma(_), .. }] {a}
-
-    rule type_arg() -> (String, crate::root::resource::cst::SymbolType)
-        = t: symbol() k: arg_type() start: position!() {return (t.get_symbol_name().unwrap(), k)}
-
-    rule arg_type() -> crate::root::resource::cst::SymbolType
-        = [Token { kind: Tk::TkColon(_), .. }] k: atype() {k}
-
-    rule defblock() -> crate::root::resource::cst::Cst
-        = quiet! {[Token { kind: Tk::TkKwDef(_), .. }] item: atype() m: defblock_clause()*  {crate::root::resource::cst::Cst::DefBlock {name: item, funcs: m}}}
-        / expected!("a 'def-in' clause")
-
-    rule prop_def() -> crate::root::resource::cst::Cst
-        = [Token { kind: Tk::TkKwProp(_), .. }] n: simplesymbol() [Token { kind: Tk::TkKwFor(_), .. }] t: atype() [Token { kind: Tk::TkAssign(_), .. }] f: fn_sig() ** [Token { kind: Tk::TkComma(_), .. }] {crate::root::resource::cst::Cst::Propdef { p: crate::root::resource::cst::Property {name: n.get_symbol_name().unwrap(), req: f}  }}
-
-    rule fn_sig() -> crate::root::resource::cst::FnSignature
-        = n: simplesymbol() args: sig_args() r: func_ret_type()? limits: where_limit() {crate::root::resource::cst::FnSignature {name: n.get_symbol_name().unwrap(), args, rettype: if r.is_some() {r.unwrap()} else {crate::root::resource::cst::SymbolType::Generic(crate::root::passes::midend::environment::GenericValue::Ref(format!("?_{}", crate::root::resource::cst::calculate_hash::<String>(&n.get_symbol_name().unwrap()) )))}, limits}}
-
-    rule sig_args() -> Vec<crate::root::resource::cst::SymbolType>
-        = a: ([Token { kind: Tk::TkColon(_), .. }] l: sig_arg_list() {l})? {if a.is_some() {a.unwrap()} else {vec![]}}
-
-    rule sig_arg_list() -> Vec<(crate::root::resource::cst::SymbolType)>
-        = a: sig_arg_type() ** [Token { kind: Tk::TkComma(_), .. }] {a}
-
-    rule sig_arg_type() -> crate::root::resource::cst::SymbolType
-        = k: atype() start: position!() {k}
-
-    rule expr() -> crate::root::resource::cst::Expr
-        = assignment()
-        / closure()
-        / ifexpr()
-        / matchexpr()
-        / binary_op()
-
-    rule assignment() -> crate::root::resource::cst::Expr
-        = quiet! {n: simplesymbol() [Token { kind: Tk::TkAssign(_), .. }] v: expr()  a: expr() { crate::root::resource::cst::Expr::Assignment { name: Box::new(n), value: Box::new(v), and_in: Box::new(a) } }}
-        / expected!("assignment")
-
-    rule closure() -> crate::root::resource::cst::Expr
-        = quiet! {[Token { kind: Tk::TkKwFn(_), .. }] args: func_args() [Token { kind: Tk::TkArr(_), .. }] body: expr()+ { crate::root::resource::cst::Expr::Closure { args, body } }}
-        / expected!("a closure")
-
-    
-
-    rule binary_op() -> crate::root::resource::cst::Expr =
-    quiet! {precedence!{
-
-
-        l: (@) op: [Token { kind: Tk::TkFuncComp(_), .. }] r: @ {crate::root::resource::cst::Expr::SeqComp { l: Box::new(l), r: Box::new(r) }}
-        --
-        l: (@) op: [Token { kind: Tk::TkKwIs(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::Is, r: Box::new(r) }}
-        l: (@) op: [Token { kind: Tk::TkKwOr(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::Is, r: Box::new(r) }}
-        l: (@) op: [Token { kind: Tk::TkKwAnd(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::Is, r: Box::new(r) }}
-
-        l: (@) op: [Token { kind: Tk::TkCEQ(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::CEQ, r: Box::new(r) }}
-        l: (@) op: [Token { kind: Tk::TkCLT(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::CLT, r: Box::new(r) }}
-        l: (@) op: [Token { kind: Tk::TkCLE(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::CLE, r: Box::new(r) }}
-        l: (@) op: [Token { kind: Tk::TkCGT(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::CGT, r: Box::new(r) }}
-        l: (@) op: [Token { kind: Tk::TkCGE(_), .. }] r: @ {crate::root::resource::cst::Expr::Logical { l: Box::new(l), op: crate::root::resource::cst::LogicOp::CGE, r: Box::new(r) }}
-        --
-        l: (@) [Token { kind: Tk::TkPlus(_), .. }] r: @  { crate::root::resource::cst::Expr::BinAdd { l: Box::new(l), r: Box::new(r) } }
-        l: (@) [Token { kind: Tk::TkMinus(_), .. }] r: @  { crate::root::resource::cst::Expr::BinSub { l: Box::new(l), r: Box::new(r) } }
-        --
-        l: (@) [Token { kind: Tk::TkStar(_), .. }] r: @  { crate::root::resource::cst::Expr::BinMul { l: Box::new(l), r: Box::new(r) } }
-        l: (@) [Token { kind: Tk::TkSlash(_), .. }] r: @  { crate::root::resource::cst::Expr::BinDiv { l: Box::new(l), r: Box::new(r) } }
-        --
-        a: atom() {a}
-        --
-       // l: (@) op: [Token { kind: Tk::TkDot(_), .. }] r: @ {crate::root::resource::cst::Expr::FieldAccess(Box::new(l), Box::new(r))}
-        l: (@) op: [Token { kind: Tk::TkDot(_), .. }] r: @ {crate::root::resource::cst::Expr::Path(Box::new(l), Box::new(r))}
-
-        //l: (@) op: [Token { kind: Tk::TkDoubleColon(_), .. }] r: @ {crate::root::resource::cst::Expr::Path(Box::new(l), Box::new(r))}
-    }}
-    / expected!("an arithmetic or comparison operator")
-
-
-    //#[cache_left_rec]
-    rule atom() -> crate::root::resource::cst::Expr
-        = intrinsic()
-        / call()
-        / variantinstance()
-        / structinstance()
-
-        / symbol()
-        / group()
-
-    rule ifexpr() -> crate::root::resource::cst::Expr
-        = quiet! {[Token { kind: Tk::TkKwIf(_), .. }] c: expr() [Token { kind: Tk::TkKwThen(_), .. }] t: expr() e: else_branch() {crate::root::resource::cst::Expr::If { condition: Box::new(c), then: Box::new(t), otherwise: e }}}
-        / expected!("an if/else expression")
-
-    rule else_branch() -> Box<crate::root::resource::cst::Expr>
-        = quiet! {([Token { kind: Tk::TkKwElse(_), .. }] o: expr() {Box::new(o)})}
-        / expected!("an else clause")
-
-    rule matchexpr() -> crate::root::resource::cst::Expr
-        = quiet! {[Token { kind: Tk::TkKwMatch(_), .. }] e: expr() arms: match_arm()+ {crate::root::resource::cst::Expr::Match { matchee: Box::new(e), arms }}}
-        / expected!("a match expression")
-
-    rule match_arm() -> (crate::root::resource::cst::Predicate, crate::root::resource::cst::Expr)
-        = [Token { kind: Tk::TkPipe(_), .. }] p: predicate() [Token { kind: Tk::TkKwThen(_), .. }] e: expr() {(p, e)}
-        / [Token { kind: Tk::TkKwElse(_), .. }] e: expr() {(crate::root::resource::cst::Predicate::Wildcard, e)}
-
-
-    rule predicate() -> crate::root::resource::cst::Predicate
-        = destructuring_predicate()
-/*
-    rule logic_predicate() -> crate::root::resource::cst::Predicate
-        = quiet! {precedence! {
-            op: [Token { kind: Tk::TkCEQ(_), .. }] r: expr() {crate::root::resource::cst::Predicate::Comparison { op: crate::root::resource::cst::LogicOp::CEQ, rhs: Box::new(r) }}
-            op: [Token { kind: Tk::TkCLT(_), .. }] r: expr() {crate::root::resource::cst::Predicate::Comparison { op: crate::root::resource::cst::LogicOp::CLT, rhs: Box::new(r) }}
-            op: [Token { kind: Tk::TkCLE(_), .. }] r: expr() {crate::root::resource::cst::Predicate::Comparison { op: crate::root::resource::cst::LogicOp::CLE, rhs: Box::new(r) }}
-            op: [Token { kind: Tk::TkCGT(_), .. }] r: expr() {crate::root::resource::cst::Predicate::Comparison { op: crate::root::resource::cst::LogicOp::CGT, rhs: Box::new(r) }}
-            op: [Token { kind: Tk::TkCGE(_), .. }] r: expr() {crate::root::resource::cst::Predicate::Comparison { op: crate::root::resource::cst::LogicOp::CGE, rhs: Box::new(r) }}
-        }}
-        / expected!("a predicate")
-    */
-    rule destructuring_predicate() -> crate::root::resource::cst::Predicate
-        = quiet! {
-            v: variantinstance() {crate::root::resource::cst::Predicate::Variant { name: v.get_variant_name(), membervars: v.get_variant_fields() }}
-        }
-        / expected!("a predicate")
-
-        rule structinstance() -> crate::root::resource::cst::Expr
-        = n: simplesymbol() [Token { kind: Tk::TkLbrace(_), .. }] f: fieldinit() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {crate::root::resource::cst::Expr::StructInstance { name: Box::new(n), fields: f }}
-
-    rule fieldinit() -> (String, crate::root::resource::cst::Expr)
-        = n: simplesymbol() [Token { kind: Tk::TkColon(_), .. }] e: expr() {(n.get_symbol_name().unwrap(), e)}
-
-    rule variantinstance() -> crate::root::resource::cst::Expr
-        = n: simplesymbol() f: variantfields()? {crate::root::resource::cst::Expr::VariantInstance { name: Box::new(n), fields: f.unwrap_or_else(std::vec::Vec::new) }}
-
-    rule variantfields() -> Vec<crate::root::resource::cst::Expr>
-        = [Token { kind: Tk::TkLbrace(_), .. }] e: expr() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbrace(_), .. }] {e}
-
-
-    rule intrinsic() -> crate::root::resource::cst::Expr
-        = quiet! {[Token { kind: Tk::TkFlt(_), lit: n,.. }] { crate::root::resource::cst::Expr::Flt(n.parse().unwrap() )}}
-        / quiet! {[Token { kind: Tk::TkInt(_), lit: n,.. }] { crate::root::resource::cst::Expr::Int(n.parse().unwrap() )}}
-        / quiet! {[Token { kind: Tk::TkStrLit(_), lit: n,.. }] { crate::root::resource::cst::Expr::Str(n.parse().unwrap() )}}
-        / quiet! {[Token { kind: Tk::TkFalse(_), lit: n,.. }] { crate::root::resource::cst::Expr::Bool(false)}}
-        / quiet! {[Token { kind: Tk::TkTrue(_), lit: n,.. }] { crate::root::resource::cst::Expr::Bool(true)}}
-        / quiet! {[Token { kind: Tk::TkKwUnit(_), lit: n,.. }] { crate::root::resource::cst::Expr::Naught}}
-        / quiet! {[Token { kind: Tk::TkPtrInit(_), .. }] e: expr() {crate::root::resource::cst::Expr::AddressOf(Box::new(e))}}
-        / expected!("a value")
-
-    //#[cache_left_rec]
-    rule call() -> crate::root::resource::cst::Expr
-        = quiet! {primary: simplesymbol() r: call_suffix(primary) {r}}
-        / expected!("a function call")
-
-rule call_suffix(lhs: crate::root::resource::cst::Expr) -> crate::root::resource::cst::Expr
-    = [Token { kind: Tk::TkDot(_), .. }] name: simplesymbol() &[Token { kind: Tk::TkLparen(_), .. }] [Token { kind: Tk::TkLparen(_), .. }] args: call_list() [Token { kind: Tk::TkRparen(_), .. }] r: call_suffix(crate::root::resource::cst::Expr::MethodCall { obj: Box::new(lhs.clone()), name: Box::new(name), args}) {r}
-    / [Token { kind: Tk::TkLparen(_), .. }] args: call_list() [Token { kind: Tk::TkRparen(_), .. }] r: call_suffix(crate::root::resource::cst::Expr::Call { name: Box::new(lhs.clone()), args}) {r}
-
-    / { lhs }  // Default case: no more calls
-
-    // rule call() -> crate::root::resource::ast::Expr
-    //     = name: atom() [Token { kind: Tk::TkLparen, .. }] args: call_list() [Token { kind: Tk::TkRparen, .. }] { crate::root::resource::ast::Expr::Call { name: Box::new(name.clone()), args}}
-    //     / name: simplesymbol() [Token { kind: Tk::TkDoubleColon, .. }]  method: simplesymbol() [Token { kind: Tk::TkLparen, .. }] args: call_list() [Token { kind: Tk::TkRparen, .. }] { crate::root::resource::ast::Expr::ModuleCall {module: Box::new(name.clone()), name: Box::new(method.clone()), args}}
-
-
-    rule call_list() -> Vec<crate::root::resource::cst::Expr>
-        = expr() ** [Token { kind: Tk::TkComma(_), .. }] //{ expr }
-
-    // rule field_access() -> crate::root::resource::ast::Expr
-    //     = n: simplesymbol() [Token { kind: Tk::TkDot(_), .. }] s: symbol() {crate::root::resource::ast::Expr::FieldAccess(Box::new(n), s.get_symbol_name())}
-
-    rule symbol() -> crate::root::resource::cst::Expr
-        // quiet! {f: field_access() {f}}
-        = quiet! {s: simplesymbol() {s}}
-        / quiet! {[Token { kind: Tk::TkKwSelf(_),.. }] {crate::root::resource::cst::Expr::Selff}}
-
-        / expected!("an identifier or self")
-
-    rule simplesymbol() -> crate::root::resource::cst::Expr
-        = quiet! {[Token { kind: Tk::TkSymbol(_), lit: n,.. }] { crate::root::resource::cst::Expr::Symbol(n.to_string())}}
-        / expected!("an identifier")
-
-    rule atype() -> crate::root::resource::cst::SymbolType
-        = [Token { kind: Tk::TkKwInt(_), .. }] {crate::root::resource::cst::SymbolType::Int}
-        / [Token { kind: Tk::TkKwUsize(_), .. }] {crate::root::resource::cst::SymbolType::Usize}
-        / [Token { kind: Tk::TkKwWord(_), .. }] {crate::root::resource::cst::SymbolType::Word}
-        / [Token { kind: Tk::TkKwByte(_), .. }] {crate::root::resource::cst::SymbolType::Byte}
-        / [Token { kind: Tk::TkKwFlt(_), .. }] {crate::root::resource::cst::SymbolType::Flt}
-        / [Token { kind: Tk::TkKwStr(_), .. }] {crate::root::resource::cst::SymbolType::Str}
-        / [Token { kind: Tk::TkKwChar(_), .. }] {crate::root::resource::cst::SymbolType::Char}
-        / [Token { kind: Tk::TkKwBool(_), .. }] {crate::root::resource::cst::SymbolType::Bool}
-        / [Token { kind: Tk::TkKwFnTy(_), .. }] {crate::root::resource::cst::SymbolType::Fn(vec![], crate::root::resource::cst::SymbolType::Unknown.into())}
-        / [Token { kind: Tk::TkKwUnit(_), .. }] {crate::root::resource::cst::SymbolType::Unit}
-        / s: symbol() a: (generic_brackets())? {crate::root::resource::cst::SymbolType::Custom(s.get_symbol_name().unwrap(), if a.is_some() {a.unwrap()} else {vec![]})}
-        / [Token { kind: Tk::TkQuestion(_), .. }] s: simplesymbol() start:position!() {crate::root::resource::cst::SymbolType::Generic(crate::root::passes::midend::environment::GenericValue::Ref(format!("?_{}", s.get_symbol_name().unwrap())))}
-        / [Token { kind: Tk::TkPtrArr(_), .. }] t: atype() {crate::root::resource::cst::SymbolType::Pointer(Box::new(t))}
-        / expected!("a type")
-
-    rule generic_brackets() -> Vec<crate::root::resource::cst::SymbolType>
-        = [Token { kind: Tk::TkLbracket(_), .. }] a: atype() ** [Token { kind: Tk::TkComma(_), .. }] [Token { kind: Tk::TkRbracket(_), .. }]{a}
-
-    rule group() -> crate::root::resource::cst::Expr
-        = quiet! { [Token { kind: Tk::TkLparen(_), .. }] v:expr() [Token { kind: Tk::TkRparen(_), .. }] { v } }
-        / expected!("a grouping expression")
-
-});
-
-use lang::module;
-
-use crate::root::resource::{
-    cst::Cst,
-    errors::{ParsingError, ParsingFailError},
-    tk::{Tk, Token},
-};
-
-pub fn parse(tokens: &[Token], modname: &String) -> anyhow::Result<Cst, ParsingError> {
-    let p = module(&SliceByRef(tokens), modname);
-    match p {
-        Ok(file_module) => Ok(file_module),
+/// The primary lexer function.
+fn lexer<'src>(
+) -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char>>> {
+    let comment = just("#")
+        .then_ignore(any().and_is(just('\n').not()).repeated())
+        .labelled("comment")
+        .padded();
+    recursive(|token| {
+        choice((
+            text::ident().map(|s| match s {
+                "else" => Token::Else,
+                "enum" => Token::Enum,
+                "extern" => Token::Extern,
+                "false" => Token::False,
+                "fn" => Token::Fn,
+                "if" => Token::If,
+                "in" => Token::In,
+                "let" => Token::Let,
+                "match" => Token::Match,
+                "package" => Token::Package,
+                "pub" => Token::Pub,
+                "struct" => Token::Struct,
+                "then" => Token::Then,
+                "true" => Token::True,
+                "use" => Token::Use,
+
+                s => Token::Ident(s),
+            }),
+            // Operators
+            just("=>").to(Token::FatArrow),
+            just("->").to(Token::Arrow),
+            just("=").to(Token::Eq),
+            just("*").to(Token::Asterisk),
+            just("/").to(Token::Slash),
+            just("+").to(Token::Plus),
+            just("-").to(Token::Minus),
+            just("{").to(Token::LBrace),
+            just("}").to(Token::RBrace),
+            just("[").to(Token::LBracket),
+            just("]").to(Token::RBracket),
+
+            //             just("(").to(Token::LParen),
+            // just(")").to(Token::RParen),
+            just(".").to(Token::Dot),
+            just(",").to(Token::Comma),
+            just(":").to(Token::Colon),
+            just("|").to(Token::Pipe),
+            just("?").to(Token::Question),
+
+            // Numbers
+            text::int(10)
+                .then(just('.').then(text::digits(10)).or_not())
+                .to_slice()
+                .map(|s: &str| Token::Num(s.parse().unwrap())),
+            just('"')
+                .ignore_then(none_of('"').repeated().to_slice())
+                .then_ignore(just('"'))
+                .labelled("string literal")
+                .map(Token::Strlit),
+            token
+                .padded()
+                .repeated()
+                .collect()
+                .delimited_by(just('('), just(')'))
+                .labelled("token tree")
+                .as_context()
+                .map(Token::Parens),
+        ))
+        .map_with(|t, e| (t, e.span()))
+    })
+    .padded_by(comment.repeated())
+    .padded()
+    .repeated()
+    .collect()
+}
+
+/// The main parser function.
+fn parser<'tokens, 'src: 'tokens, I, M>(
+    make_input: M,
+) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan>>>
+where
+    I: BorrowInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
+    // Because this function is generic over the input type, we need the caller to tell us how to create a new input,
+    // `I`, from a nested token tree. This function serves that purpose.
+    M: Fn(SimpleSpan, &'tokens [Spanned<Token<'src>>]) -> I + Clone + 'src,
+{
+    // Basic tokens
+
+    //    let whitespace = select_ref! { Token::Whitespace => () }.ignored();
+
+    let ident = select_ref! { Token::Ident(x) => *x }
+        .map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
+
+    let ty = recursive(|ty| {
+        let type_list = ty.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>();
+        let path = 
+            // Path Access
+            // This is super hacky, but it does give us a nice infix operator
+        ident.clone().pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
+                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+            }).boxed()]).or(ident.clone()).memoized();
+        choice((
+            // User Types
+            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name, generics.unwrap_or_default()), e.span())),
+            // Arrow Type
+            ty.clone().pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
+                (Ty::Arrow(Box::new(x), Box::new(y)), e.span())
+            })]),
+            // Generic Type
+            just(Token::Question).ignore_then(ident.clone()).map_with(|name, e| (Ty::Generic(name), e.span())),
+            // Tuple
+            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| (Ty::Tuple(types), e.span())),
+            
+        ))
+    });
+
+    // Pattern parser.
+    let pattern = recursive(|pat| {
+        let path = 
+            // Path Access
+            // This is super hacky, but it does give us a nice infix operator
+        ident.clone().pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
+                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+            }).boxed()]).or(ident.clone()).memoized();
+        choice((
+            pat.clone().separated_by(just(Token::Comma)).collect::<Vec<Spanned<Pattern>>>().delimited_by(just(Token::LBrace), just(Token::RBrace))
+                //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
+                .map_with(|p, e| (Pattern::Tuple(p), e.span())),
+
+            path.then(pat.separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
+                .map_with(|(name, args), e| {
+                    if let Some(args) = args {
+                        (Pattern::Variant(Box::new(name), args), e.span())
+                    } else {
+                        (Pattern::Atom(PatternAtom::Variable(name.0.get_ident().unwrap())), e.span())
+                    }
+                }),
+            //select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Pattern::Atom(PatternAtom::Variable(x.to_string())), e.span())),
+                        // Numbers
+            select_ref! { Token::Num(x) => OrderedFloat(*x) }
+.map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),            
+            // Strings
+            select_ref! { Token::Strlit(x) => x.to_string() }
+.map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span()),            
+        )))
+
+        
+    });
+
+
+    // Expression parser
+    let expression = recursive(|expr| {
+        let rname = select_ref! { Token::Ident(x) => *x };
+        let ident = rname.map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
+        let path = 
+            // Path Access
+            // This is super hacky, but it does give us a nice infix operator
+        ident.clone().pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
+                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+            }).boxed()]).memoized();
+        
+        let atom =         recursive(|atom| {
+            
+            choice((
+            // Numbers
+            select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
+                .map_with(|x, e| (x, e.span())),
+            
+            // Strings
+            select_ref! { Token::Strlit(x) => Expr::String(x.to_string()) }
+                .map_with(|x, e| (x, e.span())),
+            
+            // True
+            just(Token::True).map_with(|_, e| (Expr::Bool(true), e.span())),
+            
+            // False
+            just(Token::False).map_with(|_, e| (Expr::Bool(false), e.span())),
+
+            //path,
+
+        
+            
+            //     .then(
+            //         just(Token::Dot)
+            //             .ignore_then(ident.clone())
+            //             .repeated()
+            //             .collect::<Vec<_>>(),
+            //     )
+            //     .map_with(|(base, fields), e| {
+            //         fields.into_iter().fold(base, |acc, field| {
+            //             (Expr::FieldAccess(Box::new(acc), Box::new(field)), e.span())
+            //         })
+            //     }),
+
+            // Plain old idents
+            //ident,
+
+            // Constructors
+            path.then(atom.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
+                .map_with(|(name, args), e| {
+                    if let Some(args) = args {
+                        (Expr::Constructor(Box::new(name), args), e.span())
+                    } else {
+                        name
+                    }
+                }).labelled("item"),
+            
+            atom.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|items, e| (Expr::Tuple(items), e.span())).labelled("tuple").as_context(),
+
+            // let x = y ; z
+            just(Token::Let)
+                //.ignore_then(ident)
+                .ignore_then(pattern.clone())
+                .then_ignore(just(Token::Eq))
+                .then(expr.clone())
+                .then_ignore(just(Token::In))
+                .then(expr.clone())
+                .map_with(|((lhs, rhs), then), e| {
+                    (
+                        Expr::Let(Box::new((Expr::Pat(lhs.0), lhs.1)), Box::new(rhs), Box::new(then)),
+                        e.span(),
+                    )
+                }),
+
+            // If expression
+            just(Token::If)
+                .ignore_then(expr.clone())
+                .then_ignore(just(Token::Then))
+                .then(expr.clone())
+                .then_ignore(just(Token::Else))
+                .then(expr.clone())
+                .map_with(|((test, then), otherwise), e| {
+                    (
+                        Expr::If(Box::new(test), Box::new(then), Box::new(otherwise)),
+                        e.span(),
+                    )
+                }),
+
+            // Match Expression
+            just(Token::Match)
+                .ignore_then(expr.clone())
+                .then(just(Token::Pipe).ignore_then(pattern).then_ignore(just(Token::Then)).then(expr.clone()).map(|(p,e)| (p, Box::new(e))).repeated().collect::<Vec<_>>()).map_with(|(matchee, arms), e| {(Expr::Match(Box::new(matchee), arms), e.span())})
+        ))})  
+        .boxed().memoized();
+
+        choice((
+            atom.boxed(), //.map_with(|expr, e| (expr, e.span())),
+            // fn x y = z
+            just(Token::Fn).ignore_then(ident.repeated().foldr_with(
+                just(Token::FatArrow).ignore_then(expr.clone()),
+                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+            )),
+            // ( x )
+            expr.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
+        ))
+        .pratt(vec![
+            // Multiply
+            infix(left(8), just(Token::Asterisk), |x, _, y, e| {
+                (Expr::Mul(Box::new(x), Box::new(y)), e.span())
+            })
+            .boxed(),
+            // Divide
+            infix(left(8), just(Token::Slash), |x, _, y, e| {
+                (Expr::Div(Box::new(x), Box::new(y)), e.span())
+            })
+            .boxed(),
+            // Add
+            infix(left(7), just(Token::Plus), |x, _, y, e| {
+                (Expr::Add(Box::new(x), Box::new(y)), e.span())
+            })
+            .boxed(),
+            // Subtract
+            infix(left(7), just(Token::Minus), |x, _, y, e| {
+                (Expr::Sub(Box::new(x), Box::new(y)), e.span())
+            })
+            .boxed(),
+            // Calls
+            infix(right(9), empty(), |func, _, arg, e| {
+                (Expr::Call(Box::new(func), Box::new(arg)), e.span())
+            })
+            .boxed(),
+            // Field Access
+            infix(left(10), just(Token::Dot), |x, _, y, e| {
+                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+            }).boxed(),
+        ])
+        .labelled("expression")
+        .as_context()
+    });
+
+    let definition = recursive(|_| {
+        // Toplevel Let binding
+        let let_binding = just(Token::Let)
+            .ignore_then(ident)
+            .then(ident.repeated().foldr_with(
+                just(Token::Eq).ignore_then(expression.clone()),
+                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+            ))
+            .map(|(name, value)| Definition::Let(name, value));
+        // Struct definition
+        let struct_field = ident
+            .clone()
+            .then_ignore(just(Token::Colon))
+            .then(ty.clone());
+
+        let struct_def = just(Token::Struct)
+            .ignore_then(ident)
+            .then_ignore(just(Token::Eq))
+            .then(
+                struct_field
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .collect::<Vec<_>>(),
+            )
+            .map_with(|(name, fields), _| Definition::Struct(StructDef { name, fields }));
+
+        // Import
+        let import_path = expression; //ident
+                                      // .clone()
+                                      // .separated_by(just(Token::Dot))
+                                      // .at_least(1)
+                                      // .collect::<Vec<_>>();
+
+        let import_items = import_path
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBrace), just(Token::RBrace));
+
+        let import = just(Token::Use)
+            .ignore_then(import_items)
+            .map(|items| Definition::Import(ImportItem { items }));
+
+        choice((import, let_binding, struct_def))
+    });
+
+    let package = just(Token::Package)
+        .ignore_then(ident)
+        .then_ignore(just(Token::Eq))
+        .then(just(Token::Pub).ignore_then(definition.clone().repeated().collect::<Vec<_>>()).or(definition.clone().repeated().collect::<Vec<_>>())
+        )
+        .map(|(name, items)| Package {
+            name: name.to_owned(),
+            items,
+        });
+    //
+    // Program
+    package
+        // .repeated()
+        // .at_least(1)
+        // .collect::<Vec<_>>()
+        // .map(|packages| Program { packages })
+        .then_ignore(end())
+}
+
+/// Legacy helper function for the parser's error handlings
+fn parse_failure(err: &Rich<impl std::fmt::Display>, src: &str) -> DynamicErr {
+    DynamicErr::new(err.reason().to_string())
+        .label((
+            err.found()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "end of input".to_string()),
+            *err.span(),
+        ))
+        .extra_labels(
+            err.contexts()
+                .map(|(l, s)| (format!("while parsing this {l}"), *s))
+                .collect(),
+        )
+        .src(src.to_string())
+    // GeneralErr::builder()
+    //     .msg(err.reason().to_string())
+    //     .label((
+    //         err.found()
+    //             .map(|c| c.to_string())
+    //             .unwrap_or_else(|| "end of input".to_string()),
+    //         *err.span(),
+    //     ))
+    //     .extra_labels(
+    //         err.contexts()
+    //             .map(|(l, s)| (format!("while parsing this {l}"), *s))
+    //             .collect(),
+    //     )
+    //     .src(src.to_string())
+    //     .build(),
+}
+
+/// Compiler black magic function that transforms the token vector into a parsable item.
+fn make_input<'src>(
+    eoi: SimpleSpan,
+    toks: &'src [Spanned<Token<'src>>],
+) -> impl BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan> {
+    toks.map(eoi, |(t, s)| (t, s))
+}
+
+/// Public parsing function. Produces a parse tree from a source string.
+pub fn parse(input: &str) -> CompResult<Package> {
+    let tokens = match lexer().parse(input).into_result() {
+        Ok(tokens) => tokens,
+        Err(errs) => return Err(CompilerErr::Dynamic(parse_failure(&errs[0], input))),
+    };
+
+    //dbg!(&tokens);
+
+    let packg = match parser(make_input)
+        .parse(make_input((0..input.len()).into(), &tokens))
+        .into_result()
+    {
+        Ok(p) => Ok(p),
         Err(e) => {
-            Err(ParsingError::ParseFail(ParsingFailError {modulename: modname.to_string(), source: e}))
+            Err(CompilerErr::Dynamic(parse_failure(
+                &e.first().unwrap(),
+                input,
+            )))
+            // let errors = e
+            //     .iter()
+            //     .map(|e| CompilerErr::Dynamic(parse_failure(&e, input)))
+            //     .collect::<Vec<_>>();
+            // Err(errors[0])
         }
-    }
+    };
+
+    Ok(packg?)
 }

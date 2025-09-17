@@ -1,16 +1,37 @@
---with io
--- with "examples/vec"
--- with "examples/wrapper"
---with container
+package Billing = 
+	struct PlateRecord = 
+		plate: LicensePlate,
+		entrance: LocationID,
+		exit: LocationID,
+	
+	# enum LicensePlate = 
+	#	Unidentified{ img: ImageRef },
+	#	USA {String},
+	#	Foreign {IsoCountry.Code, String}
+	
+	# ...
+	
+	struct PlateCharge = 
+		plate: LicensePlate,
+		amount: Money.Amount,
+	
+	let calc_amount db rec = 
+		let dist = db.distance rec.entrance rec.exit in
+		let amount = Money.from (dist * db.rate) in
+		PlateCharge {rec.plate, amount }
+	
+	struct Bill = 
+		account: AccountID,
+		amount: PlateCharge,
+	
+	let blame_charge db charge =
+		let account = db.get_acc charge.plate in
+		{account, charge.amount}
+	
+	let bill_plate db plate =
+		let x = db.blame_charge db.calc_amount plate
+		in x
 
--- with lambdacalc
-
-with option
-
-let add: (l: int, r: int) -> int =
-    l + r
-
-let main: () -> bool =
-    a = Option.Some{3}
-    a.is_some()
-
+	let destructuring the_thing = 
+		let {field, otherfield} = the_thing in
+			field * otherfield

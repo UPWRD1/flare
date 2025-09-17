@@ -5,7 +5,7 @@
 with "examples/slice"
 with "examples/result"
 
-type Config = struct of 
+struct Config = 
     query: str,
     file_path: str,
     ignore_case: bool

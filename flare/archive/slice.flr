@@ -1,6 +1,6 @@
 with "examples/result"
 
-type Slice[?T] = struct of
+struct Slice[?T] =
 	start: ^?T,
 	len: int,
 	cap: int

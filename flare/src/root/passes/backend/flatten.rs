@@ -47,7 +47,7 @@ impl Flattener {
         // } else {
             //dbg!(&e);
             let res = match e {
-                Expr::BinAdd { l, r } => {
+                Expr::BinAdd(l, r) => {
                     let k = self.flatten_expr(l);
                     let v = self.flatten_expr(r);
                     if k.is_constant() && v.is_constant() {
@@ -58,10 +58,10 @@ impl Flattener {
                             .insert(e.clone(), res.clone());
                         res
                     } else {
-                        let res = Expr::BinAdd {
-                            l: Box::new(k),
-                            r: Box::new(v),
-                        };
+                        let res = Expr::BinAdd (
+                            Box::new(k),
+                            Box::new(v),
+                    );
                         self.scopes
                             .last_mut()
                             .unwrap()
@@ -69,7 +69,7 @@ impl Flattener {
                         res
                     }
                 }
-                Expr::BinSub { l, r } => {
+                Expr::BinSub(l, r) => {
                     let k = self.flatten_expr(l);
                     let v = self.flatten_expr(r);
                     if k.is_constant() && v.is_constant() {
@@ -80,10 +80,10 @@ impl Flattener {
                             .insert(e.clone(), res.clone());
                         res
                     } else {
-                        let res = Expr::BinSub {
-                            l: Box::new(k),
-                            r: Box::new(v),
-                        };
+                        let res = Expr::BinSub (
+                            Box::new(k),
+                            Box::new(v),
+                    );
                         self.scopes
                             .last_mut()
                             .unwrap()
@@ -91,7 +91,7 @@ impl Flattener {
                         res
                     }
                 }
-                Expr::BinMul { l, r } => {
+                Expr::BinMul(l, r) => {
                     let k = self.flatten_expr(l);
                     let v = self.flatten_expr(r);
                     if k.is_constant() && v.is_constant() {
@@ -102,10 +102,10 @@ impl Flattener {
                             .insert(e.clone(), res.clone());
                         res
                     } else {
-                        let res = Expr::BinMul {
-                            l: Box::new(k),
-                            r: Box::new(v),
-                        };
+                        let res = Expr::BinMul (
+                            Box::new(k),
+                            Box::new(v),
+                    );
                         self.scopes
                             .last_mut()
                             .unwrap()
@@ -113,7 +113,7 @@ impl Flattener {
                         res
                     }
                 }
-                Expr::BinDiv { l, r } => {
+                Expr::BinDiv(l, r) => {
                     let k = self.flatten_expr(l);
                     let v = self.flatten_expr(r);
                     if k.is_constant() && v.is_constant() {
@@ -124,10 +124,10 @@ impl Flattener {
                             .insert(e.clone(), res.clone());
                         res
                     } else {
-                        let res = Expr::BinDiv {
-                            l: Box::new(k),
-                            r: Box::new(v),
-                        };
+                        let res = Expr::BinDiv (
+                            Box::new(k),
+                            Box::new(v),
+                    );
                         self.scopes
                             .last_mut()
                             .unwrap()
@@ -150,7 +150,7 @@ impl Flattener {
                             crate::root::resource::cst::LogicOp::CLE => leftval <= rightval,
                             crate::root::resource::cst::LogicOp::CGT => leftval > rightval,
                             crate::root::resource::cst::LogicOp::CGE => leftval >= rightval,
-                            crate::root::resource::cst::LogicOp::Is => todo!(),
+                            _ => todo!(),
                         };
                         let res = Expr::Bool(eval);
                         self.scopes

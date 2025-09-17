@@ -1,8 +1,0 @@
-with "examples/wrapper"
-
-let id: (x: ?T -> ?T) = x
-
-let main =
-    a = id(3)
-    b = id(4.0)
-    c = id(Wrapper.new("asdf"))

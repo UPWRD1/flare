@@ -1,10 +1,10 @@
-type Term = enum of
+enum Term = 
     Var{str},
     Lambda{str, Term},
     Apply{Term, Term}
 
 def Term
-    in subst: (self, sub: Term) -> Term =
+    in subst self, sub =
         match self 
             | Var{x} then sub
             | Lambda{x, e} then :Lambda{x, subst(e)}

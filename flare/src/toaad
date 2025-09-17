@@ -1,0 +1,24 @@
+Clause -> Result<Cst, ()>:
+      LetClause {$1};
+    | DefClause {$1}
+    | TypeDef {$1}
+    | WithClause {$1}
+    | ExternClause {$1}
+    ;
+DefBlockClause -> Result<Cst, ()>:
+      "in" FuncDef {$2}
+    | TypeDef {$1}
+    | WithClause {$1}
+    | ExternClause {$1}
+    ;
+
+TypeDef -> Result<Cst, ()>:
+      StructDef {$1}
+    | EnumDef {$1}
+    ;
+
+StructDef -> Result<Cst, ()>:
+      "struct" "IDENTIFIER" 
+
+StructDef -> Result<Cst, ()>: 
+    |

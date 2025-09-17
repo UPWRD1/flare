@@ -1,4 +1,4 @@
-type Player = struct of 
+struct Player =
 	name: str,
 	level: int,
 	hp: int
