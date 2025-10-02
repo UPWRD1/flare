@@ -1,7 +1,10 @@
 use chumsky::span::SimpleSpan;
+use core::panic;
+use std::cell::RefCell;
+use std::rc::Rc;
+use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
-use core::panic;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::{
@@ -10,11 +13,15 @@ use std::{
     path::PathBuf,
 };
 
-use crate::root::passes::midend::typechecking::Ty;
+use crate::root::passes::midend::typechecking::Solver;
+//use crate::root::passes::midend::typechecking::Ty;
+use crate::root::resource::errors::CompResult;
 use crate::root::resource::rep::Definition;
 use crate::root::resource::rep::Expr;
+use crate::root::resource::rep::OptSpanned;
 use crate::root::resource::rep::Program;
-use crate::root::resource::errors::CompResult;
+use crate::root::resource::rep::StructDef;
+use crate::root::resource::rep::Ty;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Quantifier {
@@ -43,6 +50,16 @@ impl Quantifier {
             Self::End => a,
         };
         return res;
+    }
+
+    pub fn get_func_name(&self) -> Option<&String> {
+        match self {
+            Quantifier::Root(e) => e.get_func_name(),
+            Quantifier::Package(_, e) => e.get_func_name(),
+            Quantifier::Func(n, _) => Some(n),
+            Quantifier::End => None,
+            _ => panic!(),
+        }
     }
 }
 
@@ -127,6 +144,10 @@ pub enum Entry {
         deps: Vec<(Expr, SimpleSpan)>,
         src: String,
     },
+    Struct {
+        name: (Expr, SimpleSpan),
+        fields: Vec<((Expr, SimpleSpan), OptSpanned<Ty>)>,
+    },
     Let {
         name: (Expr, SimpleSpan),
         sig: Option<Ty>,
@@ -134,9 +155,46 @@ pub enum Entry {
     },
 }
 
-#[derive(Debug)]
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let left_order = match self {
+            Entry::Package { .. } => 0,
+            Entry::Struct { .. } => 1,
+            Entry::Let { .. } => 2,
+        };
+        let right_order = match other {
+            Entry::Package { .. } => 0,
+            Entry::Struct { .. } => 1,
+            Entry::Let { .. } => 2,
+        };
+        left_order.cmp(&right_order)
+    }
+}
+
+impl Entry {
+    pub fn get_sig(&self) -> Option<&Ty> {
+        match self {
+            Entry::Let { sig, .. } => sig.as_ref(),
+            _ => None,
+        }
+    }
+}
+
+// impl Ord for Entry {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         std::mem::discriminant(self).cmp(&std::mem::discriminant(other))
+//     }
+// }
+
+#[derive(Debug, Clone)]
 pub struct Environment {
-    pub items: HashMap<Quantifier, Entry>,
+    pub items: HashMap<Quantifier, Rc<RefCell<Entry>>>,
     pub current_parent: Quantifier,
 }
 
@@ -170,24 +228,28 @@ impl Environment {
         me
     }
 
-    pub fn get_q(&mut self, id: &Quantifier) -> Option<Entry> {
-        self.items.get(id).cloned()
-    }
+    // pub fn get_q(&mut self, id: &Quantifier) -> Option<Entry> {
+    //     self.items.get(id).cloned().map(|e| e.borrow().clone())
+    // }
 
-    pub fn get_mut_q(&mut self, id: &Quantifier) -> Option<&mut Entry> {
-        self.items.get_mut(id)
-    }
+    // pub fn get_mut_q(&mut self, id: &Quantifier) -> Option<&mut Entry> {
+    //     self.items.get_mut(id)
+    // }
 
     pub fn add(&mut self, id: Quantifier, value: Entry) {
-        self.items.insert(id, value.into());
+        self.items.insert(id, RefCell::from(value).into());
     }
+
+    // pub fn update(&mut self, id: &Quantifier, value: Entry) {
+    //     self.items.insert(id.clone(), value.into());
+    // }
 
     pub fn build(&mut self, p: Program) -> CompResult<()> {
         for package in p.packages {
             //println!("Building {:?}", module.get_module_name());
             let the_package_name =
                 quantifier!(Root, Package(package.0.name.0.get_ident().unwrap()), End);
-            
+
             self.current_parent = the_package_name.clone();
 
             let mut deps = vec![];
@@ -197,13 +259,19 @@ impl Environment {
                     Definition::Import(import_item) => {
                         for import in import_item.items {
                             match import.0 {
-                                Expr::Ident(ref name) => {deps.push(import)},
+                                Expr::Ident(ref name) => deps.push(import),
                                 //Expr::FieldAccess(l, r) => deps.push(),
                                 _ => panic!("Import path must be identifiers"),
                             }
                         }
-                    },
-                    Definition::Struct(struct_def) => todo!(),
+                    }
+                    Definition::Struct(StructDef { name, fields }) => self.add(
+                        self.current_parent.append(Quantifier::Type(
+                            name.0.get_ident().unwrap(),
+                            Box::new(Quantifier::End),
+                        )),
+                        Entry::Struct { name, fields },
+                    ),
                     Definition::Let(name, body) => self.add(
                         self.current_parent.append(Quantifier::Func(
                             name.0.get_ident().unwrap(),
@@ -231,5 +299,27 @@ impl Environment {
             //println!("{:#?}",self);
         }
         Ok(())
+    }
+
+    pub fn check(&mut self) -> CompResult<()> {
+        
+        for (name, entry) in self.items.iter().sorted()/* .sorted_by_key(|(q,_)| q. ) */{
+            println!("{:?} => {:?}", name, entry);
+            match *entry.borrow_mut() {
+                Entry::Let {
+                    ref mut sig, ref body, ..
+                } => {
+                    let mut tc = Solver::new(&self.items);
+                    let tv = tc.check_expr(&body)?;
+                    //dbg!(&tv);
+                    let fn_sig = tc.solve(tv)?;
+                    *sig = Some(fn_sig);
+                    //sig.replace(fn_sig);
+                }
+                _ => (),
+            }
+        }
+        dbg!(&self.items);
+        todo!()
     }
 }

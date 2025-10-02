@@ -215,15 +215,15 @@ where
             }).boxed()]).or(ident.clone()).memoized();
         choice((
             // User Types
-            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name, generics.unwrap_or_default()), e.span())),
+            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name.into(), generics.unwrap_or_default()), e.span()).into()),
             // Arrow Type
             ty.clone().pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-                (Ty::Arrow(Box::new(x), Box::new(y)), e.span())
+                (Ty::Arrow(Box::new(x), Box::new(y)), e.span()).into()
             })]),
             // Generic Type
-            just(Token::Question).ignore_then(ident.clone()).map_with(|name, e| (Ty::Generic(name), e.span())),
+            just(Token::Question).ignore_then(ident.clone()).map_with(|name, e| (Ty::Generic(name.into()), e.span()).into()),
             // Tuple
-            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| (Ty::Tuple(types), e.span())),
+            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| (Ty::Tuple(types), e.span()).into()),
             
         ))
     });

@@ -117,10 +117,10 @@ impl From<DynamicErr> for GeneralErr {
     fn from(value: DynamicErr) -> Self {
         GeneralErr {
             msg: value.msg,
-            filename: value.filename.unwrap(),
-            label: value.label.unwrap(),
-            extra_labels: value.extra_labels.unwrap(),
-            src: value.src.unwrap(),
+            filename: value.filename.unwrap_or("".to_string()),
+            label: value.label.unwrap_or(("".to_string(), SimpleSpan::from(0..0))),
+            extra_labels: value.extra_labels.unwrap_or(vec![]),
+            src: value.src.unwrap_or("".to_string()),
         }
         // value.msg,
         // value.label.unwrap_or(("error".to_string(), SimpleSpan::new(0, 0))),

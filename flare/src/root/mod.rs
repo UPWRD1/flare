@@ -9,7 +9,7 @@ use passes::{
 //use passes::midend::typechecking::Typechecker;
 use resource::errors::CompResult;
 
-use crate::root::{resource::rep::{Package, Program}, resource::errors::CompilerErr};
+use crate::root::{passes::midend::typechecking::Solver, resource::{errors::CompilerErr, rep::{Package, Program}}};
 
 pub mod resource;
 
@@ -63,25 +63,31 @@ pub fn parse_program(src_path: &PathBuf) -> CompResult<Program> {
     }
 
     //dbg!(program.clone());
-    dbg!(program.clone());
+    //dbg!(program.clone());
     let mut e = Environment::new();
     e.build(program.clone())?;
+    e.check()?;
+    dbg!(&e);
 
-
-    for item in e.items.iter() {
-        //println!("{:?} => {:?}", item.0, item.1);
-        match item.1 {
+    // for (_name, entry) in e.items.iter_mut() {
+    //     //println!("{:?} => {:?}", item.0, item.1);
+    //     match entry {
             
-            passes::midend::environment::Entry::Let { name, sig, body } => todo!(),
-        _=> todo!(),
+    //         passes::midend::environment::Entry::Let { ref mut sig, body, .. } => {
+    //             let mut tc = Solver::new(&mut e);
+    //             let tv = tc.check_expr(body)?;
+    //             let fn_sig = tc.solve(tv)?;
+    //             *sig = Some(fn_sig);
+    //         },
+    //     _=> todo!(),
 
-        }
-    }
+    //     }
+    // }
 
     Ok(program)
 }
 
-pub fn compile_typecheck(ctx: &mut Context, filename: &PathBuf) -> CompResult<String> {
+pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {
     todo!()
     // let mut p = Program {
     //     modules: vec![],

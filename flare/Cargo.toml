@@ -13,16 +13,11 @@ anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
 bnf = "0.5.0"
 chumsky = {version = "0.10.1", features = ["pratt", "memoization", "extension"] }
-comemo = "0.4.0"
-#colored = "2.1.0"
 itertools = "0.13.0"
 #lazy_static = "1.4.0"
 ordered-float = { version = "4.5.0", features = ["serde"] }
-ordermap = "0.5.5"
-pretty = "0.12.4"
 qbe = "2.3.0"
-recursive = "0.1.1"
-#salsa = "0.23.0"
+radix_trie = "0.3.0"
 serde = {version = "1.0.210", features = ["derive"]}
 thiserror = "2.0.7"
 typed-builder = "0.21.2"
