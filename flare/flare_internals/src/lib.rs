@@ -9,7 +9,7 @@ use passes::{
 //use passes::midend::typechecking::Typechecker;
 use resource::errors::CompResult;
 
-use crate::root::{
+use crate::{
     passes::midend::typechecking::Solver,
     resource::{
         errors::CompilerErr,

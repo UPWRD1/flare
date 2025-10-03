@@ -4,14 +4,14 @@ use chumsky::pratt::*;
 use chumsky::prelude::*;
 use ordered_float::OrderedFloat;
 
-use crate::root::passes::midend::environment::Quantifier;
-use crate::root::resource::errors::CompResult;
-use crate::root::resource::errors::CompilerErr;
-use crate::root::resource::errors::DynamicErr;
-use crate::root::resource::rep::Pattern;
-use crate::root::resource::rep::PatternAtom;
-use crate::root::resource::rep::Ty;
-use crate::root::resource::rep::{Definition, Expr, ImportItem, Package, Spanned, StructDef};
+use crate::passes::midend::environment::Quantifier;
+use crate::resource::errors::CompResult;
+use crate::resource::errors::CompilerErr;
+use crate::resource::errors::DynamicErr;
+use crate::resource::rep::Pattern;
+use crate::resource::rep::PatternAtom;
+use crate::resource::rep::Ty;
+use crate::resource::rep::{Definition, Expr, ImportItem, Package, Spanned, StructDef};
 
 /// Type representing the tokens produced by the lexer. Is private, since tokens are only used in the first stage of parsing.
 #[derive(Debug, Clone, PartialEq)]

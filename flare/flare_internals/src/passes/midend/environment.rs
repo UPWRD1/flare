@@ -18,15 +18,15 @@ use std::{
     path::PathBuf,
 };
 
-use crate::root::passes::midend::typechecking::Solver;
-//use crate::root::passes::midend::typechecking::Ty;
-use crate::root::resource::errors::CompResult;
-use crate::root::resource::rep::Definition;
-use crate::root::resource::rep::Expr;
-use crate::root::resource::rep::OptSpanned;
-use crate::root::resource::rep::Program;
-use crate::root::resource::rep::StructDef;
-use crate::root::resource::rep::Ty;
+use crate::passes::midend::typechecking::Solver;
+//use crate::passes::midend::typechecking::Ty;
+use crate::resource::errors::CompResult;
+use crate::resource::rep::Definition;
+use crate::resource::rep::Expr;
+use crate::resource::rep::OptSpanned;
+use crate::resource::rep::Program;
+use crate::resource::rep::StructDef;
+use crate::resource::rep::Ty;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]

@@ -8,13 +8,13 @@ use trie_rs::map::Trie;
 
 use crate::{
     quantifier,
-    root::{
+
         passes::midend::environment::{Entry, Environment, Quantifier, SimpleQuant},
         resource::{
             errors::{CompResult, CompilerErr, DynamicErr},
             rep::{Expr, OptSpanned, PrimitiveType, Spanned, Ty},
         },
-    },
+
 };
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -82,10 +82,10 @@ impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Ty::Primitive(p) => match p {
-                crate::root::resource::rep::PrimitiveType::Num => write!(f, "Num"),
-                crate::root::resource::rep::PrimitiveType::Bool => write!(f, "Bool"),
-                crate::root::resource::rep::PrimitiveType::Str => write!(f, "String"),
-                crate::root::resource::rep::PrimitiveType::Unit => write!(f, "Unit"),
+                crate::resource::rep::PrimitiveType::Num => write!(f, "Num"),
+                crate::resource::rep::PrimitiveType::Bool => write!(f, "Bool"),
+                crate::resource::rep::PrimitiveType::Str => write!(f, "String"),
+                crate::resource::rep::PrimitiveType::Unit => write!(f, "Unit"),
             },
 
             Ty::Tuple(t) => {
