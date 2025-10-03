@@ -3,19 +3,15 @@ use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
-use itertools::Itertools;
-use std::rc::Weak;
 
 use serde::Deserialize;
 use serde::Serialize;
-use std::cell::RefCell;
-use std::fmt::Display;
-use std::hash::Hash;
-use std::rc::Rc;
 use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
+    cell::RefCell,
+    fmt::{Debug, Display},
+    hash::Hash,
     path::PathBuf,
+    rc::Rc,
 };
 
 use crate::passes::midend::typechecking::Solver;
@@ -308,7 +304,7 @@ impl Environment {
                     Definition::Import(import_item) => {
                         for import in import_item.items {
                             match import.0 {
-                                Expr::Ident(ref name) => deps.push(import),
+                                Expr::Ident(ref _name) => deps.push(import),
                                 //Expr::FieldAccess(l, r) => deps.push(),
                                 _ => panic!("Import path must be identifiers"),
                             }

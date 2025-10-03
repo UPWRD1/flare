@@ -1,20 +1,16 @@
-use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
+use std::{cell::RefCell, fmt, rc::Rc};
 
-use chumsky::{extra::Err, prelude::todo, span::SimpleSpan};
-use trie_rs::map::Trie;
+use chumsky::span::SimpleSpan;
 //use ptrie::Trie;
 //use token_trie::Trie;
 //use radix_trie::{Trie, TrieCommon};
 
 use crate::{
-    quantifier,
-
-        passes::midend::environment::{Entry, Environment, Quantifier, SimpleQuant},
-        resource::{
-            errors::{CompResult, CompilerErr, DynamicErr},
-            rep::{Expr, OptSpanned, PrimitiveType, Spanned, Ty},
-        },
-
+    passes::midend::environment::{Entry, Environment, SimpleQuant},
+    resource::{
+        errors::{CompResult, DynamicErr},
+        rep::{Expr, OptSpanned, PrimitiveType, Spanned, Ty},
+    },
 };
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -142,8 +138,6 @@ impl<'env> Solver<'env> {
                 PrimitiveType::Bool => TyInfo::Bool,
                 PrimitiveType::Unit => TyInfo::Unit,
             },
-            Ty::User(opt_spanned, opt_spanneds) => todo!(),
-            Ty::Tuple(opt_spanneds) => todo!(),
             Ty::Arrow(l, r) => {
                 let lty = self.convert_ty(l.t.clone());
                 let rty = self.convert_ty(r.t.clone());
@@ -152,7 +146,7 @@ impl<'env> Solver<'env> {
                     self.create_ty(rty, r.span.unwrap_or(SimpleSpan::from(0..0))),
                 )
             }
-            Ty::Generic(opt_spanned) => todo!(),
+            _ => todo!(),
         };
         //println!("Converted {:?} => {:?}", t, info);
         info

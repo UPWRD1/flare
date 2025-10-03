@@ -1,23 +1,21 @@
 pub mod passes;
-use std::{collections::HashSet, fs::File, io::Read, path::PathBuf};
-//use logos::Logos;
-use passes::{
-    //backend::{flatten::Flattener, gen::Generator},
-    midend::environment::{Environment, Quantifier},
-    parser,
-};
-//use passes::midend::typechecking::Typechecker;
-use resource::errors::CompResult;
+pub mod resource;
+
+use std::{fs::File, io::Read, path::PathBuf};
+
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    passes::midend::typechecking::Solver,
+    passes::{
+        //backend::{flatten::Flattener, gen::Generator},
+        midend::environment::Environment,
+        parser,
+    },
     resource::{
-        errors::CompilerErr,
+        errors::CompResult,
         rep::{Package, Program},
     },
 };
-
-pub mod resource;
 
 //use crate::root::resource::tk::{Tk, Token};
 
@@ -60,20 +58,27 @@ pub fn parse_program(src_path: &PathBuf) -> CompResult<Program> {
         .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
         .collect::<Vec<_>>();
 
-    let mut program = Program { packages: vec![] };
-
-    for entry in dir_contents {
+    let processed = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();
-        let new_prog = parse_file(&file_path).map_err(|e| {
-            e.get_dyn()
-                .filename(file_path.file_name().unwrap().to_str().unwrap())
-        })?;
-        program.packages.push((new_prog.0, file_path, new_prog.1));
-    }
+        let (pack, str) = parse_file(&file_path)
+            .map_err(|e| {
+                e.get_dyn()
+                    .filename(file_path.file_name().unwrap().to_str().unwrap())
+            })
+            .unwrap();
+        (pack, file_path, str)
+    });
+    Ok(
+    Program {
+        packages: processed.collect(),
+    })
+}
 
+pub fn compile_program(src_path: &PathBuf) -> CompResult<Program> {
+    let program = parse_program(src_path)?;
     //dbg!(program.clone());
     //dbg!(program.clone());
-    let mut e = Environment::build(program.clone())?;
+    let e = Environment::build(program.clone())?;
     e.check()?;
     //dbg!(&e);
 
@@ -95,8 +100,9 @@ pub fn parse_program(src_path: &PathBuf) -> CompResult<Program> {
     Ok(program)
 }
 
-pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {
-    todo!()
+
+// pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {
+    // todo!()
     // let mut p = Program {
     //     modules: vec![],
     //     dependencies: HashSet::new(),
@@ -153,4 +159,4 @@ pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompR
     // //println!("Output: \n{}", code);
     // //todo!();
     // Ok("".to_string())
-}
+// }

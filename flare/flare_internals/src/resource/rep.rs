@@ -1,4 +1,4 @@
-use std::{path::PathBuf, rc::Rc};
+use std::path::PathBuf;
 
 use chumsky::span::SimpleSpan;
 use ordered_float::OrderedFloat;
@@ -121,17 +121,6 @@ impl Expr {
             Expr::Call(ref func, _) => func.0.get_ident(),
             Expr::Lambda(ref arg, _) => arg.0.get_ident(),
             Expr::Pat(Pattern::Atom(PatternAtom::Variable(ref s))) => Some(s.to_string()),
-            _ => None,
-        }
-    }
-
-    fn op_to_display_string(&self) -> Option<&'static str> {
-        match self {
-            Expr::Add(_, _) => Some(" + "),
-            Expr::Sub(_, _) => Some(" - "),
-            Expr::Mul(_, _) => Some(" * "),
-            Expr::Div(_, _) => Some(" / "),
-            Expr::FieldAccess(_, _) => Some("."),
             _ => None,
         }
     }

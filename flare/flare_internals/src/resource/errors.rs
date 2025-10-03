@@ -1,4 +1,4 @@
-use std::{fmt::Display, io::Cursor};
+use std::io::Cursor;
 
 use ariadne::{sources, Color, Label, Report, ReportKind};
 
