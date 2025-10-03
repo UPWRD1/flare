@@ -3,7 +3,7 @@ package Main =
 	let add_two x = 
 		x + 2
 
-	let subtract x =
+	let subtract x y =
 		x - y
 	
 
