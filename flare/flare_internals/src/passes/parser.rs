@@ -6,7 +6,7 @@ use ordered_float::OrderedFloat;
 
 use crate::resource::{
     errors::{
-        CompResult, CompilerErr, DynamicErr
+        CompResult, CompilerErrKind, DynamicErr
     }, 
     rep::{
         Pattern, PatternAtom, Ty, Definition, Expr, ImportItem, Package, Spanned, StructDef
@@ -512,7 +512,7 @@ fn make_input<'src>(
 pub fn parse(input: &str) -> CompResult<Package> {
     let tokens = match lexer().parse(input).into_result() {
         Ok(tokens) => tokens,
-        Err(errs) => return Err(CompilerErr::Dynamic(parse_failure(&errs[0], input))),
+        Err(errs) => return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], input)).into()),
     };
 
     //dbg!(&tokens);
@@ -523,7 +523,7 @@ pub fn parse(input: &str) -> CompResult<Package> {
     {
         Ok(p) => Ok(p),
         Err(e) => {
-            Err(CompilerErr::Dynamic(parse_failure(
+            Err(CompilerErrKind::Dynamic(parse_failure(
                 &e.first().unwrap(),
                 input,
             )))

@@ -113,7 +113,7 @@ impl Expr {
     pub fn get_ident(&self) -> Option<String> {
         match self {
             Expr::Ident(ref s) => Some(s.to_string()),
-            Expr::FieldAccess(ref base, ref field) => {
+            Expr::FieldAccess(ref _base, ref _field) => {
                 todo!()
                 //Some(base.0.get_ident()?.append(field.0.get_ident()?))
             }

@@ -197,7 +197,7 @@ impl<'env> Solver<'env> {
             Expr::Bool(_) => Ok(self.create_ty(TyInfo::Bool, expr.1)),
             Expr::Ident(name) => {
                 //dbg!(&self.env);
-                if let Some((e, tv)) = self
+                if let Some((_e, tv)) = self
                     .env
                     .iter()
                     .rev()

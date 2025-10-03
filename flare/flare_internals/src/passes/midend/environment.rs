@@ -85,7 +85,7 @@ impl Quantifier {
             Self::Variable(_) => todo!(),
             Self::End => a,
         };
-        return res;
+        res
     }
 
     pub fn get_func_name(&self) -> Option<&String> {
