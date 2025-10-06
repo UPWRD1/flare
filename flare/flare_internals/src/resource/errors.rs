@@ -152,7 +152,7 @@ impl From<DynamicErr> for GeneralErr {
             msg: value.msg,
             filename: value.filename.unwrap_or("".to_string()),
             label: value.label.unwrap_or(("here".to_string(), SimpleSpan::from(0..0))),
-            extra_labels: value.extra_labels.unwrap_or(vec![]),
+            extra_labels: value.extra_labels.unwrap_or_default(),
             src: value.src.unwrap_or("".to_string()),
         }
         // value.msg,
@@ -222,27 +222,26 @@ pub struct GeneralErr {
 
 impl std::fmt::Display for GeneralErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let fname = self.filename.clone();
         let mut buf = Cursor::new(vec![]);
         let rep = Report::build(
             ReportKind::Error,
-            (fname.clone(), self.label.1.into_range()),
+            (self.filename.clone(), self.label.1.into_range()),
         )
         .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
         .with_message(&self.msg)
         .with_label(
-            Label::new((fname.clone(), self.label.1.into_range()))
+            Label::new((self.filename.clone(), self.label.1.into_range()))
                 .with_message(self.label.0.as_str())
                 .with_color(Color::Red),
         )
         .with_labels(self.extra_labels.iter().map(|label2| {
-            Label::new((fname.clone(), label2.1.into_range()))
+            Label::new((self.filename.clone(), label2.1.into_range()))
                 .with_message(label2.0.as_str())
                 .with_color(Color::Yellow)
         }));
 
         rep.finish()
-            .write(sources([(fname, self.src.clone())]), &mut buf)
+            .write(sources([(self.filename.clone(), self.src.clone())]), &mut buf)
             .unwrap();
         write!(
             f,

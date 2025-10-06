@@ -1,4 +1,4 @@
-#! python3
+#! /home/codespace/.python/current/bin/python3
 import sys
 import subprocess
 from typing import List

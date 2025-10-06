@@ -130,8 +130,8 @@ impl<'env> Solver<'env> {
         TyVar(self.vars.len() - 1)
     }
 
-    fn convert_ty(&mut self, t: Ty) -> TyInfo {
-        let info = match &t {
+    fn convert_ty(&mut self, t: &Ty) -> TyInfo {
+        match t {
             Ty::Primitive(primitive_type) => match primitive_type {
                 PrimitiveType::Num => TyInfo::Num,
                 PrimitiveType::Str => TyInfo::String,
@@ -139,17 +139,16 @@ impl<'env> Solver<'env> {
                 PrimitiveType::Unit => TyInfo::Unit,
             },
             Ty::Arrow(l, r) => {
-                let lty = self.convert_ty(l.t.clone());
-                let rty = self.convert_ty(r.t.clone());
+                let lty = self.convert_ty(&l.t);
+                let rty = self.convert_ty(&r.t);
                 TyInfo::Func(
                     self.create_ty(lty, l.span.unwrap_or(SimpleSpan::from(0..0))),
                     self.create_ty(rty, r.span.unwrap_or(SimpleSpan::from(0..0))),
                 )
             }
             _ => todo!(),
-        };
+        }
         //println!("Converted {:?} => {:?}", t, info);
-        info
     }
 
     fn unify(&mut self, a: TyVar, b: TyVar, span: SimpleSpan) -> CompResult<TyInfo> {
@@ -201,7 +200,7 @@ impl<'env> Solver<'env> {
                     .env
                     .iter()
                     .rev()
-                    .find(|(n, _)| *n.get_ident().unwrap() == name.to_string())
+                    .find(|(n, _)| *n.get_ident().unwrap() == *name)
                 {
                     Ok(*tv)
                 } else {
@@ -209,7 +208,7 @@ impl<'env> Solver<'env> {
                     let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
                         .master_env
                         .items
-                        .postfix_search(&vec![SimpleQuant::Func(name.to_string())])
+                        .postfix_search(vec![SimpleQuant::Func(name.to_string())])
                         .collect();
                     //dbg!(&search);
                     if let Some((_q, e)) = search.last() {
@@ -219,8 +218,8 @@ impl<'env> Solver<'env> {
                         //dbg!(&fty);
                         if let Entry::Let { ref mut sig, .. } = *fty {
                             let (l, r) = sig.as_ref().unwrap().get_arrow();
-                            let converted_l = self.convert_ty(l.t);
-                            let converted_r = self.convert_ty(r.t);
+                            let converted_l = self.convert_ty(&l.t);
+                            let converted_r = self.convert_ty(&r.t);
                             let lty = self
                                 .create_ty(converted_l, l.span.unwrap_or(SimpleSpan::from(0..0)));
                             let rty = self
@@ -236,29 +235,29 @@ impl<'env> Solver<'env> {
                     } else {
                         Err(DynamicErr::new(format!("No such symbol '{name}'"))
                             .filename("Type Error")
-                            .label((format!("not found in scope"), expr.1))
+                            .label((format!("{:?} not found in scope", expr.0), expr.1))
                             //.src(self.src.to_string())
                             .into())
                     }
                 }
             }
             Expr::Let(lhs, ref rhs, ref then) => {
-                let rhs_ty = self.check_expr(&rhs)?;
+                let rhs_ty = self.check_expr(rhs)?;
                 self.env.push((lhs.0.clone(), rhs_ty));
-                let out_ty = self.check_expr(&then)?;
+                let out_ty = self.check_expr(then)?;
                 self.env.pop();
                 Ok(out_ty)
             }
             Expr::Lambda(arg, body) => {
                 let arg_ty = self.create_ty(TyInfo::Unknown, arg.1);
                 self.env.push((arg.0.clone(), arg_ty));
-                let body_ty = self.check_expr(&body)?;
+                let body_ty = self.check_expr(body)?;
                 self.env.pop();
                 Ok(self.create_ty(TyInfo::Func(arg_ty, body_ty), expr.1))
             }
             Expr::Call(func, arg) => {
-                let func_ty = self.check_expr(&func)?;
-                let arg_ty = self.check_expr(&arg)?;
+                let func_ty = self.check_expr(func)?;
+                let arg_ty = self.check_expr(arg)?;
                 let out_ty = self.create_ty(TyInfo::Unknown, expr.1);
                 let func_req_ty = self.create_ty(TyInfo::Func(arg_ty, out_ty), func.1);
                 self.unify(func_req_ty, func_ty, expr.1)?;
@@ -266,16 +265,16 @@ impl<'env> Solver<'env> {
             }
             Expr::Add(l, r) | Expr::Mul(l, r) | Expr::Sub(l, r) | Expr::Div(l, r) => {
                 let out_ty = self.create_ty(TyInfo::Num, expr.1);
-                let l_ty = self.check_expr(&l)?;
+                let l_ty = self.check_expr(l)?;
                 self.unify(out_ty, l_ty, expr.1)?;
-                let r_ty = self.check_expr(&r)?;
+                let r_ty = self.check_expr(r)?;
                 self.unify(out_ty, r_ty, expr.1)?;
                 Ok(out_ty)
             }
 
             Expr::FieldAccess(l, r) => {
-                let l_ty = self.check_expr(&l)?;
-                let r_ty = self.check_expr(&r)?;
+                let l_ty = self.check_expr(l)?;
+                let r_ty = self.check_expr(r)?;
 
                 todo!("{:?}.{:?}", l_ty, r_ty);
             }
@@ -284,7 +283,7 @@ impl<'env> Solver<'env> {
     }
 
     pub fn solve(&self, var: TyVar) -> CompResult<Ty> {
-        let t = match self.vars[var.0].0 {
+        match self.vars[var.0].0 {
             TyInfo::Unknown => {
                 //panic!("cannot infer type {:?}, is Unknown", var)
                 Err(
@@ -306,10 +305,10 @@ impl<'env> Solver<'env> {
                 Box::new(OptSpanned::new(self.solve(i)?, None)),
                 Box::new(OptSpanned::new(self.solve(o)?, None)),
             )),
-        };
+        }
         // let _ = t
         //     .as_ref()
         //     .inspect(|t| println!("    Solved {} => {}", var, t));
-        t
+        
     }
 }

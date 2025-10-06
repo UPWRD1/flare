@@ -5,8 +5,11 @@ use flare_internals::*;
 use flare_internals::{passes::midend::environment::Environment, resource::rep::Program};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
+const TEST_FILE: &str = "/workspaces/allegro/flare/flare_internals/benches/bench_code/bench1.flr";
+
+
 pub fn typechecking_bench(c: &mut Criterion) {
-    let path = PathBuf::from("/workspaces/allegro/flare/examples/ntest.flr")
+    let path = PathBuf::from(TEST_FILE)
         .canonicalize()
         .unwrap();
     let parent_dir = path.parent().unwrap();
@@ -37,7 +40,7 @@ pub fn typechecking_bench(c: &mut Criterion) {
 }
 
 pub fn env_build_bench(c: &mut Criterion) {
-    let path = PathBuf::from("/workspaces/allegro/flare/examples/ntest.flr")
+    let path = PathBuf::from(TEST_FILE)
         .canonicalize()
         .unwrap();
     let parent_dir = path.parent().unwrap();
@@ -70,7 +73,7 @@ pub fn env_build_bench(c: &mut Criterion) {
 }
 
 pub fn master_bench(c: &mut Criterion) {
-    let path = PathBuf::from("/workspaces/allegro/flare/examples/ntest.flr")
+    let path = PathBuf::from(TEST_FILE)
         .canonicalize()
         .unwrap();
 

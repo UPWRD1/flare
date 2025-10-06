@@ -74,7 +74,7 @@ impl std::fmt::Display for SimpleQuant {
 
 impl Quantifier {
     pub fn append(&self, a: Self) -> Self {
-        let res = match self {
+        match self {
             Self::Root(quantifier) => Self::Root(Rc::new(quantifier.append(a))),
             Self::Package(n, quantifier) => {
                 Self::Package(n.to_string(), Rc::new(quantifier.append(a)))
@@ -84,8 +84,7 @@ impl Quantifier {
             Self::Func(n, quantifier) => Self::Func(n.to_string(), Rc::new(quantifier.append(a))),
             Self::Variable(_) => todo!(),
             Self::End => a,
-        };
-        res
+        }
     }
 
     pub fn get_func_name(&self) -> Option<&String> {
@@ -295,20 +294,14 @@ impl Environment {
             let the_package_name =
                 quantifier!(Root, Package(package.0.name.0.get_ident().unwrap()), End);
 
-            current_parent = the_package_name.clone();
+            current_parent = the_package_name;
 
             let mut deps = vec![];
 
             for item in package.0.items {
                 match item {
                     Definition::Import(import_item) => {
-                        for import in import_item.items {
-                            match import.0 {
-                                Expr::Ident(ref _name) => deps.push(import),
-                                //Expr::FieldAccess(l, r) => deps.push(),
-                                _ => panic!("Import path must be identifiers"),
-                            }
-                        }
+                        build_import(&mut deps, import_item);
                     }
                     Definition::Struct(StructDef { name, fields }) => env.insert(
                         current_parent
@@ -327,10 +320,10 @@ impl Environment {
                             ))
                             .into_simple(),
                         RefCell::from(Entry::Let {
-                            parent: the_package_name.clone(),
+                            parent: current_parent.clone(),
                             name,
                             sig: None,
-                            body: body.clone(),
+                            body,
                         })
                         .into(),
                     ),
@@ -338,7 +331,7 @@ impl Environment {
             }
 
             env.insert(
-                the_package_name.clone().into_simple(),
+                current_parent.clone().into_simple(),
                 RefCell::from(Entry::Package {
                     name: package.0.name,
                     file: package.1,
@@ -378,11 +371,11 @@ impl Environment {
             Entry::Let {
                 ref mut sig,
                 ref body,
-                ref name,
+                name: _,
                 ref parent,
             } => {
-                let mut tc = Solver::new(&self);
-                let tv = tc.check_expr(&body).map_err(|e| {
+                let mut tc = Solver::new(self);
+                let tv = tc.check_expr(body).map_err(|e| {
                     let the_parent = self.items.exact_match(parent.into_simple()).unwrap();
                     match *the_parent.borrow() {
                         Entry::Package {
@@ -399,12 +392,22 @@ impl Environment {
                 //dbg!(&tv);
                 let fn_sig = tc.solve(tv)?;
                 //println!("{:?} : {}", name.0, fn_sig);
-                //*sig = Some(fn_sig);
-                sig.replace(fn_sig);
+                *sig = Some(fn_sig);
+                //sig.replace(fn_sig);
                 //sig.replace(fn_sig);
             }
             _ => (),
         }
         Ok(entry)
+    }
+}
+
+fn build_import(deps: &mut Vec<(Expr, SimpleSpan)>, import_item: crate::resource::rep::ImportItem) {
+    for import in import_item.items {
+        match import.0 {
+            Expr::Ident(ref _name) => deps.push(import),
+            //Expr::FieldAccess(l, r) => deps.push(),
+            _ => panic!("Import path must be identifiers"),
+        }
     }
 }

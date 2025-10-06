@@ -49,6 +49,7 @@ pub enum Pattern {
     Variant(Box<Spanned<Expr>>, Vec<Spanned<Self>>),
 }
 
+/// Represents a primitive type within `Ty`
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {
     Num,
@@ -57,6 +58,7 @@ pub enum PrimitiveType {
     Unit,
 }
 
+/// Represents a type in the parser and master environment.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ty {
     Primitive(PrimitiveType),
@@ -155,15 +157,3 @@ pub struct Program {
     pub packages: Vec<(Package, PathBuf, String)>,
 }
 
-impl std::ops::Add for Program {
-    type Output = Self;
-
-    fn add(mut self, other: Self) -> Self::Output {
-        self.packages.extend(other.packages);
-        let mut the_prog = Self {
-            packages: self.packages,
-        };
-        the_prog.packages.dedup();
-        the_prog
-    }
-}

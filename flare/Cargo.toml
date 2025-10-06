@@ -3,6 +3,8 @@ resolver = "3"
 members = ["flarec", "flare_internals"]
 
 [profile.release]
-opt-level = 2
+opt-level = 3
+codegen-units = 1
+#debug = true # disable for release
 strip = "symbols"
 lto = "thin"

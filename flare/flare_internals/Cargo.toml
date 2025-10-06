@@ -18,9 +18,7 @@ thiserror = "2.0.7"
 trie-rs = {version = "0.4.2", features = ["rayon"]}
 #trie-rs = {version = "0.4.2", features = []}
 
-#trie-rs = "0.4.2"
-
-typed-builder = "0.21.2"
+#typed-builder = "0.21.2"
 
 
 

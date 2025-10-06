@@ -1,7 +1,8 @@
+#[warn(clippy::pedantic)]
 pub mod passes;
 pub mod resource;
 
-use std::{fs::File, io::Read, path::PathBuf};
+use std::{fs::File, io::Read, path::{Path, PathBuf}};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -31,31 +32,14 @@ pub fn parse_file(src_path: &PathBuf) -> CompResult<(Package, String)> {
     let res = parser::parse(&src_string).map_err(|e| e.get_dyn().src(&src_string))?; //TODO: handle errors properly
 
     Ok((res, src_string))
-
-    // let filename = src_path.file_name().unwrap().to_str().unwrap().to_string();
-    // let mut error_stream: Vec<ParseErr> = vec![];
-    // let mut lex = Tk::lexer(&src_string);
-
-    // let mut tokens: Vec<Token> = vec![];
-
-    // for _i in 0..lex.clone().collect::<Vec<Result<Tk, LexingError>>>().len() {
-    //     match lex.next().unwrap() {
-    //         Ok(a) => tokens.push(Token::new(a.clone(), lex.slice().to_string())),
-    //         Err(_) => bail!("Unidentified character '{}'", lex.slice())
-    //     }
-    //    // println!("{_i} {a:?} '{}'", lex.slice());
-    // }
-
-    // use passes::parser::parse;
-    // Ok(parse(&tokens, &module_name.to_str().unwrap().to_string())?)
 }
 
-pub fn parse_program(src_path: &PathBuf) -> CompResult<Program> {
+pub fn parse_program(src_path: &Path) -> CompResult<Program> {
     let path = src_path.canonicalize().unwrap();
     let parent_dir = path.parent().unwrap();
     let dir_contents = std::fs::read_dir(parent_dir)?
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
         .collect::<Vec<_>>();
 
     let processed = dir_contents.par_iter().map(|entry| {
@@ -74,28 +58,13 @@ pub fn parse_program(src_path: &PathBuf) -> CompResult<Program> {
     })
 }
 
-pub fn compile_program(src_path: &PathBuf) -> CompResult<Program> {
+pub fn compile_program(src_path: &Path) -> CompResult<Program> {
     let program = parse_program(src_path)?;
     //dbg!(program.clone());
     //dbg!(program.clone());
     let e = Environment::build(program.clone())?;
     e.check()?;
     //dbg!(&e);
-
-    // for (_name, entry) in e.items.iter_mut() {
-    //     //println!("{:?} => {:?}", item.0, item.1);
-    //     match entry {
-
-    //         passes::midend::environment::Entry::Let { ref mut sig, body, .. } => {
-    //             let mut tc = Solver::new(&mut e);
-    //             let tv = tc.check_expr(body)?;
-    //             let fn_sig = tc.solve(tv)?;
-    //             *sig = Some(fn_sig);
-    //         },
-    //     _=> todo!(),
-
-    //     }
-    // }
 
     Ok(program)
 }

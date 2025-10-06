@@ -211,9 +211,9 @@ where
         let path = 
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
-        ident.clone().pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
+        ident.pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
-            }).boxed()]).or(ident.clone()).memoized();
+            }).boxed()]).or(ident).memoized();
         choice((
             // User Types
             path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name.into(), generics.unwrap_or_default()), e.span()).into()),
@@ -222,7 +222,7 @@ where
                 (Ty::Arrow(Box::new(x), Box::new(y)), e.span()).into()
             })]),
             // Generic Type
-            just(Token::Question).ignore_then(ident.clone()).map_with(|name, e| (Ty::Generic(name.into()), e.span()).into()),
+            just(Token::Question).ignore_then(ident).map_with(|name, e| (Ty::Generic(name.into()), e.span()).into()),
             // Tuple
             type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| (Ty::Tuple(types), e.span()).into()),
             
@@ -234,9 +234,9 @@ where
         let path = 
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
-        ident.clone().pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
+        ident.pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
-            }).boxed()]).or(ident.clone()).memoized();
+            }).boxed()]).or(ident).memoized();
         choice((
             pat.clone().separated_by(just(Token::Comma)).collect::<Vec<Spanned<Pattern>>>().delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
@@ -255,7 +255,7 @@ where
             select_ref! { Token::Num(x) => OrderedFloat(*x) }
 .map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),            
             // Strings
-            select_ref! { Token::Strlit(x) => x.to_string() }
+            select_ref! { Token::Strlit(x) => (*x).to_string() }
 .map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span()),            
         )))
 
@@ -270,7 +270,7 @@ where
         let path = 
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
-        ident.clone().pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
+        ident.pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             }).boxed()]).memoized();
         
@@ -282,7 +282,7 @@ where
                 .map_with(|x, e| (x, e.span())),
             
             // Strings
-            select_ref! { Token::Strlit(x) => Expr::String(x.to_string()) }
+            select_ref! { Token::Strlit(x) => Expr::String((*x).to_string()) }
                 .map_with(|x, e| (x, e.span())),
             
             // True
@@ -414,7 +414,6 @@ where
             .map(|(name, value)| Definition::Let(name, value));
         // Struct definition
         let struct_field = ident
-            .clone()
             .then_ignore(just(Token::Colon))
             .then(ty.clone());
 
@@ -524,7 +523,7 @@ pub fn parse(input: &str) -> CompResult<Package> {
         Ok(p) => Ok(p),
         Err(e) => {
             Err(CompilerErrKind::Dynamic(parse_failure(
-                &e.first().unwrap(),
+                e.first().unwrap(),
                 input,
             )))
             // let errors = e
