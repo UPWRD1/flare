@@ -3,9 +3,16 @@ package Main =
 	let add_two x = 
 		x + 2
 
+	let add_three x = 
+		x + 3
+
+	let mult x y =
+		x * y
+
+	let cube x = x * x * x
+
 	let subtract x y =
 		x - y
-	
 
 	let main = 
 		let a = 3 in

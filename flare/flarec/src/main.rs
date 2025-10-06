@@ -1,11 +1,10 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
-pub mod root;
 
 use std::{env, path::PathBuf, time::Instant};
 
-use root::{
-    parse_program,
+use flare_internals::{
+    compile_program,
     /*passes::midend::environment::Environment*/
     resource::errors::{CompResult, ReportableError},
 };
@@ -19,7 +18,7 @@ fn main() -> CompResult<()> {
             "-c" | "--compile" => {
                 let filename: PathBuf = PathBuf::from(&prog_args[2]).canonicalize()?;
                 let now: Instant = Instant::now();
-                let code = parse_program(&filename).inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
+                let _code = compile_program(&filename).inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
                 let elapsed = now.elapsed();
                 //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
 

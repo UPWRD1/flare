@@ -1,0 +1,33 @@
+[package]
+name = "flare_internals"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.94"
+ariadne = {version = "0.5.1", features = ["auto-color"] }
+chumsky = {version = "0.10.1", features = ["pratt", "memoization", "extension"] }
+itertools = "0.13.0"
+#lazy_static = "1.4.0"
+ordered-float = { version = "4.5.0", features = ["serde"] }
+#ptrie = "0.7.2"
+qbe = "2.3.0"
+rayon = "1.11.0"
+serde = {version = "1.0.210", features = ["derive", "rc"]}
+thiserror = "2.0.7"
+trie-rs = {version = "0.4.2", features = ["rayon"]}
+#trie-rs = {version = "0.4.2", features = []}
+
+#typed-builder = "0.21.2"
+
+
+
+
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[[bench]]
+name = "typechecker_benchmark"
+harness = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

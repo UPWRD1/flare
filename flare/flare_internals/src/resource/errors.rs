@@ -1,4 +1,4 @@
-use std::{fmt::Display, io::Cursor};
+use std::{io::Cursor, ops::Deref};
 
 use ariadne::{sources, Color, Label, Report, ReportKind};
 
@@ -9,10 +9,43 @@ pub type CompResult<T> = Result<T, CompilerErr>;
 pub trait ReportableError {
     fn report(&self);
 }
+#[derive(Debug, Error)]
+pub struct CompilerErr(Box<CompilerErrKind>);
 
+use std::fmt::Display;
+impl Display for CompilerErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<CompilerErrKind> for CompilerErr {
+    fn from(value: CompilerErrKind) -> Self {
+        Self(Box::new(value))
+    }
+}
+
+impl From<DynamicErr> for CompilerErr {
+    fn from(value: DynamicErr) -> Self {
+        Self(Box::new(CompilerErrKind::Dynamic(value)))
+    }
+}
+
+impl From<std::io::Error> for CompilerErr {
+    fn from(value: std::io::Error) -> Self {
+        Self(Box::new(CompilerErrKind::Other(value.into())))
+    }
+}
+
+impl Deref for CompilerErr {
+    type Target = CompilerErrKind;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
 
 #[derive(Debug, Error)]
-pub enum CompilerErr {
+pub enum CompilerErrKind {
     #[error(transparent)]
     General(#[from] GeneralErr),
 
@@ -32,27 +65,27 @@ pub enum CompilerErr {
     Other(#[from] anyhow::Error), // Catch-all for unexpected errors
 }
 
-impl CompilerErr {
-    pub fn get_dyn(self) -> DynamicErr {
+impl CompilerErrKind {
+    pub fn get_dyn(&self) -> DynamicErr {
         match self {
-            CompilerErr::Dynamic(dynamic_err) => dynamic_err,
+            CompilerErrKind::Dynamic(dynamic_err) => dynamic_err.clone(),
             _ => panic!("Cannot get dynamic err from {:?}", self),
         }
     }
 }
 
-impl ReportableError for CompilerErr {
+impl ReportableError for CompilerErrKind {
     fn report(&self) {
         match self {
-            CompilerErr::General(error) => error.report(),
-            CompilerErr::Other(error) => eprintln!("{}", error),
-            CompilerErr::Dynamic(e) => CompilerErr::General(e.clone().into()).report(),
-            _ => todo!(),
+            CompilerErrKind::General(error) => error.report(),
+            CompilerErrKind::Other(error) => eprintln!("{}", error),
+            CompilerErrKind::Dynamic(e) => CompilerErrKind::General(e.clone().into()).report(),
+            //_ => todo!(),
         }
     }
 }
 
-impl From<std::io::Error> for CompilerErr {
+impl From<std::io::Error> for CompilerErrKind {
     fn from(value: std::io::Error) -> Self {
         Self::Other(value.into())
     }
@@ -117,10 +150,10 @@ impl From<DynamicErr> for GeneralErr {
     fn from(value: DynamicErr) -> Self {
         GeneralErr {
             msg: value.msg,
-            filename: value.filename.unwrap(),
-            label: value.label.unwrap(),
-            extra_labels: value.extra_labels.unwrap(),
-            src: value.src.unwrap(),
+            filename: value.filename.unwrap_or("".to_string()),
+            label: value.label.unwrap_or(("here".to_string(), SimpleSpan::from(0..0))),
+            extra_labels: value.extra_labels.unwrap_or_default(),
+            src: value.src.unwrap_or("".to_string()),
         }
         // value.msg,
         // value.label.unwrap_or(("error".to_string(), SimpleSpan::new(0, 0))),
@@ -160,7 +193,7 @@ impl From<DynamicErr> for GeneralErr {
 
 /// Opaque Error created from DynamicErr.
 #[derive(Error, Debug, Clone)]
-struct GeneralErr {
+pub struct GeneralErr {
     filename: String,
     msg: String,
     label: (String, SimpleSpan),
@@ -189,27 +222,26 @@ struct GeneralErr {
 
 impl std::fmt::Display for GeneralErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let fname = self.filename.clone();
         let mut buf = Cursor::new(vec![]);
-        let mut rep = Report::build(
+        let rep = Report::build(
             ReportKind::Error,
-            (fname.clone(), self.label.1.into_range()),
+            (self.filename.clone(), self.label.1.into_range()),
         )
         .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
         .with_message(&self.msg)
         .with_label(
-            Label::new((fname.clone(), self.label.1.into_range()))
+            Label::new((self.filename.clone(), self.label.1.into_range()))
                 .with_message(self.label.0.as_str())
                 .with_color(Color::Red),
         )
         .with_labels(self.extra_labels.iter().map(|label2| {
-            Label::new((fname.clone(), label2.1.into_range()))
+            Label::new((self.filename.clone(), label2.1.into_range()))
                 .with_message(label2.0.as_str())
                 .with_color(Color::Yellow)
         }));
 
         rep.finish()
-            .write(sources([(fname, self.src.clone())]), &mut buf)
+            .write(sources([(self.filename.clone(), self.src.clone())]), &mut buf)
             .unwrap();
         write!(
             f,

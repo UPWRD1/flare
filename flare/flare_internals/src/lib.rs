@@ -1,17 +1,22 @@
+#[warn(clippy::pedantic)]
 pub mod passes;
-use std::{collections::HashSet, fs::File, io::Read, path::PathBuf};
-//use logos::Logos;
-use passes::{
-    //backend::{flatten::Flattener, gen::Generator},
-    midend::environment::{Environment, Quantifier},
-    parser,
-};
-//use passes::midend::typechecking::Typechecker;
-use resource::errors::CompResult;
-
-use crate::root::{resource::rep::{Package, Program}, resource::errors::CompilerErr};
-
 pub mod resource;
+
+use std::{fs::File, io::Read, path::{Path, PathBuf}};
+
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
+use crate::{
+    passes::{
+        //backend::{flatten::Flattener, gen::Generator},
+        midend::environment::Environment,
+        parser,
+    },
+    resource::{
+        errors::CompResult,
+        rep::{Package, Program},
+    },
+};
 
 //use crate::root::resource::tk::{Tk, Token};
 
@@ -27,62 +32,46 @@ pub fn parse_file(src_path: &PathBuf) -> CompResult<(Package, String)> {
     let res = parser::parse(&src_string).map_err(|e| e.get_dyn().src(&src_string))?; //TODO: handle errors properly
 
     Ok((res, src_string))
-
-    // let filename = src_path.file_name().unwrap().to_str().unwrap().to_string();
-    // let mut error_stream: Vec<ParseErr> = vec![];
-    // let mut lex = Tk::lexer(&src_string);
-
-    // let mut tokens: Vec<Token> = vec![];
-
-    // for _i in 0..lex.clone().collect::<Vec<Result<Tk, LexingError>>>().len() {
-    //     match lex.next().unwrap() {
-    //         Ok(a) => tokens.push(Token::new(a.clone(), lex.slice().to_string())),
-    //         Err(_) => bail!("Unidentified character '{}'", lex.slice())
-    //     }
-    //    // println!("{_i} {a:?} '{}'", lex.slice());
-    // }
-
-    // use passes::parser::parse;
-    // Ok(parse(&tokens, &module_name.to_str().unwrap().to_string())?)
 }
 
-pub fn parse_program(src_path: &PathBuf) -> CompResult<Program> {
+pub fn parse_program(src_path: &Path) -> CompResult<Program> {
     let path = src_path.canonicalize().unwrap();
     let parent_dir = path.parent().unwrap();
     let dir_contents = std::fs::read_dir(parent_dir)?
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
         .collect::<Vec<_>>();
 
-    let mut program = Program { packages: vec![] };
-
-    for entry in dir_contents {
+    let processed = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();
-        let new_prog = parse_file(&file_path).map_err(|e| e.get_dyn().filename(file_path.file_name().unwrap().to_str().unwrap()))?;
-        program.packages.push((new_prog.0, file_path, new_prog.1));
-    }
+        let (pack, str) = parse_file(&file_path)
+            .map_err(|e| {
+                e.get_dyn()
+                    .filename(file_path.file_name().unwrap().to_str().unwrap())
+            })
+            .unwrap();
+        (pack, file_path, str)
+    });
+    Ok(
+    Program {
+        packages: processed.collect(),
+    })
+}
 
+pub fn compile_program(src_path: &Path) -> CompResult<Program> {
+    let program = parse_program(src_path)?;
     //dbg!(program.clone());
-    dbg!(program.clone());
-    let mut e = Environment::new();
-    e.build(program.clone())?;
-
-
-    for item in e.items.iter() {
-        //println!("{:?} => {:?}", item.0, item.1);
-        match item.1 {
-            
-            passes::midend::environment::Entry::Let { name, sig, body } => todo!(),
-        _=> todo!(),
-
-        }
-    }
+    //dbg!(program.clone());
+    let e = Environment::build(program.clone())?;
+    e.check()?;
+    //dbg!(&e);
 
     Ok(program)
 }
 
-pub fn compile_typecheck(ctx: &mut Context, filename: &PathBuf) -> CompResult<String> {
-    todo!()
+
+// pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {
+    // todo!()
     // let mut p = Program {
     //     modules: vec![],
     //     dependencies: HashSet::new(),
@@ -139,4 +128,4 @@ pub fn compile_typecheck(ctx: &mut Context, filename: &PathBuf) -> CompResult<St
     // //println!("Output: \n{}", code);
     // //todo!();
     // Ok("".to_string())
-}
+// }

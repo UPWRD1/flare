@@ -4,17 +4,18 @@ use chumsky::pratt::*;
 use chumsky::prelude::*;
 use ordered_float::OrderedFloat;
 
-use crate::root::passes::midend::environment::Quantifier;
-use crate::root::resource::errors::CompResult;
-use crate::root::resource::errors::CompilerErr;
-use crate::root::resource::errors::DynamicErr;
-use crate::root::resource::rep::Pattern;
-use crate::root::resource::rep::PatternAtom;
-use crate::root::resource::rep::Ty;
-use crate::root::resource::rep::{Definition, Expr, ImportItem, Package, Spanned, StructDef};
+use crate::resource::{
+    errors::{
+        CompResult, CompilerErrKind, DynamicErr
+    }, 
+    rep::{
+        Pattern, PatternAtom, Ty, Definition, Expr, ImportItem, Package, Spanned, StructDef
+    }
+};
 
 /// Type representing the tokens produced by the lexer. Is private, since tokens are only used in the first stage of parsing.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 enum Token<'src> {
     Ident(&'src str),
     Num(f64),
@@ -210,20 +211,20 @@ where
         let path = 
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
-        ident.clone().pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
+        ident.pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
-            }).boxed()]).or(ident.clone()).memoized();
+            }).boxed()]).or(ident).memoized();
         choice((
             // User Types
-            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name, generics.unwrap_or_default()), e.span())),
+            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name.into(), generics.unwrap_or_default()), e.span()).into()),
             // Arrow Type
             ty.clone().pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-                (Ty::Arrow(Box::new(x), Box::new(y)), e.span())
+                (Ty::Arrow(Box::new(x), Box::new(y)), e.span()).into()
             })]),
             // Generic Type
-            just(Token::Question).ignore_then(ident.clone()).map_with(|name, e| (Ty::Generic(name), e.span())),
+            just(Token::Question).ignore_then(ident).map_with(|name, e| (Ty::Generic(name.into()), e.span()).into()),
             // Tuple
-            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| (Ty::Tuple(types), e.span())),
+            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| (Ty::Tuple(types), e.span()).into()),
             
         ))
     });
@@ -233,9 +234,9 @@ where
         let path = 
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
-        ident.clone().pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
+        ident.pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
-            }).boxed()]).or(ident.clone()).memoized();
+            }).boxed()]).or(ident).memoized();
         choice((
             pat.clone().separated_by(just(Token::Comma)).collect::<Vec<Spanned<Pattern>>>().delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
@@ -254,7 +255,7 @@ where
             select_ref! { Token::Num(x) => OrderedFloat(*x) }
 .map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),            
             // Strings
-            select_ref! { Token::Strlit(x) => x.to_string() }
+            select_ref! { Token::Strlit(x) => (*x).to_string() }
 .map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span()),            
         )))
 
@@ -269,7 +270,7 @@ where
         let path = 
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
-        ident.clone().pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
+        ident.pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             }).boxed()]).memoized();
         
@@ -281,7 +282,7 @@ where
                 .map_with(|x, e| (x, e.span())),
             
             // Strings
-            select_ref! { Token::Strlit(x) => Expr::String(x.to_string()) }
+            select_ref! { Token::Strlit(x) => Expr::String((*x).to_string()) }
                 .map_with(|x, e| (x, e.span())),
             
             // True
@@ -389,7 +390,7 @@ where
             })
             .boxed(),
             // Calls
-            infix(right(9), empty(), |func, _, arg, e| {
+            infix(left(9), empty(), |func, _, arg, e| {
                 (Expr::Call(Box::new(func), Box::new(arg)), e.span())
             })
             .boxed(),
@@ -413,7 +414,6 @@ where
             .map(|(name, value)| Definition::Let(name, value));
         // Struct definition
         let struct_field = ident
-            .clone()
             .then_ignore(just(Token::Colon))
             .then(ty.clone());
 
@@ -511,7 +511,7 @@ fn make_input<'src>(
 pub fn parse(input: &str) -> CompResult<Package> {
     let tokens = match lexer().parse(input).into_result() {
         Ok(tokens) => tokens,
-        Err(errs) => return Err(CompilerErr::Dynamic(parse_failure(&errs[0], input))),
+        Err(errs) => return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], input)).into()),
     };
 
     //dbg!(&tokens);
@@ -522,8 +522,8 @@ pub fn parse(input: &str) -> CompResult<Package> {
     {
         Ok(p) => Ok(p),
         Err(e) => {
-            Err(CompilerErr::Dynamic(parse_failure(
-                &e.first().unwrap(),
+            Err(CompilerErrKind::Dynamic(parse_failure(
+                e.first().unwrap(),
                 input,
             )))
             // let errors = e
