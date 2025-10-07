@@ -42,19 +42,22 @@ pub fn parse_program(src_path: &Path) -> CompResult<Program> {
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
         .collect::<Vec<_>>();
 
-    let processed = dir_contents.par_iter().map(|entry| {
+    let processed: Vec<CompResult<(Package, PathBuf, String)>> = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();
         let (pack, str) = parse_file(&file_path)
             .map_err(|e| {
                 e.get_dyn()
                     .filename(file_path.file_name().unwrap().to_str().unwrap())
-            })
-            .unwrap();
-        (pack, file_path, str)
-    });
+            })?;
+        Ok((pack, file_path, str))
+    }).collect();
+    let mut v = vec![];
+    for x in processed.into_iter() {
+        v.push(x?);
+    }
     Ok(
     Program {
-        packages: processed.collect(),
+        packages: v,
     })
 }
 

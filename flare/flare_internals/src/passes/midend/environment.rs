@@ -21,6 +21,7 @@ use crate::resource::rep::Definition;
 use crate::resource::rep::Expr;
 use crate::resource::rep::OptSpanned;
 use crate::resource::rep::Program;
+use crate::resource::rep::Spanned;
 use crate::resource::rep::StructDef;
 use crate::resource::rep::Ty;
 
@@ -207,20 +208,21 @@ macro_rules! quantifier {
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum Entry {
     Package {
-        name: (Expr, SimpleSpan),
+        name: Spanned<Expr>,
         file: PathBuf,
-        deps: Vec<(Expr, SimpleSpan)>,
+        deps: Vec<Spanned<Expr>>,
         src: String,
     },
     Struct {
-        name: (Expr, SimpleSpan),
-        fields: Vec<((Expr, SimpleSpan), OptSpanned<Ty>)>,
+        name: Spanned<Expr>,
+        ty: Option<Ty>,
+        fields: Vec<(Spanned<Expr>, OptSpanned<Ty>)>,
     },
     Let {
         parent: Quantifier,
-        name: (Expr, SimpleSpan),
+        name: Spanned<Expr>,
         sig: Option<Ty>,
-        body: (Expr, SimpleSpan),
+        body: Spanned<Expr>,
     },
 }
 
@@ -255,11 +257,21 @@ impl Entry {
     }
 }
 
-// impl Ord for Entry {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         std::mem::discriminant(self).cmp(&std::mem::discriminant(other))
-//     }
-// }
+impl Display for Entry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Entry::Package { name, .. } => write!(f, "{}", name.value().get_ident().unwrap()),
+            Entry::Struct { name, fields, .. } => write!(f, "{}: {{{}}}", name.value().get_ident().unwrap(), fields.iter().map(|(n, t)| format!("{}", t.t)).collect::<Vec<_>>().join(" * ")),
+            Entry::Let { name, sig, .. } => {
+                if let Some(sig) = sig {
+                    write!(f, "{}: {}", name.value().get_ident().unwrap(), sig)
+                } else {
+                    write!(f, "{}: ?", name.value().get_ident().unwrap())
+                }
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Environment {
@@ -290,9 +302,8 @@ impl Environment {
         let mut env: TrieBuilder<SimpleQuant, Rc<RefCell<Entry>>> = TrieBuilder::new();
         let mut current_parent = Quantifier::End;
         for package in p.packages {
-            //println!("Building {:?}", module.get_module_name());
             let the_package_name =
-                quantifier!(Root, Package(package.0.name.0.get_ident().unwrap()), End);
+                quantifier!(Root, Package(package.0.name.value().get_ident().unwrap()), End);
 
             current_parent = the_package_name;
 
@@ -303,26 +314,28 @@ impl Environment {
                     Definition::Import(import_item) => {
                         build_import(&mut deps, import_item);
                     }
-                    Definition::Struct(StructDef { name, fields }) => env.insert(
-                        current_parent
+                    Definition::Struct(StructDef { name, fields }) => {
+                        let q = current_parent
                             .append(Quantifier::Type(
-                                name.0.get_ident().unwrap(),
+                                name.value().get_ident().unwrap(),
                                 Rc::new(Quantifier::End),
                             ))
-                            .into_simple(),
-                        RefCell::from(Entry::Struct { name, fields }).into(),
-                    ),
-                    Definition::Let(name, body) => env.insert(
+                            .into_simple();
+                        env.insert(
+                        q,
+                        RefCell::from(Entry::Struct { name: name.clone(), fields, ty: Some(Ty::User(name.into(), vec![]) )}).into(),
+                    );}
+                    Definition::Let(name, body, ty) => env.insert(
                         current_parent
                             .append(Quantifier::Func(
-                                name.0.get_ident().unwrap(),
+                                name.value().get_ident().unwrap(),
                                 Rc::new(Quantifier::End),
                             ))
                             .into_simple(),
                         RefCell::from(Entry::Let {
                             parent: current_parent.clone(),
                             name,
-                            sig: None,
+                            sig: ty.map(|t| t.t),
                             body,
                         })
                         .into(),
@@ -340,8 +353,6 @@ impl Environment {
                 })
                 .into(),
             );
-
-            //println!("{:#?}",self);
         }
         let trie = env.build();
         Ok(Self {
@@ -367,7 +378,10 @@ impl Environment {
         &self,
         entry: &'e Rc<RefCell<Entry>>,
     ) -> CompResult<&'e Rc<RefCell<Entry>>> {
-        match *entry.borrow_mut() {
+        //println!("Checking {:?}", entry);
+        //match *entry.borrow_mut() {
+
+        match *if let Ok(e) = entry.try_borrow_mut() {e} else {return Ok(entry)} {
             Entry::Let {
                 ref mut sig,
                 ref body,
@@ -389,22 +403,19 @@ impl Environment {
                         _ => panic!("Should always be a package!"),
                     }
                 })?;
-                //dbg!(&tv);
                 let fn_sig = tc.solve(tv)?;
-                //println!("{:?} : {}", name.0, fn_sig);
                 *sig = Some(fn_sig);
-                //sig.replace(fn_sig);
-                //sig.replace(fn_sig);
             }
             _ => (),
         }
+        println!("Checked {}", entry.borrow());
         Ok(entry)
     }
 }
 
-fn build_import(deps: &mut Vec<(Expr, SimpleSpan)>, import_item: crate::resource::rep::ImportItem) {
+fn build_import(deps: &mut Vec<Spanned<Expr>>, import_item: crate::resource::rep::ImportItem) {
     for import in import_item.items {
-        match import.0 {
+        match import.value() {
             Expr::Ident(ref _name) => deps.push(import),
             //Expr::FieldAccess(l, r) => deps.push(),
             _ => panic!("Import path must be identifiers"),

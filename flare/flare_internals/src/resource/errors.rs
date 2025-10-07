@@ -67,6 +67,8 @@ pub enum CompilerErrKind {
 
 impl CompilerErrKind {
     pub fn get_dyn(&self) -> DynamicErr {
+                //panic!();
+
         match self {
             CompilerErrKind::Dynamic(dynamic_err) => dynamic_err.clone(),
             _ => panic!("Cannot get dynamic err from {:?}", self),

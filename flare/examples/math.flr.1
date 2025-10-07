@@ -5,4 +5,8 @@ package Math =
     let div l r = l / r 
 
     let factorial x =
-	    x + factorial (x - 1)
+        if x == 0 then
+	        1
+        else
+           # x + factorial (x - 1)
+           add x factorial (sub x 1)
