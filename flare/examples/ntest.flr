@@ -1,9 +1,12 @@
 package Main =
     use {Math}
     
+    struct S =
+        d: num
+
     let main: unit -> num = 
-        let s = "asd" in
-        let t = (2 * s) in
+        let s = S {d = 3} in
+        let t = (2 * s.d) in
             factorial t
 
         

@@ -1,7 +1,7 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
 
-use std::{env, path::PathBuf, time::Instant};
+use std::{env, path::PathBuf, time::Instant, io::Write};
 
 use flare_internals::{
     compile_program,
@@ -9,9 +9,26 @@ use flare_internals::{
     resource::errors::{CompResult, ReportableError},
 };
 
+fn enable_loggin() {
+
+    unsafe {
+        if cfg!(debug_assertions) {
+            std::env::set_var("RUST_LOG", "info");
+        } else {
+            std::env::set_var("RUST_LOG", "");
+
+        }
+    }
+}
+
 fn main() -> CompResult<()> {
     const VERSION: &str = "0.0.1";
     let prog_args: Vec<String> = env::args().collect();
+    enable_loggin();
+    pretty_env_logger::formatted_builder().filter_level(log::LevelFilter::Info)
+       //.format_module_path(false)
+       .format(|f, r|writeln!(f, "{}", r.args()))
+       .init();
 
     match prog_args.len() {
         3 => match prog_args[1].as_str() {

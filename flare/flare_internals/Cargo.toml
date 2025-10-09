@@ -8,6 +8,7 @@ anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
 chumsky = {version = "0.10.1", features = ["pratt", "memoization", "extension"] }
 itertools = "0.13.0"
+log = "0.4.28"
 #lazy_static = "1.4.0"
 ordered-float = { version = "4.5.0", features = ["serde"] }
 #ptrie = "0.7.2"

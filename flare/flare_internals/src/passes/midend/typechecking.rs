@@ -13,6 +13,8 @@ use crate::{
     },
 };
 
+use log::{info, trace, warn};
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct TyVar(usize);
 
@@ -133,7 +135,7 @@ impl<'env> Solver<'env> {
     fn create_ty(&mut self, info: TyInfo, span: SimpleSpan<usize, FileID>) -> TyVar {
         self.vars.push((info, span));
         let v = TyVar(self.vars.len() - 1);
-        //println!("{} = {}", v, self.vars[v.0].0);
+        info!("{} = {}", v, self.vars[v.0].0);
         v
     }
 
@@ -210,7 +212,7 @@ impl<'env> Solver<'env> {
             ])
             .into()),
         }
-        .inspect(|x| {/*println!("    {} U {} => {}", a, b, x)*/})
+        .inspect(|x| {info!("    {} U {} => {}", a, b, x)})
     }
 
     pub fn check_expr(
@@ -299,7 +301,7 @@ impl<'env> Solver<'env> {
                     .postfix_search(vec![SimpleQuant::Type(solved.get_user_name().unwrap())])
                     .collect();
                 if let Entry::Struct { ref fields, .. } = *search.last().unwrap().1.borrow() {
-                    let the_field = fields.iter().find(|(n, _)| *n == **r).unwrap();
+                    let the_field = fields.iter().find(|(n, _)| n.0 == r.0).unwrap();
                     let expected_ty = self.convert_ty(&the_field.1.0);
                     let expected_ty_var = self.create_ty(
                         expected_ty,
@@ -354,16 +356,16 @@ impl<'env> Solver<'env> {
                             .into());
                         }
                         //let paired_fields = fields.iter().zip(given_fields.iter());
-                        let map: HashMap<Spanned<Expr>, Spanned<Ty>> =
+                        let map: Vec<(Spanned<Expr>, Spanned<Ty>)> =
                             fields.iter().cloned().map(|(n, t)| (n, t)).collect();
                         //dbg!(&map);
                         for (fname, value) in given_fields {
                             //dbg!(fname);
-                            let def_ty = map.get(fname).ok_or(DynamicErr::new(format!(
+                            let def_ty: Spanned<Ty> = map.iter().filter(|x| x.0.0 == fname.0).last().ok_or(DynamicErr::new(format!(
                                 "No such field '{}' in struct '{}'",
                                 fname.0.get_ident().unwrap(),
                                 name.0.get_ident().unwrap()
-                            )))?;
+                            )).label((format!("{:?} doesn't exist", fname.0), fname.1)))?.1.clone();
                             let given_ty = self.check_expr(value)?;
                             let expected_ty = self.convert_ty(&def_ty.0);
                             let expected_ty_var = self.create_ty(
@@ -491,7 +493,7 @@ impl<'env> Solver<'env> {
                 Ok(Ty::Tuple(vec![(inner_ty, self.vars[t.0].1)], s))
             }
         }
-        .inspect(|t| {/*println!("Solved {} => {}", var, t)*/})
+        .inspect(|t| {info!("Solved {} => {}", var, t)})
         // let _ = t
         //     .as_ref()
         //     .inspect(|t| println!("    Solved {} => {}", var, t));
