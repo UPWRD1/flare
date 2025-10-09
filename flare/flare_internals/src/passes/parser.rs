@@ -537,7 +537,10 @@ where
             .ignore_then(import_items)
             .map(|items| Definition::Import(ImportItem { items }));
 
-        choice((import, let_binding, struct_def))
+        
+        let extern_def = just(Token::Extern).ignore_then(ident).then_ignore(just(Token::Colon)).then(ty.clone()).map(|(name, ty)| Definition::Extern(name, ty));
+
+        choice((import, let_binding, struct_def, extern_def))
     });
 
     let package = just(Token::Package)

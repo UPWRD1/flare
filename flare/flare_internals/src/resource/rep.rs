@@ -3,6 +3,8 @@ use std::{hash::Hash, path::PathBuf};
 use chumsky::span::{SimpleSpan};
 use ordered_float::OrderedFloat;
 
+use crate::passes::midend::environment::SimpleQuant;
+
 
 pub type FileID = u64;
 
@@ -175,6 +177,8 @@ pub enum Expr {
     String(String),
     Bool(bool),
 
+    ExternFunc(Vec<SimpleQuant>),
+
     Unit,
     Constructor(Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
     FieldedConstructor(Box<Spanned<Expr>>, Vec<(Spanned<Expr>, Spanned<Expr>)>),
@@ -236,6 +240,7 @@ pub enum Definition {
     Import(ImportItem),
     Struct(StructDef),
     Let(Spanned<Expr>, Spanned<Expr>, Option<Spanned<Ty>>),
+    Extern(Spanned<Expr>, Spanned<Ty>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

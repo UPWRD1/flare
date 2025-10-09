@@ -3,8 +3,7 @@ use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
 
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
     fmt::{Debug, Display},
@@ -15,13 +14,10 @@ use std::{
 
 use crate::passes::midend::typechecking::Solver;
 //use crate::passes::midend::typechecking::Ty;
-use crate::resource::errors::CompResult;
-use crate::resource::rep::Definition;
-use crate::resource::rep::Expr;
-use crate::resource::rep::Program;
-use crate::resource::rep::Spanned;
-use crate::resource::rep::StructDef;
-use crate::resource::rep::Ty;
+use crate::resource::{
+    errors::CompResult,
+    rep::{Definition, Expr, Program, Spanned, StructDef, Ty},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
@@ -225,6 +221,11 @@ pub enum Entry {
         sig: Option<Ty>,
         body: Spanned<Expr>,
     },
+    Extern {
+        parent: Quantifier,
+        name: Spanned<Expr>,
+        sig: Ty,
+    },
 }
 
 impl PartialOrd for Entry {
@@ -239,13 +240,15 @@ impl Ord for Entry {
             Entry::Package { .. } => 0,
             Entry::Struct { .. } => 1,
             Entry::Let { .. } => 2,
-            Entry::Root | Entry::Filename(_)=> panic!("Root should not be compared!"),
+            Entry::Extern { .. } => 3,
+            Entry::Root | Entry::Filename(_) => panic!("Root should not be compared!"),
         };
         let right_order = match other {
             Entry::Package { .. } => 0,
             Entry::Struct { .. } => 1,
             Entry::Let { .. } => 2,
-            Entry::Root | Entry::Filename(_)=> panic!("Root should not be compared!"),
+            Entry::Extern { .. } => 3,
+            Entry::Root | Entry::Filename(_) => panic!("Root should not be compared!"),
         };
         left_order.cmp(&right_order)
     }
@@ -255,6 +258,7 @@ impl Entry {
     pub fn get_sig(&self) -> Option<&Ty> {
         match self {
             Entry::Let { sig, .. } => sig.as_ref(),
+            Entry::Extern { sig, .. } => Some(sig),
             _ => None,
         }
     }
@@ -279,16 +283,28 @@ impl Display for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Entry::Package { name, .. } => write!(f, "{}", name.0.get_ident().unwrap()),
-            Entry::Struct { name, fields, .. } => write!(f, "{}: {{{}}}", name.0.get_ident().unwrap(), fields.iter().map(|(n, t)| format!("{}", t.0)).collect::<Vec<_>>().join(" * ")),
+            Entry::Struct { name, fields, .. } => write!(
+                f,
+                "{}: {{{}}}",
+                name.0.get_ident().unwrap(),
+                fields
+                    .iter()
+                    .map(|(n, t)| format!("{}", t.0))
+                    .collect::<Vec<_>>()
+                    .join(" * ")
+            ),
             Entry::Let { name, sig, .. } => {
                 if let Some(sig) = sig {
                     write!(f, "{}: {}", name.0.get_ident().unwrap(), sig)
                 } else {
                     write!(f, "{}: ?", name.0.get_ident().unwrap())
                 }
-            },
+            }
             Entry::Filename(n) => write!(f, "File {}", n),
             Entry::Root => write!(f, "Root"),
+            Entry::Extern { name, sig, .. } => {
+                write!(f, "extern {}: {}", name.0.get_ident().unwrap(), sig)
+            }
         }
     }
 }
@@ -342,9 +358,16 @@ impl Environment {
                             ))
                             .into_simple();
                         env.insert(
-                        q,
-                        RefCell::from(Entry::Struct { name: name.clone(), parent: current_parent.clone(), fields, ty: Some(Ty::User(name.into(), vec![]) )}).into(),
-                    );}
+                            q,
+                            RefCell::from(Entry::Struct {
+                                name: name.clone(),
+                                parent: current_parent.clone(),
+                                fields,
+                                ty: Some(Ty::User(name.into(), vec![])),
+                            })
+                            .into(),
+                        );
+                    }
                     Definition::Let(name, body, ty) => env.insert(
                         current_parent
                             .append(Quantifier::Func(
@@ -360,6 +383,23 @@ impl Environment {
                         })
                         .into(),
                     ),
+                    Definition::Extern(n, ty) => {
+                        let q = current_parent
+                            .append(Quantifier::Func(
+                                n.0.get_ident().unwrap(),
+                                Rc::new(Quantifier::End),
+                            ))
+                            .into_simple();
+                        env.insert(
+                            q.clone(),
+                            RefCell::from(Entry::Extern {
+                                parent: current_parent.clone(),
+                                name: n,
+                                sig: ty.0,
+                            })
+                            .into(),
+                        )
+                    }
                 }
             }
 
@@ -401,7 +441,11 @@ impl Environment {
         //println!("Checking {:?}", entry);
         //match *entry.borrow_mut() {
 
-        match *if let Ok(e) = entry.try_borrow_mut() {e} else {return Ok(entry)} {
+        match *if let Ok(e) = entry.try_borrow_mut() {
+            e
+        } else {
+            return Ok(entry);
+        } {
             Entry::Let {
                 ref mut sig,
                 ref body,

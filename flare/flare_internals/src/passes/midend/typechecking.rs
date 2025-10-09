@@ -393,6 +393,33 @@ impl<'env> Solver<'env> {
                         .into())
                 }
             }
+                        Expr::ExternFunc(name) => {
+                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+                    .master_env
+                    .items
+                    .postfix_search(vec![name.last().unwrap().clone()])
+                    .collect();
+                dbg!(&search);
+                if let Some((_q, e)) = search.last() {
+                    if let Entry::Extern { ref sig, .. } = *e.borrow() {
+                        let converted = self.convert_ty(&sig);
+                        let out_ty = self.create_ty(converted, expr.1);
+                        Ok(out_ty)
+                    } else {
+                        panic!("Should be an extern")
+                    }
+                } else {
+                    panic!("Should exist")
+                    // Err(DynamicErr::new(format!("No such struct '{name:?}'"))
+                    //     .filename("Type Error")
+                    //     .label((
+                    //         format!("{:?} not found in scope", *expr.value()),
+                    //         *expr.span(),
+                    //     ))
+                    //     //.src(self.src.to_string())
+                    //     .into())
+                }
+            }
             _ => todo!("Failed to check {:?}", expr.0),
         }
     }
