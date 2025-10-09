@@ -1,7 +1,9 @@
 package Main =
     use {Math}
     
-    let main = 
-        let t = 3 in
+    let main: unit -> num = 
+        let s = "asd" in
+        let t = (2 * s) in
             factorial t
+
         

@@ -1,9 +1,7 @@
-use chumsky::span::SimpleSpan;
 use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
-use std::f32::consts::E;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -20,7 +18,6 @@ use crate::passes::midend::typechecking::Solver;
 use crate::resource::errors::CompResult;
 use crate::resource::rep::Definition;
 use crate::resource::rep::Expr;
-use crate::resource::rep::OptSpanned;
 use crate::resource::rep::Program;
 use crate::resource::rep::Spanned;
 use crate::resource::rep::StructDef;
@@ -220,7 +217,7 @@ pub enum Entry {
         parent: Quantifier,
         name: Spanned<Expr>,
         ty: Option<Ty>,
-        fields: Vec<(Spanned<Expr>, OptSpanned<Ty>)>,
+        fields: Vec<(Spanned<Expr>, Spanned<Ty>)>,
     },
     Let {
         parent: Quantifier,
@@ -282,7 +279,7 @@ impl Display for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Entry::Package { name, .. } => write!(f, "{}", name.0.get_ident().unwrap()),
-            Entry::Struct { name, fields, .. } => write!(f, "{}: {{{}}}", name.0.get_ident().unwrap(), fields.iter().map(|(n, t)| format!("{}", t.t)).collect::<Vec<_>>().join(" * ")),
+            Entry::Struct { name, fields, .. } => write!(f, "{}: {{{}}}", name.0.get_ident().unwrap(), fields.iter().map(|(n, t)| format!("{}", t.0)).collect::<Vec<_>>().join(" * ")),
             Entry::Let { name, sig, .. } => {
                 if let Some(sig) = sig {
                     write!(f, "{}: {}", name.0.get_ident().unwrap(), sig)
@@ -358,7 +355,7 @@ impl Environment {
                         RefCell::from(Entry::Let {
                             parent: current_parent.clone(),
                             name,
-                            sig: ty.map(|t| t.t),
+                            sig: ty.map(|t| t.0),
                             body,
                         })
                         .into(),
@@ -431,7 +428,7 @@ impl Environment {
             }
             _ => (),
         }
-        println!("Checked {}", entry.borrow());
+        //println!("Checked {}", entry.borrow());
         Ok(entry)
     }
 }

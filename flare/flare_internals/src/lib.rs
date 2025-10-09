@@ -2,7 +2,7 @@
 pub mod passes;
 pub mod resource;
 
-use std::{cell::RefCell, collections::HashMap, fs::File, hash::{Hash, Hasher}, io::Read, path::{Path, PathBuf}, sync::{Arc, Mutex, RwLock}};
+use std::{collections::HashMap, fs::File, hash::{Hash, Hasher}, io::Read, path::{Path, PathBuf}, sync::{Arc, Mutex}};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 

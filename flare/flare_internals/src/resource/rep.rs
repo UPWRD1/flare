@@ -1,9 +1,8 @@
 use std::{hash::Hash, path::PathBuf};
 
-use chumsky::span::{SimpleSpan, Span};
+use chumsky::span::{SimpleSpan};
 use ordered_float::OrderedFloat;
 
-use crate::passes::midend::environment::SimpleQuant;
 
 pub type FileID = u64;
 
@@ -80,28 +79,28 @@ pub type Spanned<T> = (T, SimpleSpan<usize, FileID>);
 // impl<T: Eq> Eq for Spanned<T> {}
 
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct OptSpanned<T> {
-    pub t: T,
-    pub span: Option<SimpleSpan<usize, u64>>,
-}
+// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+// pub struct OptSpanned<T> {
+//     pub t: T,
+//     pub span: Option<SimpleSpan<usize, u64>>,
+// }
 
-impl<T> From<Spanned<T>> for OptSpanned<T> {
-    fn from(value: Spanned<T>) -> Self {
-        OptSpanned {
-            t: value.0,
-            span: Some(value.1),
-        }
-    }
-}
+// impl<T> From<Spanned<T>> for OptSpanned<T> {
+//     fn from(value: Spanned<T>) -> Self {
+//         OptSpanned {
+//             t: value.0,
+//             span: Some(value.1),
+//         }
+//     }
+// }
 
 
 
-impl<T> OptSpanned<T> {
-    pub fn new(t: T, span: Option<SimpleSpan<usize, u64>>) -> Self {
-        OptSpanned { t, span }
-    }
-}
+// impl<T> OptSpanned<T> {
+//     pub fn new(t: T, span: Option<SimpleSpan<usize, u64>>) -> Self {
+//         OptSpanned { t, span }
+//     }
+// }
 
 /// Type representing an atomic value within a pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -132,14 +131,14 @@ pub enum PrimitiveType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ty {
     Primitive(PrimitiveType),
-    User(OptSpanned<Expr>, Vec<OptSpanned<Self>>),
-    Tuple(Vec<OptSpanned<Self>>, usize),
-    Arrow(Box<OptSpanned<Self>>, Box<OptSpanned<Self>>),
-    Generic(OptSpanned<Expr>),
+    User(Spanned<Expr>, Vec<Spanned<Self>>),
+    Tuple(Vec<Spanned<Self>>, usize),
+    Arrow(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    Generic(Spanned<Expr>),
 }
 
 impl Ty {
-    pub fn get_arrow(&self) -> (Box<OptSpanned<Self>>, Box<OptSpanned<Self>>) {
+    pub fn get_arrow(&self) -> (Box<Spanned<Self>>, Box<Spanned<Self>>) {
         if let Self::Arrow(l, r) = self {
             (l.clone(), r.clone())
         } else {
@@ -149,8 +148,8 @@ impl Ty {
 
     pub fn get_user_name(&self) -> Option<String> {
         if let Self::User(name, _) = self {
-            name.span.as_ref()?;
-            Some(name.t.get_ident()?)
+            name.1;
+            Some(name.0.get_ident()?)
         } else {
             None
         }
@@ -223,7 +222,7 @@ impl Expr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDef {
     pub name: Spanned<Expr>,
-    pub fields: Vec<(Spanned<Expr>, OptSpanned<Ty>)>,
+    pub fields: Vec<(Spanned<Expr>, Spanned<Ty>)>,
     //pub generics: Vec<Spanned<Expr>>,
 }
 
@@ -236,7 +235,7 @@ pub struct ImportItem {
 pub enum Definition {
     Import(ImportItem),
     Struct(StructDef),
-    Let(Spanned<Expr>, Spanned<Expr>, Option<OptSpanned<Ty>>),
+    Let(Spanned<Expr>, Spanned<Expr>, Option<Spanned<Ty>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

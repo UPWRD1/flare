@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-use chumsky::{error::Simple, span::{SimpleSpan, Span}};
+use chumsky::span::SimpleSpan;
 //use ptrie::Trie;
 //use token_trie::Trie;
 //use radix_trie::{Trie, TrieCommon};
@@ -9,7 +9,7 @@ use crate::{
     passes::midend::environment::{Entry, Environment, SimpleQuant},
     resource::{
         errors::{CompResult, DynamicErr},
-        rep::{Expr, FileID, OptSpanned, PrimitiveType, Spanned, Ty},
+        rep::{Expr, FileID, PrimitiveType, Spanned, Ty},
     },
 };
 
@@ -91,17 +91,17 @@ impl fmt::Display for Ty {
             Ty::Tuple(t, s) => {
                 write!(f, "{{")?;
                 for i in t {
-                    write!(f, "{}, ", i.t)?
+                    write!(f, "{}, ", i.0)?
                 }
                 write!(f, "}}")
             }
 
-            Ty::Arrow(l, r) => write!(f, "({} -> {})", l.t, r.t),
-            Ty::Generic(n) => write!(f, "Generic({})", n.t.get_ident().unwrap_or("?".to_string())),
+            Ty::Arrow(l, r) => write!(f, "({} -> {})", l.0, r.0),
+            Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident().unwrap_or("?".to_string())),
             Ty::User(n, args) => {
-                write!(f, "{}[", n.t.get_ident().unwrap_or("?".to_string()))?;
+                write!(f, "{}[", n.0.get_ident().unwrap_or("?".to_string()))?;
                 for a in args {
-                    write!(f, "{}, ", a.t)?
+                    write!(f, "{}, ", a.0)?
                 }
                 write!(f, "]")
             }
@@ -133,7 +133,7 @@ impl<'env> Solver<'env> {
     fn create_ty(&mut self, info: TyInfo, span: SimpleSpan<usize, FileID>) -> TyVar {
         self.vars.push((info, span));
         let v = TyVar(self.vars.len() - 1);
-        println!("{} = {}", v, self.vars[v.0].0);
+        //println!("{} = {}", v, self.vars[v.0].0);
         v
     }
 
@@ -146,19 +146,19 @@ impl<'env> Solver<'env> {
                 PrimitiveType::Unit => TyInfo::Unit,
             },
             Ty::Arrow(l, r) => {
-                let lty = self.convert_ty(&l.t);
-                let rty = self.convert_ty(&r.t);
+                let lty = self.convert_ty(&l.0);
+                let rty = self.convert_ty(&r.0);
                 TyInfo::Func(
-                    self.create_ty(lty, l.span.unwrap_or(SimpleSpan::new(0, 0..0))),
-                    self.create_ty(rty, r.span.unwrap_or(SimpleSpan::new(0, 0..0))),
+                    self.create_ty(lty, l.1),
+                    self.create_ty(rty, r.1),
                 )
             }
-            Ty::User(n, g) => TyInfo::User(n.t.get_ident().unwrap_or("?".to_string()).leak()),
+            Ty::User(n, g) => TyInfo::User(n.0.get_ident().unwrap_or("?".to_string()).leak()),
             _ => todo!("{:?}", t),
         }
     }
 
-    fn search_masterenv(&self, q: SimpleQuant) -> CompResult<&Rc<RefCell<Entry>>> {
+    fn search_masterenv(&self, q: SimpleQuant, s: SimpleSpan<usize, u64>) -> CompResult<&Rc<RefCell<Entry>>> {
         let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
             .master_env
             .items
@@ -171,7 +171,7 @@ impl<'env> Solver<'env> {
                 .filename("Type Error")
                 .label((
                     format!("{:?} not found in scope", q),
-                    SimpleSpan::new(0, 0..0),
+                    s,
                 ))
                 //.src(self.src.to_string())
                 .into())
@@ -210,7 +210,7 @@ impl<'env> Solver<'env> {
             ])
             .into()),
         }
-        .inspect(|x| println!("    {} U {} => {}", a, b, x))
+        .inspect(|x| {/*println!("    {} U {} => {}", a, b, x)*/})
     }
 
     pub fn check_expr(
@@ -260,16 +260,16 @@ impl<'env> Solver<'env> {
                 let arg_ty = self.check_expr(arg)?;
                 let out_ty = self.create_ty(TyInfo::Unknown, expr.1);
                 let func_req_ty = self.create_ty(TyInfo::Func(arg_ty, out_ty), func.1);
-                self.unify(func_req_ty, func_ty, expr.1)?;
+                self.unify( func_ty, func_req_ty, arg.1)?;
                 //self.current_parent = backup_parent;
                 Ok(out_ty)
             }
             Expr::Add(l, r) | Expr::Mul(l, r) | Expr::Sub(l, r) | Expr::Div(l, r) => {
                 let out_ty = self.create_ty(TyInfo::Num, expr.1);
                 let l_ty = self.check_expr(l)?;
-                self.unify(out_ty, l_ty, expr.1)?;
+                self.unify(l_ty, out_ty, l.1)?;
                 let r_ty = self.check_expr(r)?;
-                self.unify(out_ty, r_ty, expr.1)?;
+                self.unify(r_ty, out_ty, r.1)?;
                 Ok(out_ty)
             }
             Expr::Comparison(l, _op, r) => {
@@ -300,10 +300,10 @@ impl<'env> Solver<'env> {
                     .collect();
                 if let Entry::Struct { ref fields, .. } = *search.last().unwrap().1.borrow() {
                     let the_field = fields.iter().find(|(n, _)| *n == **r).unwrap();
-                    let expected_ty = self.convert_ty(&the_field.1.t);
+                    let expected_ty = self.convert_ty(&the_field.1.0);
                     let expected_ty_var = self.create_ty(
                         expected_ty,
-                        the_field.1.span.unwrap_or(SimpleSpan::new(0,0..0)),
+                        the_field.1.1,
                     );
                     Ok(expected_ty_var)
                 } else {
@@ -354,7 +354,7 @@ impl<'env> Solver<'env> {
                             .into());
                         }
                         //let paired_fields = fields.iter().zip(given_fields.iter());
-                        let map: HashMap<Spanned<Expr>, OptSpanned<Ty>> =
+                        let map: HashMap<Spanned<Expr>, Spanned<Ty>> =
                             fields.iter().cloned().map(|(n, t)| (n, t)).collect();
                         //dbg!(&map);
                         for (fname, value) in given_fields {
@@ -365,10 +365,10 @@ impl<'env> Solver<'env> {
                                 name.0.get_ident().unwrap()
                             )))?;
                             let given_ty = self.check_expr(value)?;
-                            let expected_ty = self.convert_ty(&def_ty.t);
+                            let expected_ty = self.convert_ty(&def_ty.0);
                             let expected_ty_var = self.create_ty(
                                 expected_ty,
-                                def_ty.span.unwrap_or(SimpleSpan::new(0,0..0)),
+                                def_ty.1,
                             );
                             self.unify(given_ty, expected_ty_var, value.1)?;
                         }
@@ -422,12 +422,11 @@ impl<'env> Solver<'env> {
             //dbg!(&fty);
             if let Entry::Let { ref sig, ref name, .. } = *fty {
                 let (l, r) = sig.as_ref().unwrap().get_arrow();
-                let converted_l = self.convert_ty(&l.t);
-                let converted_r = self.convert_ty(&r.t);
-                let lty = self.create_ty(converted_l, l.span.unwrap_or(SimpleSpan::from(name.1)));
-                let rty = self.create_ty(converted_r, r.span.unwrap_or(SimpleSpan::from(name.1)));
+                let converted_l = self.convert_ty(&l.0);
+                let converted_r = self.convert_ty(&r.0);
+                let lty = self.create_ty(converted_l, l.1);
+                let rty = self.create_ty(converted_r, r.1);
                 let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
-                dbg!(&l);
                 Ok(fn_ty)
             } else {
                 panic!("Should be a function")
@@ -435,7 +434,7 @@ impl<'env> Solver<'env> {
 
             //e.get_sig()
         } else {
-            Err(DynamicErr::new(format!("No such function '{name}'"))
+            Err(DynamicErr::new(format!("'{name}' hasn't been defined"))
                 .filename("Type Error")
                 .label((
                     format!("{:?} not found in scope", expr.0),
@@ -462,8 +461,8 @@ impl<'env> Solver<'env> {
             TyInfo::String => Ok(Ty::Primitive(PrimitiveType::Str)),
             TyInfo::Unit => Ok(Ty::Primitive(PrimitiveType::Unit)),
             TyInfo::Func(i, o) => Ok(Ty::Arrow(
-                Box::new(OptSpanned::new(self.solve(i)?, Some(self.vars[i.0].1))),
-                Box::new(OptSpanned::new(self.solve(o)?, Some(self.vars[o.0].1))),
+                Box::new((self.solve(i)?, self.vars[i.0].1)),
+                Box::new((self.solve(o)?, self.vars[o.0].1)),
             )),
             TyInfo::User(n) => {
                 let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
@@ -489,10 +488,10 @@ impl<'env> Solver<'env> {
             }
             TyInfo::Tuple(t, s) => {
                 let inner_ty = self.solve(t)?;
-                Ok(Ty::Tuple(vec![OptSpanned::new(inner_ty, Some(self.vars[t.0].1))], s))
+                Ok(Ty::Tuple(vec![(inner_ty, self.vars[t.0].1)], s))
             }
         }
-        .inspect(|t| println!("Solved {} => {}", var, t))
+        .inspect(|t| {/*println!("Solved {} => {}", var, t)*/})
         // let _ = t
         //     .as_ref()
         //     .inspect(|t| println!("    Solved {} => {}", var, t));

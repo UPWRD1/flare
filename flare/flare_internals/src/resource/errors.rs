@@ -242,7 +242,7 @@ impl std::fmt::Display for GeneralErr {
             ReportKind::Error,
             (self.filename.clone(), self.label.1.into_range()),
         )
-        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte).with_label_attach(ariadne::LabelAttach::End))
+        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte).with_label_attach(ariadne::LabelAttach::Middle))
         .with_message(&self.msg)
         .with_label(
             Label::new((self.filename.clone(), self.label.1.into_range()))
