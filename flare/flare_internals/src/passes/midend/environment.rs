@@ -3,6 +3,7 @@ use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
+use std::f32::consts::E;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -207,6 +208,8 @@ macro_rules! quantifier {
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum Entry {
+    Root,
+    Filename(String),
     Package {
         name: Spanned<Expr>,
         file: PathBuf,
@@ -214,6 +217,7 @@ pub enum Entry {
         src: String,
     },
     Struct {
+        parent: Quantifier,
         name: Spanned<Expr>,
         ty: Option<Ty>,
         fields: Vec<(Spanned<Expr>, OptSpanned<Ty>)>,
@@ -238,11 +242,13 @@ impl Ord for Entry {
             Entry::Package { .. } => 0,
             Entry::Struct { .. } => 1,
             Entry::Let { .. } => 2,
+            Entry::Root | Entry::Filename(_)=> panic!("Root should not be compared!"),
         };
         let right_order = match other {
             Entry::Package { .. } => 0,
             Entry::Struct { .. } => 1,
             Entry::Let { .. } => 2,
+            Entry::Root | Entry::Filename(_)=> panic!("Root should not be compared!"),
         };
         left_order.cmp(&right_order)
     }
@@ -255,20 +261,37 @@ impl Entry {
             _ => None,
         }
     }
+
+    pub fn get_parent(&self) -> Option<&Quantifier> {
+        match self {
+            Entry::Let { parent, .. } => Some(parent),
+            Entry::Struct { parent, .. } => Some(parent),
+            _ => None,
+        }
+    }
+
+    pub fn get_file(&self) -> Option<&PathBuf> {
+        match self {
+            Entry::Package { file, .. } => Some(file),
+            _ => None,
+        }
+    }
 }
 
 impl Display for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Entry::Package { name, .. } => write!(f, "{}", name.value().get_ident().unwrap()),
-            Entry::Struct { name, fields, .. } => write!(f, "{}: {{{}}}", name.value().get_ident().unwrap(), fields.iter().map(|(n, t)| format!("{}", t.t)).collect::<Vec<_>>().join(" * ")),
+            Entry::Package { name, .. } => write!(f, "{}", name.0.get_ident().unwrap()),
+            Entry::Struct { name, fields, .. } => write!(f, "{}: {{{}}}", name.0.get_ident().unwrap(), fields.iter().map(|(n, t)| format!("{}", t.t)).collect::<Vec<_>>().join(" * ")),
             Entry::Let { name, sig, .. } => {
                 if let Some(sig) = sig {
-                    write!(f, "{}: {}", name.value().get_ident().unwrap(), sig)
+                    write!(f, "{}: {}", name.0.get_ident().unwrap(), sig)
                 } else {
-                    write!(f, "{}: ?", name.value().get_ident().unwrap())
+                    write!(f, "{}: ?", name.0.get_ident().unwrap())
                 }
-            }
+            },
+            Entry::Filename(n) => write!(f, "File {}", n),
+            Entry::Root => write!(f, "Root"),
         }
     }
 }
@@ -303,7 +326,7 @@ impl Environment {
         let mut current_parent = Quantifier::End;
         for package in p.packages {
             let the_package_name =
-                quantifier!(Root, Package(package.0.name.value().get_ident().unwrap()), End);
+                quantifier!(Root, Package(package.0.name.0.get_ident().unwrap()), End);
 
             current_parent = the_package_name;
 
@@ -317,18 +340,18 @@ impl Environment {
                     Definition::Struct(StructDef { name, fields }) => {
                         let q = current_parent
                             .append(Quantifier::Type(
-                                name.value().get_ident().unwrap(),
+                                name.0.get_ident().unwrap(),
                                 Rc::new(Quantifier::End),
                             ))
                             .into_simple();
                         env.insert(
                         q,
-                        RefCell::from(Entry::Struct { name: name.clone(), fields, ty: Some(Ty::User(name.into(), vec![]) )}).into(),
+                        RefCell::from(Entry::Struct { name: name.clone(), parent: current_parent.clone(), fields, ty: Some(Ty::User(name.into(), vec![]) )}).into(),
                     );}
                     Definition::Let(name, body, ty) => env.insert(
                         current_parent
                             .append(Quantifier::Func(
-                                name.value().get_ident().unwrap(),
+                                name.0.get_ident().unwrap(),
                                 Rc::new(Quantifier::End),
                             ))
                             .into_simple(),
@@ -415,7 +438,7 @@ impl Environment {
 
 fn build_import(deps: &mut Vec<Spanned<Expr>>, import_item: crate::resource::rep::ImportItem) {
     for import in import_item.items {
-        match import.value() {
+        match import.0 {
             Expr::Ident(ref _name) => deps.push(import),
             //Expr::FieldAccess(l, r) => deps.push(),
             _ => panic!("Import path must be identifiers"),

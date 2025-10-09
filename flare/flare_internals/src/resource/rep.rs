@@ -1,49 +1,89 @@
 use std::{hash::Hash, path::PathBuf};
 
-use chumsky::span::SimpleSpan;
+use chumsky::span::{SimpleSpan, Span};
 use ordered_float::OrderedFloat;
 
-//pub type Spanned<T> = (T, SimpleSpan<usize>);
-#[derive(Debug, Clone)]
-pub struct Spanned<T>(T, SimpleSpan<usize>);
+use crate::passes::midend::environment::SimpleQuant;
 
-impl<T> Spanned<T> {
-    pub fn new(t: T, span: SimpleSpan<usize>) -> Self {
-        Spanned(t, span)
-    }
+pub type FileID = u64;
 
-    pub fn value(&self) -> &T {
-        &self.0
-    }
-
-    pub fn span(&self) -> &SimpleSpan<usize> {
-        &self.1
-    }
-}
-
-impl<T> Hash for Spanned<T>
-where
-    T: Hash,
-{
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
-    }
-}
-
-impl<T: PartialEq> PartialEq for Spanned<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
+pub type Spanned<T> = (T, SimpleSpan<usize, FileID>);
+//#[derive(Debug, Clone, Copy)]
+//pub struct Spanned<T>(T, SimpleSpan<usize>);
+//pub struct Spanned<T>(T, SimpleSpan<usize, FileID>);
 
 
-impl<T: Eq> Eq for Spanned<T> {}
+
+// #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+// pub struct MySpan {
+//     pub start: usize,
+//     pub end: usize,
+//     pub context: &'static str,
+// }
+
+// impl Span for MySpan {
+//     type Context = &'static str;
+//     type Offset = usize;
+
+//     fn new(context: impl Into<&str>, range: std::ops::Range<Self::Offset>) -> Self {
+//         let converted = Box::leak(Box::new(context.into()));
+//         MySpan {
+//             start: range.start,
+//             end: range.end,
+//             context: converted,
+//         }
+//     }
+//     fn start(&self) -> usize {
+//         self.start
+//     }
+
+//     fn end(&self) -> usize {
+//         self.end
+//     }
+
+//     fn context(&self) -> &'static str {
+//         self.context
+//     }
+// }
+
+
+// impl<T> Spanned<T> {
+//     pub fn new(t: T, ctx: FileID, span: impl Span) -> Self {
+//         Self(t, SimpleSpan::new(ctx, span.start()..span.end()))
+//     }
+
+//     pub fn value(&self) -> &T {
+//         &self.0
+//     }
+
+//     pub fn span(&self) -> &SimpleSpan<usize, FileID> {
+//         &self.1
+//     }
+// }
+
+// impl<T> Hash for Spanned<T>
+// where
+//     T: Hash,
+// {
+//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+//         self.0.hash(state);
+//     }
+// }
+
+// impl<T: PartialEq> PartialEq for Spanned<T> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.0 == other.0
+//     }
+// }
+
+
+// impl<T: Eq> Eq for Spanned<T> {}
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OptSpanned<T> {
     pub t: T,
-    pub span: Option<SimpleSpan<usize>>,
+    pub span: Option<SimpleSpan<usize, u64>>,
 }
 
 impl<T> From<Spanned<T>> for OptSpanned<T> {
@@ -55,15 +95,10 @@ impl<T> From<Spanned<T>> for OptSpanned<T> {
     }
 }
 
-impl<T> From<OptSpanned<T>> for Spanned<T> {
-    fn from(value: OptSpanned<T>) -> Self {
-        //(value.0, value.1.unwrap_or(SimpleSpan::new(0, 0)))
-        Spanned::new(value.t, value.span.expect("Shouldn't Happen!"))
-    }
-}
+
 
 impl<T> OptSpanned<T> {
-    pub fn new(t: T, span: Option<SimpleSpan<usize>>) -> Self {
+    pub fn new(t: T, span: Option<SimpleSpan<usize, u64>>) -> Self {
         OptSpanned { t, span }
     }
 }
@@ -189,6 +224,7 @@ impl Expr {
 pub struct StructDef {
     pub name: Spanned<Expr>,
     pub fields: Vec<(Spanned<Expr>, OptSpanned<Ty>)>,
+    //pub generics: Vec<Spanned<Expr>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

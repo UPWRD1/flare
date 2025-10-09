@@ -1,10 +1,19 @@
 
+use std::ops::Range;
+
+use chumsky::extra::Full;
+use chumsky::extra::SimpleState;
 use chumsky::input::BorrowInput;
+use chumsky::input::SliceInput;
+use chumsky::input::StrInput;
+use chumsky::input::ValueInput;
 use chumsky::pratt::*;
 use chumsky::prelude::*;
+use chumsky::span::Span;
 use ordered_float::OrderedFloat;
 
 use crate::resource::rep::ComparisonOp;
+use crate::resource::rep::FileID;
 use crate::resource::rep::PrimitiveType;
 use crate::resource::{
     errors::{
@@ -14,6 +23,7 @@ use crate::resource::{
         Pattern, PatternAtom, Ty, Definition, Expr, ImportItem, Package, Spanned, StructDef
     }
 };
+
 
 /// Type representing the tokens produced by the lexer. Is private, since tokens are only used in the first stage of parsing.
 #[derive(Debug, Clone, PartialEq)]
@@ -136,14 +146,20 @@ impl std::fmt::Display for Token<'_> {
     }
 }
 
+
 /// The primary lexer function.
-fn lexer<'src>(
-) -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char>>> {
+fn lexer<'src, I,>() -> impl Parser<'src, I, Vec<(Token<'src>, SimpleSpan<usize, u64>)>, extra::Full<Rich<'src, char, SimpleSpan<usize, ()>>, SimpleState<u64>, () >/*extra::Err<Rich<'src, char>>*/>  
+    //where I:  BorrowInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + StrInput<'src> + SliceInput<'src>,
+    where I: ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + SliceInput<'src, Slice = &'src str, Span = SimpleSpan<usize, ()>> + StrInput<'src, Span = SimpleSpan<usize, ()>>,
+        
+
+    //where I: str
+    {
     let comment = just("#")
         .then_ignore(any().and_is(just('\n').not()).repeated())
         .labelled("comment")
         .padded();
-    recursive(|token| {
+    recursive( |token| {
         choice((
             text::ident().map(|s| match s {
                 "else" => Token::Else,
@@ -216,30 +232,31 @@ fn lexer<'src>(
                 .as_context()
                 .map(Token::Parens),
         ))
-        .map_with(|t, e| Spanned::new(t, e.span()))
+        .map_with( |t, e: &mut chumsky::input::MapExtra<'src, '_, I, extra::Full<Rich<'src, char, SimpleSpan<usize, ()>>, SimpleState<u64>, () >>|{  (t, SimpleSpan::new(e.state().clone(), e.span().into_range()))})
     })
     .padded_by(comment.repeated())
     .padded()
     .repeated()
-    .collect()
+    .collect().boxed()
 }
 
 /// The main parser function.
 fn parser<'tokens, 'src: 'tokens, I, M>(
+    fid: FileID,
     make_input: M,
-) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan>>>
+) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>>>
 where
-    I: BorrowInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
+    I: BorrowInput<'tokens, Token = Token<'src>, Span = SimpleSpan<usize, FileID>>,
     // Because this function is generic over the input type, we need the caller to tell us how to create a new input,
     // `I`, from a nested token tree. This function serves that purpose.
-    M: Fn(SimpleSpan, &'tokens [Spanned<Token<'src>>]) -> I + Clone + 'src,
+    M: Fn(SimpleSpan<usize, FileID>, &'tokens [Spanned<Token<'src>>]) -> I + Clone + 'src,
 {
     // Basic tokens
 
     //    let whitespace = select_ref! { Token::Whitespace => () }.ignored();
 
     let ident = select_ref! { Token::Ident(x) => *x }
-        .map_with(|x, e| Spanned::new(Expr::Ident(x.to_string()), e.span()));
+        .map_with(|x, e| (Expr::Ident(x.to_string()),  e.span()));
 
     let ty = recursive(|ty| {
         let type_list = ty.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>();
@@ -247,26 +264,26 @@ where
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
         ident.pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                Spanned::new(Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                (Expr::FieldAccess(Box::new(x), Box::new(y)),  e.span())
             }).boxed()]).or(ident).memoized();
         choice((
                         // Primitive Types
-            just(Token::TyNum).map_with(|_, e| Spanned::new(Ty::Primitive(PrimitiveType::Num), e.span()).into()),
-            just(Token::TyStr).map_with(|_, e| Spanned::new(Ty::Primitive(PrimitiveType::Str), e.span()).into()),
-            just(Token::TyBool).map_with(|_, e| Spanned::new(Ty::Primitive(PrimitiveType::Bool), e.span()).into()),
-            just(Token::TyUnit).map_with(|_, e| Spanned::new(Ty::Primitive(PrimitiveType::Unit), e.span()).into()),
+            just(Token::TyNum).map_with(|_, e| (Ty::Primitive(PrimitiveType::Num),  e.span()).into()),
+            just(Token::TyStr).map_with(|_, e| (Ty::Primitive(PrimitiveType::Str),  e.span()).into()),
+            just(Token::TyBool).map_with(|_, e| (Ty::Primitive(PrimitiveType::Bool), e.span()).into()),
+            just(Token::TyUnit).map_with(|_, e| (Ty::Primitive(PrimitiveType::Unit),  e.span()).into()),
 
             // User Types
-            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| Spanned::new(Ty::User(name.into(), generics.unwrap_or_default()), e.span()).into()),
+            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name.into(), generics.unwrap_or_default()),  e.span()).into()),
             // Arrow Type
             //ty.clone()
             // Generic Type
-            just(Token::Question).ignore_then(ident).map_with(|name, e| Spanned::new(Ty::Generic(name.into()), e.span()).into()),
+            just(Token::Question).ignore_then(ident).map_with(|name, e| (Ty::Generic(name.into()),  e.span()).into()),
             // Tuple
-            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| {let len = types.len(); Spanned::new(Ty::Tuple(types, len), e.span())}.into()),
+            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| {let len = types.len(); (Ty::Tuple(types, len),  e.span())}.into()),
             
         )).pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-                Spanned::new(Ty::Arrow(Box::new(x), Box::new(y)), e.span()).into()
+                (Ty::Arrow(Box::new(x), Box::new(y)),  e.span()).into()
             })])
     });
 
@@ -276,28 +293,28 @@ where
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
         ident.pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                Spanned::new(Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                (Expr::FieldAccess(Box::new(x), Box::new(y)),  e.span())
             }).boxed()]).or(ident).memoized();
         choice((
             pat.clone().separated_by(just(Token::Comma)).collect::<Vec<Spanned<Pattern>>>().delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
-                .map_with(|p, e| Spanned::new(Pattern::Tuple(p), e.span())),
+                .map_with(|p, e| (Pattern::Tuple(p),  e.span())),
 
             path.then(pat.separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
                 .map_with(|(name, args), e| {
                     if let Some(args) = args {
-                        Spanned::new(Pattern::Variant(Box::new(name), args), e.span())
+                        (Pattern::Variant(Box::new(name), args),  e.span())
                     } else {
-                        Spanned::new(Pattern::Atom(PatternAtom::Variable(name.value().get_ident().unwrap())), e.span())
+                        (Pattern::Atom(PatternAtom::Variable(name.0.get_ident().unwrap())),  e.span())
                     }
                 }),
             //select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Pattern::Atom(PatternAtom::Variable(x.to_string())), e.span())),
                         // Numbers
             select_ref! { Token::Num(x) => OrderedFloat(*x) }
-.map_with(|x, e| Spanned::new(Pattern::Atom(PatternAtom::Num(x)), e.span())),            
+.map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),            
             // Strings
             select_ref! { Token::Strlit(x) => (*x).to_string() }
-.map_with(|x, e| Spanned::new(Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span()),            
+.map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span()),            
         )))
 
         
@@ -307,12 +324,12 @@ where
     // Expression parser
     let expression = recursive(|expr| {
         let rname = select_ref! { Token::Ident(x) => *x };
-        let ident = rname.map_with(|x, e| Spanned::new(Expr::Ident(x.to_string()), e.span()));
+        let ident = rname.map_with(|x, e| (Expr::Ident(x.to_string()),  e.span()));
         let path = 
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
         ident.pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
-                Spanned::new(Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                (Expr::FieldAccess(Box::new(x), Box::new(y)),  e.span())
             }).boxed()]).memoized();
         
         let atom =         recursive(|atom| {
@@ -320,17 +337,17 @@ where
             choice((
             // Numbers
             select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
-                .map_with(|x, e| Spanned::new(x, e.span())),
+                .map_with(|x, e| (x,  e.span())),
             
             // Strings
             select_ref! { Token::Strlit(x) => Expr::String((*x).to_string()) }
-                .map_with(|x, e| Spanned::new(x, e.span())),
+                .map_with(|x, e| (x,  e.span())),
             
             // True
-            just(Token::True).map_with(|_, e| Spanned::new(Expr::Bool(true), e.span())),
+            just(Token::True).map_with(|_, e| (Expr::Bool(true),  e.span())),
             
             // False
-            just(Token::False).map_with(|_, e| Spanned::new(Expr::Bool(false), e.span())),
+            just(Token::False).map_with(|_, e| (Expr::Bool(false),  e.span())),
 
             //path,
 
@@ -354,7 +371,7 @@ where
             path.clone().then(ident.then_ignore(just(Token::Eq)).then(expr.clone()).separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
                 .map_with(|(name, args), e| {
                     if let Some(args) = args {
-                        Spanned::new(Expr::FieldedConstructor(Box::new(name), args), e.span())
+                        (Expr::FieldedConstructor(Box::new(name), args),  e.span())
                     } else {
                         name
                     }
@@ -365,14 +382,14 @@ where
             path.clone().then(atom.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
                 .map_with(|(name, args), e| {
                     if let Some(args) = args {
-                        Spanned::new(Expr::Constructor(Box::new(name), args), e.span())
+                        (Expr::Constructor(Box::new(name), args),  e.span())
                     } else {
                         name
                     }
                 }).labelled("enum constructor"),
 
             
-            expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|items, e| Spanned::new(Expr::Tuple(items), e.span())).labelled("tuple").as_context(),
+            expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|items, e| (Expr::Tuple(items),  e.span())).labelled("tuple").as_context(),
 
             // let x = y in z
             just(Token::Let)
@@ -383,8 +400,9 @@ where
                 .then_ignore(just(Token::In))
                 .then(expr.clone())
                 .map_with(|((lhs, rhs), then), e| {
-                    Spanned::new(
-                        Expr::Let(Box::new(Spanned::new(Expr::Pat(lhs.clone()), *lhs.span())), Box::new(rhs), Box::new(then)),
+                    (
+                        Expr::Let(Box::new((Expr::Pat(lhs.clone()),  lhs.1)), Box::new(rhs), Box::new(then)),
+                        
                         e.span(),
                     )
                 }),
@@ -397,8 +415,9 @@ where
                 .then_ignore(just(Token::Else))
                 .then(expr.clone())
                 .map_with(|((test, then), otherwise), e| {
-                    Spanned::new(
+                    (
                         Expr::If(Box::new(test), Box::new(then), Box::new(otherwise)),
+                         
                         e.span(),
                     )
                 }).labelled("if expression").as_context(),
@@ -406,7 +425,7 @@ where
             // Match Expression
             just(Token::Match)
                 .ignore_then(expr.clone())
-                .then(just(Token::Pipe).ignore_then(pattern).then_ignore(just(Token::Then)).then(expr.clone()).map(|(p,e)| (p, Box::new(e))).repeated().collect::<Vec<_>>()).map_with(|(matchee, arms), e| {Spanned::new(Expr::Match(Box::new(matchee), arms), e.span())})
+                .then(just(Token::Pipe).ignore_then(pattern).then_ignore(just(Token::Then)).then(expr.clone()).map(|(p,e)| (p, Box::new(e))).repeated().collect::<Vec<_>>()).map_with(|(matchee, arms), e| {(Expr::Match(Box::new(matchee), arms),  e.span())})
         ))}).boxed()  ;
         //.memoized();
 
@@ -416,7 +435,7 @@ where
             // fn x y = z
             just(Token::Fn).ignore_then(ident.repeated().foldr_with(
                 just(Token::FatArrow).ignore_then(expr.clone()),
-                |arg, body, e| Spanned::new(Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
             )),
             // ( x )
             expr.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
@@ -424,37 +443,37 @@ where
         .pratt(vec![
             // Multiply
             infix(left(8), just(Token::Asterisk), |x, _, y, e| {
-                Spanned::new(Expr::Mul(Box::new(x), Box::new(y)), e.span())
+                (Expr::Mul(Box::new(x), Box::new(y)),  e.span())
             })
             .boxed(),
             // Divide
             infix(left(8), just(Token::Slash), |x, _, y, e| {
-                Spanned::new(Expr::Div(Box::new(x), Box::new(y)), e.span())
+                (Expr::Div(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Add
             infix(left(7), just(Token::Plus), |x, _, y, e| {
-                Spanned::new(Expr::Add(Box::new(x), Box::new(y)), e.span())
+                (Expr::Add(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Subtract
             infix(left(7), just(Token::Minus), |x, _, y, e| {
-                Spanned::new(Expr::Sub(Box::new(x), Box::new(y)), e.span())
+                (Expr::Sub(Box::new(x), Box::new(y)),  e.span())
             })
             .boxed(),
 
             infix(left(5), select_ref! { Token::ComparisonOp(c) => *c }, |left, op, right, e| {
-                Spanned::new(Expr::Comparison(Box::new(left), op, Box::new(right)), e.span())
+                (Expr::Comparison(Box::new(left), op, Box::new(right)), e.span())
             })
             .boxed(),
             // Calls
             infix(left(9), empty(), |func, _, arg, e| {
-                Spanned::new(Expr::Call(Box::new(func), Box::new(arg)), e.span())
+                (Expr::Call(Box::new(func), Box::new(arg)),  e.span())
             })
             .boxed(),
             // Field Access
             infix(left(10), just(Token::Dot), |x, _, y, e| {
-                Spanned::new(Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                (Expr::FieldAccess(Box::new(x), Box::new(y)),  e.span())
             }).boxed(),
         ])
         .labelled("expression")
@@ -478,7 +497,7 @@ where
             .then(
                 ident.repeated().foldr_with(
                 just(Token::Eq).ignore_then(expression.clone()),
-                |arg, body, e| Spanned::new(Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
             ))
             .map(|((name, ty), value)| Definition::Let(name, value, ty));
         
@@ -490,6 +509,7 @@ where
 
         let struct_def = just(Token::Struct)
             .ignore_then(ident)
+            //.then(ident.separated_by(just(Token::Comma)).delimited_by(just(Token::LBracket), just(Token::RBracket)).collect::<Vec<_>>())
             .then_ignore(just(Token::Eq))
             .then(
                 struct_field
@@ -538,18 +558,30 @@ where
         .then_ignore(end())
 }
 
+pub trait AnnotateRange {
+    fn annotate(&self, id: FileID) -> SimpleSpan<usize, u64>;
+}
+
+impl AnnotateRange for SimpleSpan<usize, ()> {
+    fn annotate(&self, id: FileID) -> SimpleSpan<usize, u64> {
+        SimpleSpan::new(id, self.into_range())
+    }
+}
+
 /// Legacy helper function for the parser's error handlings
-fn parse_failure(err: &Rich<impl std::fmt::Display>, src: &str) -> DynamicErr {
+fn parse_failure<T>(err: &Rich<'_, impl std::fmt::Display, &impl AnnotateRange>, src: &str, fid: FileID) -> DynamicErr where T: std::fmt::Display {
+
     DynamicErr::new(err.reason().to_string())
         .label((
             err.found()
                 .map(|c| c.to_string())
                 .unwrap_or_else(|| "end of input".to_string()),
-            *err.span(),
+            err.span().annotate(fid),
+            //err.span()
         ))
         .extra_labels(
             err.contexts()
-                .map(|(l, s)| (format!("while parsing this {l}"), *s))
+                .map(|(l, s)| (format!("while parsing this {l}"), s.annotate(fid)))
                 .collect(),
         )
         .src(src.to_string())
@@ -557,32 +589,34 @@ fn parse_failure(err: &Rich<impl std::fmt::Display>, src: &str) -> DynamicErr {
 
 /// Compiler black magic function that transforms the token vector into a parsable item.
 fn make_input<'src>(
-    eoi: SimpleSpan,
-    toks: &'src [Spanned<Token<'src>>],
-) -> impl BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan> {
+    eoi: SimpleSpan<usize, FileID>,
+    toks: &'src [(Token<'src>, SimpleSpan<usize, FileID>)],
+) -> impl BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan<usize, FileID>> {
     //toks.map(eoi, |(t, s)| (t, s))
-    toks.map(eoi, |s| (s.value(), s.span()))
+    toks.map(eoi, |(t, s)| (t, s))
 
 }
 
+
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(input: &str) -> CompResult<Package> {
+pub fn parse(input: &str, fid: FileID) -> CompResult<Package> {
     let tokens = match lexer().parse(input).into_result() {
         Ok(tokens) => tokens,
-        Err(errs) => return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], input)).into()),
+        Err(errs) => return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], input, fid)).into()),
     };
 
     //dbg!(&tokens);
 
-    let packg = match parser(make_input)
-        .parse(make_input((0..input.len()).into(), &tokens))
+    let packg = match parser(fid.clone(), make_input)
+        .parse(make_input(SimpleSpan::new(fid, 0..input.len()), &tokens))
         .into_result()
     {
         Ok(p) => Ok(p),
         Err(e) => {
             Err(CompilerErrKind::Dynamic(parse_failure(
-                e.first().unwrap(),
+                e.first().unwrap(), //SimpleSpan::new(fid, e.first().unwrap().span()),
                 input,
+                fid,
             )))
             // let errors = e
             //     .iter()

@@ -13,6 +13,9 @@ pub trait ReportableError {
 pub struct CompilerErr(Box<CompilerErrKind>);
 
 use std::fmt::Display;
+
+use crate::resource::rep::FileID;
+
 impl Display for CompilerErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
@@ -97,8 +100,8 @@ impl From<std::io::Error> for CompilerErrKind {
 pub struct DynamicErr {
     msg: String,
     filename: Option<String>,
-    label: Option<(String, SimpleSpan)>,
-    extra_labels: Option<Vec<(String, SimpleSpan)>>,
+    label: Option<(String, SimpleSpan<usize,FileID>)>,
+    extra_labels: Option<Vec<(String, SimpleSpan<usize, FileID>)>>,
     src: Option<String>,
 }
 
@@ -113,14 +116,14 @@ impl DynamicErr {
         }
     }
 
-    pub fn label(self, label: (String, SimpleSpan)) -> Self {
+    pub fn label(self, label: (String, SimpleSpan<usize, FileID>)) -> Self {
         Self {
             label: Some(label),
             ..self
         }
     }
 
-    pub fn extra_labels(self, extra_labels: Vec<(String, SimpleSpan)>) -> Self {
+    pub fn extra_labels(self, extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>) -> Self {
         Self {
             extra_labels: Some(extra_labels),
             ..self
@@ -153,7 +156,7 @@ impl From<DynamicErr> for GeneralErr {
         GeneralErr {
             msg: value.msg,
             filename: value.filename.unwrap_or("".to_string()),
-            label: value.label.unwrap_or(("here".to_string(), SimpleSpan::from(0..0))),
+            label: value.label.unwrap_or(("here".to_string(), SimpleSpan::new(0..0, FileID(0)))),
             extra_labels: value.extra_labels.unwrap_or_default(),
             src: value.src.unwrap_or("".to_string()),
         }
@@ -198,8 +201,8 @@ impl From<DynamicErr> for GeneralErr {
 pub struct GeneralErr {
     filename: String,
     msg: String,
-    label: (String, SimpleSpan),
-    extra_labels: Vec<(String, SimpleSpan)>,
+    label: (String, SimpleSpan<usize, FileID>),
+    extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
 
     src: String,
 }

@@ -2,7 +2,7 @@
 pub mod passes;
 pub mod resource;
 
-use std::{fs::File, io::Read, path::{Path, PathBuf}};
+use std::{collections::HashMap, fs::File, hash::{Hash, Hasher}, io::Read, path::{Path, PathBuf}};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -14,27 +14,34 @@ use crate::{
     },
     resource::{
         errors::CompResult,
-        rep::{Package, Program},
+        rep::{FileID, Package, Program},
     },
 };
 
 //use crate::root::resource::tk::{Tk, Token};
 
 pub struct Context {
-    pub env: Environment,
+    pub filectx: HashMap<FileID, PathBuf>,
 }
 
-pub fn parse_file(src_path: &PathBuf) -> CompResult<(Package, String)> {
+pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, String)> {
     let mut src_string = String::new();
 
-    let mut src = File::open(src_path)?;
+    let mut src = File::open(&ctx.filectx.get(&id).unwrap())?;
     src.read_to_string(&mut src_string)?;
-    let res = parser::parse(&src_string).map_err(|e| e.get_dyn().src(&src_string))?; //TODO: handle errors properly
+    let res = parser::parse(&src_string, id).map_err(|e| e.get_dyn().src(&src_string))?; //TODO: handle errors properly
 
     Ok((res, src_string))
 }
 
-pub fn parse_program(src_path: &Path) -> CompResult<Program> {
+pub fn convert_path_to_id(path: &Path) -> FileID {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    path.canonicalize().unwrap().hash(&mut hasher);
+    hasher.finish()
+}
+
+pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
+    let src_path = ctx.filectx.get(&id).unwrap();
     let path = src_path.canonicalize().unwrap();
     let parent_dir = path.parent().unwrap();
     let dir_contents = std::fs::read_dir(parent_dir)?
@@ -44,7 +51,7 @@ pub fn parse_program(src_path: &Path) -> CompResult<Program> {
 
     let processed: Vec<CompResult<(Package, PathBuf, String)>> = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();
-        let (pack, str) = parse_file(&file_path)
+        let (pack, str) = parse_file(&ctx, convert_path_to_id(&file_path))
             .map_err(|e| {
                 e.get_dyn()
                     .filename(file_path.file_name().unwrap().to_str().unwrap())
@@ -62,7 +69,13 @@ pub fn parse_program(src_path: &Path) -> CompResult<Program> {
 }
 
 pub fn compile_program(src_path: &Path) -> CompResult<Program> {
-    let program = parse_program(src_path)?;
+    let id = convert_path_to_id(src_path);
+    let ctx = Context {
+        filectx: vec![(id, src_path.to_path_buf())]
+            .into_iter()
+            .collect(),
+    };
+    let program = parse_program(&ctx, id)?;
     //dbg!(program.clone());
     //dbg!(program.clone());
     let e = Environment::build(program.clone())?;
