@@ -1,11 +1,9 @@
-use chumsky::span::SimpleSpan;
 use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
 
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
     fmt::{Debug, Display},
@@ -16,14 +14,10 @@ use std::{
 
 use crate::passes::midend::typechecking::Solver;
 //use crate::passes::midend::typechecking::Ty;
-use crate::resource::errors::CompResult;
-use crate::resource::rep::Definition;
-use crate::resource::rep::Expr;
-use crate::resource::rep::OptSpanned;
-use crate::resource::rep::Program;
-use crate::resource::rep::Spanned;
-use crate::resource::rep::StructDef;
-use crate::resource::rep::Ty;
+use crate::resource::{
+    errors::CompResult,
+    rep::{Definition, Expr, OptSpanned, Program, Spanned, StructDef, Ty},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
@@ -132,41 +126,41 @@ impl Quantifier {
     }
 }
 
-impl Display for Quantifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Quantifier::Root(quantifier) => {
-                //f.write_str("Root, ")?;
-                Display::fmt(quantifier, f)
-            }
-            Quantifier::Package(n, quantifier) => {
-                f.write_str(&format!("Module {n}, "))?;
-                Display::fmt(quantifier, f)
-            }
-            Quantifier::Type(n, quantifier) => {
-                f.write_str(&format!("Type {n}, "))?;
-                Display::fmt(quantifier, f)
-            }
-            Quantifier::Effect(n, quantifier) => {
-                f.write_str(&format!("Effect {n}, "))?;
-                Display::fmt(quantifier, f)
-            }
+// impl Display for Quantifier {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             Quantifier::Root(quantifier) => {
+//                 //f.write_str("Root, ")?;
+//                 Display::fmt(quantifier, f)
+//             }
+//             Quantifier::Package(n, quantifier) => {
+//                 f.write_str(&format!("Module {n}, "))?;
+//                 Display::fmt(quantifier, f)
+//             }
+//             Quantifier::Type(n, quantifier) => {
+//                 f.write_str(&format!("Type {n}, "))?;
+//                 Display::fmt(quantifier, f)
+//             }
+//             Quantifier::Effect(n, quantifier) => {
+//                 f.write_str(&format!("Effect {n}, "))?;
+//                 Display::fmt(quantifier, f)
+//             }
 
-            Quantifier::Func(n, quantifier) => {
-                f.write_str(&format!("Function {n}, "))?;
-                Display::fmt(quantifier, f)
-            }
-            Quantifier::Variable(n) => {
-                f.write_str(&format!("Variable {n}, "))?;
-                Ok(())
-            }
-            Quantifier::End => {
-                //f.write_str(&format!("End"))?;
-                Ok(())
-            }
-        }
-    }
-}
+//             Quantifier::Func(n, quantifier) => {
+//                 f.write_str(&format!("Function {n}, "))?;
+//                 Display::fmt(quantifier, f)
+//             }
+//             Quantifier::Variable(n) => {
+//                 f.write_str(&format!("Variable {n}, "))?;
+//                 Ok(())
+//             }
+//             Quantifier::End => {
+//                 //f.write_str(&format!("End"))?;
+//                 Ok(())
+//             }
+//         }
+//     }
+// }
 
 #[macro_export]
 macro_rules! quantifier {
@@ -224,6 +218,11 @@ pub enum Entry {
         sig: Option<Ty>,
         body: Spanned<Expr>,
     },
+    Extern {
+        parent: Quantifier,
+        name: Spanned<Expr>,
+        sig: Ty,
+    },
 }
 
 impl PartialOrd for Entry {
@@ -238,11 +237,13 @@ impl Ord for Entry {
             Entry::Package { .. } => 0,
             Entry::Struct { .. } => 1,
             Entry::Let { .. } => 2,
+            Entry::Extern { .. } => 3,
         };
         let right_order = match other {
             Entry::Package { .. } => 0,
             Entry::Struct { .. } => 1,
             Entry::Let { .. } => 2,
+            Entry::Extern { .. } => 3,
         };
         left_order.cmp(&right_order)
     }
@@ -252,6 +253,7 @@ impl Entry {
     pub fn get_sig(&self) -> Option<&Ty> {
         match self {
             Entry::Let { sig, .. } => sig.as_ref(),
+            Entry::Extern { sig, .. } => Some(sig),
             _ => None,
         }
     }
@@ -261,13 +263,25 @@ impl Display for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Entry::Package { name, .. } => write!(f, "{}", name.value().get_ident().unwrap()),
-            Entry::Struct { name, fields, .. } => write!(f, "{}: {{{}}}", name.value().get_ident().unwrap(), fields.iter().map(|(n, t)| format!("{}", t.t)).collect::<Vec<_>>().join(" * ")),
+            Entry::Struct { name, fields, .. } => write!(
+                f,
+                "{}: {{{}}}",
+                name.value().get_ident().unwrap(),
+                fields
+                    .iter()
+                    .map(|(_, t)| format!("{}", t.t))
+                    .collect::<Vec<_>>()
+                    .join(" * ")
+            ),
             Entry::Let { name, sig, .. } => {
                 if let Some(sig) = sig {
                     write!(f, "{}: {}", name.value().get_ident().unwrap(), sig)
                 } else {
                     write!(f, "{}: ?", name.value().get_ident().unwrap())
                 }
+            }
+            Entry::Extern { name, sig, .. } => {
+                write!(f, "extern {}: {}", name.value().get_ident().unwrap(), sig)
             }
         }
     }
@@ -302,8 +316,11 @@ impl Environment {
         let mut env: TrieBuilder<SimpleQuant, Rc<RefCell<Entry>>> = TrieBuilder::new();
         let mut current_parent = Quantifier::End;
         for package in p.packages {
-            let the_package_name =
-                quantifier!(Root, Package(package.0.name.value().get_ident().unwrap()), End);
+            let the_package_name = quantifier!(
+                Root,
+                Package(package.0.name.value().get_ident().unwrap()),
+                End
+            );
 
             current_parent = the_package_name;
 
@@ -322,9 +339,15 @@ impl Environment {
                             ))
                             .into_simple();
                         env.insert(
-                        q,
-                        RefCell::from(Entry::Struct { name: name.clone(), fields, ty: Some(Ty::User(name.into(), vec![]) )}).into(),
-                    );}
+                            q,
+                            RefCell::from(Entry::Struct {
+                                name: name.clone(),
+                                fields,
+                                ty: Some(Ty::User(name.into(), vec![])),
+                            })
+                            .into(),
+                        );
+                    }
                     Definition::Let(name, body, ty) => env.insert(
                         current_parent
                             .append(Quantifier::Func(
@@ -340,6 +363,23 @@ impl Environment {
                         })
                         .into(),
                     ),
+                    Definition::Extern(n, ty) => {
+                        let q = current_parent
+                            .append(Quantifier::Func(
+                                n.value().get_ident().unwrap(),
+                                Rc::new(Quantifier::End),
+                            ))
+                            .into_simple();
+                        env.insert(
+                            q.clone(),
+                            RefCell::from(Entry::Extern {
+                                parent: current_parent.clone(),
+                                name: n,
+                                sig: ty.t,
+                            })
+                            .into(),
+                        )
+                    }
                 }
             }
 
@@ -381,7 +421,11 @@ impl Environment {
         //println!("Checking {:?}", entry);
         //match *entry.borrow_mut() {
 
-        match *if let Ok(e) = entry.try_borrow_mut() {e} else {return Ok(entry)} {
+        match *if let Ok(e) = entry.try_borrow_mut() {
+            e
+        } else {
+            return Ok(entry);
+        } {
             Entry::Let {
                 ref mut sig,
                 ref body,

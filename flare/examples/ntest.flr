@@ -1,25 +1,13 @@
-package Main = 
-    let factorial x =
-        if x == 0 then
-	        1
-        else
-        	x + factorial (x - 1)
+package Main =
+    extern println: str -> unit
+    extern concat: str -> str -> str
+    extern display_num: num -> str
 
-	struct Person =
-		age: num,
-		name: str,
-		id: ID,
 
-	let new_person a name = 
-		Person {age = a, name = name, id = ID { uniquecode = factorial a } }
+    struct S =
+        d: str,
+        f: str -> num -> str
 
-	struct ID = 
-		uniquecode: num,
-
-	let f : num -> num -> num  x y =
-		x * y
-
-	let main = 
-		let john = Person {age = 3, name = "john", id = ID {uniquecode =  3}} in
-			let phillip = new_person 3 "phillip" in
-			factorial (f john.age phillip.age)
+    let main = 
+        let i = S {d = "Hello ", f = fn x y => concat x (display_num y)} in
+        i.f i.d 3

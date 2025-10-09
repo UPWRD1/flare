@@ -1,0 +1,38 @@
+package Main = 
+    let factorial x =
+        if x == 0 then
+	        1
+        else
+        	x + factorial (x - 1)
+
+	struct Person =
+		age: num,
+		name: str,
+		id: ID,
+
+	let new_person a name = 
+		Person {age = a, name = name, id = ID { uniquecode = factorial a } }
+
+	struct ID = 
+		uniquecode: num,
+
+	let f : num -> num -> num  x y =
+		x * y
+
+	let mutually_recursive1 x = 
+		if x > 0 then
+			mutually_recursive2 x - 1
+		else 
+			0
+
+	let mutually_recursive2 x =
+		if x > 0 then
+			mutually_recursive1 x - 1
+		else 
+			0
+
+
+	let main = 
+		let john = Person {age = 3, name = "john", id = ID {uniquecode =  3}} in
+			let phillip = new_person 3 "phillip" in
+			factorial (f john.age phillip.age)

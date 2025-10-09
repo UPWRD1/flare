@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
 
-use chumsky::{error::Simple, span::SimpleSpan};
+use chumsky::span::SimpleSpan;
 //use ptrie::Trie;
 //use token_trie::Trie;
 //use radix_trie::{Trie, TrieCommon};
@@ -88,7 +88,7 @@ impl fmt::Display for Ty {
                 crate::resource::rep::PrimitiveType::Unit => write!(f, "unit"),
             },
 
-            Ty::Tuple(t, s) => {
+            Ty::Tuple(t, _s) => {
                 write!(f, "{{")?;
                 for i in t {
                     write!(f, "{}, ", i.t)?
@@ -153,7 +153,7 @@ impl<'env> Solver<'env> {
                     self.create_ty(rty, r.span.unwrap_or(SimpleSpan::from(0..0))),
                 )
             }
-            Ty::User(n, g) => TyInfo::User(n.t.get_ident().unwrap_or("?".to_string()).leak()),
+            Ty::User(n, _g) => TyInfo::User(n.t.get_ident().unwrap_or("?".to_string()).leak()),
             _ => todo!("{:?}", t),
         }
     }
@@ -339,7 +339,7 @@ impl<'env> Solver<'env> {
                     if let Entry::Struct {
                         ref name,
                         ref mut fields,
-                        ref ty,
+                        ty: _,
                     } = *sty
                     {
                         if fields.len() != given_fields.len() {
@@ -392,6 +392,33 @@ impl<'env> Solver<'env> {
                         .into())
                 }
             }
+            Expr::ExternFunc(name) => {
+                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+                    .master_env
+                    .items
+                    .postfix_search(vec![name.last().unwrap().clone()])
+                    .collect();
+                dbg!(&search);
+                if let Some((_q, e)) = search.last() {
+                    if let Entry::Extern { ref sig, .. } = *e.borrow() {
+                        let converted = self.convert_ty(&sig);
+                        let out_ty = self.create_ty(converted, *expr.span());
+                        Ok(out_ty)
+                    } else {
+                        panic!("Should be an extern")
+                    }
+                } else {
+                    panic!("Should exist")
+                    // Err(DynamicErr::new(format!("No such struct '{name:?}'"))
+                    //     .filename("Type Error")
+                    //     .label((
+                    //         format!("{:?} not found in scope", *expr.value()),
+                    //         *expr.span(),
+                    //     ))
+                    //     //.src(self.src.to_string())
+                    //     .into())
+                }
+            }
             _ => todo!("Failed to check {:?}", *expr.value()),
         }
     }
@@ -429,7 +456,19 @@ impl<'env> Solver<'env> {
                 //dbg!("{:?}", e.clone())
                 Ok(fn_ty)
             } else {
+                if let Entry::Extern { ref sig, ref name, .. } = *fty {
+                    let (l, r) = sig.get_arrow();
+                    let converted_l = self.convert_ty(&l.t);
+                    let converted_r = self.convert_ty(&r.t);
+                    let lty = self.create_ty(converted_l, l.span.unwrap_or(SimpleSpan::from(*name.span())));
+                    let rty = self.create_ty(converted_r, r.span.unwrap_or(SimpleSpan::from(*name.span())));
+                    let fn_ty = self.create_ty(TyInfo::Func(lty, rty), *expr.span());
+                    //dbg!("{:?}", e.clone())
+                    return Ok(fn_ty)
+                } else {
                 panic!("Should be a function")
+
+                }
             }
 
             //e.get_sig()
