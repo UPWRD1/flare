@@ -19,9 +19,7 @@ pub fn typechecking_bench(c: &mut Criterion) {
         .collect::<Vec<_>>();
 
     let id: u64 = 0;
-    let ctx = Context {
-        filectx: Mutex::from(vec![(id, path)].into_iter().collect::<HashMap<_, _>>()).into(),
-    };
+    let ctx = Context::new(&path, id );
 
     let processed = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();
@@ -53,9 +51,8 @@ pub fn env_build_bench(c: &mut Criterion) {
         .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
         .collect::<Vec<_>>();
     let id: u64 = 0;
-    let ctx = Context {
-        filectx: Mutex::from(vec![(id, path)].into_iter().collect::<HashMap<_, _>>()).into(),
-    };
+    let ctx = Context::new(&path, id);
+
 
     let processed = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();

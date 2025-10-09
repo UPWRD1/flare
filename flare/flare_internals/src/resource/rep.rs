@@ -254,3 +254,8 @@ pub struct Program {
     pub packages: Vec<(Package, PathBuf, String)>,
 }
 
+#[derive(Debug, Clone)]
+pub struct FileSource {
+    pub filename: PathBuf,
+    pub src_text: String,
+}

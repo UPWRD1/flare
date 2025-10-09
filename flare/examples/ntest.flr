@@ -5,6 +5,7 @@ package Main =
     extern concat: str -> str -> str
     extern display_num: num -> str
 
+    let t x = id x
 
     struct S =
         d: str,
@@ -12,4 +13,5 @@ package Main =
 
     let main = 
         let i = S {d = "Hello ", f = fn x y => concat x (display_num y)} in
+        let f = factorial (t "asdf") in
         i.f i.d (factorial 3)

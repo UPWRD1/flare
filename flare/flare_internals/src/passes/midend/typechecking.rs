@@ -486,6 +486,7 @@ impl<'env> Solver<'env> {
         match self.vars[var.0].0 {
             TyInfo::Unknown => {
                 //panic!("cannot infer type {:?}, is Unknown", var)
+                
                 Err(
                     DynamicErr::new(format!("cannot infer type {:?}, is Unknown", var))
                         .label(("has unknown type".to_string(), self.vars[var.0].1))
