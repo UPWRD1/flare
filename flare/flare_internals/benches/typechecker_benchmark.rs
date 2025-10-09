@@ -23,7 +23,7 @@ pub fn typechecking_bench(c: &mut Criterion) {
 
     for entry in dir_contents {
         let file_path = entry.path();
-        let new_prog = parse_file(&file_path)
+        let new_prog = parse_file(ctx, &file_path)
             .map_err(|e| {
                 e.get_dyn()
                     .filename(file_path.file_name().unwrap().to_str().unwrap())
@@ -49,10 +49,15 @@ pub fn env_build_bench(c: &mut Criterion) {
         .filter_map(Result::ok)
         .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
         .collect::<Vec<_>>();
+    let ctx = Context {
+        filectx: vec![(id, path)]
+            .into_iter()
+            .collect(),
+    };
 
     let processed = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();
-        let (pack, str) = parse_file(&file_path)
+        let (pack, str) = parse_file(&ctx, &file_path)
             .map_err(|e| {
                 e.get_dyn()
                     .filename(file_path.file_name().unwrap().to_str().unwrap())

@@ -214,7 +214,7 @@ impl Expr {
             Expr::Access(ref expr) => expr.0.get_ident(),
             Expr::Call(ref func, _) => func.0.get_ident(),
             Expr::Lambda(ref arg, _) => arg.0.get_ident(),
-            Expr::Pat(p) => if let Pattern::Atom(PatternAtom::Variable(ref s)) = p.value() {Some(s.to_string())} else {None},
+            Expr::Pat(p) => if let Pattern::Atom(PatternAtom::Variable(ref s)) = p.0 {Some(s.to_string())} else {None},
             _ => None,
         }
     }

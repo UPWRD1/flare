@@ -427,7 +427,7 @@ impl<'env> Solver<'env> {
                 let lty = self.create_ty(converted_l, l.span.unwrap_or(SimpleSpan::from(name.1)));
                 let rty = self.create_ty(converted_r, r.span.unwrap_or(SimpleSpan::from(name.1)));
                 let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
-                //dbg!("{:?}", e.clone())
+                dbg!(&l);
                 Ok(fn_ty)
             } else {
                 panic!("Should be a function")
@@ -462,8 +462,8 @@ impl<'env> Solver<'env> {
             TyInfo::String => Ok(Ty::Primitive(PrimitiveType::Str)),
             TyInfo::Unit => Ok(Ty::Primitive(PrimitiveType::Unit)),
             TyInfo::Func(i, o) => Ok(Ty::Arrow(
-                Box::new(OptSpanned::new(self.solve(i)?, None)),
-                Box::new(OptSpanned::new(self.solve(o)?, None)),
+                Box::new(OptSpanned::new(self.solve(i)?, Some(self.vars[i.0].1))),
+                Box::new(OptSpanned::new(self.solve(o)?, Some(self.vars[o.0].1))),
             )),
             TyInfo::User(n) => {
                 let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
@@ -489,7 +489,7 @@ impl<'env> Solver<'env> {
             }
             TyInfo::Tuple(t, s) => {
                 let inner_ty = self.solve(t)?;
-                Ok(Ty::Tuple(vec![OptSpanned::new(inner_ty, None)], s))
+                Ok(Ty::Tuple(vec![OptSpanned::new(inner_ty, Some(self.vars[t.0].1))], s))
             }
         }
         .inspect(|t| println!("Solved {} => {}", var, t))

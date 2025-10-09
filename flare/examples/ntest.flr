@@ -1,7 +1,7 @@
 package Main =
-    struct Thunk = 
-        f: unit -> num
+    use {Math}
     
     let main = 
-        let t = Thunk { f = fn _ => "Hello world!"} in
-            t.f
+        let t = 3 in
+            factorial t
+        

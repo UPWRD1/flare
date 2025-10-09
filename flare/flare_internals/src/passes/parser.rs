@@ -244,9 +244,10 @@ fn lexer<'src, I,>() -> impl Parser<'src, I, Vec<(Token<'src>, SimpleSpan<usize,
 fn parser<'tokens, 'src: 'tokens, I, M>(
     fid: FileID,
     make_input: M,
-) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>>>
+) -> impl Parser<'tokens, I, Package, extra::Full<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>, SimpleState<u64>, () >>
+//) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>>>
 where
-    I: BorrowInput<'tokens, Token = Token<'src>, Span = SimpleSpan<usize, FileID>>,
+    I: BorrowInput<'tokens, Token = Token<'src>, Span = SimpleSpan<usize, FileID>,>,
     // Because this function is generic over the input type, we need the caller to tell us how to create a new input,
     // `I`, from a nested token tree. This function serves that purpose.
     M: Fn(SimpleSpan<usize, FileID>, &'tokens [Spanned<Token<'src>>]) -> I + Clone + 'src,
@@ -568,8 +569,14 @@ impl AnnotateRange for SimpleSpan<usize, ()> {
     }
 }
 
+impl AnnotateRange for SimpleSpan<usize, u64> {
+    fn annotate(&self, id: FileID) -> SimpleSpan<usize, u64> {
+        SimpleSpan::new(id, self.into_range())
+    }
+}
+
 /// Legacy helper function for the parser's error handlings
-fn parse_failure<T>(err: &Rich<'_, impl std::fmt::Display, &impl AnnotateRange>, src: &str, fid: FileID) -> DynamicErr where T: std::fmt::Display {
+fn parse_failure(err: &Rich<'_, impl std::fmt::Display, impl AnnotateRange>, src: &str, fid: FileID) -> DynamicErr  {
 
     DynamicErr::new(err.reason().to_string())
         .label((
@@ -600,7 +607,7 @@ fn make_input<'src>(
 
 /// Public parsing function. Produces a parse tree from a source string.
 pub fn parse(input: &str, fid: FileID) -> CompResult<Package> {
-    let tokens = match lexer().parse(input).into_result() {
+    let tokens = match lexer().parse_with_state(input, &mut SimpleState::from(0)).into_result() {
         Ok(tokens) => tokens,
         Err(errs) => return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], input, fid)).into()),
     };
@@ -608,7 +615,7 @@ pub fn parse(input: &str, fid: FileID) -> CompResult<Package> {
     //dbg!(&tokens);
 
     let packg = match parser(fid.clone(), make_input)
-        .parse(make_input(SimpleSpan::new(fid, 0..input.len()), &tokens))
+        .parse_with_state(make_input(SimpleSpan::new(fid, 0..input.len()), &tokens), &mut SimpleState::from(0))
         .into_result()
     {
         Ok(p) => Ok(p),

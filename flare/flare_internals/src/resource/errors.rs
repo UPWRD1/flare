@@ -2,7 +2,7 @@ use std::{io::Cursor, ops::Deref};
 
 use ariadne::{sources, Color, Label, Report, ReportKind};
 
-use chumsky::span::SimpleSpan;
+use chumsky::span::{SimpleSpan, Span};
 use thiserror::Error;
 
 pub type CompResult<T> = Result<T, CompilerErr>;
@@ -14,7 +14,7 @@ pub struct CompilerErr(Box<CompilerErrKind>);
 
 use std::fmt::Display;
 
-use crate::resource::rep::FileID;
+use crate::{resource::rep::FileID, Context};
 
 impl Display for CompilerErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -98,6 +98,7 @@ impl From<std::io::Error> for CompilerErrKind {
 
 #[derive(Debug, Error, Clone)]
 pub struct DynamicErr {
+    context: Option<Context>,
     msg: String,
     filename: Option<String>,
     label: Option<(String, SimpleSpan<usize,FileID>)>,
@@ -108,6 +109,7 @@ pub struct DynamicErr {
 impl DynamicErr {
     pub fn new(msg: impl Into<String>) -> Self {
         Self {
+            context: None,
             msg: msg.into(),
             filename: None,
             label: None,
@@ -143,6 +145,13 @@ impl DynamicErr {
             ..self
         }
     }
+
+    pub fn context(self, context: Context) -> Self {
+        Self {
+            context: Some(context),
+            ..self
+        }
+    }
 }
 
 impl std::fmt::Display for DynamicErr {
@@ -155,11 +164,12 @@ impl From<DynamicErr> for GeneralErr {
     fn from(value: DynamicErr) -> Self {
         GeneralErr {
             msg: value.msg,
-            filename: value.filename.unwrap_or("".to_string()),
-            label: value.label.unwrap_or(("here".to_string(), SimpleSpan::new(0..0, FileID(0)))),
+            filename: value.filename.unwrap_or("unknown".to_string()),
+            label: value.label.unwrap_or(("here".to_string(), SimpleSpan::new(0, 0..0))),
             extra_labels: value.extra_labels.unwrap_or_default(),
             src: value.src.unwrap_or("".to_string()),
         }
+
         // value.msg,
         // value.label.unwrap_or(("error".to_string(), SimpleSpan::new(0, 0))),
         // None,
@@ -232,7 +242,7 @@ impl std::fmt::Display for GeneralErr {
             ReportKind::Error,
             (self.filename.clone(), self.label.1.into_range()),
         )
-        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte).with_label_attach(ariadne::LabelAttach::End))
         .with_message(&self.msg)
         .with_label(
             Label::new((self.filename.clone(), self.label.1.into_range()))
