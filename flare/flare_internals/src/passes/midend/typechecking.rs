@@ -457,6 +457,14 @@ impl<'env> Solver<'env> {
                 let rty = self.create_ty(converted_r, r.1);
                 let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
                 Ok(fn_ty)
+            } else if let Entry::Extern{ref sig, ..} = *fty {
+                let (l, r) = sig.get_arrow();
+                let converted_l = self.convert_ty(&l.0);
+                let converted_r = self.convert_ty(&r.0);
+                let lty = self.create_ty(converted_l, l.1);
+                let rty = self.create_ty(converted_r, r.1);
+                let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
+                Ok(fn_ty)
             } else {
                 panic!("Should be a function")
             }
