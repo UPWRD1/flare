@@ -476,7 +476,7 @@ where
             infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (Expr::FieldAccess(Box::new(x), Box::new(y)),  e.span())
             }).boxed(),
-        ])
+        ]).boxed().memoized()
         .labelled("expression")
         .as_context()
     });

@@ -2,6 +2,7 @@ use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
+use log::{info, trace, warn};
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -472,7 +473,7 @@ impl Environment {
             }
             _ => (),
         }
-        //println!("Checked {}", entry.borrow());
+        info!("Checked {}", entry.borrow());
         Ok(entry)
     }
 }
