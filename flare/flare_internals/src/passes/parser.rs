@@ -4,6 +4,8 @@ use chumsky::pratt::*;
 use chumsky::prelude::*;
 use ordered_float::OrderedFloat;
 
+use crate::resource::rep::ComparisonOp;
+use crate::resource::rep::PrimitiveType;
 use crate::resource::{
     errors::{
         CompResult, CompilerErrKind, DynamicErr
@@ -39,6 +41,8 @@ enum Token<'src> {
     Plus,
     Minus,
 
+    ComparisonOp(ComparisonOp),
+
     LBrace,
     RBrace,
     LBracket,
@@ -62,6 +66,11 @@ enum Token<'src> {
     Then,
     True,
     Use,
+
+    TyNum,
+    TyStr,
+    TyBool,
+    TyUnit
 }
 
 impl std::fmt::Display for Token<'_> {
@@ -77,6 +86,14 @@ impl std::fmt::Display for Token<'_> {
             Token::Slash => write!(f, "/"),
             Token::Plus => write!(f, "+"),
             Token::Minus => write!(f, "-"),
+            Token::ComparisonOp(c) => match c {
+                ComparisonOp::Eq => write!(f, "=="),
+                ComparisonOp::Neq => write!(f, "!="),
+                ComparisonOp::Gt => write!(f, ">"),
+                ComparisonOp::Lt => write!(f, "<"),
+                ComparisonOp::Gte => write!(f, ">="),
+                ComparisonOp::Lte => write!(f, "<="),
+            },
             Token::Fn => write!(f, "fn"),
             Token::True => write!(f, "true"),
             Token::False => write!(f, "false"),
@@ -109,6 +126,12 @@ impl std::fmt::Display for Token<'_> {
             Token::Match => write!(f, "match"),
             Token::Pub => write!(f, "pub"),
             Token::Then => write!(f, "then"),
+
+            Token::TyNum => write!(f, "num"),
+            Token::TyStr => write!(f, "str"),
+            Token::TyBool => write!(f, "bool"),
+            Token::TyUnit => write!(f, "unit"),
+            
         }
     }
 }
@@ -138,10 +161,22 @@ fn lexer<'src>(
                 "then" => Token::Then,
                 "true" => Token::True,
                 "use" => Token::Use,
+                
+                "num" => Token::TyNum,
+                "str" => Token::TyStr,
+                "bool" => Token::TyBool,
+                "unit" => Token::TyUnit,
 
                 s => Token::Ident(s),
             }),
             // Operators
+            just("<").to(Token::ComparisonOp(ComparisonOp::Lt)),
+            just("<=").to(Token::ComparisonOp(ComparisonOp::Lte)),
+            just(">").to(Token::ComparisonOp(ComparisonOp::Gt)),
+            just(">=").to(Token::ComparisonOp(ComparisonOp::Gte)),
+            just("==").to(Token::ComparisonOp(ComparisonOp::Eq)),
+            just("!=").to(Token::ComparisonOp(ComparisonOp::Neq)),
+
             just("=>").to(Token::FatArrow),
             just("->").to(Token::Arrow),
             just("=").to(Token::Eq),
@@ -181,7 +216,7 @@ fn lexer<'src>(
                 .as_context()
                 .map(Token::Parens),
         ))
-        .map_with(|t, e| (t, e.span()))
+        .map_with(|t, e| Spanned::new(t, e.span()))
     })
     .padded_by(comment.repeated())
     .padded()
@@ -204,7 +239,7 @@ where
     //    let whitespace = select_ref! { Token::Whitespace => () }.ignored();
 
     let ident = select_ref! { Token::Ident(x) => *x }
-        .map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
+        .map_with(|x, e| Spanned::new(Expr::Ident(x.to_string()), e.span()));
 
     let ty = recursive(|ty| {
         let type_list = ty.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>();
@@ -212,21 +247,27 @@ where
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
         ident.pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                Spanned::new(Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             }).boxed()]).or(ident).memoized();
         choice((
+                        // Primitive Types
+            just(Token::TyNum).map_with(|_, e| Spanned::new(Ty::Primitive(PrimitiveType::Num), e.span()).into()),
+            just(Token::TyStr).map_with(|_, e| Spanned::new(Ty::Primitive(PrimitiveType::Str), e.span()).into()),
+            just(Token::TyBool).map_with(|_, e| Spanned::new(Ty::Primitive(PrimitiveType::Bool), e.span()).into()),
+            just(Token::TyUnit).map_with(|_, e| Spanned::new(Ty::Primitive(PrimitiveType::Unit), e.span()).into()),
+
             // User Types
-            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name.into(), generics.unwrap_or_default()), e.span()).into()),
+            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| Spanned::new(Ty::User(name.into(), generics.unwrap_or_default()), e.span()).into()),
             // Arrow Type
-            ty.clone().pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-                (Ty::Arrow(Box::new(x), Box::new(y)), e.span()).into()
-            })]),
+            //ty.clone()
             // Generic Type
-            just(Token::Question).ignore_then(ident).map_with(|name, e| (Ty::Generic(name.into()), e.span()).into()),
+            just(Token::Question).ignore_then(ident).map_with(|name, e| Spanned::new(Ty::Generic(name.into()), e.span()).into()),
             // Tuple
-            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| (Ty::Tuple(types), e.span()).into()),
+            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| {let len = types.len(); Spanned::new(Ty::Tuple(types, len), e.span())}.into()),
             
-        ))
+        )).pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
+                Spanned::new(Ty::Arrow(Box::new(x), Box::new(y)), e.span()).into()
+            })])
     });
 
     // Pattern parser.
@@ -235,28 +276,28 @@ where
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
         ident.pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                Spanned::new(Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             }).boxed()]).or(ident).memoized();
         choice((
             pat.clone().separated_by(just(Token::Comma)).collect::<Vec<Spanned<Pattern>>>().delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
-                .map_with(|p, e| (Pattern::Tuple(p), e.span())),
+                .map_with(|p, e| Spanned::new(Pattern::Tuple(p), e.span())),
 
             path.then(pat.separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
                 .map_with(|(name, args), e| {
                     if let Some(args) = args {
-                        (Pattern::Variant(Box::new(name), args), e.span())
+                        Spanned::new(Pattern::Variant(Box::new(name), args), e.span())
                     } else {
-                        (Pattern::Atom(PatternAtom::Variable(name.0.get_ident().unwrap())), e.span())
+                        Spanned::new(Pattern::Atom(PatternAtom::Variable(name.value().get_ident().unwrap())), e.span())
                     }
                 }),
             //select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Pattern::Atom(PatternAtom::Variable(x.to_string())), e.span())),
                         // Numbers
             select_ref! { Token::Num(x) => OrderedFloat(*x) }
-.map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),            
+.map_with(|x, e| Spanned::new(Pattern::Atom(PatternAtom::Num(x)), e.span())),            
             // Strings
             select_ref! { Token::Strlit(x) => (*x).to_string() }
-.map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span()),            
+.map_with(|x, e| Spanned::new(Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span()),            
         )))
 
         
@@ -266,12 +307,12 @@ where
     // Expression parser
     let expression = recursive(|expr| {
         let rname = select_ref! { Token::Ident(x) => *x };
-        let ident = rname.map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
+        let ident = rname.map_with(|x, e| Spanned::new(Expr::Ident(x.to_string()), e.span()));
         let path = 
             // Path Access
             // This is super hacky, but it does give us a nice infix operator
         ident.pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                Spanned::new(Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             }).boxed()]).memoized();
         
         let atom =         recursive(|atom| {
@@ -279,17 +320,17 @@ where
             choice((
             // Numbers
             select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
-                .map_with(|x, e| (x, e.span())),
+                .map_with(|x, e| Spanned::new(x, e.span())),
             
             // Strings
             select_ref! { Token::Strlit(x) => Expr::String((*x).to_string()) }
-                .map_with(|x, e| (x, e.span())),
+                .map_with(|x, e| Spanned::new(x, e.span())),
             
             // True
-            just(Token::True).map_with(|_, e| (Expr::Bool(true), e.span())),
+            just(Token::True).map_with(|_, e| Spanned::new(Expr::Bool(true), e.span())),
             
             // False
-            just(Token::False).map_with(|_, e| (Expr::Bool(false), e.span())),
+            just(Token::False).map_with(|_, e| Spanned::new(Expr::Bool(false), e.span())),
 
             //path,
 
@@ -310,19 +351,30 @@ where
             // Plain old idents
             //ident,
 
-            // Constructors
-            path.then(atom.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
+            path.clone().then(ident.then_ignore(just(Token::Eq)).then(expr.clone()).separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
                 .map_with(|(name, args), e| {
                     if let Some(args) = args {
-                        (Expr::Constructor(Box::new(name), args), e.span())
+                        Spanned::new(Expr::FieldedConstructor(Box::new(name), args), e.span())
                     } else {
                         name
                     }
-                }).labelled("item"),
-            
-            atom.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|items, e| (Expr::Tuple(items), e.span())).labelled("tuple").as_context(),
+                }).labelled("struct constructor"),
 
-            // let x = y ; z
+
+            // Enum Constructors
+            path.clone().then(atom.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not())
+                .map_with(|(name, args), e| {
+                    if let Some(args) = args {
+                        Spanned::new(Expr::Constructor(Box::new(name), args), e.span())
+                    } else {
+                        name
+                    }
+                }).labelled("enum constructor"),
+
+            
+            expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|items, e| Spanned::new(Expr::Tuple(items), e.span())).labelled("tuple").as_context(),
+
+            // let x = y in z
             just(Token::Let)
                 //.ignore_then(ident)
                 .ignore_then(pattern.clone())
@@ -331,8 +383,8 @@ where
                 .then_ignore(just(Token::In))
                 .then(expr.clone())
                 .map_with(|((lhs, rhs), then), e| {
-                    (
-                        Expr::Let(Box::new((Expr::Pat(lhs.0), lhs.1)), Box::new(rhs), Box::new(then)),
+                    Spanned::new(
+                        Expr::Let(Box::new(Spanned::new(Expr::Pat(lhs.clone()), *lhs.span())), Box::new(rhs), Box::new(then)),
                         e.span(),
                     )
                 }),
@@ -345,25 +397,26 @@ where
                 .then_ignore(just(Token::Else))
                 .then(expr.clone())
                 .map_with(|((test, then), otherwise), e| {
-                    (
+                    Spanned::new(
                         Expr::If(Box::new(test), Box::new(then), Box::new(otherwise)),
                         e.span(),
                     )
-                }),
+                }).labelled("if expression").as_context(),
 
             // Match Expression
             just(Token::Match)
                 .ignore_then(expr.clone())
-                .then(just(Token::Pipe).ignore_then(pattern).then_ignore(just(Token::Then)).then(expr.clone()).map(|(p,e)| (p, Box::new(e))).repeated().collect::<Vec<_>>()).map_with(|(matchee, arms), e| {(Expr::Match(Box::new(matchee), arms), e.span())})
-        ))})  
-        .boxed().memoized();
+                .then(just(Token::Pipe).ignore_then(pattern).then_ignore(just(Token::Then)).then(expr.clone()).map(|(p,e)| (p, Box::new(e))).repeated().collect::<Vec<_>>()).map_with(|(matchee, arms), e| {Spanned::new(Expr::Match(Box::new(matchee), arms), e.span())})
+        ))}).boxed()  ;
+        //.memoized();
 
         choice((
-            atom.boxed(), //.map_with(|expr, e| (expr, e.span())),
+            atom,
+
             // fn x y = z
             just(Token::Fn).ignore_then(ident.repeated().foldr_with(
                 just(Token::FatArrow).ignore_then(expr.clone()),
-                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+                |arg, body, e| Spanned::new(Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
             )),
             // ( x )
             expr.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
@@ -371,32 +424,37 @@ where
         .pratt(vec![
             // Multiply
             infix(left(8), just(Token::Asterisk), |x, _, y, e| {
-                (Expr::Mul(Box::new(x), Box::new(y)), e.span())
+                Spanned::new(Expr::Mul(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Divide
             infix(left(8), just(Token::Slash), |x, _, y, e| {
-                (Expr::Div(Box::new(x), Box::new(y)), e.span())
+                Spanned::new(Expr::Div(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Add
             infix(left(7), just(Token::Plus), |x, _, y, e| {
-                (Expr::Add(Box::new(x), Box::new(y)), e.span())
+                Spanned::new(Expr::Add(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Subtract
             infix(left(7), just(Token::Minus), |x, _, y, e| {
-                (Expr::Sub(Box::new(x), Box::new(y)), e.span())
+                Spanned::new(Expr::Sub(Box::new(x), Box::new(y)), e.span())
+            })
+            .boxed(),
+
+            infix(left(5), select_ref! { Token::ComparisonOp(c) => *c }, |left, op, right, e| {
+                Spanned::new(Expr::Comparison(Box::new(left), op, Box::new(right)), e.span())
             })
             .boxed(),
             // Calls
             infix(left(9), empty(), |func, _, arg, e| {
-                (Expr::Call(Box::new(func), Box::new(arg)), e.span())
+                Spanned::new(Expr::Call(Box::new(func), Box::new(arg)), e.span())
             })
             .boxed(),
             // Field Access
             infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                Spanned::new(Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             }).boxed(),
         ])
         .labelled("expression")
@@ -405,13 +463,26 @@ where
 
     let definition = recursive(|_| {
         // Toplevel Let binding
+        // let let_binding = just(Token::Let)
+        //     .ignore_then(ident)
+        //     .then(
+        //         ident.repeated().foldr_with(
+        //         just(Token::Eq).ignore_then(expression.clone()),
+        //         |arg, body, e| Spanned::new(Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+        //     ))
+        //     .map(|(name, value)| Definition::Let(name, value, None));
         let let_binding = just(Token::Let)
-            .ignore_then(ident)
-            .then(ident.repeated().foldr_with(
+            .ignore_then(ident).then(
+                just(Token::Colon).ignore_then(ty.clone()).or_not()
+            )
+            .then(
+                ident.repeated().foldr_with(
                 just(Token::Eq).ignore_then(expression.clone()),
-                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+                |arg, body, e| Spanned::new(Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
             ))
-            .map(|(name, value)| Definition::Let(name, value));
+            .map(|((name, ty), value)| Definition::Let(name, value, ty));
+        
+
         // Struct definition
         let struct_field = ident
             .then_ignore(just(Token::Colon))
@@ -482,21 +553,6 @@ fn parse_failure(err: &Rich<impl std::fmt::Display>, src: &str) -> DynamicErr {
                 .collect(),
         )
         .src(src.to_string())
-    // GeneralErr::builder()
-    //     .msg(err.reason().to_string())
-    //     .label((
-    //         err.found()
-    //             .map(|c| c.to_string())
-    //             .unwrap_or_else(|| "end of input".to_string()),
-    //         *err.span(),
-    //     ))
-    //     .extra_labels(
-    //         err.contexts()
-    //             .map(|(l, s)| (format!("while parsing this {l}"), *s))
-    //             .collect(),
-    //     )
-    //     .src(src.to_string())
-    //     .build(),
 }
 
 /// Compiler black magic function that transforms the token vector into a parsable item.
@@ -504,7 +560,9 @@ fn make_input<'src>(
     eoi: SimpleSpan,
     toks: &'src [Spanned<Token<'src>>],
 ) -> impl BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan> {
-    toks.map(eoi, |(t, s)| (t, s))
+    //toks.map(eoi, |(t, s)| (t, s))
+    toks.map(eoi, |s| (s.value(), s.span()))
+
 }
 
 /// Public parsing function. Produces a parse tree from a source string.

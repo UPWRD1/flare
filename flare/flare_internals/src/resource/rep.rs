@@ -1,9 +1,44 @@
-use std::path::PathBuf;
+use std::{hash::Hash, path::PathBuf};
 
 use chumsky::span::SimpleSpan;
 use ordered_float::OrderedFloat;
 
-pub type Spanned<T> = (T, SimpleSpan<usize>);
+//pub type Spanned<T> = (T, SimpleSpan<usize>);
+#[derive(Debug, Clone)]
+pub struct Spanned<T>(T, SimpleSpan<usize>);
+
+impl<T> Spanned<T> {
+    pub fn new(t: T, span: SimpleSpan<usize>) -> Self {
+        Spanned(t, span)
+    }
+
+    pub fn value(&self) -> &T {
+        &self.0
+    }
+
+    pub fn span(&self) -> &SimpleSpan<usize> {
+        &self.1
+    }
+}
+
+impl<T> Hash for Spanned<T>
+where
+    T: Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl<T: PartialEq> PartialEq for Spanned<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+
+impl<T: Eq> Eq for Spanned<T> {}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OptSpanned<T> {
@@ -23,7 +58,7 @@ impl<T> From<Spanned<T>> for OptSpanned<T> {
 impl<T> From<OptSpanned<T>> for Spanned<T> {
     fn from(value: OptSpanned<T>) -> Self {
         //(value.0, value.1.unwrap_or(SimpleSpan::new(0, 0)))
-        (value.t, value.span.expect("Shouldn't Happen!"))
+        Spanned::new(value.t, value.span.expect("Shouldn't Happen!"))
     }
 }
 
@@ -63,7 +98,7 @@ pub enum PrimitiveType {
 pub enum Ty {
     Primitive(PrimitiveType),
     User(OptSpanned<Expr>, Vec<OptSpanned<Self>>),
-    Tuple(Vec<OptSpanned<Self>>),
+    Tuple(Vec<OptSpanned<Self>>, usize),
     Arrow(Box<OptSpanned<Self>>, Box<OptSpanned<Self>>),
     Generic(OptSpanned<Expr>),
 }
@@ -76,6 +111,25 @@ impl Ty {
             panic!()
         }
     }
+
+    pub fn get_user_name(&self) -> Option<String> {
+        if let Self::User(name, _) = self {
+            name.span.as_ref()?;
+            Some(name.t.get_ident()?)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum ComparisonOp {
+    Eq,
+    Neq,
+    Gt,
+    Lt,
+    Gte,
+    Lte,
 }
 
 /// Type representing an Expression.
@@ -89,13 +143,16 @@ pub enum Expr {
 
     Unit,
     Constructor(Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
+    FieldedConstructor(Box<Spanned<Expr>>, Vec<(Spanned<Expr>, Spanned<Expr>)>),
 
-    Pat(Pattern),
+
+    Pat(Spanned<Pattern>),
 
     Mul(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     Div(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     Add(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     Sub(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+    Comparison(Box<Spanned<Expr>>, ComparisonOp, Box<Spanned<Expr>>),
 
     Access(Box<Spanned<Expr>>),
     Call(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
@@ -122,7 +179,7 @@ impl Expr {
             Expr::Access(ref expr) => expr.0.get_ident(),
             Expr::Call(ref func, _) => func.0.get_ident(),
             Expr::Lambda(ref arg, _) => arg.0.get_ident(),
-            Expr::Pat(Pattern::Atom(PatternAtom::Variable(ref s))) => Some(s.to_string()),
+            Expr::Pat(p) => if let Pattern::Atom(PatternAtom::Variable(ref s)) = p.value() {Some(s.to_string())} else {None},
             _ => None,
         }
     }
@@ -143,7 +200,7 @@ pub struct ImportItem {
 pub enum Definition {
     Import(ImportItem),
     Struct(StructDef),
-    Let(Spanned<Expr>, Spanned<Expr>),
+    Let(Spanned<Expr>, Spanned<Expr>, Option<OptSpanned<Ty>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
