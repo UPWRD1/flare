@@ -115,7 +115,7 @@ pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
     if errors.is_empty() {
         Ok(Program { packages: v })
     } else {
-        Err(ErrorCollection::new(errors.into()).into())
+        Err(ErrorCollection::new(errors).into())
     }
 }
 

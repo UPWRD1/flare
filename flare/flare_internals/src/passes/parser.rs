@@ -3,7 +3,7 @@ use chumsky::input::BorrowInput;
 use chumsky::input::SliceInput;
 use chumsky::input::StrInput;
 use chumsky::input::ValueInput;
-use chumsky::pratt::*;
+use chumsky::pratt::{Operator, infix, left, right};
 use chumsky::prelude::*;
 use chumsky::span::Span;
 use ordered_float::OrderedFloat;
@@ -164,7 +164,7 @@ fn lexer<'src, I,>() -> impl Parser<'src, I, Vec<(Token<'src>, SimpleSpan<usize,
         .labelled("comment")
         .padded();
     let recover_strat1 =             any() .padded_by(comment.repeated())
-        .padded().map_with(|x, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Full<_, SimpleState<u64>, () >>| (Token::Error(x), SimpleSpan::new(e.state().clone(), e.span().into_range())));
+        .padded().map_with(|x, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Full<_, SimpleState<u64>, () >>| (Token::Error(x), SimpleSpan::new(**e.state(), e.span().into_range())));
 
     let comparison_op = choice((
             just("<").to(Token::ComparisonOp(ComparisonOp::Lt)),
@@ -252,7 +252,7 @@ fn lexer<'src, I,>() -> impl Parser<'src, I, Vec<(Token<'src>, SimpleSpan<usize,
                 .map(Token::Parens),
             
         ))
-        .map_with( |t, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Full<_, SimpleState<u64>, () >>|{  (t, SimpleSpan::new(e.state().clone(), e.span().into_range()))})
+        .map_with( |t, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Full<_, SimpleState<u64>, () >>|{  (t, SimpleSpan::new(**e.state(), e.span().into_range()))})
     })
     .padded_by(comment.repeated())
     .padded()
@@ -294,22 +294,22 @@ where
             }).boxed()]).or(ident).memoized();
         choice((
                         // Primitive Types
-            just(Token::TyNum).map_with(|_, e| (Ty::Primitive(PrimitiveType::Num),  e.span()).into()),
-            just(Token::TyStr).map_with(|_, e| (Ty::Primitive(PrimitiveType::Str),  e.span()).into()),
-            just(Token::TyBool).map_with(|_, e| (Ty::Primitive(PrimitiveType::Bool), e.span()).into()),
-            just(Token::TyUnit).map_with(|_, e| (Ty::Primitive(PrimitiveType::Unit),  e.span()).into()),
+            just(Token::TyNum).map_with(|_, e| (Ty::Primitive(PrimitiveType::Num),  e.span())),
+            just(Token::TyStr).map_with(|_, e| (Ty::Primitive(PrimitiveType::Str),  e.span())),
+            just(Token::TyBool).map_with(|_, e| (Ty::Primitive(PrimitiveType::Bool), e.span())),
+            just(Token::TyUnit).map_with(|_, e| (Ty::Primitive(PrimitiveType::Unit),  e.span())),
 
             // User Types
-            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name.into(), generics.unwrap_or_default()),  e.span()).into()),
+            path.clone().then(type_list.clone().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).clone().map_with(|(name, generics), e| (Ty::User(name, generics.unwrap_or_default()),  e.span())),
             // Arrow Type
             //ty.clone()
             // Generic Type
-            just(Token::Question).ignore_then(ident).map_with(|name, e| (Ty::Generic(name.into()),  e.span()).into()),
+            just(Token::Question).ignore_then(ident).map_with(|name, e| (Ty::Generic(name),  e.span())),
             // Tuple
-            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| {let len = types.len(); (Ty::Tuple(types, len),  e.span())}.into()),
+            type_list.clone().delimited_by(just(Token::LBrace), just(Token::RBrace)).map_with(|types, e| {let len = types.len(); (Ty::Tuple(types, len),  e.span())}),
             
         )).pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-                (Ty::Arrow(Box::new(x), Box::new(y)),  e.span()).into()
+                (Ty::Arrow(Box::new(x), Box::new(y)),  e.span())
             })])
     });
 
@@ -493,7 +493,7 @@ where
             })
             .boxed(),
             // Calls
-            infix(left(9), empty(), |func, _, arg, e| {
+            infix(left(9), empty(), |func, (), arg, e| {
                 (Expr::Call(Box::new(func), Box::new(arg)),  e.span())
             })
             .boxed(),
@@ -609,9 +609,7 @@ fn parse_failure(err: &Rich<'_, impl std::fmt::Display, impl AnnotateRange>, fid
 
     DynamicErr::new(err.reason().to_string())
         .label((
-            err.found()
-                .map(|c| format!("Unexpected '{}'", c))
-                .unwrap_or_else(|| "end of input".to_string()),
+            err.found().map_or_else(|| "end of input".to_string(), |c| format!("Unexpected '{c}'")),
             err.span().annotate(fid),
             //err.span()
         ))

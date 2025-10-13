@@ -44,9 +44,9 @@ impl std::fmt::Display for SimpleQuant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Root => write!(f, "Root"),
-            Self::Package(n) => write!(f, "Package {}", n),
-            Self::Type(n) => write!(f, "Type {}", n),
-            Self::Func(n) => write!(f, "Func {}", n),
+            Self::Package(n) => write!(f, "Package {n}"),
+            Self::Type(n) => write!(f, "Type {n}"),
+            Self::Func(n) => write!(f, "Func {n}"),
         }
     }
 }
@@ -69,6 +69,7 @@ impl std::fmt::Display for SimpleQuant {
 // }
 
 impl Quantifier {
+    #[must_use] 
     pub fn append(&self, a: Self) -> Self {
         match self {
             Self::Root(quantifier) => Self::Root(Rc::new(quantifier.append(a))),
@@ -83,6 +84,7 @@ impl Quantifier {
         }
     }
 
+    #[must_use] 
     pub fn get_func_name(&self) -> Option<&String> {
         match self {
             Quantifier::Root(e) => e.get_func_name(),
@@ -93,6 +95,7 @@ impl Quantifier {
         }
     }
 
+    #[must_use] 
     pub fn into_simple(&self) -> Vec<SimpleQuant> {
         let mut res = vec![];
         fn collapse(top: &Quantifier, result: &mut Vec<SimpleQuant>) {
@@ -256,6 +259,7 @@ impl Ord for Entry {
 }
 
 impl Entry {
+    #[must_use] 
     pub fn get_sig(&self) -> Option<&Ty> {
         match self {
             Entry::Let { sig, .. } => sig.as_ref(),
@@ -264,6 +268,7 @@ impl Entry {
         }
     }
 
+    #[must_use] 
     pub fn get_parent(&self) -> Option<&Quantifier> {
         match self {
             Entry::Let { parent, .. } => Some(parent),
@@ -272,6 +277,7 @@ impl Entry {
         }
     }
 
+    #[must_use] 
     pub fn get_file(&self) -> Option<&PathBuf> {
         match self {
             Entry::Package { file, .. } => Some(file),
@@ -301,7 +307,7 @@ impl Display for Entry {
                     write!(f, "{}: ?", name.0.get_ident().unwrap())
                 }
             }
-            Entry::Filename(n) => write!(f, "File {}", n),
+            Entry::Filename(n) => write!(f, "File {n}"),
             Entry::Root => write!(f, "Root"),
             Entry::Extern { name, sig, .. } => {
                 write!(f, "extern {}: {}", name.0.get_ident().unwrap(), sig)
@@ -364,7 +370,7 @@ impl Environment {
                                 name: name.clone(),
                                 parent: current_parent.clone(),
                                 fields,
-                                ty: Some(Ty::User(name.into(), vec![])),
+                                ty: Some(Ty::User(name, vec![])),
                             })
                             .into(),
                         );
@@ -399,7 +405,7 @@ impl Environment {
                                 sig: ty.0,
                             })
                             .into(),
-                        )
+                        );
                     }
                 }
             }
@@ -442,23 +448,20 @@ impl Environment {
         //println!("Checking {:?}", entry);
         //match *entry.borrow_mut() {
 
-        match *if let Ok(e) = entry.try_borrow_mut() {
-            e
-        } else {
-            return Ok(entry);
-        } {
-            Entry::Let {
+        if let Entry::Let {
                 ref mut sig,
                 ref body,
                 name: _,
                 ref parent,
-            } => {
-                let mut tc = Solver::new(self);
-                let tv = tc.check_expr(body)?;
-                let fn_sig = tc.solve(tv)?;
-                *sig = Some(fn_sig);
-            }
-            _ => (),
+            } = *if let Ok(e) = entry.try_borrow_mut() {
+            e
+        } else {
+            return Ok(entry);
+        } {
+            let mut tc = Solver::new(self);
+            let tv = tc.check_expr(body)?;
+            let fn_sig = tc.solve(tv)?;
+            *sig = Some(fn_sig);
         }
         info!("Checked {}", entry.borrow());
         Ok(entry)

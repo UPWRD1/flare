@@ -43,13 +43,13 @@ impl fmt::Display for TyInfo {
         match self {
             TyInfo::Unknown => write!(f, "Unknown"),
             TyInfo::Ref(n) => write!(f, "{n}"),
-            TyInfo::User(n) => write!(f, "User({})", n),
+            TyInfo::User(n) => write!(f, "User({n})"),
             TyInfo::Num => write!(f, "num"),
             TyInfo::Bool => write!(f, "bool"),
             TyInfo::Func(l, r) => write!(f, "({l} -> {r})"),
             TyInfo::Unit => write!(f, "unit"),
             TyInfo::String => write!(f, "str"),
-            TyInfo::Tuple(t, s) => write!(f, "{{{}; {}}}", t, s),
+            TyInfo::Tuple(t, s) => write!(f, "{{{t}; {s}}}"),
         }
     }
 }
@@ -93,7 +93,7 @@ impl fmt::Display for Ty {
             Ty::Tuple(t, s) => {
                 write!(f, "{{")?;
                 for i in t {
-                    write!(f, "{}, ", i.0)?
+                    write!(f, "{}, ", i.0)?;
                 }
                 write!(f, "}}")
             }
@@ -103,7 +103,7 @@ impl fmt::Display for Ty {
             Ty::User(n, args) => {
                 write!(f, "{}[", n.0.get_ident().unwrap_or("?".to_string()))?;
                 for a in args {
-                    write!(f, "{}, ", a.0)?
+                    write!(f, "{}, ", a.0)?;
                 }
                 write!(f, "]")
             }
@@ -120,6 +120,7 @@ pub struct Solver<'env> {
 }
 
 impl<'env> Solver<'env> {
+    #[must_use] 
     pub fn new(
         master_env: &'env Environment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
     ) -> Solver<'env> {
@@ -171,7 +172,7 @@ impl<'env> Solver<'env> {
         } else {
             Err(DynamicErr::new(format!("'{q}' hasn't been defined"))
                 .label((
-                    format!("{:?} not found in scope", q),
+                    format!("{q:?} not found in scope"),
                     s,
                 ))
                 //.src(self.src.to_string())
@@ -180,7 +181,7 @@ impl<'env> Solver<'env> {
     }
 
     fn unify(&mut self, a: TyVar, b: TyVar, span: SimpleSpan<usize, FileID>) -> CompResult<TyInfo> {
-        use TyInfo::*;
+        use TyInfo::{Unknown, Ref, Num, Bool, String, Unit, Func, User};
 
         let (a_info, b_info) = (self.vars[a.0].0, self.vars[b.0].0);
         match (a_info, b_info) {
@@ -194,7 +195,7 @@ impl<'env> Solver<'env> {
             }
             (Ref(a1), _) => self.unify(a1, b, span),
             (_, Ref(b1)) => self.unify(a, b1, span),
-            (Num, Num) | (Bool, Bool) | (String, String) | (Unit, Unit) => Ok(a_info.clone()),
+            (Num, Num) | (Bool, Bool) | (String, String) | (Unit, Unit) => Ok(a_info),
             (Func(a_i, a_o), Func(b_i, b_o)) => {
                 let _ = self.unify(b_i, a_i, span)?;
                 let _ = self.unify(a_o, b_o, span)?;
@@ -211,7 +212,7 @@ impl<'env> Solver<'env> {
             ])
             .into()),
         }
-        .inspect(|x| {info!("    {} U {} => {}", a, b, x)})
+        .inspect(|x| {info!("    {a} U {b} => {x}")})
     }
 
     pub fn check_expr(
@@ -356,11 +357,11 @@ impl<'env> Solver<'env> {
                         }
                         //let paired_fields = fields.iter().zip(given_fields.iter());
                         let map: Vec<(Spanned<Expr>, Spanned<Ty>)> =
-                            fields.iter().cloned().map(|(n, t)| (n, t)).collect();
+                            fields.to_vec();
                         //dbg!(&map);
                         for (fname, value) in given_fields {
                             //dbg!(fname);
-                            let def_ty: Spanned<Ty> = map.iter().filter(|x| x.0.0 == fname.0).last().ok_or(DynamicErr::new(format!(
+                            let def_ty: Spanned<Ty> = map.iter().filter(|x| x.0.0 == fname.0).next_back().ok_or(DynamicErr::new(format!(
                                 "No such field '{}' in struct '{}'",
                                 fname.0.get_ident().unwrap(),
                                 name.0.get_ident().unwrap()
@@ -402,7 +403,7 @@ impl<'env> Solver<'env> {
                 dbg!(&search);
                 if let Some((_q, e)) = search.last() {
                     if let Entry::Extern { ref sig, .. } = *e.borrow() {
-                        let converted = self.convert_ty(&sig);
+                        let converted = self.convert_ty(sig);
                         let out_ty = self.create_ty(converted, expr.1);
                         Ok(out_ty)
                     } else {
@@ -447,7 +448,7 @@ impl<'env> Solver<'env> {
                 return Ok(self.create_ty(TyInfo::Func(l, r), expr.1))
             };
             //dbg!(&fty);
-            if let Entry::Let { ref sig, ref name, .. } = *fty {
+            if let Entry::Let { ref sig,  .. } = *fty {
                 let (l, r) = sig.as_ref().unwrap().get_arrow();
                 let converted_l = self.convert_ty(&l.0);
                 let converted_r = self.convert_ty(&r.0);
@@ -485,7 +486,7 @@ impl<'env> Solver<'env> {
                 //panic!("cannot infer type {:?}, is Unknown", var)
                 
                 Err(
-                    DynamicErr::new(format!("cannot infer type {:?}, is Unknown", var))
+                    DynamicErr::new(format!("cannot infer type {var:?}, is Unknown"))
                         .label(("has unknown type".to_string(), self.vars[var.0].1))
                         .into(),
                 )
@@ -526,7 +527,7 @@ impl<'env> Solver<'env> {
                 Ok(Ty::Tuple(vec![(inner_ty, self.vars[t.0].1)], s))
             }
         }
-        .inspect(|t| {info!("Solved {} => {}", var, t)})
+        .inspect(|t| {info!("Solved {var} => {t}")})
         // let _ = t
         //     .as_ref()
         //     .inspect(|t| println!("    Solved {} => {}", var, t));
