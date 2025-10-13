@@ -1,7 +1,3 @@
-
-use std::ops::Range;
-
-use chumsky::extra::Full;
 use chumsky::extra::SimpleState;
 use chumsky::input::BorrowInput;
 use chumsky::input::SliceInput;
@@ -12,6 +8,8 @@ use chumsky::prelude::*;
 use chumsky::span::Span;
 use ordered_float::OrderedFloat;
 
+use crate::resource::errors::CompilerErr;
+use crate::resource::errors::ErrorCollection;
 use crate::resource::rep::ComparisonOp;
 use crate::resource::rep::FileID;
 use crate::resource::rep::PrimitiveType;
@@ -34,6 +32,9 @@ enum Token<'src> {
     Strlit(&'src str),
     Comment(&'src str),
     Parens(Vec<Spanned<Self>>),
+
+    ///Contains the erroneous token's src
+    Error(char),
 
     Separator,
     Whitespace,
@@ -141,6 +142,8 @@ impl std::fmt::Display for Token<'_> {
             Token::TyStr => write!(f, "str"),
             Token::TyBool => write!(f, "bool"),
             Token::TyUnit => write!(f, "unit"),
+
+            Token::Error(e) => write!(f, "Error {e}")
             
         }
     }
@@ -151,14 +154,36 @@ impl std::fmt::Display for Token<'_> {
 fn lexer<'src, I,>() -> impl Parser<'src, I, Vec<(Token<'src>, SimpleSpan<usize, u64>)>, extra::Full<Rich<'src, char, SimpleSpan<usize, ()>>, SimpleState<u64>, () >/*extra::Err<Rich<'src, char>>*/>  
     //where I:  BorrowInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + StrInput<'src> + SliceInput<'src>,
     where I: ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + SliceInput<'src, Slice = &'src str, Span = SimpleSpan<usize, ()>> + StrInput<'src, Span = SimpleSpan<usize, ()>>,
-        
 
     //where I: str
     {
+    
+
     let comment = just("#")
         .then_ignore(any().and_is(just('\n').not()).repeated())
         .labelled("comment")
         .padded();
+    let recover_strat1 =             any() .padded_by(comment.repeated())
+        .padded().map_with(|x, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Full<_, SimpleState<u64>, () >>| (Token::Error(x), SimpleSpan::new(e.state().clone(), e.span().into_range())));
+
+    let comparison_op = choice((
+            just("<").to(Token::ComparisonOp(ComparisonOp::Lt)),
+            just("<=").to(Token::ComparisonOp(ComparisonOp::Lte)),
+            just(">").to(Token::ComparisonOp(ComparisonOp::Gt)),
+            just(">=").to(Token::ComparisonOp(ComparisonOp::Gte)),
+            just("==").to(Token::ComparisonOp(ComparisonOp::Eq)),
+            just("!=").to(Token::ComparisonOp(ComparisonOp::Neq)),
+
+    )).labelled("comparison operator");
+
+    let arith_op = choice((
+                    just("*").to(Token::Asterisk),
+            just("/").to(Token::Slash),
+            just("+").to(Token::Plus),
+            just("-").to(Token::Minus),
+
+    )).labelled("arithmetic operator");
+
     recursive( |token| {
         choice((
             text::ident().map(|s| match s {
@@ -186,24 +211,18 @@ fn lexer<'src, I,>() -> impl Parser<'src, I, Vec<(Token<'src>, SimpleSpan<usize,
                 s => Token::Ident(s),
             }),
             // Operators
-            just("<").to(Token::ComparisonOp(ComparisonOp::Lt)),
-            just("<=").to(Token::ComparisonOp(ComparisonOp::Lte)),
-            just(">").to(Token::ComparisonOp(ComparisonOp::Gt)),
-            just(">=").to(Token::ComparisonOp(ComparisonOp::Gte)),
-            just("==").to(Token::ComparisonOp(ComparisonOp::Eq)),
-            just("!=").to(Token::ComparisonOp(ComparisonOp::Neq)),
+            comparison_op,
 
             just("=>").to(Token::FatArrow),
             just("->").to(Token::Arrow),
             just("=").to(Token::Eq),
-            just("*").to(Token::Asterisk),
-            just("/").to(Token::Slash),
-            just("+").to(Token::Plus),
-            just("-").to(Token::Minus),
             just("{").to(Token::LBrace),
             just("}").to(Token::RBrace),
             just("[").to(Token::LBracket),
             just("]").to(Token::RBracket),
+
+
+                        arith_op,
 
             //             just("(").to(Token::LParen),
             // just(")").to(Token::RParen),
@@ -217,7 +236,7 @@ fn lexer<'src, I,>() -> impl Parser<'src, I, Vec<(Token<'src>, SimpleSpan<usize,
             text::int(10)
                 .then(just('.').then(text::digits(10)).or_not())
                 .to_slice()
-                .map(|s: &str| Token::Num(s.parse().unwrap())),
+                .map(|s: &str| Token::Num(s.parse().unwrap())).labelled("number"),
             just('"')
                 .ignore_then(none_of('"').repeated().to_slice())
                 .then_ignore(just('"'))
@@ -228,21 +247,25 @@ fn lexer<'src, I,>() -> impl Parser<'src, I, Vec<(Token<'src>, SimpleSpan<usize,
                 .repeated()
                 .collect()
                 .delimited_by(just('('), just(')'))
-                .labelled("token tree")
+                .labelled("nested expression")
                 .as_context()
                 .map(Token::Parens),
+            
         ))
-        .map_with( |t, e: &mut chumsky::input::MapExtra<'src, '_, I, extra::Full<Rich<'src, char, SimpleSpan<usize, ()>>, SimpleState<u64>, () >>|{  (t, SimpleSpan::new(e.state().clone(), e.span().into_range()))})
+        .map_with( |t, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Full<_, SimpleState<u64>, () >>|{  (t, SimpleSpan::new(e.state().clone(), e.span().into_range()))})
     })
     .padded_by(comment.repeated())
     .padded()
+    .recover_with(via_parser(recover_strat1))
+
     .repeated()
     .collect().boxed()
+
+
 }
 
 /// The main parser function.
 fn parser<'tokens, 'src: 'tokens, I, M>(
-    fid: FileID,
     make_input: M,
 ) -> impl Parser<'tokens, I, Package, extra::Full<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>, SimpleState<u64>, () >>
 //) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>>>
@@ -255,6 +278,8 @@ where
     // Basic tokens
 
     //    let whitespace = select_ref! { Token::Whitespace => () }.ignored();
+
+    //let error = select_ref!{ Token::Error(e) => parse_failure()};
 
     let ident = select_ref! { Token::Ident(x) => *x }
         .map_with(|x, e| (Expr::Ident(x.to_string()),  e.span()));
@@ -500,7 +525,7 @@ where
                 just(Token::Eq).ignore_then(expression.clone()),
                 |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
             ))
-            .map(|((name, ty), value)| Definition::Let(name, value, ty));
+            .map(|((name, ty), value)| Definition::Let(name, value, ty)).labelled("let-declaration").as_context();
         
 
         // Struct definition
@@ -551,7 +576,7 @@ where
         .map(|(name, items)| Package {
             name: name.to_owned(),
             items,
-        });
+        }).labelled("package").as_context();
     //
     // Program
     package
@@ -562,6 +587,7 @@ where
         .then_ignore(end())
 }
 
+/// Trait that extends `SimpleSpan` to permit adding `FileID` information
 pub trait AnnotateRange {
     fn annotate(&self, id: FileID) -> SimpleSpan<usize, u64>;
 }
@@ -579,12 +605,12 @@ impl AnnotateRange for SimpleSpan<usize, u64> {
 }
 
 /// Legacy helper function for the parser's error handlings
-fn parse_failure(err: &Rich<'_, impl std::fmt::Display, impl AnnotateRange>, src: &str, fid: FileID) -> DynamicErr  {
+fn parse_failure(err: &Rich<'_, impl std::fmt::Display, impl AnnotateRange>, fid: FileID) -> DynamicErr  {
 
     DynamicErr::new(err.reason().to_string())
         .label((
             err.found()
-                .map(|c| c.to_string())
+                .map(|c| format!("Unexpected '{}'", c))
                 .unwrap_or_else(|| "end of input".to_string()),
             err.span().annotate(fid),
             //err.span()
@@ -594,7 +620,6 @@ fn parse_failure(err: &Rich<'_, impl std::fmt::Display, impl AnnotateRange>, src
                 .map(|(l, s)| (format!("while parsing this {l}"), s.annotate(fid)))
                 .collect(),
         )
-        .src(src.to_string())
 }
 
 /// Compiler black magic function that transforms the token vector into a parsable item.
@@ -612,22 +637,25 @@ fn make_input<'src>(
 pub fn parse(input: &str, fid: FileID) -> CompResult<Package> {
     let tokens = match lexer().parse_with_state(input, &mut SimpleState::from(0)).into_result() {
         Ok(tokens) => tokens,
-        Err(errs) => return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], input, fid)).into()),
+        Err(errs) => {
+            return Err(ErrorCollection::new(errs.into_iter().map(|x| parse_failure(&x, fid).into()).collect()).into())
+            // return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], fid)).into())
+        },
     };
 
     //dbg!(&tokens);
 
-    let packg = match parser(fid.clone(), make_input)
+    let packg: Result<Package, CompilerErr> = match parser(make_input)
         .parse_with_state(make_input(SimpleSpan::new(fid, 0..input.len()), &tokens), &mut SimpleState::from(0))
         .into_result()
     {
         Ok(p) => Ok(p),
         Err(e) => {
-            Err(CompilerErrKind::Dynamic(parse_failure(
-                e.first().unwrap(), //SimpleSpan::new(fid, e.first().unwrap().span()),
-                input,
+            let errs = ErrorCollection::new(e.iter().map(|e| CompilerErrKind::Dynamic(parse_failure(
+                e, //SimpleSpan::new(fid, e.first().unwrap().span()),
                 fid,
-            )))
+            )).get_dyn().into()).collect::<Vec<CompilerErr>>());
+            Err(errs.into())
             // let errors = e
             //     .iter()
             //     .map(|e| CompilerErr::Dynamic(parse_failure(&e, input)))
@@ -636,5 +664,5 @@ pub fn parse(input: &str, fid: FileID) -> CompResult<Package> {
         }
     };
 
-    Ok(packg?)
+    packg
 }

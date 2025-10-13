@@ -1,6 +1,4 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use flare_internals::*;
@@ -24,10 +22,7 @@ pub fn typechecking_bench(c: &mut Criterion) {
     let processed = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();
         let (pack, str) = parse_file(&ctx, id)
-            .map_err(|e| {
-                e.get_dyn()
-                    .filename(file_path.file_name().unwrap().to_str().unwrap())
-            })
+            
             .unwrap();
         (pack, file_path, str)
     });
@@ -57,10 +52,7 @@ pub fn env_build_bench(c: &mut Criterion) {
     let processed = dir_contents.par_iter().map(|entry| {
         let file_path = entry.path();
         let (pack, str) = parse_file(&ctx, id)
-            .map_err(|e| {
-                e.get_dyn()
-                    .filename(file_path.file_name().unwrap().to_str().unwrap())
-            })
+            
             .unwrap();
         (pack, file_path, str)
     });
@@ -78,11 +70,14 @@ pub fn env_build_bench(c: &mut Criterion) {
 
 pub fn master_bench(c: &mut Criterion) {
     let path = PathBuf::from(TEST_FILE).canonicalize().unwrap();
+        let id: u64 = 0;
+
+    let ctx = Context::new(&path, id);
 
     //dbg!(program.clone());
     //dbg!(program.clone());
     c.bench_function("master_bench", |b| {
-        b.iter(|| black_box(flare_internals::compile_program(&path)))
+        b.iter(|| black_box(flare_internals::compile_program(&ctx, id)))
     });
     //c.bench_function("fib 20", |b| b.iter(|| flare::passes::midend::typechecking::(black_box(20))));
 }

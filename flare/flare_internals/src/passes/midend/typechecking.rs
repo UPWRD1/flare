@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
+use std::{cell::RefCell, fmt, rc::Rc};
 
 use chumsky::span::SimpleSpan;
 //use ptrie::Trie;
@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-use log::{info, trace, warn};
+use log::info;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct TyVar(usize);
@@ -170,7 +170,6 @@ impl<'env> Solver<'env> {
             Ok(e)
         } else {
             Err(DynamicErr::new(format!("'{q}' hasn't been defined"))
-                .filename("Type Error")
                 .label((
                     format!("{:?} not found in scope", q),
                     s,
@@ -386,7 +385,6 @@ impl<'env> Solver<'env> {
                     //e.get_sig()
                 } else {
                     Err(DynamicErr::new(format!("No such struct '{name:?}'"))
-                        .filename("Type Error")
                         .label((
                             format!("{:?} not found in scope", expr.0),
                             expr.1,
@@ -472,7 +470,6 @@ impl<'env> Solver<'env> {
             //e.get_sig()
         } else {
             Err(DynamicErr::new(format!("'{name}' hasn't been defined"))
-                .filename("Type Error")
                 .label((
                     format!("{:?} not found in scope", expr.0),
                     expr.1,

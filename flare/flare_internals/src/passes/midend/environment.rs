@@ -2,7 +2,7 @@ use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
-use log::{info, trace, warn};
+use log::info;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -454,20 +454,7 @@ impl Environment {
                 ref parent,
             } => {
                 let mut tc = Solver::new(self);
-                let tv = tc.check_expr(body).map_err(|e| {
-                    let the_parent = self.items.exact_match(parent.into_simple()).unwrap();
-                    match *the_parent.borrow() {
-                        Entry::Package {
-                            ref file, ref src, ..
-                        } => e.get_dyn().src(src).filename(
-                            file.file_name()
-                                .unwrap_or(std::ffi::OsStr::new(""))
-                                .to_str()
-                                .unwrap(),
-                        ),
-                        _ => panic!("Should always be a package!"),
-                    }
-                })?;
+                let tv = tc.check_expr(body)?;
                 let fn_sig = tc.solve(tv)?;
                 *sig = Some(fn_sig);
             }

@@ -9,9 +9,10 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 
 use crate::{
     passes::{
@@ -20,7 +21,7 @@ use crate::{
         parser,
     },
     resource::{
-        errors::{CompResult, ReportableError},
+        errors::{CompResult, CompilerErr, ErrorCollection,ReportableError},
         rep::{FileID, FileSource, Package, Program},
     },
 };
@@ -33,16 +34,16 @@ pub struct Context {
 
 impl Context {
     pub fn new(src_path: &Path, id: FileID) -> Self {
-    let mut src_text = String::new();
-        let mut src = File::open(&src_path).unwrap();
-    src.read_to_string(&mut src_text).unwrap();
-    let source = FileSource {
-        filename: src_path.to_path_buf(),
-        src_text,
-    };
-    Context {
-        filectx: Mutex::from(vec![(id, source)].into_iter().collect::<HashMap<_, _>>()).into(),
-    }
+        let mut src_text = String::new();
+        let mut src = File::open(src_path).unwrap();
+        src.read_to_string(&mut src_text).unwrap();
+        let source = FileSource {
+            filename: src_path.to_path_buf(),
+            src_text,
+        };
+        Context {
+            filectx: Mutex::from(vec![(id, source)].into_iter().collect::<HashMap<_, _>>()).into(),
+        }
     }
 }
 
@@ -59,7 +60,7 @@ pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, String)> {
             .filename,
     )?;
     src.read_to_string(&mut src_string)?;
-    let res = parser::parse(&src_string, id).map_err(|e| e.get_dyn().src(&src_string))?; //TODO: handle errors properly
+    let res = parser::parse(&src_string, id)?; //TODO: handle errors properly
 
     Ok((res, src_string))
 }
@@ -77,12 +78,13 @@ pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
     let path = src_path.canonicalize().unwrap();
     let parent_dir = path.parent().unwrap();
     let dir_contents = std::fs::read_dir(parent_dir)?
+        .par_bridge()
         .filter_map(Result::ok)
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
         .map(|x| {
             let mut src_text = String::new();
 
-            let mut src = File::open(&x.path()).unwrap();
+            let mut src = File::open(x.path()).unwrap();
             src.read_to_string(&mut src_text).unwrap();
             FileSource {
                 filename: x.path(),
@@ -92,41 +94,47 @@ pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
         .collect::<Vec<_>>();
     drop(context);
 
-    let processed: Vec<CompResult<(Package, PathBuf, String)>> = dir_contents
+    let processed: Vec<Result<(Package, PathBuf, String), CompilerErr>> = dir_contents
         .par_iter()
         .map(|entry| {
-            let converted = convert_path_to_id(&entry.filename);
-            let mut context = ctx.filectx.lock().unwrap();
-            context.insert(converted, entry.clone());
-            drop(context);
-
-            let (pack, str) = parse_file(&ctx, converted).map_err(|e| {
-                e.get_dyn()
-                    .filename(entry.filename.file_name().unwrap().to_str().unwrap())
-            })?;
-
+            let converted_id = convert_path_to_id(&entry.filename);
+            let mut file_context = ctx.filectx.lock().unwrap();
+            file_context.insert(converted_id, entry.clone());
+            drop(file_context);
+            let (pack, str)=  parse_file(ctx, converted_id)?;
             Ok((pack, entry.filename.clone(), str))
+                
+            
         })
         .collect();
-    let mut v = vec![];
-    for x in processed.into_iter() {
-        v.push(x?);
+    let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
+    let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();
+    let errors: Vec<_> = errors.into_iter().map(Result::unwrap_err).collect();
+
+
+    if errors.is_empty() {
+        Ok(Program { packages: v })
+    } else {
+        Err(ErrorCollection::new(errors.into()).into())
     }
-    Ok(Program { packages: v })
 }
 
-pub fn compile_program(src_path: &Path) -> CompResult<Program> {
-    let id = convert_path_to_id(src_path);
+pub fn compile_program(ctx: &Context, id: FileID) -> CompResult<(Program, Duration)> {
+    let now: Instant = Instant::now();
 
-    let ctx = Context::new(src_path, id);
-    let program = parse_program(&ctx, id)?;
+    let program = parse_program(ctx, id)?;
+    dbg!(program.clone());
     //dbg!(program.clone());
-    //dbg!(program.clone());
-    let e = Environment::build(program.clone()).inspect_err(|e|e.report(&ctx))?;
-    e.check().inspect_err(|e| e.report(&ctx))?;
+    let e = Environment::build(program.clone()).inspect_err(|e| {
+        e.report(ctx);
+    })?;
+    e.check().inspect_err(|e| {
+        e.report(ctx);
+    })?;
     //dbg!(&e);
+    let elapsed = now.elapsed();
 
-    Ok(program)
+    Ok((program, elapsed))
 }
 
 // pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {
