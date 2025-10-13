@@ -69,7 +69,7 @@ impl std::fmt::Display for SimpleQuant {
 // }
 
 impl Quantifier {
-    #[must_use] 
+    #[must_use]
     pub fn append(&self, a: Self) -> Self {
         match self {
             Self::Root(quantifier) => Self::Root(Rc::new(quantifier.append(a))),
@@ -84,7 +84,7 @@ impl Quantifier {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn get_func_name(&self) -> Option<&String> {
         match self {
             Quantifier::Root(e) => e.get_func_name(),
@@ -95,7 +95,7 @@ impl Quantifier {
         }
     }
 
-    #[must_use = "Quantifiers should be consumed for queries or generation"] 
+    #[must_use = "Quantifiers should be consumed for queries or generation"]
     pub fn into_simple(&self) -> Vec<SimpleQuant> {
         let mut res = vec![];
         fn collapse(top: &Quantifier, result: &mut Vec<SimpleQuant>) {
@@ -259,7 +259,7 @@ impl Ord for Entry {
 }
 
 impl Entry {
-    #[must_use] 
+    #[must_use]
     pub fn get_sig(&self) -> Option<&Ty> {
         match self {
             Entry::Let { sig, .. } => sig.as_ref(),
@@ -268,7 +268,7 @@ impl Entry {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn get_parent(&self) -> Option<&Quantifier> {
         match self {
             Entry::Let { parent, .. } => Some(parent),
@@ -277,7 +277,7 @@ impl Entry {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn get_file(&self) -> Option<&PathBuf> {
         match self {
             Entry::Package { file, .. } => Some(file),
@@ -344,13 +344,12 @@ impl Environment {
     pub fn build(p: Program) -> CompResult<Self> {
         let mut env: TrieBuilder<SimpleQuant, Rc<RefCell<Entry>>> = TrieBuilder::new();
         let mut current_parent = Quantifier::End;
+
         for package in p.packages {
-            let the_package_name =
-                quantifier!(Root, Package(package.0.name.0.get_ident().unwrap()), End);
+            let package_name = package.0.name.0.get_ident().unwrap();
+            current_parent = quantifier!(Root, Package(package_name), End);
 
-            current_parent = the_package_name;
-
-            let mut deps = vec![];
+            let mut deps = Vec::new();
 
             for item in package.0.items {
                 match item {
@@ -358,53 +357,50 @@ impl Environment {
                         build_import(&mut deps, import_item);
                     }
                     Definition::Struct(StructDef { name, fields }) => {
+                        let ident = name.0.get_ident().unwrap();
                         let q = current_parent
-                            .append(Quantifier::Type(
-                                name.0.get_ident().unwrap(),
-                                Rc::new(Quantifier::End),
-                            ))
+                            .append(Quantifier::Type(ident, Rc::new(Quantifier::End)))
                             .into_simple();
+
                         env.insert(
                             q,
-                            RefCell::from(Entry::Struct {
+                            Rc::new(RefCell::new(Entry::Struct {
                                 name: name.clone(),
                                 parent: current_parent.clone(),
                                 fields,
                                 ty: Some(Ty::User(name, vec![])),
-                            })
-                            .into(),
+                            })),
                         );
                     }
-                    Definition::Let(name, body, ty) => env.insert(
-                        current_parent
-                            .append(Quantifier::Func(
-                                name.0.get_ident().unwrap(),
-                                Rc::new(Quantifier::End),
-                            ))
-                            .into_simple(),
-                        RefCell::from(Entry::Let {
-                            parent: current_parent.clone(),
-                            name,
-                            sig: ty.map(|t| t.0),
-                            body,
-                        })
-                        .into(),
-                    ),
-                    Definition::Extern(n, ty) => {
+                    Definition::Let(name, body, ty) => {
+                        let ident = name.0.get_ident().unwrap();
                         let q = current_parent
-                            .append(Quantifier::Func(
-                                n.0.get_ident().unwrap(),
-                                Rc::new(Quantifier::End),
-                            ))
+                            .append(Quantifier::Func(ident, Rc::new(Quantifier::End)))
                             .into_simple();
+
                         env.insert(
-                            q.clone(),
-                            RefCell::from(Entry::Extern {
+                            q,
+                            Rc::new(RefCell::new(Entry::Let {
+                                parent: current_parent.clone(),
+                                name,
+                                sig: ty.map(|t| t.0),
+                                body,
+                            })),
+                        );
+                    }
+                    Definition::Extern(n, ty) => {
+                        let ident = n.0.get_ident().unwrap();
+                        let q = current_parent
+                            .append(Quantifier::Func(ident, Rc::new(Quantifier::End)))
+                            .into_simple();
+
+                        env.insert(
+                            q,
+                            Rc::new(RefCell::new(Entry::Extern {
                                 parent: current_parent.clone(),
                                 name: n,
                                 sig: ty.0,
-                            })
-                            .into(),
+                            })),
                         );
                     }
                 }
@@ -412,18 +408,17 @@ impl Environment {
 
             env.insert(
                 current_parent.clone().into_simple(),
-                RefCell::from(Entry::Package {
+                Rc::new(RefCell::new(Entry::Package {
                     name: package.0.name,
                     file: package.1,
                     deps,
                     src: package.2,
-                })
-                .into(),
+                })),
             );
         }
-        let trie = env.build();
+
         Ok(Self {
-            items: trie,
+            items: env.build(),
             current_parent,
         })
     }
@@ -449,11 +444,11 @@ impl Environment {
         //match *entry.borrow_mut() {
 
         if let Entry::Let {
-                ref mut sig,
-                ref body,
-                name: _,
-                ref parent,
-            } = *if let Ok(e) = entry.try_borrow_mut() {
+            ref mut sig,
+            ref body,
+            name: _,
+            ref parent,
+        } = *if let Ok(e) = entry.try_borrow_mut() {
             e
         } else {
             return Ok(entry);
