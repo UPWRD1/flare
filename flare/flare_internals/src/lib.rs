@@ -123,7 +123,7 @@ pub fn compile_program(ctx: &Context, id: FileID) -> CompResult<(Program, Durati
     let now: Instant = Instant::now();
 
     let program = parse_program(ctx, id)?;
-    dbg!(program.clone());
+    //dbg!(program.clone());
     //dbg!(program.clone());
     let e = Environment::build(program.clone()).inspect_err(|e| {
         e.report(ctx);

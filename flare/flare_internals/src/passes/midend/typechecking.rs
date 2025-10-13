@@ -161,7 +161,7 @@ impl<'env> Solver<'env> {
         }
     }
 
-    fn search_masterenv(&self, q: SimpleQuant, s: SimpleSpan<usize, u64>) -> CompResult<&Rc<RefCell<Entry>>> {
+    fn search_masterenv(&self, q: &SimpleQuant, s: SimpleSpan<usize, u64>) -> CompResult<&Rc<RefCell<Entry>>> {
         let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
             .master_env
             .items
@@ -357,7 +357,7 @@ impl<'env> Solver<'env> {
                         }
                         //let paired_fields = fields.iter().zip(given_fields.iter());
                         let map: Vec<(Spanned<Expr>, Spanned<Ty>)> =
-                            fields.to_vec();
+                            fields.clone();
                         //dbg!(&map);
                         for (fname, value) in given_fields {
                             //dbg!(fname);

@@ -95,7 +95,7 @@ impl Quantifier {
         }
     }
 
-    #[must_use] 
+    #[must_use = "Quantifiers should be consumed for queries or generation"] 
     pub fn into_simple(&self) -> Vec<SimpleQuant> {
         let mut res = vec![];
         fn collapse(top: &Quantifier, result: &mut Vec<SimpleQuant>) {
