@@ -11,5 +11,5 @@ package Main =
 
     let main = 
         let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
-        let f = factorial 3 in
+        let f = factorial "s" in
         i.f i.d (factorial 3)

@@ -161,8 +161,8 @@ impl<'env> Solver<'env> {
         }
     }
 
-    fn search_masterenv(&self, q: &SimpleQuant, s: SimpleSpan<usize, u64>) -> CompResult<&Rc<RefCell<Entry>>> {
-        let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+    fn search_masterenv(&self, q: &SimpleQuant, s: SimpleSpan<usize, u64>) -> CompResult<&Entry> {
+        let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
             .master_env
             .items
             .postfix_search(vec![q.clone()])
@@ -295,12 +295,12 @@ impl<'env> Solver<'env> {
             Expr::FieldAccess(l, r) => {
                 let l_ty = self.check_expr(l)?;
                 let solved = self.solve(l_ty)?;
-                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+                let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
                     .master_env
                     .items
                     .postfix_search(vec![SimpleQuant::Type(solved.get_user_name().unwrap())])
                     .collect();
-                if let Entry::Struct { ref fields, .. } = *search.last().unwrap().1.borrow() {
+                if let Entry::Struct { ref fields, .. } = *search.last().unwrap().1 {
                     let the_field = fields.iter().find(|(n, _)| n.0 == r.0).unwrap();
                     let expected_ty = self.convert_ty(&the_field.1.0);
                     let expected_ty_var = self.create_ty(
@@ -325,7 +325,7 @@ impl<'env> Solver<'env> {
                 Ok(out_ty)
             }
             Expr::FieldedConstructor(name, given_fields) => {
-                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+                let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
                     .master_env
                     .items
                     .postfix_search(vec![SimpleQuant::Type(
@@ -336,11 +336,11 @@ impl<'env> Solver<'env> {
                 if let Some((_q, e)) = search.last() {
                     //todo!();
 
-                    let mut sty = self.master_env.check_entry(e)?.borrow_mut();
+                    let sty = self.master_env.check_entry(e)?;
                     //dbg!(&fty);
                     if let Entry::Struct {
                         ref name,
-                        ref mut fields,
+                        ref fields,
                         ref ty,
                         ref parent,
                     } = *sty
@@ -395,14 +395,14 @@ impl<'env> Solver<'env> {
                 }
             }
                         Expr::ExternFunc(name) => {
-                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+                let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
                     .master_env
                     .items
                     .postfix_search(vec![name.last().unwrap().clone()])
                     .collect();
                 dbg!(&search);
                 if let Some((_q, e)) = search.last() {
-                    if let Entry::Extern { ref sig, .. } = *e.borrow() {
+                    if let Entry::Extern { ref sig, .. } = *e {
                         let converted = self.convert_ty(sig);
                         let out_ty = self.create_ty(converted, expr.1);
                         Ok(out_ty)
@@ -434,7 +434,7 @@ impl<'env> Solver<'env> {
         //dbg!(expr);
         //dbg!(&self.master_env);
 
-        let search_func: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+        let search_func: Vec<(Vec<SimpleQuant>, &Entry)> = self
             .master_env
             .items
             .postfix_search(vec![SimpleQuant::Func(name.to_string())])
@@ -442,14 +442,14 @@ impl<'env> Solver<'env> {
         if let Some((_q, e)) = search_func.last() {
 
             // BEAUTIFUL!
-            let fty = if let Ok(entry) = self.master_env.check_entry(e)?.try_borrow() {entry} else {
+            let fty = if self.master_env.check_entry(e)?.get_sig().is_some() {e} else {
                 let l = self.create_ty(TyInfo::Unknown, expr.1);
                 let r = self.create_ty(TyInfo::Unknown, expr.1);
                 return Ok(self.create_ty(TyInfo::Func(l, r), expr.1))
             };
             //dbg!(&fty);
             if let Entry::Let { ref sig,  .. } = *fty {
-                let (l, r) = sig.as_ref().unwrap().get_arrow();
+                let (l, r) = sig.get().unwrap().get_arrow();
                 let converted_l = self.convert_ty(&l.0);
                 let converted_r = self.convert_ty(&r.0);
                 let lty = self.create_ty(converted_l, l.1);
@@ -501,7 +501,7 @@ impl<'env> Solver<'env> {
                 Box::new((self.solve(o)?, self.vars[o.0].1)),
             )),
             TyInfo::User(n) => {
-                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+                let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
                     .master_env
                     .items
                     .postfix_search(vec![SimpleQuant::Type(n.to_string())])
@@ -512,7 +512,7 @@ impl<'env> Solver<'env> {
                         parent: _,
                         ref fields,
                         ref ty,
-                    } = *e.borrow()
+                    } = *e
                     {
                         Ok(ty.clone().unwrap())
                     } else {

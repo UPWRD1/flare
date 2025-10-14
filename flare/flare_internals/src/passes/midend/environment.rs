@@ -2,11 +2,11 @@ use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
+use std::cell::OnceCell;
 use log::info;
 
 use serde::{Deserialize, Serialize};
 use std::{
-    cell::RefCell,
     fmt::{Debug, Display},
     hash::Hash,
     path::PathBuf,
@@ -203,7 +203,7 @@ macro_rules! quantifier {
     };
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Entry {
     Root,
     Filename(String),
@@ -222,7 +222,7 @@ pub enum Entry {
     Let {
         parent: Quantifier,
         name: Spanned<Expr>,
-        sig: Option<Ty>,
+        sig: OnceCell<Ty>,
         body: Spanned<Expr>,
     },
     Extern {
@@ -262,7 +262,7 @@ impl Entry {
     #[must_use]
     pub fn get_sig(&self) -> Option<&Ty> {
         match self {
-            Entry::Let { sig, .. } => sig.as_ref(),
+            Entry::Let { sig, .. } => sig.get(),
             Entry::Extern { sig, .. } => Some(sig),
             _ => None,
         }
@@ -301,7 +301,7 @@ impl Display for Entry {
                     .join(" * ")
             ),
             Entry::Let { name, sig, .. } => {
-                if let Some(sig) = sig {
+                if let Some(sig) = sig.get() {
                     write!(f, "{}: {}", name.0.get_ident().unwrap(), sig)
                 } else {
                     write!(f, "{}: ?", name.0.get_ident().unwrap())
@@ -316,11 +316,11 @@ impl Display for Entry {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Environment {
     //pub items: HashMap<Quantifier, Rc<RefCell<Entry>>>,
-    pub items: Trie<SimpleQuant, Rc<RefCell<Entry>>>,
-    pub current_parent: Quantifier,
+    pub items: Trie<SimpleQuant, Entry>,
+    //pub current_parent: Quantifier,
 }
 
 impl Environment {
@@ -342,12 +342,11 @@ impl Environment {
     // }
 
     pub fn build(p: Program) -> CompResult<Self> {
-        let mut env: TrieBuilder<SimpleQuant, Rc<RefCell<Entry>>> = TrieBuilder::new();
-        let mut current_parent = Quantifier::End;
+        let mut env: TrieBuilder<SimpleQuant, Entry> = TrieBuilder::new();
 
         for package in p.packages {
             let package_name = package.0.name.0.get_ident().unwrap();
-            current_parent = quantifier!(Root, Package(package_name), End);
+            let current_parent = quantifier!(Root, Package(package_name), End);
 
             let mut deps = Vec::new();
 
@@ -364,12 +363,12 @@ impl Environment {
 
                         env.insert(
                             q,
-                            Rc::new(RefCell::new(Entry::Struct {
+                            Entry::Struct {
                                 name: name.clone(),
                                 parent: current_parent.clone(),
                                 fields,
                                 ty: Some(Ty::User(name, vec![])),
-                            })),
+                            },
                         );
                     }
                     Definition::Let(name, body, ty) => {
@@ -378,14 +377,18 @@ impl Environment {
                             .append(Quantifier::Func(ident, Rc::new(Quantifier::End)))
                             .into_simple();
 
+                        let cell = OnceCell::new();
+                        if let Some(ty) = ty.map(|t| t.0) {
+                            let _ = cell.set(ty);
+                        }
                         env.insert(
                             q,
-                            Rc::new(RefCell::new(Entry::Let {
+                            Entry::Let {
                                 parent: current_parent.clone(),
                                 name,
-                                sig: ty.map(|t| t.0),
+                                sig: cell,
                                 body,
-                            })),
+                            },
                         );
                     }
                     Definition::Extern(n, ty) => {
@@ -396,11 +399,11 @@ impl Environment {
 
                         env.insert(
                             q,
-                            Rc::new(RefCell::new(Entry::Extern {
+                            Entry::Extern {
                                 parent: current_parent.clone(),
                                 name: n,
                                 sig: ty.0,
-                            })),
+                            },
                         );
                     }
                 }
@@ -408,18 +411,17 @@ impl Environment {
 
             env.insert(
                 current_parent.clone().into_simple(),
-                Rc::new(RefCell::new(Entry::Package {
+                Entry::Package {
                     name: package.0.name,
                     file: package.1,
                     deps,
                     src: package.2,
-                })),
+                },
             );
         }
 
         Ok(Self {
             items: env.build(),
-            current_parent,
         })
     }
 
@@ -431,34 +433,36 @@ impl Environment {
                     .into_simple()
                     .into_iter(),
             )
-            .unwrap(); //*self.items.find_postfixes(Quantifier::Func("main".into(), Quantifier::End.into()).into_bits().into_iter()).first().unwrap();
+            .unwrap();
+         //*self.items.find_postfixes(Quantifier::Func("main".into(), Quantifier::End.into()).into_bits().into_iter()).first().unwrap();
         self.check_entry(main)?;
+        //dbg!(&main);
         Ok(())
     }
 
     pub fn check_entry<'e>(
         &self,
-        entry: &'e Rc<RefCell<Entry>>,
-    ) -> CompResult<&'e Rc<RefCell<Entry>>> {
+        entry: &'e Entry,
+    ) -> CompResult<&'e Entry> {
         //println!("Checking {:?}", entry);
         //match *entry.borrow_mut() {
 
         if let Entry::Let {
-            ref mut sig,
+            ref sig,
             ref body,
             name: _,
             ref parent,
-        } = *if let Ok(e) = entry.try_borrow_mut() {
-            e
+        } = if entry.get_sig().is_none() {
+            entry
         } else {
             return Ok(entry);
         } {
             let mut tc = Solver::new(self);
             let tv = tc.check_expr(body)?;
             let fn_sig = tc.solve(tv)?;
-            *sig = Some(fn_sig);
+            let _ = sig.set(fn_sig);
         }
-        info!("Checked {}", entry.borrow());
+        info!("Checked {}", entry);
         Ok(entry)
     }
 }
