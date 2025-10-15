@@ -132,41 +132,41 @@ impl Quantifier {
     }
 }
 
-impl Display for Quantifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Quantifier::Root(quantifier) => {
-                //f.write_str("Root, ")?;
-                Display::fmt(quantifier, f)
-            }
-            Quantifier::Package(n, quantifier) => {
-                f.write_str(&format!("Module {n}, "))?;
-                Display::fmt(quantifier, f)
-            }
-            Quantifier::Type(n, quantifier) => {
-                f.write_str(&format!("Type {n}, "))?;
-                Display::fmt(quantifier, f)
-            }
-            Quantifier::Effect(n, quantifier) => {
-                f.write_str(&format!("Effect {n}, "))?;
-                Display::fmt(quantifier, f)
-            }
+// impl Display for Quantifier {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             Quantifier::Root(quantifier) => {
+//                 //f.write_str("Root, ")?;
+//                 Display::fmt(quantifier, f)
+//             }
+//             Quantifier::Package(n, quantifier) => {
+//                 f.write_str(&format!("Module {n}, "))?;
+//                 Display::fmt(quantifier, f)
+//             }
+//             Quantifier::Type(n, quantifier) => {
+//                 f.write_str(&format!("Type {n}, "))?;
+//                 Display::fmt(quantifier, f)
+//             }
+//             Quantifier::Effect(n, quantifier) => {
+//                 f.write_str(&format!("Effect {n}, "))?;
+//                 Display::fmt(quantifier, f)
+//             }
 
-            Quantifier::Func(n, quantifier) => {
-                f.write_str(&format!("Function {n}, "))?;
-                Display::fmt(quantifier, f)
-            }
-            Quantifier::Variable(n) => {
-                f.write_str(&format!("Variable {n}, "))?;
-                Ok(())
-            }
-            Quantifier::End => {
-                //f.write_str(&format!("End"))?;
-                Ok(())
-            }
-        }
-    }
-}
+//             Quantifier::Func(n, quantifier) => {
+//                 f.write_str(&format!("Function {n}, "))?;
+//                 Display::fmt(quantifier, f)
+//             }
+//             Quantifier::Variable(n) => {
+//                 f.write_str(&format!("Variable {n}, "))?;
+//                 Ok(())
+//             }
+//             Quantifier::End => {
+//                 //f.write_str(&format!("End"))?;
+//                 Ok(())
+//             }
+//         }
+//     }
+// }
 
 #[macro_export]
 macro_rules! quantifier {
