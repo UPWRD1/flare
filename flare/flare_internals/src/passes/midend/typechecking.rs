@@ -1,6 +1,7 @@
-use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc};
+use std::{fmt, rc::Rc};
 
 use chumsky::span::SimpleSpan;
+use generational_arena::Index;
 //use ptrie::Trie;
 //use token_trie::Trie;
 //use radix_trie::{Trie, TrieCommon};
@@ -13,7 +14,7 @@ use crate::{
     },
 };
 
-use log::{info, trace, warn};
+use log::info;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct TyVar(usize);
@@ -43,13 +44,13 @@ impl fmt::Display for TyInfo {
         match self {
             TyInfo::Unknown => write!(f, "Unknown"),
             TyInfo::Ref(n) => write!(f, "{n}"),
-            TyInfo::User(n) => write!(f, "User({})", n),
+            TyInfo::User(n) => write!(f, "User({n})"),
             TyInfo::Num => write!(f, "num"),
             TyInfo::Bool => write!(f, "bool"),
             TyInfo::Func(l, r) => write!(f, "({l} -> {r})"),
             TyInfo::Unit => write!(f, "unit"),
             TyInfo::String => write!(f, "str"),
-            TyInfo::Tuple(t, s) => write!(f, "{{{}; {}}}", t, s),
+            TyInfo::Tuple(t, s) => write!(f, "{{{t}; {s}}}"),
         }
     }
 }
@@ -90,10 +91,10 @@ impl fmt::Display for Ty {
                 crate::resource::rep::PrimitiveType::Unit => write!(f, "unit"),
             },
 
-            Ty::Tuple(t, s) => {
+            Ty::Tuple(t, _s) => {
                 write!(f, "{{")?;
                 for i in t {
-                    write!(f, "{}, ", i.0)?
+                    write!(f, "{}, ", i.0)?;
                 }
                 write!(f, "}}")
             }
@@ -103,7 +104,7 @@ impl fmt::Display for Ty {
             Ty::User(n, args) => {
                 write!(f, "{}[", n.0.get_ident().unwrap_or("?".to_string()))?;
                 for a in args {
-                    write!(f, "{}, ", a.0)?
+                    write!(f, "{}, ", a.0)?;
                 }
                 write!(f, "]")
             }
@@ -120,6 +121,7 @@ pub struct Solver<'env> {
 }
 
 impl<'env> Solver<'env> {
+    #[must_use]
     pub fn new(
         master_env: &'env Environment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
     ) -> Solver<'env> {
@@ -150,38 +152,36 @@ impl<'env> Solver<'env> {
             Ty::Arrow(l, r) => {
                 let lty = self.convert_ty(&l.0);
                 let rty = self.convert_ty(&r.0);
-                TyInfo::Func(
-                    self.create_ty(lty, l.1),
-                    self.create_ty(rty, r.1),
-                )
+                TyInfo::Func(self.create_ty(lty, l.1), self.create_ty(rty, r.1))
             }
-            Ty::User(n, g) => TyInfo::User(n.0.get_ident().unwrap_or("?".to_string()).leak()),
+            Ty::User(n, _g) => TyInfo::User(n.0.get_ident().unwrap_or("?".to_string()).leak()),
             _ => todo!("{:?}", t),
         }
     }
 
-    fn search_masterenv(&self, q: SimpleQuant, s: SimpleSpan<usize, u64>) -> CompResult<&Rc<RefCell<Entry>>> {
-        let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
+    #[inline]
+    fn search_masterenv(
+        &self,
+        q: &SimpleQuant,
+        s: &SimpleSpan<usize, u64>,
+    ) -> CompResult<&'env Entry> {
+        let search: Vec<(Vec<SimpleQuant>, &Index)> = self
             .master_env
             .items
             .postfix_search(vec![q.clone()])
             .collect();
         if let Some((_q, e)) = search.last() {
-            Ok(e)
+            Ok(self.master_env.arena.get(**e).unwrap())
         } else {
-            Err(DynamicErr::new(format!("'{q}' hasn't been defined"))
-                .filename("Type Error")
-                .label((
-                    format!("{:?} not found in scope", q),
-                    s,
-                ))
+            Err(DynamicErr::new(format!("{q} hasn't been defined"))
+                .label((format!("{q:?} not found in scope"), *s))
                 //.src(self.src.to_string())
                 .into())
         }
     }
 
     fn unify(&mut self, a: TyVar, b: TyVar, span: SimpleSpan<usize, FileID>) -> CompResult<TyInfo> {
-        use TyInfo::*;
+        use TyInfo::{Bool, Func, Num, Ref, String, Unit, Unknown, User};
 
         let (a_info, b_info) = (self.vars[a.0].0, self.vars[b.0].0);
         match (a_info, b_info) {
@@ -195,7 +195,7 @@ impl<'env> Solver<'env> {
             }
             (Ref(a1), _) => self.unify(a1, b, span),
             (_, Ref(b1)) => self.unify(a, b1, span),
-            (Num, Num) | (Bool, Bool) | (String, String) | (Unit, Unit) => Ok(a_info.clone()),
+            (Num, Num) | (Bool, Bool) | (String, String) | (Unit, Unit) => Ok(a_info),
             (Func(a_i, a_o), Func(b_i, b_o)) => {
                 let _ = self.unify(b_i, a_i, span)?;
                 let _ = self.unify(a_o, b_o, span)?;
@@ -212,7 +212,7 @@ impl<'env> Solver<'env> {
             ])
             .into()),
         }
-        .inspect(|x| {info!("    {} U {} => {}", a, b, x)})
+        .inspect(|x| info!("    {a} U {b} => {x}"))
     }
 
     pub fn check_expr(
@@ -255,14 +255,13 @@ impl<'env> Solver<'env> {
                 Ok(self.create_ty(TyInfo::Func(arg_ty, body_ty), expr.1))
             }
             Expr::Call(func, arg) => {
-                
                 //let backup_parent = self.current_parent.clone();
                 //self.current_parent =SimpleQuant::Func(func.0.get_ident().unwrap_or("?".to_string()));
                 let func_ty = self.check_expr(func)?;
                 let arg_ty = self.check_expr(arg)?;
                 let out_ty = self.create_ty(TyInfo::Unknown, expr.1);
                 let func_req_ty = self.create_ty(TyInfo::Func(arg_ty, out_ty), func.1);
-                self.unify( func_ty, func_req_ty, arg.1)?;
+                self.unify(func_ty, func_req_ty, arg.1)?;
                 //self.current_parent = backup_parent;
                 Ok(out_ty)
             }
@@ -295,18 +294,14 @@ impl<'env> Solver<'env> {
             Expr::FieldAccess(l, r) => {
                 let l_ty = self.check_expr(l)?;
                 let solved = self.solve(l_ty)?;
-                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
-                    .master_env
-                    .items
-                    .postfix_search(vec![SimpleQuant::Type(solved.get_user_name().unwrap())])
-                    .collect();
-                if let Entry::Struct { ref fields, .. } = *search.last().unwrap().1.borrow() {
+
+                if let Entry::Struct { ref fields, .. } = self
+                    .search_masterenv(&SimpleQuant::Type(solved.get_user_name().unwrap()), &l.1)?
+                {
+                    //if let Entry::Struct { ref fields, .. } = self.master_env.arena.get(*search.last().unwrap().1).unwrap() {
                     let the_field = fields.iter().find(|(n, _)| n.0 == r.0).unwrap();
-                    let expected_ty = self.convert_ty(&the_field.1.0);
-                    let expected_ty_var = self.create_ty(
-                        expected_ty,
-                        the_field.1.1,
-                    );
+                    let expected_ty = self.convert_ty(&the_field.1 .0);
+                    let expected_ty_var = self.create_ty(expected_ty, the_field.1 .1);
                     Ok(expected_ty_var)
                 } else {
                     panic!("Should be a struct")
@@ -325,74 +320,72 @@ impl<'env> Solver<'env> {
                 Ok(out_ty)
             }
             Expr::FieldedConstructor(name, given_fields) => {
-                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
-                    .master_env
-                    .items
-                    .postfix_search(vec![SimpleQuant::Type(
-                        name.0.get_ident().unwrap().to_string(),
-                    )])
-                    .collect();
-                //dbg!(&search);
-                if let Some((_q, e)) = search.last() {
-                    //todo!();
+                let e = self.search_masterenv(
+                    &SimpleQuant::Type(name.0.get_ident().unwrap().to_string()),
+                    &name.1,
+                )?;
 
-                    let mut sty = self.master_env.check_entry(e)?.borrow_mut();
-                    //dbg!(&fty);
-                    if let Entry::Struct {
-                        ref name,
-                        ref mut fields,
-                        ref ty,
-                        ref parent,
-                    } = *sty
-                    {
-                        if fields.len() != given_fields.len() {
-                            return Err(DynamicErr::new(format!(
-                                "Field count mismatch: expected {}, found {}",
-                                fields.len(),
-                                given_fields.len()
-                            ))
-                            .label((format!("expected {} fields", fields.len()), name.1))
-                            .label((format!("found {} fields", given_fields.len()), expr.1))
-                            .into());
-                        }
-                        //let paired_fields = fields.iter().zip(given_fields.iter());
-                        let map: Vec<(Spanned<Expr>, Spanned<Ty>)> =
-                            fields.iter().cloned().map(|(n, t)| (n, t)).collect();
-                        //dbg!(&map);
-                        for (fname, value) in given_fields {
-                            //dbg!(fname);
-                            let def_ty: Spanned<Ty> = map.iter().filter(|x| x.0.0 == fname.0).last().ok_or(DynamicErr::new(format!(
-                                "No such field '{}' in struct '{}'",
-                                fname.0.get_ident().unwrap(),
-                                name.0.get_ident().unwrap()
-                            )).label((format!("{:?} doesn't exist", fname.0), fname.1)))?.1.clone();
-                            let given_ty = self.check_expr(value)?;
-                            let expected_ty = self.convert_ty(&def_ty.0);
-                            let expected_ty_var = self.create_ty(
-                                expected_ty,
-                                def_ty.1,
-                            );
-                            self.unify(given_ty, expected_ty_var, value.1)?;
-                        }
-                        let out_ty = self.create_ty(
-                            TyInfo::User(name.0.get_ident().unwrap().to_string().leak()),
-                            name.1,
-                        );
-                        Ok(out_ty)
-                    } else {
-                        panic!("Should be a struct")
-                    }
-
-                    //e.get_sig()
-                } else {
-                    Err(DynamicErr::new(format!("No such struct '{name:?}'"))
-                        .filename("Type Error")
-                        .label((
-                            format!("{:?} not found in scope", expr.0),
-                            expr.1,
+                let sty = self.master_env.check_entry(e)?;
+                //dbg!(&fty);
+                if let Entry::Struct {
+                    ref name,
+                    ref fields,
+                    ..
+                } = *sty
+                {
+                    if fields.len() != given_fields.len() {
+                        return Err(DynamicErr::new(format!(
+                            "Field count mismatch: expected {}, found {}",
+                            fields.len(),
+                            given_fields.len()
                         ))
-                        //.src(self.src.to_string())
-                        .into())
+                        .label((format!("expected {} fields", fields.len()), name.1))
+                        .label((format!("found {} fields", given_fields.len()), expr.1))
+                        .into());
+                    }
+                    //let paired_fields = fields.iter().zip(given_fields.iter());
+                    let map: Vec<(Spanned<Expr>, Spanned<Ty>)> = fields.clone();
+                    //dbg!(&map);
+                    for (fname, value) in given_fields {
+                        //dbg!(fname);
+                        let def_ty: Spanned<Ty> = map
+                            .iter()
+                            .filter(|x| x.0 .0 == fname.0)
+                            .next_back()
+                            .ok_or(
+                                DynamicErr::new(format!(
+                                    "No such field '{}' in struct '{}'",
+                                    fname.0.get_ident().unwrap(),
+                                    name.0.get_ident().unwrap()
+                                ))
+                                .label((format!("{:?} doesn't exist", fname.0), fname.1)),
+                            )?
+                            .1
+                            .clone();
+                        let given_ty = self.check_expr(value)?;
+                        let expected_ty = self.convert_ty(&def_ty.0);
+                        let expected_ty_var = self.create_ty(expected_ty, def_ty.1);
+                        self.unify(given_ty, expected_ty_var, value.1)?;
+                    }
+                    let out_ty = self.create_ty(
+                        TyInfo::User(name.0.get_ident().unwrap().to_string().leak()),
+                        name.1,
+                    );
+                    Ok(out_ty)
+                } else {
+                    panic!("Should be a struct")
+                }
+
+                //e.get_sig()
+            }
+            Expr::ExternFunc(name) => {
+                let e = self.search_masterenv(&name.last().unwrap().clone(), &expr.1)?;
+                if let Entry::Extern { ref sig, .. } = *e {
+                    let converted = self.convert_ty(sig);
+                    let out_ty = self.create_ty(converted, expr.1);
+                    Ok(out_ty)
+                } else {
+                    panic!("Should be an extern")
                 }
             }
             _ => todo!("Failed to check {:?}", expr.0),
@@ -404,55 +397,52 @@ impl<'env> Solver<'env> {
         expr: &Spanned<Expr>,
         name: &String,
     ) -> Result<TyVar, crate::resource::errors::CompilerErr> {
-        //let e = self.search_masterenv(SimpleQuant::Func(name.to_string()))?;
-        //dbg!(expr);
-        //dbg!(&self.master_env);
-
-        let search_func: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
-            .master_env
-            .items
-            .postfix_search(vec![SimpleQuant::Func(name.to_string())])
-            .collect();
-        if let Some((_q, e)) = search_func.last() {
-
-            // BEAUTIFUL!
-            let fty = if let Ok(entry) = self.master_env.check_entry(e)?.try_borrow() {entry} else {
-                let l = self.create_ty(TyInfo::Unknown, expr.1);
-                let r = self.create_ty(TyInfo::Unknown, expr.1);
-                return Ok(self.create_ty(TyInfo::Func(l, r), expr.1))
-            };
-            //dbg!(&fty);
-            if let Entry::Let { ref sig, ref name, .. } = *fty {
-                let (l, r) = sig.as_ref().unwrap().get_arrow();
-                let converted_l = self.convert_ty(&l.0);
-                let converted_r = self.convert_ty(&r.0);
-                let lty = self.create_ty(converted_l, l.1);
-                let rty = self.create_ty(converted_r, r.1);
-                let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
-                Ok(fn_ty)
-            } else {
-                panic!("Should be a function")
-            }
-
-            //e.get_sig()
+        let e = self.search_masterenv(&SimpleQuant::Func(name.to_string()), &expr.1)?;
+        // BEAUTIFUL!
+        let fty = if self.master_env.check_entry(e)?.get_sig().is_some() {
+            e
         } else {
-            Err(DynamicErr::new(format!("'{name}' hasn't been defined"))
-                .filename("Type Error")
-                .label((
-                    format!("{:?} not found in scope", expr.0),
-                    expr.1,
-                ))
-                //.src(self.src.to_string())
-                .into())
+            let l = self.create_ty(TyInfo::Unknown, expr.1);
+            let r = self.create_ty(TyInfo::Unknown, expr.1);
+            return Ok(self.create_ty(TyInfo::Func(l, r), expr.1));
+        };
+        //dbg!(&fty);
+        if let Entry::Let { ref sig, .. } = *fty {
+            let (l, r) = sig.get().unwrap().get_arrow();
+            let converted_l = self.convert_ty(&l.0);
+            let converted_r = self.convert_ty(&r.0);
+            let lty = self.create_ty(converted_l, l.1);
+            let rty = self.create_ty(converted_r, r.1);
+            let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
+            Ok(fn_ty)
+        } else if let Entry::Extern { ref sig, .. } = *fty {
+            let (l, r) = sig.get_arrow();
+            let converted_l = self.convert_ty(&l.0);
+            let converted_r = self.convert_ty(&r.0);
+            let lty = self.create_ty(converted_l, l.1);
+            let rty = self.create_ty(converted_r, r.1);
+            let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
+            Ok(fn_ty)
+        } else {
+            panic!("Should be a function")
         }
+
+        //e.get_sig()
+        // } else {
+        //     Err(DynamicErr::new(format!("'{name}' hasn't been defined"))
+        //         .label((format!("{:?} not found in scope", expr.0), expr.1))
+        //         //.src(self.src.to_string())
+        //         .into())
+        // }
     }
 
     pub fn solve(&self, var: TyVar) -> CompResult<Ty> {
         match self.vars[var.0].0 {
             TyInfo::Unknown => {
                 //panic!("cannot infer type {:?}, is Unknown", var)
+
                 Err(
-                    DynamicErr::new(format!("cannot infer type {:?}, is Unknown", var))
+                    DynamicErr::new(format!("cannot infer type {var:?}, is Unknown"))
                         .label(("has unknown type".to_string(), self.vars[var.0].1))
                         .into(),
                 )
@@ -463,29 +453,20 @@ impl<'env> Solver<'env> {
             TyInfo::String => Ok(Ty::Primitive(PrimitiveType::Str)),
             TyInfo::Unit => Ok(Ty::Primitive(PrimitiveType::Unit)),
             TyInfo::Func(i, o) => Ok(Ty::Arrow(
-                Box::new((self.solve(i)?, self.vars[i.0].1)),
-                Box::new((self.solve(o)?, self.vars[o.0].1)),
+                Rc::new((self.solve(i)?, self.vars[i.0].1)),
+                Rc::new((self.solve(o)?, self.vars[o.0].1)),
             )),
             TyInfo::User(n) => {
-                let search: Vec<(Vec<SimpleQuant>, &Rc<RefCell<Entry>>)> = self
-                    .master_env
-                    .items
-                    .postfix_search(vec![SimpleQuant::Type(n.to_string())])
-                    .collect();
-                if let Some((_q, e)) = search.last() {
-                    if let Entry::Struct {
-                        name: _,
-                        parent: _,
-                        ref fields,
-                        ref ty,
-                    } = *e.borrow()
-                    {
-                        Ok(ty.clone().unwrap())
-                    } else {
-                        panic!("Should be a struct")
-                    }
+                let e =
+                    self.search_masterenv(&SimpleQuant::Type(n.to_string()), &self.vars[var.0].1)?;
+                if let Entry::Struct {
+                    ref ty,
+                    ..
+                } = *e
+                {
+                    Ok(ty.clone())
                 } else {
-                    panic!("Should exist")
+                    Err(DynamicErr::new(format!("{} should be a struct", self.vars[var.0].0)).label((format!("This is not a struct"), self.vars[var.0].1)).into())
                 }
             }
             TyInfo::Tuple(t, s) => {
@@ -493,7 +474,7 @@ impl<'env> Solver<'env> {
                 Ok(Ty::Tuple(vec![(inner_ty, self.vars[t.0].1)], s))
             }
         }
-        .inspect(|t| {info!("Solved {} => {}", var, t)})
+        .inspect(|t| info!("Solved {var} => {t}"))
         // let _ = t
         //     .as_ref()
         //     .inspect(|t| println!("    Solved {} => {}", var, t));

@@ -1,12 +1,15 @@
-package Main =
-    use {Math}
-    
+package Main = 
+    # use {Math}
+    extern println: str -> unit
+
+    extern concat: str -> str -> str
+    extern display_num: num -> str
+
     struct S =
-        d: num
+        d: str,
+        f: str -> num -> str
 
-    let main: unit -> num = 
-        let s = S {d = 3} in
-        let t = (2 * s.d) in
-            factorial t
-
-        
+    let main = 
+        let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
+        let f = factorial 3 in
+        i.f i.d (factorial 3)

@@ -13,7 +13,7 @@ package Billing =
 	
 	struct PlateCharge = 
 		plate: LicensePlate,
-		amount: Money.Amount,
+		amount: Money.Amount
 	
 	let calc_amount db rec = 
 		let dist = db.distance rec.entrance rec.exit in
