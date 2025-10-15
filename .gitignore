@@ -1,2 +1,3 @@
 flare/target
 perf.*
+flamegraph.svg

@@ -15,14 +15,13 @@ ordered-float = { version = "4.5.0", features = ["serde"] }
 #ptrie = "0.7.2"
 qbe = "2.3.0"
 rayon = "1.11.0"
+rustc-hash = "2.1.1"
 serde = {version = "1.0.210", features = ["derive", "rc"]}
 thiserror = "2.0.7"
 trie-rs = {version = "0.4.2", features = ["rayon"]}
 #trie-rs = {version = "0.4.2", features = []}
 
 #typed-builder = "0.21.2"
-
-
 
 
 [dev-dependencies]

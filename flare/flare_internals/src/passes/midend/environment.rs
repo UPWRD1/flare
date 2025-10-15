@@ -89,7 +89,7 @@ impl Quantifier {
     #[must_use]
     pub fn get_func_name(&self) -> Option<&String> {
         match self {
-            Quantifier::Root(e) => e.get_func_name(),
+            Quantifier::Root(e) |
             Quantifier::Package(_, e) => e.get_func_name(),
             Quantifier::Func(n, _) => Some(n),
             Quantifier::End => None,
@@ -218,7 +218,7 @@ pub enum Entry {
     Struct {
         parent: Quantifier,
         name: Spanned<Expr>,
-        ty: Option<Ty>,
+        ty: Ty,
         fields: Vec<(Spanned<Expr>, Spanned<Ty>)>,
     },
     Let {
@@ -273,7 +273,7 @@ impl Entry {
     #[must_use]
     pub fn get_parent(&self) -> Option<&Quantifier> {
         match self {
-            Entry::Let { parent, .. } => Some(parent),
+            Entry::Let { parent, .. } |
             Entry::Struct { parent, .. } => Some(parent),
             _ => None,
         }
@@ -298,7 +298,7 @@ impl Display for Entry {
                 name.0.get_ident().unwrap(),
                 fields
                     .iter()
-                    .map(|(n, t)| format!("{}", t.0))
+                    .map(|(_n, t)| format!("{}", t.0))
                     .collect::<Vec<_>>()
                     .join(" * ")
             ),
@@ -368,7 +368,7 @@ impl Environment {
                             name: name.clone(),
                             parent: current_parent.clone(),
                             fields,
-                            ty: Some(Ty::User(name, vec![])),
+                            ty: Ty::User(name, vec![]),
                         };
                         let idx = arena.insert(entry);
 
@@ -448,8 +448,7 @@ impl Environment {
         if let Entry::Let {
             ref sig,
             ref body,
-            name: _,
-            ref parent,
+            ..
         } = if entry.get_sig().is_none() {
             entry
         } else {

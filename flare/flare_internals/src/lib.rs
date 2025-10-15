@@ -3,7 +3,6 @@ pub mod passes;
 pub mod resource;
 
 use std::{
-    collections::HashMap,
     fs::File,
     hash::{Hash, Hasher},
     io::Read,
@@ -13,6 +12,7 @@ use std::{
 };
 
 use rayon::prelude::*;
+use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
     passes::{
@@ -21,7 +21,7 @@ use crate::{
         parser,
     },
     resource::{
-        errors::{CompResult, CompilerErr, ErrorCollection,ReportableError},
+        errors::{CompResult, CompilerErr, ErrorCollection},
         rep::{FileID, FileSource, Package, Program},
     },
 };
@@ -29,7 +29,7 @@ use crate::{
 //use crate::root::resource::tk::{Tk, Token};
 #[derive(Debug, Clone)]
 pub struct Context {
-    pub filectx: Arc<Mutex<HashMap<FileID, FileSource>>>,
+    pub filectx: Arc<Mutex<FxHashMap<FileID, FileSource>>>,
 }
 
 impl Context {
@@ -42,7 +42,7 @@ impl Context {
             src_text,
         };
         Context {
-            filectx: Mutex::from(vec![(id, source)].into_iter().collect::<HashMap<_, _>>()).into(),
+            filectx: Mutex::from(vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>()).into(),
         }
     }
 }
@@ -66,7 +66,7 @@ pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, String)> {
 }
 
 pub fn convert_path_to_id(path: &Path) -> FileID {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut hasher = FxHasher::default();
     path.hash(&mut hasher);
     //path.canonicalize().unwrap().hash(&mut hasher);
     hasher.finish()
@@ -126,12 +126,8 @@ pub fn compile_program(ctx: &Context, id: FileID) -> CompResult<(Program, Durati
     let program = parse_program(ctx, id)?;
     //dbg!(program.clone());
     //dbg!(program.clone());
-    let e = Environment::build(program.clone()).inspect_err(|e| {
-        e.report(ctx);
-    })?;
-    e.check().inspect_err(|e| {
-        e.report(ctx);
-    })?;
+    let e = Environment::build(program.clone())?;
+    e.check()?;
     //dbg!(&e);
     let elapsed = now.elapsed();
 

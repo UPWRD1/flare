@@ -1,4 +1,4 @@
-use std::{hash::Hash, path::PathBuf};
+use std::{hash::Hash, path::PathBuf, rc::Rc};
 
 use chumsky::span::{SimpleSpan};
 use ordered_float::OrderedFloat;
@@ -23,7 +23,7 @@ pub enum PatternAtom {
 pub enum Pattern {
     Atom(PatternAtom),
     Tuple(Vec<Spanned<Self>>),
-    Variant(Box<Spanned<Expr>>, Vec<Spanned<Self>>),
+    Variant(Rc<Spanned<Expr>>, Vec<Spanned<Self>>),
 }
 
 /// Represents a primitive type within `Ty`
@@ -41,12 +41,12 @@ pub enum Ty {
     Primitive(PrimitiveType),
     User(Spanned<Expr>, Vec<Spanned<Self>>),
     Tuple(Vec<Spanned<Self>>, usize),
-    Arrow(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    Arrow(Rc<Spanned<Self>>, Rc<Spanned<Self>>),
     Generic(Spanned<Expr>),
 }
 
 impl Ty {
-    pub fn get_arrow(&self) -> (Box<Spanned<Self>>, Box<Spanned<Self>>) {
+    pub fn get_arrow(&self) -> (Rc<Spanned<Self>>, Rc<Spanned<Self>>) {
         if let Self::Arrow(l, r) = self {
             (l.clone(), r.clone())
         } else {
@@ -86,29 +86,29 @@ pub enum Expr {
     ExternFunc(Vec<SimpleQuant>),
 
     Unit,
-    Constructor(Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
-    FieldedConstructor(Box<Spanned<Expr>>, Vec<(Spanned<Expr>, Spanned<Expr>)>),
+    Constructor(Rc<Spanned<Expr>>, Vec<Spanned<Expr>>),
+    FieldedConstructor(Rc<Spanned<Expr>>, Vec<(Spanned<Expr>, Spanned<Expr>)>),
 
 
     Pat(Spanned<Pattern>),
 
-    Mul(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Div(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Add(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Sub(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Comparison(Box<Spanned<Expr>>, ComparisonOp, Box<Spanned<Expr>>),
+    Mul(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
+    Div(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
+    Add(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
+    Sub(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
+    Comparison(Rc<Spanned<Expr>>, ComparisonOp, Rc<Spanned<Expr>>),
 
-    Access(Box<Spanned<Expr>>),
-    Call(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    FieldAccess(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    If(Box<Spanned<Expr>>, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+    Access(Rc<Spanned<Expr>>),
+    Call(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
+    FieldAccess(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
+    If(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
     Match(
-        Box<Spanned<Expr>>,
-        Vec<(Spanned<Pattern>, Box<Spanned<Expr>>)>,
+        Rc<Spanned<Expr>>,
+        Vec<(Spanned<Pattern>, Rc<Spanned<Expr>>)>,
     ),
-    Lambda(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Let(Box<Spanned<Expr>>, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Struct(Vec<(Box<Spanned<Expr>>, Spanned<Expr>)>),
+    Lambda(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
+    Let(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
+    Struct(Vec<(Rc<Spanned<Expr>>, Spanned<Expr>)>),
     Tuple(Vec<Spanned<Expr>>),
 }
 
