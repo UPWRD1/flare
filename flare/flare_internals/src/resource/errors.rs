@@ -1,33 +1,46 @@
-use std::{io::Cursor, ops::Deref};
+use std::{any::Any, io::Cursor, ops::Deref, fmt::Display};
 
 use ariadne::{sources, Color, Label, Report, ReportKind};
 
-use chumsky::span::SimpleSpan;
+use chumsky::span::{SimpleSpan, Span};
 use thiserror::Error;
 
 pub type CompResult<T> = Result<T, CompilerErr>;
-pub trait ReportableError {
-    fn report(&self);
+pub trait ReportableError : Any + Display + std::error::Error + Send + Sync {
+    fn report(&self, ctx: &Context);
 }
-#[derive(Debug, Error)]
-pub struct CompilerErr(Box<CompilerErrKind>);
 
-use std::fmt::Display;
+pub trait AnnotatableError : ReportableError {
+    fn annotate<T>(&self, value: T) -> Self;
+}
+
+#[derive(Debug, Error)]
+pub struct CompilerErr(Box<dyn ReportableError>);
+
+
+use crate::{resource::rep::FileID, Context};
+
 impl Display for CompilerErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl From<CompilerErrKind> for CompilerErr {
-    fn from(value: CompilerErrKind) -> Self {
-        Self(Box::new(value))
+impl ReportableError for CompilerErr {
+    fn report(&self, ctx: &Context) {
+            self.0.report(ctx)
     }
 }
 
 impl From<DynamicErr> for CompilerErr {
     fn from(value: DynamicErr) -> Self {
         Self(Box::new(CompilerErrKind::Dynamic(value)))
+    }
+}
+
+impl From<ErrorCollection> for CompilerErr {
+    fn from(value: ErrorCollection) -> Self {
+        Self(Box::new(CompilerErrKind::ErrorCollection(value)))
     }
 }
 
@@ -38,11 +51,12 @@ impl From<std::io::Error> for CompilerErr {
 }
 
 impl Deref for CompilerErr {
-    type Target = CompilerErrKind;
+    type Target = dyn Any;
     fn deref(&self) -> &Self::Target {
         self.0.as_ref()
     }
 }
+
 
 #[derive(Debug, Error)]
 pub enum CompilerErrKind {
@@ -52,8 +66,8 @@ pub enum CompilerErrKind {
     #[error(transparent)]
     Dynamic(#[from] DynamicErr),
 
-    // #[error(transparent)]
-    // ErrorCollection(#[from] ErrorCollection),
+    #[error(transparent)]
+    ErrorCollection(#[from] ErrorCollection),
 
     //#[error(transparent)]
     //Typecheck(#[from] TypecheckingError),
@@ -65,24 +79,34 @@ pub enum CompilerErrKind {
     Other(#[from] anyhow::Error), // Catch-all for unexpected errors
 }
 
+
 impl CompilerErrKind {
     pub fn get_dyn(&self) -> DynamicErr {
-                //panic!();
+        //panic!();
 
         match self {
             CompilerErrKind::Dynamic(dynamic_err) => dynamic_err.clone(),
             _ => panic!("Cannot get dynamic err from {:?}", self),
         }
     }
+    
+
+
 }
 
 impl ReportableError for CompilerErrKind {
-    fn report(&self) {
+    fn report(&self, ctx: &Context) {
         match self {
-            CompilerErrKind::General(error) => error.report(),
-            CompilerErrKind::Other(error) => eprintln!("{}", error),
-            CompilerErrKind::Dynamic(e) => CompilerErrKind::General(e.clone().into()).report(),
-            //_ => todo!(),
+            CompilerErrKind::General(error) => eprintln!("{error}"),
+            CompilerErrKind::Other(error) => eprintln!("{error}"),
+            CompilerErrKind::Dynamic(e) => {
+                CompilerErrKind::General(e.clone().get_gen(ctx)).report(ctx)
+            },
+            CompilerErrKind::ErrorCollection(errs) => {
+                for e in &errs.0 {
+                    e.report(ctx);
+                }
+            }
         }
     }
 }
@@ -93,115 +117,107 @@ impl From<std::io::Error> for CompilerErrKind {
     }
 }
 
+#[derive(Debug, Error)]
+pub struct ErrorCollection(Vec<CompilerErr>);
+
+impl Display for ErrorCollection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for e in &self.0 {
+            e.fmt(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl ErrorCollection {
+    pub fn new(errs: Vec<CompilerErr>) -> Self {
+        Self(errs)
+    }
+}
+
 #[derive(Debug, Error, Clone)]
 pub struct DynamicErr {
+    //context: Option<Context>,
     msg: String,
-    filename: Option<String>,
-    label: Option<(String, SimpleSpan)>,
-    extra_labels: Option<Vec<(String, SimpleSpan)>>,
-    src: Option<String>,
+    label: Option<(String, SimpleSpan<usize, FileID>)>,
+    extra_labels: Option<Vec<(String, SimpleSpan<usize, FileID>)>>,
 }
 
 impl DynamicErr {
     pub fn new(msg: impl Into<String>) -> Self {
         Self {
             msg: msg.into(),
-            filename: None,
             label: None,
             extra_labels: None,
-            src: None,
         }
     }
 
-    pub fn label(self, label: (String, SimpleSpan)) -> Self {
+    pub fn label(self, label: (String, SimpleSpan<usize, FileID>)) -> Self {
         Self {
             label: Some(label),
             ..self
         }
     }
 
-    pub fn extra_labels(self, extra_labels: Vec<(String, SimpleSpan)>) -> Self {
+    pub fn extra_labels(self, extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>) -> Self {
         Self {
             extra_labels: Some(extra_labels),
             ..self
         }
     }
 
-    pub fn src(self, src: impl Into<String>) -> Self {
-        Self {
-            src: Some(src.into()),
-            ..self
+    pub fn generate_sources(&self, context: &Context) -> Vec<(String, String)> {
+        let mut source_ids: Vec<u64> = vec![];
+        let label_origin = self.label.as_ref().unwrap().1.context;
+        source_ids.push(label_origin);
+        let mut extra_labels_origin: Vec<u64> = self
+            .extra_labels
+            .as_ref()
+            .map_or_else(Vec::new, |v| v.iter()
+            .map(|x| x.1.context)
+            .collect())
+            ;
+        source_ids.append(&mut extra_labels_origin);
+        let mut new_sources = vec![];
+        for k in source_ids {
+            let contex = context.filectx.lock().unwrap();
+            let ent = contex.get(&k).unwrap().clone();
+            new_sources.push((
+                ent.filename.to_str().unwrap().to_string(),
+                ent.src_text.clone(),
+            ))
         }
+
+        new_sources
     }
 
-    pub fn filename(self, filename: impl Into<String>) -> Self {
-        Self {
-            filename: Some(filename.into()),
-            ..self
+    pub fn get_gen(self, context: &Context) -> GeneralErr {
+        let s = self.generate_sources(context);
+        GeneralErr {
+            msg: self.msg,
+            label: self
+                .label
+                .unwrap_or(("here".to_string(), SimpleSpan::new(0, 0..0))),
+            extra_labels: self.extra_labels.unwrap_or_default(),
+            context: context.clone(),
+            sources: s,
         }
     }
 }
 
 impl std::fmt::Display for DynamicErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", Into::<GeneralErr>::into(self.clone()))
+        write!(f, "Dynamic Error: {:?}", self)
     }
 }
-
-impl From<DynamicErr> for GeneralErr {
-    fn from(value: DynamicErr) -> Self {
-        GeneralErr {
-            msg: value.msg,
-            filename: value.filename.unwrap_or("".to_string()),
-            label: value.label.unwrap_or(("here".to_string(), SimpleSpan::from(0..0))),
-            extra_labels: value.extra_labels.unwrap_or_default(),
-            src: value.src.unwrap_or("".to_string()),
-        }
-        // value.msg,
-        // value.label.unwrap_or(("error".to_string(), SimpleSpan::new(0, 0))),
-        // None,
-        // value.extra_labels,
-        // value.src.unwrap_or_default(),
-    }
-}
-
-// #[derive(Error, Debug)]
-// pub struct ErrorCollection {
-//     pub errors: Vec<CompilerErr>,
-// }
-
-// impl Display for ErrorCollection {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         for e in &self.errors {
-//             e.fmt(f)?
-//         }
-//         Ok(())
-//     }
-// }
-
-// impl From<Vec<CompilerErr>> for ErrorCollection {
-//     fn from(value: Vec<CompilerErr>) -> Self {
-//         Self { errors: value }
-//     }
-// }
-
-// impl ReportableError for ErrorCollection {
-//     fn report(&self) {
-//         for e in &self.errors {
-//             e.report();
-//         }
-//     }
-// }
-
 /// Opaque Error created from DynamicErr.
 #[derive(Error, Debug, Clone)]
 pub struct GeneralErr {
-    filename: String,
     msg: String,
-    label: (String, SimpleSpan),
-    extra_labels: Vec<(String, SimpleSpan)>,
-
-    src: String,
+    label: (String, SimpleSpan<usize, FileID>),
+    extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
+    context: Context,
+    sources: Vec<(String, String)>,
 }
 
 // impl GeneralErr {
@@ -227,23 +243,54 @@ impl std::fmt::Display for GeneralErr {
         let mut buf = Cursor::new(vec![]);
         let rep = Report::build(
             ReportKind::Error,
-            (self.filename.clone(), self.label.1.into_range()),
+            (self.sources.first().unwrap().clone().0, self.label.1.into_range()),
         )
-        .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+        .with_config(
+            ariadne::Config::new()
+                .with_index_type(ariadne::IndexType::Byte)
+                .with_label_attach(ariadne::LabelAttach::Middle)
+                
+        )
         .with_message(&self.msg)
         .with_label(
-            Label::new((self.filename.clone(), self.label.1.into_range()))
-                .with_message(self.label.0.as_str())
-                .with_color(Color::Red),
+            Label::new((
+                {
+                    let handle = self.context.filectx.lock().unwrap();
+                    let res = handle
+                        .get(&self.label.1.context)
+                        .unwrap()
+                        .filename
+                        .to_str()
+                        .unwrap()
+                        .to_string();
+                    drop(handle);
+                    res
+                },
+                self.label.1.into_range(),
+            ))
+            .with_message(self.label.0.as_str())
+            .with_color(Color::Red),
         )
         .with_labels(self.extra_labels.iter().map(|label2| {
-            Label::new((self.filename.clone(), label2.1.into_range()))
-                .with_message(label2.0.as_str())
-                .with_color(Color::Yellow)
+            Label::new((
+                self.context
+                    .filectx
+                    .lock()
+                    .unwrap()
+                    .get(&label2.1.context)
+                    .unwrap()
+                    .filename
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                label2.1.into_range(),
+            ))
+            .with_message(label2.0.as_str())
+            .with_color(Color::Yellow)
         }));
 
         rep.finish()
-            .write(sources([(self.filename.clone(), self.src.clone())]), &mut buf)
+            .write(sources(self.sources.clone()), &mut buf)
             .unwrap();
         write!(
             f,
@@ -253,8 +300,8 @@ impl std::fmt::Display for GeneralErr {
     }
 }
 
-impl ReportableError for GeneralErr {
-    fn report(&self) {
-        eprintln!("{}", self);
-    }
-}
+// impl ReportableError for GeneralErr {
+//     fn report(&self, ctx: Context) {
+//         eprintln!("{}", self);
+//     }
+// }

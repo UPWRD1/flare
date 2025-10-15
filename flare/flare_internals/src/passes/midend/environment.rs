@@ -1,11 +1,14 @@
+use generational_arena::Arena;
+use generational_arena::Index;
 use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
+use log::info;
+use std::cell::OnceCell;
 
 use serde::{Deserialize, Serialize};
 use std::{
-    cell::RefCell,
     fmt::{Debug, Display},
     hash::Hash,
     path::PathBuf,
@@ -16,7 +19,7 @@ use crate::passes::midend::typechecking::Solver;
 //use crate::passes::midend::typechecking::Ty;
 use crate::resource::{
     errors::CompResult,
-    rep::{Definition, Expr, OptSpanned, Program, Spanned, StructDef, Ty},
+    rep::{Definition, Expr, Program, Spanned, StructDef, Ty},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -43,9 +46,9 @@ impl std::fmt::Display for SimpleQuant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Root => write!(f, "Root"),
-            Self::Package(n) => write!(f, "Package {}", n),
-            Self::Type(n) => write!(f, "Type {}", n),
-            Self::Func(n) => write!(f, "Func {}", n),
+            Self::Package(n) => write!(f, "Package {n}"),
+            Self::Type(n) => write!(f, "Type {n}"),
+            Self::Func(n) => write!(f, "Func {n}"),
         }
     }
 }
@@ -68,6 +71,7 @@ impl std::fmt::Display for SimpleQuant {
 // }
 
 impl Quantifier {
+    #[must_use]
     pub fn append(&self, a: Self) -> Self {
         match self {
             Self::Root(quantifier) => Self::Root(Rc::new(quantifier.append(a))),
@@ -82,9 +86,10 @@ impl Quantifier {
         }
     }
 
+    #[must_use]
     pub fn get_func_name(&self) -> Option<&String> {
         match self {
-            Quantifier::Root(e) => e.get_func_name(),
+            Quantifier::Root(e) |
             Quantifier::Package(_, e) => e.get_func_name(),
             Quantifier::Func(n, _) => Some(n),
             Quantifier::End => None,
@@ -92,6 +97,7 @@ impl Quantifier {
         }
     }
 
+    #[must_use = "Quantifiers should be consumed for queries or generation"]
     pub fn into_simple(&self) -> Vec<SimpleQuant> {
         let mut res = vec![];
         fn collapse(top: &Quantifier, result: &mut Vec<SimpleQuant>) {
@@ -199,8 +205,10 @@ macro_rules! quantifier {
     };
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Entry {
+    Root,
+    Filename(String),
     Package {
         name: Spanned<Expr>,
         file: PathBuf,
@@ -208,14 +216,15 @@ pub enum Entry {
         src: String,
     },
     Struct {
+        parent: Quantifier,
         name: Spanned<Expr>,
-        ty: Option<Ty>,
-        fields: Vec<(Spanned<Expr>, OptSpanned<Ty>)>,
+        ty: Ty,
+        fields: Vec<(Spanned<Expr>, Spanned<Ty>)>,
     },
     Let {
         parent: Quantifier,
         name: Spanned<Expr>,
-        sig: Option<Ty>,
+        sig: OnceCell<Ty>,
         body: Spanned<Expr>,
     },
     Extern {
@@ -238,22 +247,42 @@ impl Ord for Entry {
             Entry::Struct { .. } => 1,
             Entry::Let { .. } => 2,
             Entry::Extern { .. } => 3,
+            Entry::Root | Entry::Filename(_) => panic!("Root should not be compared!"),
         };
         let right_order = match other {
             Entry::Package { .. } => 0,
             Entry::Struct { .. } => 1,
             Entry::Let { .. } => 2,
             Entry::Extern { .. } => 3,
+            Entry::Root | Entry::Filename(_) => panic!("Root should not be compared!"),
         };
         left_order.cmp(&right_order)
     }
 }
 
 impl Entry {
+    #[must_use]
     pub fn get_sig(&self) -> Option<&Ty> {
         match self {
-            Entry::Let { sig, .. } => sig.as_ref(),
+            Entry::Let { sig, .. } => sig.get(),
             Entry::Extern { sig, .. } => Some(sig),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn get_parent(&self) -> Option<&Quantifier> {
+        match self {
+            Entry::Let { parent, .. } |
+            Entry::Struct { parent, .. } => Some(parent),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn get_file(&self) -> Option<&PathBuf> {
+        match self {
+            Entry::Package { file, .. } => Some(file),
             _ => None,
         }
     }
@@ -262,36 +291,39 @@ impl Entry {
 impl Display for Entry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Entry::Package { name, .. } => write!(f, "{}", name.value().get_ident().unwrap()),
+            Entry::Package { name, .. } => write!(f, "{}", name.0.get_ident().unwrap()),
             Entry::Struct { name, fields, .. } => write!(
                 f,
                 "{}: {{{}}}",
-                name.value().get_ident().unwrap(),
+                name.0.get_ident().unwrap(),
                 fields
                     .iter()
-                    .map(|(_, t)| format!("{}", t.t))
+                    .map(|(_n, t)| format!("{}", t.0))
                     .collect::<Vec<_>>()
                     .join(" * ")
             ),
             Entry::Let { name, sig, .. } => {
-                if let Some(sig) = sig {
-                    write!(f, "{}: {}", name.value().get_ident().unwrap(), sig)
+                if let Some(sig) = sig.get() {
+                    write!(f, "{}: {}", name.0.get_ident().unwrap(), sig)
                 } else {
-                    write!(f, "{}: ?", name.value().get_ident().unwrap())
+                    write!(f, "{}: ?", name.0.get_ident().unwrap())
                 }
             }
+            Entry::Filename(n) => write!(f, "File {n}"),
+            Entry::Root => write!(f, "Root"),
             Entry::Extern { name, sig, .. } => {
-                write!(f, "extern {}: {}", name.value().get_ident().unwrap(), sig)
+                write!(f, "extern {}: {}", name.0.get_ident().unwrap(), sig)
             }
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Environment {
     //pub items: HashMap<Quantifier, Rc<RefCell<Entry>>>,
-    pub items: Trie<SimpleQuant, Rc<RefCell<Entry>>>,
-    pub current_parent: Quantifier,
+    pub items: Trie<SimpleQuant, Index>,
+    pub arena: Arena<Entry>,
+    //pub current_parent: Quantifier,
 }
 
 impl Environment {
@@ -313,18 +345,13 @@ impl Environment {
     // }
 
     pub fn build(p: Program) -> CompResult<Self> {
-        let mut env: TrieBuilder<SimpleQuant, Rc<RefCell<Entry>>> = TrieBuilder::new();
-        let mut current_parent = Quantifier::End;
+        let mut env: TrieBuilder<SimpleQuant, Index> = TrieBuilder::new();
+        let mut arena = Arena::new();
         for package in p.packages {
-            let the_package_name = quantifier!(
-                Root,
-                Package(package.0.name.value().get_ident().unwrap()),
-                End
-            );
+            let package_name = package.0.name.0.get_ident().unwrap();
+            let current_parent = quantifier!(Root, Package(package_name), End);
 
-            current_parent = the_package_name;
-
-            let mut deps = vec![];
+            let mut deps = Vec::new();
 
             for item in package.0.items {
                 match item {
@@ -332,134 +359,114 @@ impl Environment {
                         build_import(&mut deps, import_item);
                     }
                     Definition::Struct(StructDef { name, fields }) => {
+                        let ident = name.0.get_ident().unwrap();
                         let q = current_parent
-                            .append(Quantifier::Type(
-                                name.value().get_ident().unwrap(),
-                                Rc::new(Quantifier::End),
-                            ))
+                            .append(Quantifier::Type(ident, Rc::new(Quantifier::End)))
                             .into_simple();
-                        env.insert(
-                            q,
-                            RefCell::from(Entry::Struct {
-                                name: name.clone(),
-                                fields,
-                                ty: Some(Ty::User(name.into(), vec![])),
-                            })
-                            .into(),
-                        );
+
+                        let entry = Entry::Struct {
+                            name: name.clone(),
+                            parent: current_parent.clone(),
+                            fields,
+                            ty: Ty::User(name, vec![]),
+                        };
+                        let idx = arena.insert(entry);
+
+                        env.insert(q, idx);
                     }
-                    Definition::Let(name, body, ty) => env.insert(
-                        current_parent
-                            .append(Quantifier::Func(
-                                name.value().get_ident().unwrap(),
-                                Rc::new(Quantifier::End),
-                            ))
-                            .into_simple(),
-                        RefCell::from(Entry::Let {
+                    Definition::Let(name, body, ty) => {
+                        let ident = name.0.get_ident().unwrap();
+                        let q = current_parent
+                            .append(Quantifier::Func(ident, Rc::new(Quantifier::End)))
+                            .into_simple();
+
+                        let cell = OnceCell::new();
+                        if let Some(ty) = ty.map(|t| t.0) {
+                            let _ = cell.set(ty);
+                        }
+                        let entry = Entry::Let {
                             parent: current_parent.clone(),
                             name,
-                            sig: ty.map(|t| t.t),
+                            sig: cell,
                             body,
-                        })
-                        .into(),
-                    ),
+                        };
+                        let idx = arena.insert(entry);
+                        env.insert(q, idx);
+                    }
                     Definition::Extern(n, ty) => {
+                        let ident = n.0.get_ident().unwrap();
                         let q = current_parent
-                            .append(Quantifier::Func(
-                                n.value().get_ident().unwrap(),
-                                Rc::new(Quantifier::End),
-                            ))
+                            .append(Quantifier::Func(ident, Rc::new(Quantifier::End)))
                             .into_simple();
-                        env.insert(
-                            q.clone(),
-                            RefCell::from(Entry::Extern {
-                                parent: current_parent.clone(),
-                                name: n,
-                                sig: ty.t,
-                            })
-                            .into(),
-                        )
+                        let entry = Entry::Extern {
+                            parent: current_parent.clone(),
+                            name: n,
+                            sig: ty.0,
+                        };
+                        let idx = arena.insert(entry);
+                        env.insert(q, idx);
                     }
                 }
             }
 
-            env.insert(
-                current_parent.clone().into_simple(),
-                RefCell::from(Entry::Package {
-                    name: package.0.name,
-                    file: package.1,
-                    deps,
-                    src: package.2,
-                })
-                .into(),
-            );
+            let entry = Entry::Package {
+                name: package.0.name,
+                file: package.1,
+                deps,
+                src: package.2,
+            };
+            let idx = arena.insert(entry);
+            env.insert(current_parent.clone().into_simple(), idx);
         }
-        let trie = env.build();
+
         Ok(Self {
-            items: trie,
-            current_parent,
+            items: env.build(),
+            arena,
         })
     }
 
     pub fn check(&self) -> CompResult<()> {
-        let main = self
+        let main_idx = self
             .items
             .exact_match(
                 quantifier!(Root, Package("Main"), Func("main"), End)
                     .into_simple()
                     .into_iter(),
             )
-            .unwrap(); //*self.items.find_postfixes(Quantifier::Func("main".into(), Quantifier::End.into()).into_bits().into_iter()).first().unwrap();
+            .unwrap();
+        let main = self.arena.get(*main_idx).unwrap();
+        //*self.items.find_postfixes(Quantifier::Func("main".into(), Quantifier::End.into()).into_bits().into_iter()).first().unwrap();
         self.check_entry(main)?;
+        //dbg!(&main);
         Ok(())
     }
 
-    pub fn check_entry<'e>(
-        &self,
-        entry: &'e Rc<RefCell<Entry>>,
-    ) -> CompResult<&'e Rc<RefCell<Entry>>> {
+    pub fn check_entry<'e>(&self, entry: &'e Entry) -> CompResult<&'e Entry> {
         //println!("Checking {:?}", entry);
         //match *entry.borrow_mut() {
 
-        match *if let Ok(e) = entry.try_borrow_mut() {
-            e
+        if let Entry::Let {
+            ref sig,
+            ref body,
+            ..
+        } = if entry.get_sig().is_none() {
+            entry
         } else {
             return Ok(entry);
         } {
-            Entry::Let {
-                ref mut sig,
-                ref body,
-                name: _,
-                ref parent,
-            } => {
-                let mut tc = Solver::new(self);
-                let tv = tc.check_expr(body).map_err(|e| {
-                    let the_parent = self.items.exact_match(parent.into_simple()).unwrap();
-                    match *the_parent.borrow() {
-                        Entry::Package {
-                            ref file, ref src, ..
-                        } => e.get_dyn().src(src).filename(
-                            file.file_name()
-                                .unwrap_or(std::ffi::OsStr::new(""))
-                                .to_str()
-                                .unwrap(),
-                        ),
-                        _ => panic!("Should always be a package!"),
-                    }
-                })?;
-                let fn_sig = tc.solve(tv)?;
-                *sig = Some(fn_sig);
-            }
-            _ => (),
+            let mut tc = Solver::new(self);
+            let tv = tc.check_expr(body)?;
+            let fn_sig = tc.solve(tv)?;
+            let _ = sig.set(fn_sig);
         }
-        println!("Checked {}", entry.borrow());
+        info!("Checked {}", entry);
         Ok(entry)
     }
 }
 
 fn build_import(deps: &mut Vec<Spanned<Expr>>, import_item: crate::resource::rep::ImportItem) {
     for import in import_item.items {
-        match import.value() {
+        match import.0 {
             Expr::Ident(ref _name) => deps.push(import),
             //Expr::FieldAccess(l, r) => deps.push(),
             _ => panic!("Import path must be identifiers"),
