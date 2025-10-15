@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
 chumsky = {version = "0.10.1", features = ["pratt", "memoization", "extension"] }
+generational-arena = "0.2.9"
 itertools = "0.13.0"
 log = "0.4.28"
 #lazy_static = "1.4.0"

@@ -67,7 +67,8 @@ pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, String)> {
 
 pub fn convert_path_to_id(path: &Path) -> FileID {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    path.canonicalize().unwrap().hash(&mut hasher);
+    path.hash(&mut hasher);
+    //path.canonicalize().unwrap().hash(&mut hasher);
     hasher.finish()
 }
 
@@ -95,7 +96,7 @@ pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
     drop(context);
 
     let processed: Vec<Result<(Package, PathBuf, String), CompilerErr>> = dir_contents
-        .par_iter()
+        .iter()
         .map(|entry| {
             let converted_id = convert_path_to_id(&entry.filename);
             let mut file_context = ctx.filectx.lock().unwrap();

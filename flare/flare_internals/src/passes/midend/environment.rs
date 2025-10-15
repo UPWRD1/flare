@@ -1,9 +1,11 @@
+use generational_arena::Arena;
+use generational_arena::Index;
 use trie_rs::map::Trie;
 use trie_rs::map::TrieBuilder;
 //use ptrie::Trie;
 use core::panic;
-use std::cell::OnceCell;
 use log::info;
+use std::cell::OnceCell;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -319,7 +321,8 @@ impl Display for Entry {
 #[derive(Debug)]
 pub struct Environment {
     //pub items: HashMap<Quantifier, Rc<RefCell<Entry>>>,
-    pub items: Trie<SimpleQuant, Entry>,
+    pub items: Trie<SimpleQuant, Index>,
+    pub arena: Arena<Entry>,
     //pub current_parent: Quantifier,
 }
 
@@ -342,8 +345,8 @@ impl Environment {
     // }
 
     pub fn build(p: Program) -> CompResult<Self> {
-        let mut env: TrieBuilder<SimpleQuant, Entry> = TrieBuilder::new();
-
+        let mut env: TrieBuilder<SimpleQuant, Index> = TrieBuilder::new();
+        let mut arena = Arena::new();
         for package in p.packages {
             let package_name = package.0.name.0.get_ident().unwrap();
             let current_parent = quantifier!(Root, Package(package_name), End);
@@ -361,15 +364,15 @@ impl Environment {
                             .append(Quantifier::Type(ident, Rc::new(Quantifier::End)))
                             .into_simple();
 
-                        env.insert(
-                            q,
-                            Entry::Struct {
-                                name: name.clone(),
-                                parent: current_parent.clone(),
-                                fields,
-                                ty: Some(Ty::User(name, vec![])),
-                            },
-                        );
+                        let entry = Entry::Struct {
+                            name: name.clone(),
+                            parent: current_parent.clone(),
+                            fields,
+                            ty: Some(Ty::User(name, vec![])),
+                        };
+                        let idx = arena.insert(entry);
+
+                        env.insert(q, idx);
                     }
                     Definition::Let(name, body, ty) => {
                         let ident = name.0.get_ident().unwrap();
@@ -381,52 +384,49 @@ impl Environment {
                         if let Some(ty) = ty.map(|t| t.0) {
                             let _ = cell.set(ty);
                         }
-                        env.insert(
-                            q,
-                            Entry::Let {
-                                parent: current_parent.clone(),
-                                name,
-                                sig: cell,
-                                body,
-                            },
-                        );
+                        let entry = Entry::Let {
+                            parent: current_parent.clone(),
+                            name,
+                            sig: cell,
+                            body,
+                        };
+                        let idx = arena.insert(entry);
+                        env.insert(q, idx);
                     }
                     Definition::Extern(n, ty) => {
                         let ident = n.0.get_ident().unwrap();
                         let q = current_parent
                             .append(Quantifier::Func(ident, Rc::new(Quantifier::End)))
                             .into_simple();
-
-                        env.insert(
-                            q,
-                            Entry::Extern {
-                                parent: current_parent.clone(),
-                                name: n,
-                                sig: ty.0,
-                            },
-                        );
+                        let entry = Entry::Extern {
+                            parent: current_parent.clone(),
+                            name: n,
+                            sig: ty.0,
+                        };
+                        let idx = arena.insert(entry);
+                        env.insert(q, idx);
                     }
                 }
             }
 
-            env.insert(
-                current_parent.clone().into_simple(),
-                Entry::Package {
-                    name: package.0.name,
-                    file: package.1,
-                    deps,
-                    src: package.2,
-                },
-            );
+            let entry = Entry::Package {
+                name: package.0.name,
+                file: package.1,
+                deps,
+                src: package.2,
+            };
+            let idx = arena.insert(entry);
+            env.insert(current_parent.clone().into_simple(), idx);
         }
 
         Ok(Self {
             items: env.build(),
+            arena,
         })
     }
 
     pub fn check(&self) -> CompResult<()> {
-        let main = self
+        let main_idx = self
             .items
             .exact_match(
                 quantifier!(Root, Package("Main"), Func("main"), End)
@@ -434,16 +434,14 @@ impl Environment {
                     .into_iter(),
             )
             .unwrap();
-         //*self.items.find_postfixes(Quantifier::Func("main".into(), Quantifier::End.into()).into_bits().into_iter()).first().unwrap();
+        let main = self.arena.get(*main_idx).unwrap();
+        //*self.items.find_postfixes(Quantifier::Func("main".into(), Quantifier::End.into()).into_bits().into_iter()).first().unwrap();
         self.check_entry(main)?;
         //dbg!(&main);
         Ok(())
     }
 
-    pub fn check_entry<'e>(
-        &self,
-        entry: &'e Entry,
-    ) -> CompResult<&'e Entry> {
+    pub fn check_entry<'e>(&self, entry: &'e Entry) -> CompResult<&'e Entry> {
         //println!("Checking {:?}", entry);
         //match *entry.borrow_mut() {
 

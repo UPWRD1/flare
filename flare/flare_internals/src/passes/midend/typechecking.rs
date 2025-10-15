@@ -1,6 +1,7 @@
 use std::{cell::RefCell, fmt, rc::Rc};
 
 use chumsky::span::SimpleSpan;
+use generational_arena::Index;
 //use ptrie::Trie;
 //use token_trie::Trie;
 //use radix_trie::{Trie, TrieCommon};
@@ -162,13 +163,13 @@ impl<'env> Solver<'env> {
     }
 
     fn search_masterenv(&self, q: &SimpleQuant, s: SimpleSpan<usize, u64>) -> CompResult<&Entry> {
-        let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
+        let search: Vec<(Vec<SimpleQuant>, &Index)> = self
             .master_env
             .items
             .postfix_search(vec![q.clone()])
             .collect();
         if let Some((_q, e)) = search.last() {
-            Ok(e)
+            Ok(self.master_env.arena.get(**e).unwrap())
         } else {
             Err(DynamicErr::new(format!("'{q}' hasn't been defined"))
                 .label((
@@ -295,12 +296,12 @@ impl<'env> Solver<'env> {
             Expr::FieldAccess(l, r) => {
                 let l_ty = self.check_expr(l)?;
                 let solved = self.solve(l_ty)?;
-                let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
+                let search: Vec<(Vec<SimpleQuant>, &Index)> = self
                     .master_env
                     .items
                     .postfix_search(vec![SimpleQuant::Type(solved.get_user_name().unwrap())])
                     .collect();
-                if let Entry::Struct { ref fields, .. } = *search.last().unwrap().1 {
+                if let Entry::Struct { ref fields, .. } = self.master_env.arena.get(*search.last().unwrap().1).unwrap() {
                     let the_field = fields.iter().find(|(n, _)| n.0 == r.0).unwrap();
                     let expected_ty = self.convert_ty(&the_field.1.0);
                     let expected_ty_var = self.create_ty(
@@ -325,7 +326,7 @@ impl<'env> Solver<'env> {
                 Ok(out_ty)
             }
             Expr::FieldedConstructor(name, given_fields) => {
-                let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
+                let search: Vec<(Vec<SimpleQuant>, &Index)> = self
                     .master_env
                     .items
                     .postfix_search(vec![SimpleQuant::Type(
@@ -333,7 +334,7 @@ impl<'env> Solver<'env> {
                     )])
                     .collect();
                 //dbg!(&search);
-                if let Some((_q, e)) = search.last() {
+                if let Some(e) = self.master_env.arena.get(*search.last().unwrap().1) {
                     //todo!();
 
                     let sty = self.master_env.check_entry(e)?;
@@ -395,13 +396,13 @@ impl<'env> Solver<'env> {
                 }
             }
                         Expr::ExternFunc(name) => {
-                let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
+                let search: Vec<(Vec<SimpleQuant>, &Index)> = self
                     .master_env
                     .items
                     .postfix_search(vec![name.last().unwrap().clone()])
                     .collect();
                 dbg!(&search);
-                if let Some((_q, e)) = search.last() {
+                if let Some(e) = self.master_env.arena.get(*search.last().unwrap().1) {
                     if let Entry::Extern { ref sig, .. } = *e {
                         let converted = self.convert_ty(sig);
                         let out_ty = self.create_ty(converted, expr.1);
@@ -434,12 +435,12 @@ impl<'env> Solver<'env> {
         //dbg!(expr);
         //dbg!(&self.master_env);
 
-        let search_func: Vec<(Vec<SimpleQuant>, &Entry)> = self
+        let search_func: Vec<(Vec<SimpleQuant>, &Index)> = self
             .master_env
             .items
             .postfix_search(vec![SimpleQuant::Func(name.to_string())])
             .collect();
-        if let Some((_q, e)) = search_func.last() {
+        if let Some(e) = self.master_env.arena.get(*search_func.last().unwrap().1) {
 
             // BEAUTIFUL!
             let fty = if self.master_env.check_entry(e)?.get_sig().is_some() {e} else {
@@ -501,12 +502,12 @@ impl<'env> Solver<'env> {
                 Box::new((self.solve(o)?, self.vars[o.0].1)),
             )),
             TyInfo::User(n) => {
-                let search: Vec<(Vec<SimpleQuant>, &Entry)> = self
+                let search: Vec<(Vec<SimpleQuant>, &Index)> = self
                     .master_env
                     .items
                     .postfix_search(vec![SimpleQuant::Type(n.to_string())])
                     .collect();
-                if let Some((_q, e)) = search.last() {
+                if let Some(e) = self.master_env.arena.get(*search.last().unwrap().1) {
                     if let Entry::Struct {
                         name: _,
                         parent: _,

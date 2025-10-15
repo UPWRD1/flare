@@ -5,6 +5,7 @@ members = ["flarec", "flare_internals"]
 [profile.release]
 opt-level = 3
 codegen-units = 1
-#debug = true # disable for release
-strip = "symbols"
+debug = true # disable for release
+#strip = "symbols"
+strip =false
 lto = "thin"
