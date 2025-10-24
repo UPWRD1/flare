@@ -1,5 +1,5 @@
-use core::panic;
 use chumsky::span::{SimpleSpan, Span};
+use core::panic;
 use log::{info, trace};
 use petgraph::graph::EdgeReference;
 use petgraph::Graph;
@@ -115,7 +115,7 @@ impl Environment {
                         let ident = SimpleQuant::Func(name.0.get_ident().unwrap());
 
                         let cell = OnceCell::new();
-                        if let Some(ty) = ty{
+                        if let Some(ty) = ty {
                             let _ = cell.set(ty);
                         }
                         let entry = Item::Let {
@@ -169,7 +169,7 @@ impl Environment {
 
         for path in &paths {
             if path.first()?.is(packctx) {
-                return self.get(path)
+                return self.get(path);
             } else {
                 continue;
             }
@@ -242,21 +242,23 @@ impl Environment {
         Some(node_w)
     }
 
+    fn get_all_targets_edge<'env, 'k>(&'env self, k: &'k SimpleQuant) -> impl Iterator<Item = NodeIndex> + use<'env, 'k>  {
+        let edges = self.graph.edge_references().filter(|x| x.weight().is(k));
+        edges.map(|x| x.target())
+
+    }
+
     /// Optionally returns a vector of the possible paths to an item fragment.
     fn search_for_edge(&self, k: &SimpleQuant) -> Option<Vec<Vec<SimpleQuant>>> {
         use petgraph::algo::*;
         use petgraph::prelude::*;
-        let edges = self.graph.edge_references().filter(|x| x.weight().is(k));
-        let targets = edges.map(|x| x.target());
         let mut paths: Vec<Vec<SimpleQuant>> = vec![];
+        let targets = self.get_all_targets_edge(k);
         for target in targets {
             let real_paths: Vec<Vec<NodeIndex>> =
                 all_simple_paths::<Vec<_>, _, RandomState>(&self.graph, self.root, target, 0, None)
                     .collect::<Vec<_>>();
             for p in real_paths {
-                //dbg!(&p);
-
-                //let (_, p) = if let Some(p) = algo::astar(&self.graph, self.root, |finish| finish == target, |_| 0, |_| 0) {p} else {continue};
                 let mut path = Vec::new();
                 for node_pair in p.windows(2) {
                     let a = node_pair[0];
@@ -267,8 +269,6 @@ impl Environment {
                 paths.push(path);
             }
         }
-        //let dfs = Dfs::new(&filtered, f);
-        //dbg!(&paths);
         Some(paths)
     }
 
@@ -348,5 +348,83 @@ impl Environment {
         }
         info!("Checked {}: {:?}", item.name(), item.get_ty());
         Ok(item)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        passes::midend::environment::Environment,
+        quantifier,
+        resource::rep::{
+            entry::{Item, PackageEntry},
+            quantifier::{Quantifier, SimpleQuant},
+        },
+    };
+    use log::info;
+    use petgraph::prelude::*;
+
+    fn make_graph() -> Environment {
+        let mut graph: DiGraph<Item, SimpleQuant> = DiGraph::new();
+        let root = graph.add_node(Item::Root);
+        let lib_foo = graph.add_node(Item::Dummy("libFoo".to_string()));
+        let foo = graph.add_node(Item::Dummy("foo".to_string()));
+        let lib_bar = graph.add_node(Item::Dummy("libBar".to_string()));
+        let bar = graph.add_node(Item::Dummy("Bar".to_string()));
+        let baz = graph.add_node(Item::Dummy("baz".to_string()));
+        let bar_foo = graph.add_node(Item::Dummy("fooooo".to_string()));
+
+        graph.extend_with_edges(&[
+            (root, lib_foo, SimpleQuant::Package(String::from("Foo"))),
+            (lib_foo, foo, SimpleQuant::Func(String::from("foo"))),
+            (root, lib_bar, SimpleQuant::Package(String::from("Bar"))),
+            (lib_bar, bar, SimpleQuant::Type(String::from("Bar"))),
+            (bar, baz, SimpleQuant::Field(String::from("f1"))),
+            (lib_bar, bar_foo, SimpleQuant::Func(String::from("foo"))),
+
+        ]);
+
+        Environment { graph, root }
+    }
+
+    #[test]
+    fn exists() {
+        let e = make_graph();
+        assert!(e
+            .get(&quantifier!(Root, Package("Foo"), Func("foo"), End).into_simple())
+            .is_some())
+    }
+
+    #[test]
+    fn get_node_exists() {
+        let e = make_graph();
+        let search1 = e.get_node(
+            &SimpleQuant::Func("foo".to_string()),
+            &SimpleQuant::Package("Foo".to_string()),
+        );
+        let search2 = e.get_node(
+            &SimpleQuant::Type("Bar".to_string()),
+            &SimpleQuant::Package("Bar".to_string()),
+        );
+
+        assert!(search1.is_some());
+        assert!(search2.is_some());
+    }
+
+    #[test]
+    fn get_node_dne() {
+        let e = make_graph();
+        let found = e.get_node(
+            &SimpleQuant::Func("Bar".to_string()),
+            &SimpleQuant::Package("libFoo".to_string()),
+        );
+        assert!(found.is_none())
+    }
+
+    #[test]
+    fn get_paths() {
+        let e = make_graph();
+        let res = e.search_for_edge(&SimpleQuant::Func("foo".to_string()));
+        assert_eq!(res, Some(vec![vec![SimpleQuant::Package("Foo".to_string()), SimpleQuant::Func("foo".to_string())], vec![SimpleQuant::Package("Bar".to_string()), SimpleQuant::Func("foo".to_string())]]));
     }
 }

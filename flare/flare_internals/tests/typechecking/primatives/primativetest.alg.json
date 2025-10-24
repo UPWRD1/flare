@@ -1,1 +1,0 @@
-{"modules":[{"body":[{"FnDef":{"name":"main","rettype":"Bool","args":[],"limits":[],"body":[{"e":{"Int":3},"exprtype":"Int"},{"e":{"Flt":3.0},"exprtype":"Flt"},{"e":{"Str":"\"three\""},"exprtype":"Str"},{"e":{"Bool":true},"exprtype":"Bool"}]}}]}],"dependencies":[]}

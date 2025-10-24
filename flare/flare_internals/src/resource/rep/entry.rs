@@ -51,6 +51,7 @@ pub enum Item {
         name: Spanned<Expr>,
         sig: Spanned<Ty>,
     },
+    Dummy(String),
 }
 
 impl Item {
@@ -74,6 +75,7 @@ impl Item {
             Item::Field((name, ..)) => name.0.get_ident().unwrap().clone(),
             Item::Let { name, ..} => name.0.get_ident().unwrap().clone(),
             Item::Extern { name, .. } => name.0.get_ident().unwrap().clone(),
+            _ => panic!()
         }
     }
 
@@ -96,6 +98,12 @@ impl Item {
             Self::Field((_, ty)) => Some(ty.clone()),
             _ => None,
         }
+    }
+}
+
+impl Default for Item {
+    fn default() -> Self {
+        Self::Dummy("".to_string())
     }
 }
 

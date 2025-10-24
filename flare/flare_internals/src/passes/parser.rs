@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use chumsky::extra::SimpleState;
-use chumsky::input::{BorrowInput,SliceInput, StrInput, ValueInput};
+use chumsky::input::{BorrowInput, SliceInput, StrInput, ValueInput};
 use chumsky::pratt::{infix, left, right, Operator};
 use chumsky::prelude::*;
 use ordered_float::OrderedFloat;
@@ -9,10 +9,7 @@ use ordered_float::OrderedFloat;
 use crate::resource::{
     errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
     rep::{
-        ast::{
-            ComparisonOp, Definition, EnumDef, Expr, Package, Pattern, PatternAtom,
-            StructDef,
-        },
+        ast::{ComparisonOp, Definition, EnumDef, Expr, Package, Pattern, PatternAtom, StructDef},
         files::FileID,
         types::{EnumVariant, PrimitiveType, Ty},
         Spanned,
@@ -25,6 +22,7 @@ use crate::resource::{
 enum Token<'src> {
     Ident(&'src str),
     Num(f64),
+
     Strlit(&'src str),
     Comment(&'src str),
     Parens(Vec<Spanned<Self>>),
@@ -281,11 +279,6 @@ where
     M: Fn(SimpleSpan<usize, FileID>, &'tokens [Spanned<Token<'src>>]) -> I + Clone + 'src,
 {
     // Basic tokens
-
-    //    let whitespace = select_ref! { Token::Whitespace => () }.ignored();
-
-    //let error = select_ref!{ Token::Error(e) => parse_failure()};
-
     let ident = select_ref! { Token::Ident(x) => *x }
         .map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
 
@@ -403,109 +396,110 @@ where
             .memoized();
 
         let atom = recursive(|atom| {
-        choice((
-            // Numbers
-            select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
-                .map_with(|x, e| (x, e.span())),
-            // Strings
-            select_ref! { Token::Strlit(x) => Expr::String((*x).to_string()) }
-                .map_with(|x, e| (x, e.span())),
-            // True
-            just(Token::True).map_with(|_, e| (Expr::Bool(true), e.span())),
-            // False
-            just(Token::False).map_with(|_, e| (Expr::Bool(false), e.span())),
-            // Plain old idents
-            path.clone().then(
-                atom.clone()
+            choice((
+                // Numbers
+                select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
+                    .map_with(|x, e| (x, e.span())),
+                // Strings
+                select_ref! { Token::Strlit(x) => Expr::String((*x).to_string()) }
+                    .map_with(|x, e| (x, e.span())),
+                // True
+                just(Token::True).map_with(|_, e| (Expr::Bool(true), e.span())),
+                // False
+                just(Token::False).map_with(|_, e| (Expr::Bool(false), e.span())),
+                // Plain old idents
+                path.clone()
+                    .then(
+                        atom.clone()
+                            .separated_by(just(Token::Comma))
+                            .collect::<Vec<_>>()
+                            .delimited_by(just(Token::LBrace), just(Token::RBrace)), //.or_not(),
+                    )
+                    .map_with(|(name, args), e| {
+                        if args.len() > 0 {
+                            (Expr::Constructor(Rc::new(name), args), e.span())
+                        } else {
+                            name
+                        }
+                    })
+                    .labelled("enum constructor")
+                    .as_context(),
+                path.clone()
+                    .then(
+                        ident
+                            .then_ignore(just(Token::Eq))
+                            .then(expr.clone())
+                            .separated_by(just(Token::Comma))
+                            .collect::<Vec<_>>()
+                            .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                            .or_not(),
+                    )
+                    .map_with(|(name, args), e| {
+                        if let Some(args) = args {
+                            (Expr::FieldedConstructor(Rc::new(name), args), e.span())
+                        } else {
+                            name
+                        }
+                    })
+                    .labelled("struct constructor")
+                    .as_context(),
+                // Enum Constructors
+                expr.clone()
                     .separated_by(just(Token::Comma))
                     .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace)), //.or_not(),
-            )
-            .map_with(|(name, args), e| {
-                if args.len() > 0 {
-                    (Expr::Constructor(Rc::new(name), args), e.span())
-                } else {
-                    name
-                }
-            })
-            .labelled("enum constructor")
-            .as_context(),
-            path.clone()
-                .then(
-                    ident
-                        .then_ignore(just(Token::Eq))
-                        .then(expr.clone())
-                        .separated_by(just(Token::Comma))
-                        .collect::<Vec<_>>()
-                        .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                        .or_not(),
-                )
-                .map_with(|(name, args), e| {
-                    if let Some(args) = args {
-                        (Expr::FieldedConstructor(Rc::new(name), args), e.span())
-                    } else {
-                        name
-                    }
-                })
-                .labelled("struct constructor")
-                .as_context(),
-            // Enum Constructors
-            expr.clone()
-                .separated_by(just(Token::Comma))
-                .collect::<Vec<_>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with(|items, e| (Expr::Tuple(items), e.span()))
-                .labelled("tuple")
-                .as_context(),
-            // let x = y in z
-            just(Token::Let)
-                //.ignore_then(ident)
-                .ignore_then(pattern.clone())
-                .then_ignore(just(Token::Eq))
-                .then(expr.clone())
-                .then_ignore(just(Token::In))
-                .then(expr.clone())
-                .map_with(|((lhs, rhs), then), e| {
-                    (
-                        Expr::Let(
-                            Rc::new((Expr::Pat(lhs.clone()), lhs.1)),
-                            Rc::new(rhs),
-                            Rc::new(then),
-                        ),
-                        e.span(),
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                    .map_with(|items, e| (Expr::Tuple(items), e.span()))
+                    .labelled("tuple")
+                    .as_context(),
+                // let x = y in z
+                just(Token::Let)
+                    //.ignore_then(ident)
+                    .ignore_then(pattern.clone())
+                    .then_ignore(just(Token::Eq))
+                    .then(expr.clone())
+                    .then_ignore(just(Token::In))
+                    .then(expr.clone())
+                    .map_with(|((lhs, rhs), then), e| {
+                        (
+                            Expr::Let(
+                                Rc::new((Expr::Pat(lhs.clone()), lhs.1)),
+                                Rc::new(rhs),
+                                Rc::new(then),
+                            ),
+                            e.span(),
+                        )
+                    }),
+                // If expression
+                just(Token::If)
+                    .ignore_then(expr.clone())
+                    .then_ignore(just(Token::Then))
+                    .then(expr.clone())
+                    .then_ignore(just(Token::Else))
+                    .then(expr.clone())
+                    .map_with(|((test, then), otherwise), e| {
+                        (
+                            Expr::If(Rc::new(test), Rc::new(then), Rc::new(otherwise)),
+                            e.span(),
+                        )
+                    })
+                    .labelled("if expression")
+                    .as_context(),
+                // Match Expression
+                just(Token::Match)
+                    .ignore_then(expr.clone())
+                    .then(
+                        just(Token::Pipe)
+                            .ignore_then(pattern.clone())
+                            .then_ignore(just(Token::Then))
+                            .then(expr.clone())
+                            .map(|(p, e)| (p, Rc::new(e)))
+                            .repeated()
+                            .collect::<Vec<_>>(),
                     )
-                }),
-            // If expression
-            just(Token::If)
-                .ignore_then(expr.clone())
-                .then_ignore(just(Token::Then))
-                .then(expr.clone())
-                .then_ignore(just(Token::Else))
-                .then(expr.clone())
-                .map_with(|((test, then), otherwise), e| {
-                    (
-                        Expr::If(Rc::new(test), Rc::new(then), Rc::new(otherwise)),
-                        e.span(),
-                    )
-                })
-                .labelled("if expression")
-                .as_context(),
-            // Match Expression
-            just(Token::Match)
-                .ignore_then(expr.clone())
-                .then(
-                    just(Token::Pipe)
-                        .ignore_then(pattern.clone())
-                        .then_ignore(just(Token::Then))
-                        .then(expr.clone())
-                        .map(|(p, e)| (p, Rc::new(e)))
-                        .repeated()
-                        .collect::<Vec<_>>(),
-                )
-                .map_with(|(matchee, arms), e| (Expr::Match(Rc::new(matchee), arms), e.span())),
-        ))
-    })
-    .boxed();
+                    .map_with(|(matchee, arms), e| (Expr::Match(Rc::new(matchee), arms), e.span())),
+            ))
+        })
+        .boxed();
         //.memoized();
 
         choice((
@@ -603,8 +597,16 @@ where
                         .collect::<Vec<_>>()
                         .delimited_by(just(Token::LBrace), just(Token::RBrace)),
                 )
-                .map_with(|(name, types), e| (EnumVariant{name, types}, e.span())),
-            ident.map_with(|x, e| (EnumVariant{name: x, types: vec![]}, e.span())),
+                .map_with(|(name, types), e| (EnumVariant { name, types }, e.span())),
+            ident.map_with(|x, e| {
+                (
+                    EnumVariant {
+                        name: x,
+                        types: vec![],
+                    },
+                    e.span(),
+                )
+            }),
         ));
 
         // Enum defintions
@@ -631,8 +633,6 @@ where
                                       // .separated_by(just(Token::Dot))
                                       // .at_least(1)
                                       // .collect::<Vec<_>>();
-
-        
 
         let import = just(Token::Use)
             .ignore_then(import_path)

@@ -16,6 +16,10 @@ bench:
     cargo bench -p flare_internals
     code -r target/criterion/report/index.html
 
+test: 
+    cargo test --  --no-capture
+
+
 build-profile:
     cargo build --profile bench -p flarec
 
