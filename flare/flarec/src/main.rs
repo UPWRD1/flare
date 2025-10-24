@@ -4,14 +4,13 @@
 use std::{env, io::Write, path::PathBuf};
 
 use flare_internals::{
-    compile_program, convert_path_to_id,
-    Context,
+    Context, compile_program, convert_path_to_id,
     resource::errors::{CompResult, ReportableError},
 };
 fn enable_loggin() {
     unsafe {
         if cfg!(debug_assertions) {
-            std::env::set_var("RUST_LOG", "info");
+            std::env::set_var("RUST_LOG", "trace");
             pretty_env_logger::formatted_builder()
                 .filter_level(log::LevelFilter::Info)
                 //.format_module_path(false)
@@ -38,7 +37,7 @@ fn main() -> CompResult<()> {
                 match compile_program(&ctx, id) {
                     //.inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
                     //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
-                    Ok((code, elapsed)) => {
+                    Ok((_code, elapsed)) => {
                         println!("Compiled {} in {elapsed:.2?}", filename.display());
                         Ok(())
                     }

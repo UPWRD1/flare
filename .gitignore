@@ -1,3 +1,4 @@
 flare/target
 perf.*
 flamegraph.svg
+cachegrind.*

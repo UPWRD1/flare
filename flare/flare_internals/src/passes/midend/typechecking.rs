@@ -1,132 +1,88 @@
-use std::{fmt, rc::Rc};
+use std::rc::Rc;
 
 use chumsky::span::SimpleSpan;
-use generational_arena::Index;
-//use ptrie::Trie;
-//use token_trie::Trie;
-//use radix_trie::{Trie, TrieCommon};
 
 use crate::{
-    passes::midend::environment::{Entry, Environment, SimpleQuant},
+    passes::midend::environment::Environment,
     resource::{
-        errors::{CompResult, DynamicErr},
-        rep::{Expr, FileID, PrimitiveType, Spanned, Ty},
+        errors::{self, CompResult, DynamicErr},
+        rep::{
+            ast::Expr,
+            entry::{EnumEntry, Item, StructEntry},
+            files::FileID,
+            quantifier::SimpleQuant,
+            types::{EnumVariant, PrimitiveType, Ty},
+            Spanned,
+        },
     },
 };
 
-use log::info;
+use log::trace;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct TyVar(usize);
+pub use checkable_types::{TyInfo, TyVar};
+mod checkable_types {
 
-impl fmt::Display for TyVar {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "tv{}", self.0)
-    }
-}
+    use std::fmt;
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub struct TyVar(pub usize);
 
-#[derive(Copy, Clone, Debug)]
-pub enum TyInfo {
-    Unknown,
-    Ref(TyVar),
-    User(&'static str),
-    Unit,
-    Num,
-    Bool,
-    String,
-    Func(TyVar, TyVar),
-    Tuple(TyVar, usize),
-    //Func(Rc<TyInfo>, Box<TyInfo>),
-}
-
-impl fmt::Display for TyInfo {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TyInfo::Unknown => write!(f, "Unknown"),
-            TyInfo::Ref(n) => write!(f, "{n}"),
-            TyInfo::User(n) => write!(f, "User({n})"),
-            TyInfo::Num => write!(f, "num"),
-            TyInfo::Bool => write!(f, "bool"),
-            TyInfo::Func(l, r) => write!(f, "({l} -> {r})"),
-            TyInfo::Unit => write!(f, "unit"),
-            TyInfo::String => write!(f, "str"),
-            TyInfo::Tuple(t, s) => write!(f, "{{{t}; {s}}}"),
+    impl fmt::Display for TyVar {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "tv{}", self.0)
         }
     }
-}
 
-// impl From<Ty> for TyInfo {
-//     fn from(value: Ty) -> Self {
-//         match value {
-//             Ty::Primitive(primitive_type) => match primitive_type {
-//                 PrimitiveType::Num => TyInfo::Num,
-//                 PrimitiveType::Str => TyInfo::String,
-//                 PrimitiveType::Bool => TyInfo::Bool,
-//                 PrimitiveType::Unit => TyInfo::Unit,
-//             },
-//             Ty::User(opt_spanned, opt_spanneds) => todo!(),
-//             Ty::Tuple(opt_spanneds) => todo!(),
-//             Ty::Arrow(l, r) => todo!(), //TyInfo::Func(l.t.into(), r.t.into()),
-//             Ty::Generic(opt_spanned) => todo!(),
-//         }
-// }
-//}
+    #[derive(Copy, Clone, Debug)]
+    pub enum TyInfo {
+        Unknown,
+        Ref(TyVar),
+        User(&'static str),
+        Variant(TyVar, &'static str),
+        Unit,
+        Num,
+        Bool,
+        String,
+        Func(TyVar, TyVar),
+        Tuple(TyVar, usize),
+        //Func(Rc<TyInfo>, Box<TyInfo>),
+    }
 
-// #[derive(Debug, Hash, PartialEq, Eq, Clone)]
-// pub enum Ty {
-//     Num,
-//     Bool,
-//     Func(Box<Self>, Box<Self>),
-//     String,
-//     Unit,
-// }
+    impl fmt::Display for TyInfo {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                TyInfo::Unknown => write!(f, "Unknown"),
+                TyInfo::Ref(n) => write!(f, "{n}"),
+                TyInfo::User(n) => write!(f, "{n}"),
+                TyInfo::Num => write!(f, "num"),
+                TyInfo::Bool => write!(f, "bool"),
+                TyInfo::Func(l, r) => write!(f, "({l} -> {r})"),
+                TyInfo::Variant(l, r) => write!(f, "({l}.{r})"),
 
-impl fmt::Display for Ty {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Ty::Primitive(p) => match p {
-                crate::resource::rep::PrimitiveType::Num => write!(f, "num"),
-                crate::resource::rep::PrimitiveType::Bool => write!(f, "bool"),
-                crate::resource::rep::PrimitiveType::Str => write!(f, "str"),
-                crate::resource::rep::PrimitiveType::Unit => write!(f, "unit"),
-            },
-
-            Ty::Tuple(t, _s) => {
-                write!(f, "{{")?;
-                for i in t {
-                    write!(f, "{}, ", i.0)?;
-                }
-                write!(f, "}}")
-            }
-
-            Ty::Arrow(l, r) => write!(f, "({} -> {})", l.0, r.0),
-            Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident().unwrap_or("?".to_string())),
-            Ty::User(n, args) => {
-                write!(f, "{}[", n.0.get_ident().unwrap_or("?".to_string()))?;
-                for a in args {
-                    write!(f, "{}, ", a.0)?;
-                }
-                write!(f, "]")
+                TyInfo::Unit => write!(f, "unit"),
+                TyInfo::String => write!(f, "str"),
+                TyInfo::Tuple(t, s) => write!(f, "{{{t}; {s}}}"),
             }
         }
     }
 }
-
 pub struct Solver<'env> {
     //src: &'src str,
     master_env: &'env Environment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
     vars: Vec<(TyInfo, SimpleSpan<usize, FileID>)>,
     env: Vec<(Expr, TyVar)>,
+    package: SimpleQuant,
     //current_parent: SimpleQuant,
 }
 
 impl<'env> Solver<'env> {
     #[must_use]
     pub fn new(
-        master_env: &'env Environment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
+        master_env: &'env Environment,
+        package: SimpleQuant, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
     ) -> Solver<'env> {
         Solver {
             //src,
+            package,
             //current_parent: SimpleQuant::Root,
             master_env,
             vars: vec![],
@@ -134,10 +90,23 @@ impl<'env> Solver<'env> {
         }
     }
 
+    fn search_masterenv(
+        &self,
+        q: &SimpleQuant,
+        s: &SimpleSpan<usize, u64>,
+    ) -> CompResult<&'env Item> {
+        let search = self.master_env.get_from_context(q, &self.package);
+        if let Some(i) = search {
+            Ok(self.master_env.graph.node_weight(i).unwrap())
+        } else {
+            Err(errors::not_defined(q, s))
+        }
+    }
+
     fn create_ty(&mut self, info: TyInfo, span: SimpleSpan<usize, FileID>) -> TyVar {
         self.vars.push((info, span));
         let v = TyVar(self.vars.len() - 1);
-        info!("{} = {}", v, self.vars[v.0].0);
+        trace!("{} = {}", v, self.vars[v.0].0);
         v
     }
 
@@ -155,28 +124,8 @@ impl<'env> Solver<'env> {
                 TyInfo::Func(self.create_ty(lty, l.1), self.create_ty(rty, r.1))
             }
             Ty::User(n, _g) => TyInfo::User(n.0.get_ident().unwrap_or("?".to_string()).leak()),
+            //Ty::Variant(v) => TyInfo::User(v.get_name().leak()),
             _ => todo!("{:?}", t),
-        }
-    }
-
-    #[inline]
-    fn search_masterenv(
-        &self,
-        q: &SimpleQuant,
-        s: &SimpleSpan<usize, u64>,
-    ) -> CompResult<&'env Entry> {
-        let search: Vec<(Vec<SimpleQuant>, &Index)> = self
-            .master_env
-            .items
-            .postfix_search(vec![q.clone()])
-            .collect();
-        if let Some((_q, e)) = search.last() {
-            Ok(self.master_env.arena.get(**e).unwrap())
-        } else {
-            Err(DynamicErr::new(format!("{q} hasn't been defined"))
-                .label((format!("{q:?} not found in scope"), *s))
-                //.src(self.src.to_string())
-                .into())
         }
     }
 
@@ -202,6 +151,7 @@ impl<'env> Solver<'env> {
                 Ok(Func(a_i, a_o))
             }
             (User(a_name), User(b_name)) if a_name == b_name => Ok(User(a_name)),
+
             (a_info, b_info) => Err(DynamicErr::new(format!(
                 "Type mismatch between {a_info} and {b_info}"
             ))
@@ -212,7 +162,7 @@ impl<'env> Solver<'env> {
             ])
             .into()),
         }
-        .inspect(|x| info!("    {a} U {b} => {x}"))
+        .inspect(|x| trace!("    {a} U {b} => {x}"))
     }
 
     pub fn check_expr(
@@ -221,7 +171,7 @@ impl<'env> Solver<'env> {
         //env: &mut Vec<(Expr, TyVar)>,
     ) -> CompResult<TyVar> {
         //dbg!(&self.current_parent);
-
+        //dbg!(&expr.0);
         match &expr.0 {
             Expr::Unit => Ok(self.create_ty(TyInfo::Unit, expr.1)),
             Expr::Number(_) => Ok(self.create_ty(TyInfo::Num, expr.1)),
@@ -237,7 +187,7 @@ impl<'env> Solver<'env> {
                 {
                     Ok(*tv)
                 } else {
-                    self.resolve_name(expr, name)
+                    self.resolve_name(expr)
                 }
             }
             Expr::Let(lhs, ref rhs, ref then) => {
@@ -292,22 +242,43 @@ impl<'env> Solver<'env> {
                 Ok(then_ty)
             }
             Expr::FieldAccess(l, r) => {
-                let l_ty = self.check_expr(l)?;
-                let solved = self.solve(l_ty)?;
-
-                if let Entry::Struct { ref fields, .. } = self
-                    .search_masterenv(&SimpleQuant::Type(solved.get_user_name().unwrap()), &l.1)?
+                let left_ty = self.check_expr(l)?;
+                let info = self.vars[left_ty.0].0;
+                //dbg!(left_ty);
+                if !matches!(info, TyInfo::Unknown)
+                // if let Ok(t) = self.solve(left_ty)
                 {
-                    //if let Entry::Struct { ref fields, .. } = self.master_env.arena.get(*search.last().unwrap().1).unwrap() {
-                    let the_field = fields.iter().find(|(n, _)| n.0 == r.0).unwrap();
-                    let expected_ty = self.convert_ty(&the_field.1 .0);
-                    let expected_ty_var = self.create_ty(expected_ty, the_field.1 .1);
-                    Ok(expected_ty_var)
+                    let ident = SimpleQuant::Type(info.to_string());
+                    let fields = self
+                        .master_env
+                        .get_children(&ident, &self.package)
+                        .ok_or(errors::not_defined(&ident, &expr.1))?;
+                    let desired_field_q = SimpleQuant::Field(r.0.get_ident().unwrap());
+                    let f = fields.iter().find(|x| x.0.is(&desired_field_q)).unwrap();
+                    //dbg!(&f);
+                    let fty = self.convert_ty(&f.1.get_ty().unwrap().0);
+                    let converted = self.create_ty(fty, expr.1);
+
+                    //dbg!(fields);
+                    Ok(converted)
                 } else {
-                    panic!("Should be a struct")
+                    let path = SimpleQuant::from_expr(expr);
+
+                    //dbg!(&path);
+                    let [_heads @ .., second, last] = path.as_slice() else {
+                        panic!()
+                    };
+                    let entry = self
+                        .master_env
+                        .get_node(second, &self.package)
+                        .ok_or(errors::not_defined(last, &expr.1))?;
+                    let entry_ty = entry.get_ty().unwrap().0;
+                    let tyinfo = self.convert_ty(&entry_ty);
+                    let tv = self.create_ty(tyinfo, expr.1);
+                    Ok(tv)
                 }
 
-                //todo!("{:?}.{:?}", l_ty, r_ty);
+                //todo!("{:?} {:?}", l_ty, solved_l);
             }
             Expr::Tuple(es) => {
                 let mut iter = es.iter();
@@ -320,19 +291,16 @@ impl<'env> Solver<'env> {
                 Ok(out_ty)
             }
             Expr::FieldedConstructor(name, given_fields) => {
-                let e = self.search_masterenv(
-                    &SimpleQuant::Type(name.0.get_ident().unwrap().to_string()),
-                    &name.1,
-                )?;
+                let ident = SimpleQuant::Type(name.0.get_ident().unwrap().to_string());
 
-                let sty = self.master_env.check_entry(e)?;
+                let (i, fields) = self
+                    .master_env
+                    .get_node_and_children(&ident, &self.package)
+                    .ok_or(errors::not_defined(&ident, &name.1))?;
+
+                let sty = self.master_env.check_item(i, &self.package)?;
                 //dbg!(&fty);
-                if let Entry::Struct {
-                    ref name,
-                    ref fields,
-                    ..
-                } = *sty
-                {
+                if let Item::Struct(StructEntry { ref name, .. }) = *sty {
                     if fields.len() != given_fields.len() {
                         return Err(DynamicErr::new(format!(
                             "Field count mismatch: expected {}, found {}",
@@ -344,8 +312,17 @@ impl<'env> Solver<'env> {
                         .into());
                     }
                     //let paired_fields = fields.iter().zip(given_fields.iter());
-                    let map: Vec<(Spanned<Expr>, Spanned<Ty>)> = fields.clone();
-                    //dbg!(&map);
+                    let map: Vec<&(Spanned<Expr>, Spanned<Ty>)> = fields
+                        .iter()
+                        .map(move |f| {
+                            if let Item::Field(v) = f.1 {
+                                v
+                            } else {
+                                panic!()
+                            }
+                        })
+                        .collect();
+
                     for (fname, value) in given_fields {
                         //dbg!(fname);
                         let def_ty: Spanned<Ty> = map
@@ -375,19 +352,67 @@ impl<'env> Solver<'env> {
                 } else {
                     panic!("Should be a struct")
                 }
-
+                //todo!()
                 //e.get_sig()
             }
             Expr::ExternFunc(name) => {
                 let e = self.search_masterenv(&name.last().unwrap().clone(), &expr.1)?;
-                if let Entry::Extern { ref sig, .. } = *e {
-                    let converted = self.convert_ty(sig);
+                if let Item::Extern { ref sig, .. } = *e {
+                    let converted = self.convert_ty(&sig.0);
                     let out_ty = self.create_ty(converted, expr.1);
                     Ok(out_ty)
                 } else {
                     panic!("Should be an extern")
                 }
             }
+            Expr::Constructor(name, given_fields) => {
+                //let e = self.check_expr(name)?;
+                let ident = name.0.get_ident().unwrap().to_string();
+                let quant = SimpleQuant::Type(ident.clone());
+
+                // Enum Variants
+                let variants = self
+                    .master_env
+                    .get_children(&quant, &self.package)
+                    .ok_or(errors::not_defined(&quant, &name.1))?;
+
+                let variant = SimpleQuant::from_expr(name).last().cloned().unwrap();
+                let item = variants
+                    .into_iter()
+                    .filter(|x| x.0.is(&variant))
+                    .map(|x| x.1)
+                    .next()
+                    .unwrap();
+
+                // Variant Fields
+                if let Item::Variant((EnumVariant { name, types }, _)) = item {
+                    let fields = types;
+                    if fields.len() != given_fields.len() {
+                        return Err(DynamicErr::new(format!(
+                            "Field count mismatch: expected {}, found {}",
+                            fields.len(),
+                            given_fields.len()
+                        ))
+                        .label((format!("expected {} fields", fields.len()), name.1))
+                        .label((format!("found {} fields", given_fields.len()), expr.1))
+                        .into());
+                    }
+
+                    for (value, def_ty) in given_fields.iter().zip(fields) {
+                        //dbg!(fname);
+                        let given_ty = self.check_expr(value)?;
+                        let expected_ty = self.convert_ty(&def_ty.0);
+                        let expected_ty_var = self.create_ty(expected_ty, def_ty.1);
+                        self.unify(given_ty, expected_ty_var, value.1)?;
+                    }
+                    let out_ty = self.create_ty(TyInfo::User(ident.leak()), name.1);
+                    //self.unify(e.unwrap(), out_ty, expr.1)?;
+                    Ok(out_ty)
+                } else {
+                    panic!()
+                }
+            }
+
             _ => todo!("Failed to check {:?}", expr.0),
         }
     }
@@ -395,36 +420,56 @@ impl<'env> Solver<'env> {
     fn resolve_name(
         &mut self,
         expr: &Spanned<Expr>,
-        name: &String,
     ) -> Result<TyVar, crate::resource::errors::CompilerErr> {
-        let e = self.search_masterenv(&SimpleQuant::Func(name.to_string()), &expr.1)?;
-        // BEAUTIFUL!
-        let fty = if self.master_env.check_entry(e)?.get_sig().is_some() {
-            e
+        //dbg!(expr);
+        let name = expr.0.get_ident().unwrap();
+        if let Ok(e) = self.search_masterenv(&SimpleQuant::Func(name.to_string()), &expr.1) {
+            // BEAUTIFUL!
+            let fty = if self
+                .master_env
+                .check_item(e, &self.package)?
+                .get_sig()
+                .is_some()
+            {
+                e
+            } else {
+                let l = self.create_ty(TyInfo::Unknown, expr.1);
+                let r = self.create_ty(TyInfo::Unknown, expr.1);
+                return Ok(self.create_ty(TyInfo::Func(l, r), expr.1));
+            };
+            //dbg!(&fty);
+            if let Item::Let { ref sig, .. } = *fty {
+                let (l, r) = sig.get().unwrap().0.get_arrow();
+                let converted_l = self.convert_ty(&l.0);
+                let converted_r = self.convert_ty(&r.0);
+                let lty = self.create_ty(converted_l, l.1);
+                let rty = self.create_ty(converted_r, r.1);
+                let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
+                Ok(fn_ty)
+            } else if let Item::Extern { ref sig, .. } = *fty {
+                let (l, r) = sig.0.get_arrow();
+                let converted_l = self.convert_ty(&l.0);
+                let converted_r = self.convert_ty(&r.0);
+                let lty = self.create_ty(converted_l, l.1);
+                let rty = self.create_ty(converted_r, r.1);
+                let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
+                Ok(fn_ty)
+            } else {
+                unreachable!("Should be a function")
+            }
         } else {
-            let l = self.create_ty(TyInfo::Unknown, expr.1);
-            let r = self.create_ty(TyInfo::Unknown, expr.1);
-            return Ok(self.create_ty(TyInfo::Func(l, r), expr.1));
-        };
-        //dbg!(&fty);
-        if let Entry::Let { ref sig, .. } = *fty {
-            let (l, r) = sig.get().unwrap().get_arrow();
-            let converted_l = self.convert_ty(&l.0);
-            let converted_r = self.convert_ty(&r.0);
-            let lty = self.create_ty(converted_l, l.1);
-            let rty = self.create_ty(converted_r, r.1);
-            let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
-            Ok(fn_ty)
-        } else if let Entry::Extern { ref sig, .. } = *fty {
-            let (l, r) = sig.get_arrow();
-            let converted_l = self.convert_ty(&l.0);
-            let converted_r = self.convert_ty(&r.0);
-            let lty = self.create_ty(converted_l, l.1);
-            let rty = self.create_ty(converted_r, r.1);
-            let fn_ty = self.create_ty(TyInfo::Func(lty, rty), expr.1);
-            Ok(fn_ty)
-        } else {
-            panic!("Should be a function")
+            if let Ok(e) = self.search_masterenv(&SimpleQuant::Type(name.to_string()), &expr.1) {
+                // BEAUTIFUL!
+                let ty = self
+                    .master_env
+                    .check_item(e, &self.package)?
+                    .get_ty()
+                    .unwrap();
+                let info = self.convert_ty(&ty.0);
+                Ok(self.create_ty(info, ty.1))
+            } else {
+                Err(errors::not_defined(&SimpleQuant::Wildcard(name), &expr.1))
+            }
         }
 
         //e.get_sig()
@@ -459,22 +504,25 @@ impl<'env> Solver<'env> {
             TyInfo::User(n) => {
                 let e =
                     self.search_masterenv(&SimpleQuant::Type(n.to_string()), &self.vars[var.0].1)?;
-                if let Entry::Struct {
-                    ref ty,
-                    ..
-                } = *e
-                {
-                    Ok(ty.clone())
+                if let Item::Struct(StructEntry { ref ty, .. }) = *e {
+                    Ok(ty.clone().0)
+                } else if let Item::Enum(EnumEntry { ref ty, .. }) = *e {
+                    Ok(ty.clone().0)
                 } else {
-                    Err(DynamicErr::new(format!("{} should be a struct", self.vars[var.0].0)).label((format!("This is not a struct"), self.vars[var.0].1)).into())
+                    Err(
+                        DynamicErr::new(format!("{} should be a type", self.vars[var.0].0))
+                            .label((format!("This is not a type"), self.vars[var.0].1))
+                            .into(),
+                    )
                 }
             }
+            TyInfo::Variant(p, _) => self.solve(p),
             TyInfo::Tuple(t, s) => {
                 let inner_ty = self.solve(t)?;
                 Ok(Ty::Tuple(vec![(inner_ty, self.vars[t.0].1)], s))
             }
         }
-        .inspect(|t| info!("Solved {var} => {t}"))
+        .inspect(|t| trace!("Solved {var} => {t}"))
         // let _ = t
         //     .as_ref()
         //     .inspect(|t| println!("    Solved {} => {}", var, t));

@@ -1,0 +1,29 @@
+default: run
+
+build: 
+    cargo build -p flarec
+
+release: 
+    cargo build --release -p flarec
+
+run:
+    cargo run -p flarec  -- -c examples/ntest.flr
+
+run-release:
+    cargo run --release -p flarec -- -c examples/ntest.flr
+
+bench:
+    cargo bench -p flare_internals
+    code -r target/criterion/report/index.html
+
+build-profile:
+    cargo build --profile bench -p flarec
+
+profile:
+    valgrind --tool=cachegrind /workspaces/allegro/flare/target/release/flarec -c /workspaces/allegro/flare/flare_internals/benches/bench_code/bench1.flr
+#    rm cachegrind.*
+
+reset:
+    cargo clean
+    cargo build
+    cargo build --release

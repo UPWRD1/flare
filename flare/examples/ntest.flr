@@ -1,15 +1,27 @@
 package Main = 
-    # use {Math}
+    use Math.factorial
+
     extern println: str -> unit
 
     extern concat: str -> str -> str
     extern display_num: num -> str
+    extern exit: num -> unit
 
     struct S =
         d: str,
         f: str -> num -> str
 
+    enum Option =
+        Some { num },
+        None
+
+    let unwrap : Option -> num x =
+        match x 
+            | Some {n} then n
+            | None then exit (1)
+
     let main = 
         let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
-        let f = factorial 3 in
-        i.f i.d (factorial 3)
+        let en = Option.Some {3} in
+        let f = factorial (unwrap en) in
+        i.f i.d (f)

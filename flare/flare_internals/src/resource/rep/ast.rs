@@ -1,14 +1,12 @@
 use std::{hash::Hash, path::PathBuf, rc::Rc};
 
-use chumsky::span::{SimpleSpan};
 use ordered_float::OrderedFloat;
 
-use crate::passes::midend::environment::SimpleQuant;
-
-/// Represents a file's unique identification code inside of a `Context`
-pub type FileID = u64;
-
-pub type Spanned<T> = (T, SimpleSpan<usize, FileID>);
+use super::{
+    quantifier::SimpleQuant,
+    types::{EnumVariant, Ty},
+    Spanned,
+};
 
 /// Type representing an atomic value within a pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -16,6 +14,7 @@ pub enum PatternAtom {
     Strlit(String),
     Num(OrderedFloat<f64>),
     Variable(String),
+    Type(Rc<Spanned<Ty>>),
 }
 
 /// Type representing a Pattern.
@@ -26,40 +25,16 @@ pub enum Pattern {
     Variant(Rc<Spanned<Expr>>, Vec<Spanned<Self>>),
 }
 
-/// Represents a primitive type within `Ty`
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum PrimitiveType {
-    Num,
-    Str,
-    Bool,
-    Unit,
-}
-
-/// Represents a type in the parser and master environment.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Ty {
-    Primitive(PrimitiveType),
-    User(Spanned<Expr>, Vec<Spanned<Self>>),
-    Tuple(Vec<Spanned<Self>>, usize),
-    Arrow(Rc<Spanned<Self>>, Rc<Spanned<Self>>),
-    Generic(Spanned<Expr>),
-}
-
-impl Ty {
-    pub fn get_arrow(&self) -> (Rc<Spanned<Self>>, Rc<Spanned<Self>>) {
-        if let Self::Arrow(l, r) = self {
-            (l.clone(), r.clone())
-        } else {
-            panic!()
-        }
-    }
-
-    pub fn get_user_name(&self) -> Option<String> {
-        if let Self::User(name, _) = self {
-            //name.1;
-            Some(name.0.get_ident()?)
-        } else {
-            None
+impl Pattern {
+    pub fn get_ident(&self) -> Option<String> {
+        match self {
+            Self::Variant(n, _) => n.0.get_ident(),
+            Self::Atom(a) => match a {
+                PatternAtom::Type(t) => Some(t.0.get_raw_name()),
+                PatternAtom::Variable(s) => Some(s.to_string()),
+                _ => None,
+            },
+            Self::Tuple(_) => None,
         }
     }
 }
@@ -89,7 +64,6 @@ pub enum Expr {
     Constructor(Rc<Spanned<Expr>>, Vec<Spanned<Expr>>),
     FieldedConstructor(Rc<Spanned<Expr>>, Vec<(Spanned<Expr>, Spanned<Expr>)>),
 
-
     Pat(Spanned<Pattern>),
 
     Mul(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
@@ -116,14 +90,21 @@ impl Expr {
     pub fn get_ident(&self) -> Option<String> {
         match self {
             Expr::Ident(ref s) => Some(s.to_string()),
-            Expr::FieldAccess(ref _base, ref _field) => {
-                todo!()
+            Expr::FieldAccess(ref base, ref _field) => {
+                Some(base.0.get_ident()?)
+                //todo!()
                 //Some(base.0.get_ident()?.append(field.0.get_ident()?))
             }
             Expr::Access(ref expr) => expr.0.get_ident(),
             Expr::Call(ref func, _) => func.0.get_ident(),
             Expr::Lambda(ref arg, _) => arg.0.get_ident(),
-            Expr::Pat(p) => if let Pattern::Atom(PatternAtom::Variable(ref s)) = p.0 {Some(s.to_string())} else {None},
+            Expr::Pat(p) => {
+                if let Pattern::Atom(PatternAtom::Variable(ref s)) = p.0 {
+                    Some(s.to_string())
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -137,14 +118,21 @@ pub struct StructDef {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct EnumDef {
+    pub name: Spanned<Expr>,
+    pub variants: Vec<Spanned<EnumVariant>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImportItem {
     pub items: Vec<Spanned<Expr>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Definition {
-    Import(ImportItem),
+    Import(Spanned<Expr>),
     Struct(StructDef),
+    Enum(EnumDef),
     Let(Spanned<Expr>, Spanned<Expr>, Option<Spanned<Ty>>),
     Extern(Spanned<Expr>, Spanned<Ty>),
 }
@@ -158,10 +146,4 @@ pub struct Package {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub packages: Vec<(Package, PathBuf, String)>,
-}
-
-#[derive(Debug, Clone)]
-pub struct FileSource {
-    pub filename: PathBuf,
-    pub src_text: String,
 }

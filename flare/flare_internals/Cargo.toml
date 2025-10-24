@@ -7,22 +7,15 @@ edition = "2021"
 anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
 chumsky = {version = "0.10.1", features = ["pratt", "memoization", "extension"] }
-generational-arena = "0.2.9"
 itertools = "0.13.0"
 log = "0.4.28"
-#lazy_static = "1.4.0"
 ordered-float = { version = "4.5.0", features = ["serde"] }
-#ptrie = "0.7.2"
+petgraph = "0.8.3"
 qbe = "2.3.0"
 rayon = "1.11.0"
 rustc-hash = "2.1.1"
 serde = {version = "1.0.210", features = ["derive", "rc"]}
 thiserror = "2.0.7"
-trie-rs = {version = "0.4.2", features = ["rayon"]}
-#trie-rs = {version = "0.4.2", features = []}
-
-#typed-builder = "0.21.2"
-
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

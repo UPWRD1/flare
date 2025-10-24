@@ -1,0 +1,105 @@
+
+use super::{Spanned, ast::Expr};
+use std::{fmt, rc::Rc};
+
+/// Represents a primitive type within `Ty`
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PrimitiveType {
+    Num,
+    Str,
+    Bool,
+    Unit,
+}
+
+/// Represents a type in the parser and master environment.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Ty {
+    Primitive(PrimitiveType),
+    User(Spanned<Expr>, Vec<Spanned<Self>>),
+    Tuple(Vec<Spanned<Self>>, usize),
+    Arrow(Rc<Spanned<Self>>, Rc<Spanned<Self>>),
+    Generic(Spanned<Expr>),
+    Variant(EnumVariant),
+    Module(Spanned<Expr>),
+}
+
+// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+// pub enum EnumVariant {
+//     Simple(Spanned<Expr>),
+//     Associated(Spanned<Expr>, Vec<Spanned<Ty>>),
+// }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct EnumVariant {
+    pub name: Spanned<Expr>,
+    pub types: Vec<Spanned<Ty>>,
+}
+
+
+// impl EnumVariant {
+//     pub fn get_name(&self) -> String {
+//         match self {
+//             Self::Simple(n) => n.0.get_ident().unwrap(),
+//             Self::Associated(n, ..) => n.0.get_ident().unwrap(),
+//         }
+//     }
+// }
+
+impl Ty {
+    pub fn get_arrow(&self) -> (Rc<Spanned<Self>>, Rc<Spanned<Self>>) {
+        if let Self::Arrow(l, r) = self {
+            (l.clone(), r.clone())
+        } else {
+            panic!()
+        }
+    }
+
+    pub fn get_user_name(&self) -> Option<String> {
+        match self {
+            Self::User(name, _ ) =>             Some(name.0.get_ident()?),
+            Self::Variant(v) => Some(v.name.0.get_ident()?),
+            _ => None
+        }
+    }
+
+    pub fn get_raw_name(&self) -> String {
+        format!("{self}")
+    }
+}
+
+impl fmt::Display for Ty {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Ty::Primitive(p) => match p {
+                crate::resource::rep::types::PrimitiveType::Num => write!(f, "num"),
+                crate::resource::rep::types::PrimitiveType::Bool => write!(f, "bool"),
+                crate::resource::rep::types::PrimitiveType::Str => write!(f, "str"),
+                crate::resource::rep::types::PrimitiveType::Unit => write!(f, "unit"),
+            },
+
+            Ty::Tuple(t, _s) => {
+                write!(f, "{{")?;
+                for i in t {
+                    write!(f, "{}, ", i.0)?;
+                }
+                write!(f, "}}")
+            }
+
+            Ty::Arrow(l, r) => write!(f, "({} -> {})", l.0, r.0),
+            Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident().unwrap_or("?".to_string())),
+            Ty::User(n, args) => {
+                write!(f, "{}[", n.0.get_ident().unwrap_or("?".to_string()))?;
+                for a in args {
+                    write!(f, "{}, ", a.0)?;
+                }
+                write!(f, "]")
+            }
+            Ty::Variant(t) => {
+                write!(f, "{t:?}")
+            }
+            Ty::Module(n) => {
+                write!(f, "Module {n:?}")
+            }
+        }
+    }
+}

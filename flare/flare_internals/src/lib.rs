@@ -1,4 +1,5 @@
 #[warn(clippy::pedantic)]
+
 pub mod passes;
 pub mod resource;
 
@@ -22,7 +23,7 @@ use crate::{
     },
     resource::{
         errors::{CompResult, CompilerErr, ErrorCollection},
-        rep::{FileID, FileSource, Package, Program},
+        rep::{files::{FileID, FileSource}, ast::{Package, Program}},
     },
 };
 
@@ -42,7 +43,8 @@ impl Context {
             src_text,
         };
         Context {
-            filectx: Mutex::from(vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>()).into(),
+            filectx: Mutex::from(vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>())
+                .into(),
         }
     }
 }
@@ -102,16 +104,13 @@ pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
             let mut file_context = ctx.filectx.lock().unwrap();
             file_context.insert(converted_id, entry.clone());
             drop(file_context);
-            let (pack, str)=  parse_file(ctx, converted_id)?;
+            let (pack, str) = parse_file(ctx, converted_id)?;
             Ok((pack, entry.filename.clone(), str))
-                
-            
         })
         .collect();
     let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
     let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();
     let errors: Vec<_> = errors.into_iter().map(Result::unwrap_err).collect();
-
 
     if errors.is_empty() {
         Ok(Program { packages: v })
@@ -127,6 +126,7 @@ pub fn compile_program(ctx: &Context, id: FileID) -> CompResult<(Program, Durati
     //dbg!(program.clone());
     //dbg!(program.clone());
     let e = Environment::build(program.clone())?;
+    //dbg!(&e);
     e.check()?;
     //dbg!(&e);
     let elapsed = now.elapsed();

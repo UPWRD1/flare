@@ -1,4 +1,18 @@
-use std::{any::Any, io::Cursor, ops::Deref, fmt::Display};
+use std::{any::Any, fmt::Display, io::Cursor, ops::Deref};
+
+mod templates {
+    use crate::*;
+    use crate::resource::{errors::DynamicErr, rep::quantifier::SimpleQuant,};
+    use chumsky::span::SimpleSpan;
+    pub fn not_defined(q: &SimpleQuant, s: &SimpleSpan<usize, u64>) -> CompilerErr {
+        DynamicErr::new(format!("Could not find a definition for '{q}'"))
+            .label((format!("'{q}' not found in scope"), *s))
+            //.src(self.src.to_string())
+            .into()
+    }
+}
+
+pub(crate) use templates::*;
 
 use ariadne::{sources, Color, Label, Report, ReportKind};
 
@@ -6,19 +20,18 @@ use chumsky::span::{SimpleSpan, Span};
 use thiserror::Error;
 
 pub type CompResult<T> = Result<T, CompilerErr>;
-pub trait ReportableError : Any + Display + std::error::Error + Send + Sync {
+pub trait ReportableError: Any + Display + std::error::Error + Send + Sync {
     fn report(&self, ctx: &Context);
 }
 
-pub trait AnnotatableError : ReportableError {
+pub trait AnnotatableError: ReportableError {
     fn annotate<T>(&self, value: T) -> Self;
 }
 
 #[derive(Debug, Error)]
 pub struct CompilerErr(Box<dyn ReportableError>);
 
-
-use crate::{resource::rep::FileID, Context};
+use crate::{FileID, Context};
 
 impl Display for CompilerErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -28,7 +41,7 @@ impl Display for CompilerErr {
 
 impl ReportableError for CompilerErr {
     fn report(&self, ctx: &Context) {
-            self.0.report(ctx)
+        self.0.report(ctx)
     }
 }
 
@@ -57,7 +70,6 @@ impl Deref for CompilerErr {
     }
 }
 
-
 #[derive(Debug, Error)]
 pub enum CompilerErrKind {
     #[error(transparent)]
@@ -79,7 +91,6 @@ pub enum CompilerErrKind {
     Other(#[from] anyhow::Error), // Catch-all for unexpected errors
 }
 
-
 impl CompilerErrKind {
     pub fn get_dyn(&self) -> DynamicErr {
         //panic!();
@@ -89,9 +100,6 @@ impl CompilerErrKind {
             _ => panic!("Cannot get dynamic err from {:?}", self),
         }
     }
-    
-
-
 }
 
 impl ReportableError for CompilerErrKind {
@@ -101,7 +109,7 @@ impl ReportableError for CompilerErrKind {
             CompilerErrKind::Other(error) => eprintln!("{error}"),
             CompilerErrKind::Dynamic(e) => {
                 CompilerErrKind::General(e.clone().get_gen(ctx)).report(ctx)
-            },
+            }
             CompilerErrKind::ErrorCollection(errs) => {
                 for e in &errs.0 {
                     e.report(ctx);
@@ -173,10 +181,7 @@ impl DynamicErr {
         let mut extra_labels_origin: Vec<u64> = self
             .extra_labels
             .as_ref()
-            .map_or_else(Vec::new, |v| v.iter()
-            .map(|x| x.1.context)
-            .collect())
-            ;
+            .map_or_else(Vec::new, |v| v.iter().map(|x| x.1.context).collect());
         source_ids.append(&mut extra_labels_origin);
         let mut new_sources = vec![];
         for k in source_ids {
@@ -243,13 +248,15 @@ impl std::fmt::Display for GeneralErr {
         let mut buf = Cursor::new(vec![]);
         let rep = Report::build(
             ReportKind::Error,
-            (self.sources.first().unwrap().clone().0, self.label.1.into_range()),
+            (
+                self.sources.first().unwrap().clone().0,
+                self.label.1.into_range(),
+            ),
         )
         .with_config(
             ariadne::Config::new()
                 .with_index_type(ariadne::IndexType::Byte)
-                .with_label_attach(ariadne::LabelAttach::Middle)
-                
+                .with_label_attach(ariadne::LabelAttach::Middle),
         )
         .with_message(&self.msg)
         .with_label(
