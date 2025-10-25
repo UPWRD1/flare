@@ -1,0 +1,14 @@
+package Opt = 
+    enum Option =
+        Some { num },
+        None
+
+    let unwrap : Option -> num x =
+        match x 
+            | Some {n} then n,
+            | None then exit (1),
+
+    let is_some : Option -> bool x =
+        match x
+            | Some {_} then true,
+            | None then false,

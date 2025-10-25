@@ -4,7 +4,9 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughpu
 use flare_internals::*;
 use flare_internals::{passes::midend::environment::Environment, resource::rep::ast::Program};
 
-const TEST_FILE: &str = "/workspaces/allegro/flare/flare_internals/benches/bench_code/bench1.flr";
+const TEST_FILE: &str =
+    "/Users/lukedavis/Documents/GitHub/flare/flare/flare_internals/benches/bench_code/bench1.flr";
+//    "~/Documents/GitHub/flare/flare/flare_internals/benches/bench_code/bench1.flr";
 
 pub fn typechecking_bench(c: &mut Criterion) {
     let path = PathBuf::from(TEST_FILE).canonicalize().unwrap();
@@ -12,7 +14,7 @@ pub fn typechecking_bench(c: &mut Criterion) {
     let dir_contents = std::fs::read_dir(parent_dir)
         .unwrap()
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
         .collect::<Vec<_>>();
 
     let id: u64 = 0;
@@ -40,7 +42,7 @@ pub fn env_build_bench(c: &mut Criterion) {
     let dir_contents = std::fs::read_dir(parent_dir)
         .unwrap()
         .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().map_or(false, |ext| ext == "flr"))
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
         .collect::<Vec<_>>();
     let id: u64 = 0;
     let ctx = Context::new(&path, id);

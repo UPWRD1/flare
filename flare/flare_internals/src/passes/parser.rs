@@ -493,7 +493,10 @@ where
                             .then_ignore(just(Token::Then))
                             .then(expr.clone())
                             .map(|(p, e)| (p, Rc::new(e)))
-                            .repeated()
+                            .separated_by(just(Token::Comma))
+                            .allow_trailing()
+                            //                            .allow_trailing()
+                            //.repeated()
                             .collect::<Vec<_>>(),
                     )
                     .map_with(|(matchee, arms), e| (Expr::Match(Rc::new(matchee), arms), e.span())),

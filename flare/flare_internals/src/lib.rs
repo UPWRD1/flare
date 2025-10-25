@@ -1,4 +1,4 @@
-#[warn(clippy::pedantic)]
+//#[warn(clippy::pedantic)]
 
 pub mod passes;
 pub mod resource;
@@ -23,7 +23,10 @@ use crate::{
     },
     resource::{
         errors::{CompResult, CompilerErr, ErrorCollection},
-        rep::{files::{FileID, FileSource}, ast::{Package, Program}},
+        rep::{
+            ast::{Package, Program},
+            files::{FileID, FileSource},
+        },
     },
 };
 

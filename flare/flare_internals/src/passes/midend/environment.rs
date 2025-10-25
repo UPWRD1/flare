@@ -170,8 +170,6 @@ impl Environment {
         for path in &paths {
             if path.first()?.is(packctx) {
                 return self.get(path);
-            } else {
-                continue;
             }
         }
         None
@@ -242,10 +240,12 @@ impl Environment {
         Some(node_w)
     }
 
-    fn get_all_targets_edge<'env, 'k>(&'env self, k: &'k SimpleQuant) -> impl Iterator<Item = NodeIndex> + use<'env, 'k>  {
+    fn get_all_targets_edge<'env, 'k>(
+        &'env self,
+        k: &'k SimpleQuant,
+    ) -> impl Iterator<Item = NodeIndex> + use<'env, 'k> {
         let edges = self.graph.edge_references().filter(|x| x.weight().is(k));
         edges.map(|x| x.target())
-
     }
 
     /// Optionally returns a vector of the possible paths to an item fragment.
@@ -381,7 +381,6 @@ mod tests {
             (lib_bar, bar, SimpleQuant::Type(String::from("Bar"))),
             (bar, baz, SimpleQuant::Field(String::from("f1"))),
             (lib_bar, bar_foo, SimpleQuant::Func(String::from("foo"))),
-
         ]);
 
         Environment { graph, root }
@@ -425,6 +424,18 @@ mod tests {
     fn get_paths() {
         let e = make_graph();
         let res = e.search_for_edge(&SimpleQuant::Func("foo".to_string()));
-        assert_eq!(res, Some(vec![vec![SimpleQuant::Package("Foo".to_string()), SimpleQuant::Func("foo".to_string())], vec![SimpleQuant::Package("Bar".to_string()), SimpleQuant::Func("foo".to_string())]]));
+        assert_eq!(
+            res,
+            Some(vec![
+                vec![
+                    SimpleQuant::Package("Foo".to_string()),
+                    SimpleQuant::Func("foo".to_string())
+                ],
+                vec![
+                    SimpleQuant::Package("Bar".to_string()),
+                    SimpleQuant::Func("foo".to_string())
+                ]
+            ])
+        );
     }
 }

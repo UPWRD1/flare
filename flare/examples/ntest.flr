@@ -1,5 +1,10 @@
 package Main = 
     use Math.factorial
+    # use Option.Option
+    # use Option.unwrap
+    use Opt.Option
+    use Opt.unwrap
+    #use Opt.unwrap_or
 
     extern println: str -> unit
 
@@ -11,17 +16,8 @@ package Main =
         d: str,
         f: str -> num -> str
 
-    enum Option =
-        Some { num },
-        None
-
-    let unwrap : Option -> num x =
-        match x 
-            | Some {n} then n
-            | None then exit (1)
-
     let main = 
         let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
-        let en = Option.Some {3} in
-        let f = factorial (unwrap en) in
-        i.f i.d (f)
+            let en = Option.Some {3} in
+                 let f = factorial (unwrap en) in
+                        i.f i.d (f)
