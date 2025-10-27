@@ -1,4 +1,4 @@
-package Opt = 
+package Option = 
     enum Option =
         Some { num },
         None

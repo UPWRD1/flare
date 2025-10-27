@@ -2,9 +2,10 @@ package Main =
     use Math.factorial
     # use Option.Option
     # use Option.unwrap
-    use Opt.Option
-    use Opt.unwrap
+    #use Opt.Option
+    #use Opt.unwrap
     #use Opt.unwrap_or
+    use Option
 
     extern println: str -> unit
 

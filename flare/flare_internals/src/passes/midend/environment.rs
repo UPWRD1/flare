@@ -145,19 +145,28 @@ impl Environment {
 
             for dep in deps {
                 let path = SimpleQuant::from_expr(dep);
-                let import = if let Some(n) = me.get(&path) {
-                    n
+                let imports: Vec<NodeIndex> = if let Some(n) = me.get(&path) {
+                    if matches!(me.value(n).unwrap(), Item::Package(e)) {
+                        me.graph
+                            .edges_directed(n, petgraph::Direction::Outgoing)
+                            .map(|e| e.target())
+                            .collect()
+                    } else {
+                        vec![n]
+                    }
                 } else {
                     panic!()
                 };
-                let the_name = me
-                    .graph
-                    .edges_directed(import, petgraph::Direction::Incoming)
-                    .map(|x| x.weight())
-                    .next()
-                    .cloned()
-                    .unwrap();
-                me.graph.add_edge(package, import, the_name);
+                for import in imports {
+                    let the_name = me
+                        .graph
+                        .edges_directed(import, petgraph::Direction::Incoming)
+                        .map(|x| x.weight())
+                        .next()
+                        .cloned()
+                        .unwrap();
+                    me.graph.add_edge(package, import, the_name);
+                }
             }
         }
 

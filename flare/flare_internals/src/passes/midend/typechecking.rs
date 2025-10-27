@@ -153,7 +153,7 @@ impl<'env> Solver<'env> {
             (User(a_name), User(b_name)) if a_name == b_name => Ok(User(a_name)),
 
             (a_info, b_info) => Err(DynamicErr::new(format!(
-                "Type mismatch between {a_info} and {b_info}"
+                "Type mismatch between {a_info} and {b_info}i"
             ))
             .label((format!("expected '{b_info}' here, found '{a_info}'"), span))
             .extra_labels(vec![
@@ -376,6 +376,7 @@ impl<'env> Solver<'env> {
                     .get_children(&quant, &self.package)
                     .ok_or(errors::not_defined(&quant, &name.1))?;
 
+                //dbg!(&variants);
                 let variant = SimpleQuant::from_expr(name).last().cloned().unwrap();
                 let item = variants
                     .into_iter()
@@ -511,7 +512,10 @@ impl<'env> Solver<'env> {
                 } else {
                     Err(
                         DynamicErr::new(format!("{} should be a type", self.vars[var.0].0))
-                            .label((format!("This is not a type"), self.vars[var.0].1))
+                            .label((
+                                format!("{:?} is not a type", self.vars[var.0].0),
+                                self.vars[var.0].1,
+                            ))
                             .into(),
                     )
                 }
