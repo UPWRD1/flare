@@ -65,7 +65,7 @@ pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, String)> {
             .filename,
     )?;
     src.read_to_string(&mut src_string)?;
-    let res = parser::parse(&src_string, id)?; //TODO: handle errors properly
+    let res = parser::parse(&src_string.clone(), id)?; //TODO: handle errors properly
 
     Ok((res, src_string))
 }

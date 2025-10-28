@@ -1,14 +1,14 @@
 package Option = 
-    enum Option =
-        Some { num },
+    enum Option[?T] =
+        Some { ?T },
         None
 
-    let unwrap : Option -> num x =
+    let unwrap : Option[?T] -> ?T x =
         match x 
             | Some {n} then n,
             | None then exit (1),
 
-    let is_some : Option -> bool x =
+    let is_some : Option[?T] -> ?T x =
         match x
             | Some {_} then true,
             | None then false,

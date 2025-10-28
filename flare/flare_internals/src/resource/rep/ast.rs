@@ -14,7 +14,7 @@ pub enum PatternAtom {
     Strlit(String),
     Num(OrderedFloat<f64>),
     Variable(String),
-    Type(Rc<Spanned<Ty>>),
+    Type(Box<Spanned<Ty>>),
 }
 
 /// Type representing a Pattern.
@@ -22,10 +22,10 @@ pub enum PatternAtom {
 pub enum Pattern {
     Atom(PatternAtom),
     Tuple(Vec<Spanned<Self>>),
-    Variant(Rc<Spanned<Expr>>, Vec<Spanned<Self>>),
+    Variant(Box<Spanned<Expr>>, Vec<Spanned<Self>>),
 }
 
-impl Pattern {
+impl Pattern{
     pub fn get_ident(&self) -> Option<String> {
         match self {
             Self::Variant(n, _) => n.0.get_ident(),
@@ -61,32 +61,40 @@ pub enum Expr {
     ExternFunc(Vec<SimpleQuant>),
 
     Unit,
-    Constructor(Rc<Spanned<Expr>>, Vec<Spanned<Expr>>),
-    FieldedConstructor(Rc<Spanned<Expr>>, Vec<(Spanned<Expr>, Spanned<Expr>)>),
+    Constructor(Box<Spanned<Self>>, Vec<Spanned<Self>>),
+    FieldedConstructor(Box<Spanned<Self>>, Vec<(Spanned<Self>, Spanned<Self>)>),
 
     Pat(Spanned<Pattern>),
 
-    Mul(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    Div(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    Add(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    Sub(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    Comparison(Rc<Spanned<Expr>>, ComparisonOp, Rc<Spanned<Expr>>),
+    Mul(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    Div(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    Add(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    Sub(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    Comparison(Box<Spanned<Self>>, ComparisonOp, Box<Spanned<Self>>),
 
-    Access(Rc<Spanned<Expr>>),
-    Call(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    FieldAccess(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    If(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    Match(
-        Rc<Spanned<Expr>>,
-        Vec<(Spanned<Pattern>, Rc<Spanned<Expr>>)>,
+    Access(Box<Spanned<Self>>),
+    Call(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    FieldAccess(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    If(
+        Box<Spanned<Self>>,
+        Box<Spanned<Self>>,
+        Box<Spanned<Self>>,
     ),
-    Lambda(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    Let(Rc<Spanned<Expr>>, Rc<Spanned<Expr>>, Rc<Spanned<Expr>>),
-    Struct(Vec<(Rc<Spanned<Expr>>, Spanned<Expr>)>),
-    Tuple(Vec<Spanned<Expr>>),
+    Match(
+        Box<Spanned<Self>>,
+        Vec<(Spanned<Pattern>, Box<Spanned<Self>>)>,
+    ),
+    Lambda(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    Let(
+        Box<Spanned<Self>>,
+        Box<Spanned<Self>>,
+        Box<Spanned<Self>>,
+    ),
+    Struct(Vec<(Box<Spanned<Self>>, Spanned<Self>)>),
+    Tuple(Vec<Spanned<Self>>),
 }
 
-impl Expr {
+impl<'expr> Expr {
     pub fn get_ident(&self) -> Option<String> {
         match self {
             Expr::Ident(ref s) => Some(s.to_string()),
@@ -112,14 +120,14 @@ impl Expr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StructDef {
-    pub name: Spanned<Expr>,
+    pub the_ty: Spanned<Ty>,
     pub fields: Vec<(Spanned<Expr>, Spanned<Ty>)>,
     //pub generics: Vec<Spanned<Expr>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumDef {
-    pub name: Spanned<Expr>,
+    pub the_ty: Spanned<Ty>,
     pub variants: Vec<Spanned<EnumVariant>>,
 }
 
@@ -133,7 +141,11 @@ pub enum Definition {
     Import(Spanned<Expr>),
     Struct(StructDef),
     Enum(EnumDef),
-    Let(Spanned<Expr>, Spanned<Expr>, Option<Spanned<Ty>>),
+    Let(
+        Spanned<Expr>,
+        Spanned<Expr>,
+        Option<Spanned<Ty>>,
+    ),
     Extern(Spanned<Expr>, Spanned<Ty>),
 }
 

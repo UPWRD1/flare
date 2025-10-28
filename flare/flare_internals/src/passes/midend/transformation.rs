@@ -6,10 +6,7 @@ use crate::resource::rep::{mir::VarId, quantifier::SimpleQuant};
 #[allow(dead_code)]
 use crate::{
     passes::midend::environment::Environment,
-    resource::rep::{
-        ast::Expr,
-        mir::{ANFExpr, Param, Pattern, ANF},
-    },
+    resource::rep::mir::ANF,
 };
 
 pub struct Transformer<'env> {

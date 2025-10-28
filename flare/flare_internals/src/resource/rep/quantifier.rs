@@ -76,14 +76,14 @@ impl SimpleQuant {
                         (cfa.f)(cfa, r, accum)
                         //self.graph.node_weight(n).cloned()
                     }
-                    e @ _ => {
+                    e => {
                         accum.push(Self::Wildcard(e.get_ident().unwrap()));
                         accum
                     }
                 }
             },
         };
-        (cfa.f)(&cfa, &expr, vec![])
+        (cfa.f)(&cfa, expr, vec![])
     }
 }
 

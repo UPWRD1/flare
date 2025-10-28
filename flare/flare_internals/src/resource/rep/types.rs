@@ -1,5 +1,4 @@
-
-use super::{Spanned, ast::Expr};
+use super::{ast::Expr, Spanned};
 use std::{fmt, rc::Rc};
 
 /// Represents a primitive type within `Ty`
@@ -17,7 +16,7 @@ pub enum Ty {
     Primitive(PrimitiveType),
     User(Spanned<Expr>, Vec<Spanned<Self>>),
     Tuple(Vec<Spanned<Self>>, usize),
-    Arrow(Rc<Spanned<Self>>, Rc<Spanned<Self>>),
+    Arrow(Box<Spanned<Self>>, Box<Spanned<Self>>),
     Generic(Spanned<Expr>),
     Variant(EnumVariant),
     Module(Spanned<Expr>),
@@ -35,7 +34,6 @@ pub struct EnumVariant {
     pub types: Vec<Spanned<Ty>>,
 }
 
-
 // impl EnumVariant {
 //     pub fn get_name(&self) -> String {
 //         match self {
@@ -46,9 +44,9 @@ pub struct EnumVariant {
 // }
 
 impl Ty {
-    pub fn get_arrow(&self) -> (Rc<Spanned<Self>>, Rc<Spanned<Self>>) {
+    pub fn get_arrow(&self) -> (&Spanned<Self>, &Spanned<Self>) {
         if let Self::Arrow(l, r) = self {
-            (l.clone(), r.clone())
+            (l, r)
         } else {
             panic!()
         }
@@ -56,9 +54,9 @@ impl Ty {
 
     pub fn get_user_name(&self) -> Option<String> {
         match self {
-            Self::User(name, _ ) =>             Some(name.0.get_ident()?),
+            Self::User(name, _) => Some(name.0.get_ident()?),
             Self::Variant(v) => Some(v.name.0.get_ident()?),
-            _ => None
+            _ => None,
         }
     }
 
@@ -89,7 +87,7 @@ impl fmt::Display for Ty {
             Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident().unwrap_or("?".to_string())),
             Ty::User(n, args) => {
                 write!(f, "{}[", n.0.get_ident().unwrap_or("?".to_string()))?;
-                for a in args {
+                for a in args.iter() {
                     write!(f, "{}, ", a.0)?;
                 }
                 write!(f, "]")

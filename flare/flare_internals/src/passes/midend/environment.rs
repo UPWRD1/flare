@@ -1,6 +1,7 @@
 use chumsky::span::{SimpleSpan, Span};
 use core::panic;
-use log::{info, trace};
+use itertools::Itertools;
+use log::info;
 use petgraph::graph::EdgeReference;
 use petgraph::Graph;
 use petgraph::{
@@ -45,7 +46,7 @@ impl Environment {
         self.graph.node_weight(idx)
     }
 
-    pub fn build(p: Program) -> CompResult<Self> {
+    pub fn build(p: Program) -> CompResult<Environment> {
         let mut g = Graph::new();
         let mut current_node = g.add_node(Item::Root);
 
@@ -81,12 +82,11 @@ impl Environment {
                     Definition::Import(import_item) => {
                         deps.push(import_item);
                     }
-                    Definition::Struct(StructDef { name, fields }) => {
-                        let ident = SimpleQuant::Type(name.0.get_ident().unwrap());
+                    Definition::Struct(StructDef { the_ty, fields }) => {
+                        let ident = SimpleQuant::Type(the_ty.0.get_user_name().unwrap());
 
                         let struct_entry = Item::Struct(StructEntry {
-                            name: name.clone(),
-                            ty: (Ty::User(name.clone(), vec![]), name.1),
+                            ty: the_ty,
                         });
 
                         let struct_node = me.add(current_node, ident, struct_entry);
@@ -96,13 +96,10 @@ impl Environment {
                             me.add(struct_node, field_name, field_entry);
                         }
                     }
-                    Definition::Enum(EnumDef { name, variants }) => {
-                        let ident = SimpleQuant::Type(name.0.get_ident().unwrap());
-                        let the_ty = (Ty::User(name.clone(), vec![]), name.1);
-                        let enum_entry = Item::Enum(EnumEntry {
-                            name: name.clone(),
-                            ty: the_ty,
-                        });
+                    Definition::Enum(EnumDef { the_ty, variants }) => {
+                        let ident = SimpleQuant::Type(the_ty.0.get_user_name().unwrap());
+                        //let the_ty = (Ty::User(name.clone(), vec![]), name.1);
+                        let enum_entry = Item::Enum(EnumEntry { ty: the_ty });
                         let enum_node = me.add(current_node, ident, enum_entry);
                         for v in variants {
                             let variant_name =
@@ -175,7 +172,7 @@ impl Environment {
 
     pub fn get_from_context(&self, q: &SimpleQuant, packctx: &SimpleQuant) -> Option<NodeIndex> {
         let paths = self.search_for_edge(q)?;
-
+        //dbg!(&paths);
         for path in &paths {
             if path.first()?.is(packctx) {
                 return self.get(path);
@@ -227,7 +224,7 @@ impl Environment {
         Some(children)
     }
 
-    pub fn get_children(
+    pub fn get_children<'g>(
         &self,
         q: &SimpleQuant,
         packctx: &SimpleQuant,
@@ -242,7 +239,7 @@ impl Environment {
         )
     }
 
-    pub fn get_node(&self, q: &SimpleQuant, packctx: &SimpleQuant) -> Option<&Item> {
+    pub fn get_node<'g>(&self, q: &SimpleQuant, packctx: &SimpleQuant) -> Option<&Item> {
         let node = self.get_from_context(q, packctx)?;
         let node_w = self.value(node)?;
 
@@ -352,7 +349,7 @@ impl Environment {
         } {
             let mut tc = Solver::new(self, packctx.clone());
             let tv = tc.check_expr(body)?;
-            let fn_sig = tc.solve(tv)?;
+            let fn_sig = tc.solve(tv)?.clone();
             let _ = sig.set((fn_sig, SimpleSpan::new(name.1.context, name.1.into_range())));
         }
         info!("Checked {}: {:?}", item.name(), item.get_ty());

@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use chumsky::extra::SimpleState;
 use chumsky::input::{BorrowInput, SliceInput, StrInput, ValueInput};
 use chumsky::pratt::{infix, left, right, Operator};
@@ -286,12 +284,13 @@ where
         let type_list = ty
             .clone()
             .separated_by(just(Token::Comma))
+            .allow_trailing()
             .collect::<Vec<_>>();
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
         let path = ident
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Rc::new(x), Rc::new(y)), e.span())
+                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             })
             .boxed()])
             .or(ident)
@@ -313,10 +312,8 @@ where
                 )
                 .clone()
                 .map_with(|(name, generics), e| {
-                    (Ty::User(name, generics.unwrap_or_default()), e.span())
+                    (Ty::User(name.clone(), generics.unwrap_or_default()), e.span())
                 }),
-            // Arrow Type
-            //ty.clone()
             // Generic Type
             just(Token::Question)
                 .ignore_then(ident)
@@ -331,7 +328,7 @@ where
                 }),
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-            (Ty::Arrow(Rc::new(x), Rc::new(y)), e.span())
+            (Ty::Arrow(Box::new(x), Box::new(y)), e.span())
         })])
     });
 
@@ -342,7 +339,7 @@ where
 
         let path = ident
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Rc::new(x), Rc::new(y)), e.span())
+                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             })
             .boxed()])
             .or(ident)
@@ -362,7 +359,7 @@ where
             )
             .map_with(|(name, args), e| {
                 if let Some(args) = args {
-                    (Pattern::Variant(Rc::new(name), args), e.span())
+                    (Pattern::Variant(Box::new(name), args), e.span())
                 } else {
                     (
                         Pattern::Atom(PatternAtom::Variable(name.0.get_ident().unwrap())),
@@ -378,7 +375,7 @@ where
             select_ref! { Token::Strlit(x) => (*x).to_string() }
                 .map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span())),
             ty.clone()
-                .map_with(|x, e| (Pattern::Atom(PatternAtom::Type(Rc::new(x))), e.span())),
+                .map_with(|x, e| (Pattern::Atom(PatternAtom::Type(Box::new(x))), e.span())),
         ))
     });
 
@@ -390,7 +387,7 @@ where
         // This is super hacky, but it does give us a nice infix operator
         let path = ident
             .pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Rc::new(x), Rc::new(y)), e.span())
+                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             })
             .boxed()])
             .memoized();
@@ -416,8 +413,8 @@ where
                             .delimited_by(just(Token::LBrace), just(Token::RBrace)), //.or_not(),
                     )
                     .map_with(|(name, args), e| {
-                        if args.len() > 0 {
-                            (Expr::Constructor(Rc::new(name), args), e.span())
+                        if !args.is_empty() {
+                            (Expr::Constructor(Box::new(name), args), e.span())
                         } else {
                             name
                         }
@@ -436,7 +433,7 @@ where
                     )
                     .map_with(|(name, args), e| {
                         if let Some(args) = args {
-                            (Expr::FieldedConstructor(Rc::new(name), args), e.span())
+                            (Expr::FieldedConstructor(Box::new(name), args), e.span())
                         } else {
                             name
                         }
@@ -461,11 +458,7 @@ where
                     .then(expr.clone())
                     .map_with(|((lhs, rhs), then), e| {
                         (
-                            Expr::Let(
-                                Rc::new((Expr::Pat(lhs.clone()), lhs.1)),
-                                Rc::new(rhs),
-                                Rc::new(then),
-                            ),
+                            Expr::Let(Box::new((Expr::Pat(lhs.clone()), lhs.1)), Box::new(rhs), Box::new(then)),
                             e.span(),
                         )
                     }),
@@ -477,10 +470,7 @@ where
                     .then_ignore(just(Token::Else))
                     .then(expr.clone())
                     .map_with(|((test, then), otherwise), e| {
-                        (
-                            Expr::If(Rc::new(test), Rc::new(then), Rc::new(otherwise)),
-                            e.span(),
-                        )
+                        (Expr::If(Box::new(test), Box::new(then), Box::new(otherwise)), e.span())
                     })
                     .labelled("if expression")
                     .as_context(),
@@ -492,14 +482,14 @@ where
                             .ignore_then(pattern.clone())
                             .then_ignore(just(Token::Then))
                             .then(expr.clone())
-                            .map(|(p, e)| (p, Rc::new(e)))
+                            .map(|(p, e)| (p, Box::new(e)))
                             .separated_by(just(Token::Comma))
                             .allow_trailing()
                             //                            .allow_trailing()
                             //.repeated()
                             .collect::<Vec<_>>(),
                     )
-                    .map_with(|(matchee, arms), e| (Expr::Match(Rc::new(matchee), arms), e.span())),
+                    .map_with(|(matchee, arms), e| (Expr::Match(Box::new(matchee), arms), e.span())),
             ))
         })
         .boxed();
@@ -510,7 +500,7 @@ where
             // fn x y = z
             just(Token::Fn).ignore_then(ident.repeated().foldr_with(
                 just(Token::FatArrow).ignore_then(expr.clone()),
-                |arg, body, e| (Expr::Lambda(Rc::new(arg), Rc::new(body)), e.span()),
+                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
             )),
             // ( x )
             expr.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
@@ -518,43 +508,38 @@ where
         .pratt(vec![
             // Multiply
             infix(left(8), just(Token::Asterisk), |x, _, y, e| {
-                (Expr::Mul(Rc::new(x), Rc::new(y)), e.span())
+                (Expr::Mul(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Divide
             infix(left(8), just(Token::Slash), |x, _, y, e| {
-                (Expr::Div(Rc::new(x), Rc::new(y)), e.span())
+                (Expr::Div(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Add
             infix(left(7), just(Token::Plus), |x, _, y, e| {
-                (Expr::Add(Rc::new(x), Rc::new(y)), e.span())
+                (Expr::Add(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             // Subtract
             infix(left(7), just(Token::Minus), |x, _, y, e| {
-                (Expr::Sub(Rc::new(x), Rc::new(y)), e.span())
+                (Expr::Sub(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
             infix(
                 left(5),
                 select_ref! { Token::ComparisonOp(c) => *c },
-                |left, op, right, e| {
-                    (
-                        Expr::Comparison(Rc::new(left), op, Rc::new(right)),
-                        e.span(),
-                    )
-                },
+                |left, op, right, e| (Expr::Comparison(Box::new(left), op, Box::new(right)), e.span()),
             )
             .boxed(),
             // Calls
             infix(left(9), empty(), |func, (), arg, e| {
-                (Expr::Call(Rc::new(func), Rc::new(arg)), e.span())
+                (Expr::Call(Box::new(func), Box::new(arg)), e.span())
             })
             .boxed(),
             // Field Access
             infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Rc::new(x), Rc::new(y)), e.span())
+                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
             })
             .boxed(),
         ])
@@ -564,14 +549,14 @@ where
         .as_context()
     });
 
-    let definition = recursive(|_| {
+    let definition = recursive(move |_| {
         // Toplevel Let binding
         let let_binding = just(Token::Let)
             .ignore_then(ident)
             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
             .then(ident.repeated().foldr_with(
                 just(Token::Eq).ignore_then(expression.clone()),
-                |arg, body, e| (Expr::Lambda(Rc::new(arg), Rc::new(body)), e.span()),
+                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
             ))
             .map(|((name, ty), value)| Definition::Let(name, value, ty))
             .labelled("let-declaration")
@@ -581,7 +566,7 @@ where
         let struct_field = ident.then_ignore(just(Token::Colon)).then(ty.clone());
 
         let struct_def = just(Token::Struct)
-            .ignore_then(ident)
+            .ignore_then(ty.clone())
             //.then(ident.separated_by(just(Token::Comma)).delimited_by(just(Token::LBracket), just(Token::RBracket)).collect::<Vec<_>>())
             .then_ignore(just(Token::Eq))
             .then(
@@ -590,7 +575,7 @@ where
                     .allow_trailing()
                     .collect::<Vec<_>>(),
             )
-            .map_with(|(name, fields), _| Definition::Struct(StructDef { name, fields }));
+            .map_with(|(the_ty, fields), _| Definition::Struct(StructDef { the_ty, fields }));
         let enum_variant = choice((
             ident
                 .then(
@@ -614,7 +599,7 @@ where
 
         // Enum defintions
         let enum_def = just(Token::Enum)
-            .ignore_then(ident)
+            .ignore_then(ty.clone())
             .then_ignore(just(Token::Eq))
             .then(
                 enum_variant
@@ -623,12 +608,7 @@ where
                     .allow_trailing()
                     .collect::<Vec<Spanned<EnumVariant>>>(),
             )
-            .map_with(|(name, variants), _| {
-                Definition::Enum(EnumDef {
-                    name,
-                    variants: variants,
-                })
-            });
+            .map_with(|(the_ty, variants), _| Definition::Enum(EnumDef { the_ty, variants }));
 
         // Import
         let import_path = expression; //ident
@@ -639,7 +619,7 @@ where
 
         let import = just(Token::Use)
             .ignore_then(import_path)
-            .map(|item| Definition::Import(item));
+            .map(Definition::Import);
 
         let extern_def = just(Token::Extern)
             .ignore_then(ident)
