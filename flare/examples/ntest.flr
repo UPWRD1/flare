@@ -7,18 +7,27 @@ package Main =
     #use Opt.unwrap_or
     use Option
 
-    extern println: str -> unit
+   # extern println: str -> unit
 
-    extern concat: str -> str -> str
-    extern display_num: num -> str
-    extern exit: num -> unit
+    #extern concat: str -> str -> str
+    #extern display_num: num -> str
+    #extern exit: num -> unit
 
-    struct S =
-        d: str,
-        f: str -> num -> str
+    #struct S =
+    #    d: str,
+    #    f: str -> num -> str
 
-    let main = 
-        let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
-            let en = Option.Some {23} in
-                 let f = factorial (unwrap en) in
-                        i.f i.d (f)
+    let id: ?T -> ?T x =
+        x
+    
+    let main = id 3 
+        # let a = Option.Some {"asdf"} in
+        #    id a
+
+        # let b = Option.Some {3} in
+        #    (unwrap a) * (unwrap b)
+
+        # let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
+        #    let en = Option.Some {"asdf"} in
+        #         let f = factorial (unwrap en) in
+        #                i.f i.d (f)

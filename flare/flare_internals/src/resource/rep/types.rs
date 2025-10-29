@@ -1,5 +1,5 @@
 use super::{ast::Expr, Spanned};
-use std::{fmt, rc::Rc};
+use std::{collections::HashMap, fmt, rc::Rc};
 
 /// Represents a primitive type within `Ty`
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -56,6 +56,14 @@ impl Ty {
         match self {
             Self::User(name, _) => Some(name.0.get_ident()?),
             Self::Variant(v) => Some(v.name.0.get_ident()?),
+            _ => None,
+        }
+    }
+
+    pub fn get_raw_expr_name(&self) -> Option<Spanned<Expr>> {
+        match self {
+            Self::User(name, _) => Some(name.clone()),
+            Self::Variant(v) => Some(v.name.clone()),
             _ => None,
         }
     }

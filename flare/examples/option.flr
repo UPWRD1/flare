@@ -3,12 +3,17 @@ package Option =
         Some { ?T },
         None
 
-    let unwrap : Option[?T] -> ?T x =
-        match x 
+    let unwrap_or : Option[?T] -> ?T -> ?T o fallback =
+        match o 
             | Some {n} then n,
-            | None then exit (1),
+            | None then fallback,
 
-    let is_some : Option[?T] -> ?T x =
+    let unwrap : Option[?T] -> ?T o =
+        match o
+            | Some {n} then n,
+            | None then exit n,
+    
+    let is_some : Option[?T] -> bool x =
         match x
             | Some {_} then true,
             | None then false,

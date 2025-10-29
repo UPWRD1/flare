@@ -1,6 +1,5 @@
 use chumsky::span::{SimpleSpan, Span};
 use core::panic;
-use itertools::Itertools;
 use log::info;
 use petgraph::graph::EdgeReference;
 use petgraph::Graph;
@@ -21,7 +20,6 @@ use crate::resource::{
         ast::{Definition, EnumDef, Expr, Program, StructDef},
         entry::{EnumEntry, Item, PackageEntry, StructEntry},
         quantifier::SimpleQuant,
-        types::Ty,
         Spanned,
     },
 };
@@ -85,9 +83,7 @@ impl Environment {
                     Definition::Struct(StructDef { the_ty, fields }) => {
                         let ident = SimpleQuant::Type(the_ty.0.get_user_name().unwrap());
 
-                        let struct_entry = Item::Struct(StructEntry {
-                            ty: the_ty,
-                        });
+                        let struct_entry = Item::Struct(StructEntry { ty: the_ty });
 
                         let struct_node = me.add(current_node, ident, struct_entry);
                         for f in fields {
@@ -143,7 +139,7 @@ impl Environment {
             for dep in deps {
                 let path = SimpleQuant::from_expr(dep);
                 let imports: Vec<NodeIndex> = if let Some(n) = me.get(&path) {
-                    if matches!(me.value(n).unwrap(), Item::Package(e)) {
+                    if matches!(me.value(n).unwrap(), Item::Package(_)) {
                         me.graph
                             .edges_directed(n, petgraph::Direction::Outgoing)
                             .map(|e| e.target())
@@ -269,8 +265,14 @@ impl Environment {
                 for node_pair in p.windows(2) {
                     let a = node_pair[0];
                     let b = node_pair[1];
-                    let edge = self.graph.edges_connecting(a, b).next().unwrap().weight();
-                    path.push(edge.clone());
+                    let edge = self
+                        .graph
+                        .edges_connecting(a, b)
+                        .next()
+                        .unwrap()
+                        .weight()
+                        .clone();
+                    path.push(edge);
                 }
                 paths.push(path);
             }
@@ -319,14 +321,16 @@ impl Environment {
             //.get(&quantifier!(Root, Package("Main"), Func("main"), End).into_simple())
             .unwrap();
         let main_item = self.graph.node_weight(main_idx).unwrap();
-        let dot = petgraph::dot::Dot::with_config(
-            &self.graph,
-            &[
-                Config::NodeNoLabel,
-                Config::RankDir(petgraph::dot::RankDir::LR),
-            ],
-        );
-        info!("{:?}", dot);
+        if cfg!(debug_assertions) {
+            let dot = petgraph::dot::Dot::with_config(
+                &self.graph,
+                &[
+                    Config::NodeNoLabel,
+                    Config::RankDir(petgraph::dot::RankDir::LR),
+                ],
+            );
+            info!("{:?}", dot);
+        }
 
         self.check_item(main_item, &SimpleQuant::Package("Main".to_string()))?;
         //dbg!(&main);
@@ -350,7 +354,10 @@ impl Environment {
             let mut tc = Solver::new(self, packctx.clone());
             let tv = tc.check_expr(body)?;
             let fn_sig = tc.solve(tv)?.clone();
-            let _ = sig.set((fn_sig, SimpleSpan::new(name.1.context, name.1.into_range())));
+            let _ = sig.set((
+                fn_sig.0,
+                SimpleSpan::new(name.1.context, name.1.into_range()),
+            ));
         }
         info!("Checked {}: {:?}", item.name(), item.get_ty());
         Ok(item)
