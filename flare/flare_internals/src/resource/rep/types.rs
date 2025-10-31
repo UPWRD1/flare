@@ -1,5 +1,5 @@
 use super::{ast::Expr, Spanned};
-use std::{collections::HashMap, fmt, rc::Rc};
+use std::fmt;
 
 /// Represents a primitive type within `Ty`
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -15,7 +15,7 @@ pub enum PrimitiveType {
 pub enum Ty {
     Primitive(PrimitiveType),
     User(Spanned<Expr>, Vec<Spanned<Self>>),
-    Tuple(Vec<Spanned<Self>>, usize),
+    Tuple(Vec<Spanned<Self>>),
     Arrow(Box<Spanned<Self>>, Box<Spanned<Self>>),
     Generic(Spanned<Expr>),
     Variant(EnumVariant),
@@ -71,6 +71,13 @@ impl Ty {
     pub fn get_raw_name(&self) -> String {
         format!("{self}")
     }
+
+    pub fn monomorph_user(self, g: &[Spanned<Ty>]) -> Self {
+        match self {
+            Self::User(name, _) => Self::User(name, g.to_vec()),
+            _ => unreachable!("Cannot monomorph non-generic type"),
+        }
+    }
 }
 
 impl fmt::Display for Ty {
@@ -83,7 +90,7 @@ impl fmt::Display for Ty {
                 crate::resource::rep::types::PrimitiveType::Unit => write!(f, "unit"),
             },
 
-            Ty::Tuple(t, _s) => {
+            Ty::Tuple(t) => {
                 write!(f, "{{")?;
                 for i in t {
                     write!(f, "{}, ", i.0)?;

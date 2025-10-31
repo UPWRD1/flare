@@ -52,7 +52,7 @@ pub enum Item {
     Dummy(String),
 }
 
-impl<'expr> Item {
+impl Item {
     #[must_use]
     pub fn get_sig(&self) -> Option<&Spanned<Ty>> {
         match self {

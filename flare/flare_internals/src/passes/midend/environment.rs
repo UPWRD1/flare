@@ -138,7 +138,7 @@ impl Environment {
 
             for dep in deps {
                 let path = SimpleQuant::from_expr(dep);
-                let imports: Vec<NodeIndex> = if let Some(n) = me.get(&path) {
+                let imports: Vec<NodeIndex> = if let Some(n) = me.get(&path?) {
                     if matches!(me.value(n).unwrap(), Item::Package(_)) {
                         me.graph
                             .edges_directed(n, petgraph::Direction::Outgoing)
@@ -220,7 +220,7 @@ impl Environment {
         Some(children)
     }
 
-    pub fn get_children<'g>(
+    pub fn get_children(
         &self,
         q: &SimpleQuant,
         packctx: &SimpleQuant,
@@ -235,7 +235,7 @@ impl Environment {
         )
     }
 
-    pub fn get_node<'g>(&self, q: &SimpleQuant, packctx: &SimpleQuant) -> Option<&Item> {
+    pub fn get_node(&self, q: &SimpleQuant, packctx: &SimpleQuant) -> Option<&Item> {
         let node = self.get_from_context(q, packctx)?;
         let node_w = self.value(node)?;
 
@@ -354,12 +354,13 @@ impl Environment {
             let mut tc = Solver::new(self, packctx.clone());
             let tv = tc.check_expr(body)?;
             let fn_sig = tc.solve(tv)?.clone();
+            //dbg!(&fn_sig);
             let _ = sig.set((
                 fn_sig.0,
                 SimpleSpan::new(name.1.context, name.1.into_range()),
             ));
         }
-        info!("Checked {}: {:?}", item.name(), item.get_ty());
+        info!("Checked {}: {}", item.name(), item.get_ty().unwrap().0);
         Ok(item)
     }
 }
@@ -370,11 +371,11 @@ mod tests {
         passes::midend::environment::Environment,
         quantifier,
         resource::rep::{
-            entry::{Item, PackageEntry},
+            entry::Item,
             quantifier::{Quantifier, SimpleQuant},
         },
     };
-    use log::info;
+
     use petgraph::prelude::*;
 
     fn make_graph() -> Environment {

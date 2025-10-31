@@ -1,14 +1,16 @@
-use std::cell::OnceCell;
+use std::hash::Hasher;
 
 use chumsky::span::SimpleSpan;
+use rayon::slice::ParallelSliceMut;
+use rustc_hash::FxHasher;
 
 use crate::{
     passes::midend::environment::Environment,
     resource::{
-        errors::{self, CompResult, DynamicErr, GeneralErr},
+        errors::{self, CompResult, DynamicErr},
         rep::{
             ast::Expr,
-            entry::{EnumEntry, Item, StructEntry},
+            entry::{Item, StructEntry},
             files::FileID,
             quantifier::SimpleQuant,
             types::{EnumVariant, PrimitiveType, Ty},
@@ -22,8 +24,8 @@ use log::trace;
 pub use checkable_types::{TyInfo, TyVar};
 mod checkable_types {
 
-    use std::{arch::naked_asm, cell::OnceCell, fmt};
-    #[derive(Copy, Clone, Debug, PartialEq)]
+    use std::fmt;
+    #[derive(Copy, Clone, Debug, PartialEq, Hash)]
     pub struct TyVar(pub usize);
 
     impl fmt::Display for TyVar {
@@ -32,7 +34,7 @@ mod checkable_types {
         }
     }
 
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Copy, Clone, Debug, Hash)]
     pub enum TyInfo {
         Unknown,
         Ref(TyVar),
@@ -43,7 +45,7 @@ mod checkable_types {
         Bool,
         String,
         Func(TyVar, TyVar),
-        Tuple(TyVar, usize),
+        Tuple(&'static [TyVar]),
         Generic(&'static str),
         //tmpGeneric(&'static str),
         //Func(Rc<TyInfo>, Box<TyInfo>),
@@ -62,18 +64,25 @@ mod checkable_types {
 
                 TyInfo::Unit => write!(f, "unit"),
                 TyInfo::String => write!(f, "str"),
-                TyInfo::Tuple(t, s) => write!(f, "{{{t}; {s}}}"),
+                TyInfo::Tuple(t) => write!(f, "{{{t:?}}}"),
                 TyInfo::Generic(n) => write!(f, "?{n}"),
             }
         }
     }
 
     impl TyInfo {
-        pub fn get_user_name(&self) -> String {
+        pub fn get_user_name(&self) -> Option<String> {
             match self {
-                TyInfo::User(n, _) => n.to_string(),
-                TyInfo::Generic(n) => n.to_string(),
-                _ => panic!("{self}"),
+                TyInfo::User(n, _) => Some(n.to_string()),
+                TyInfo::Generic(n) => Some(n.to_string()),
+                _ => None,
+            }
+        }
+
+        pub fn get_tuple_index(&self, idx: usize) -> Option<TyVar> {
+            match self {
+                Self::Tuple(v) => v.get(idx).cloned(),
+                _ => None,
             }
         }
     }
@@ -87,7 +96,7 @@ mod checkable_types {
                 (Self::User(l0, l1), Self::User(r0, r1)) => l0 == r0 && l1 == r1,
                 (Self::Variant(l0, l1), Self::Variant(r0, r1)) => l0 == r0 && l1 == r1,
                 (Self::Func(l0, l1), Self::Func(r0, r1)) => l0 == r0 && l1 == r1,
-                (Self::Tuple(l0, l1), Self::Tuple(r0, r1)) => l0 == r0 && l1 == r1,
+                (Self::Tuple(l), Self::Tuple(r)) => l == r,
                 _ => core::mem::discriminant(self) == core::mem::discriminant(other),
             }
         }
@@ -133,6 +142,22 @@ impl<'env> Solver<'env> {
     }
 
     fn create_ty(&mut self, info: TyInfo, span: SimpleSpan<usize, FileID>) -> TyVar {
+        let info = match info {
+            TyInfo::Generic(n) => {
+                if let Some((i, _v)) = self
+                    .vars
+                    .iter()
+                    .enumerate()
+                    .find(|(_i, x)| x.0.get_user_name() == Some(n.to_string()))
+                {
+                    TyInfo::Ref(TyVar(i))
+                    // v.0
+                } else {
+                    info
+                }
+            }
+            _ => info,
+        };
         self.vars.push((info, span));
         let v = TyVar(self.vars.len() - 1);
         trace!("{} = {}", v, self.render_ty(self.vars[v.0].0));
@@ -155,7 +180,7 @@ impl<'env> Solver<'env> {
             Ty::User(ref n, ref g) => {
                 let mut generics: Vec<TyVar> = vec![];
                 for (name, s) in g {
-                    let l = self.convert_ty(&name);
+                    let l = self.convert_ty(name);
                     let lty = self.create_ty(l, *s);
                     // dbg!(info);
                     generics.push(lty)
@@ -169,9 +194,17 @@ impl<'env> Solver<'env> {
 
             //Ty::Variant(v) => TyInfo::User(v.get_name().leak()),
             Ty::Generic(n) => {
+                if let Some(v) = self.vars.iter().find(|x| {
+                    let x = x.0.get_user_name();
+                    x.is_some() && x == Some(n.0.get_ident().unwrap())
+                }) {
+                    v.0
+                } else {
+                    TyInfo::Generic(n.0.get_ident().unwrap().leak())
+                }
                 //let unknown = self.create_ty(TyInfo::Unknown, n.1);
                 //TyInfo::Unknown
-                TyInfo::Generic(n.0.get_ident().unwrap().leak())
+
                 // TyInfo::Generic(n.0.get_ident().unwrap_or"Generic".to_string()).leak())
             }
             _ => todo!("{:?}", t),
@@ -191,16 +224,14 @@ impl<'env> Solver<'env> {
         match t {
             TyInfo::Unknown => "Unknown".to_string(),
             TyInfo::User(n, g) => {
-                let mut accum = String::new();
-
-                if !g.is_empty() {
-                    let mut g = g.iter();
-                    accum = self.render_ty(self.vars[g.next().unwrap().0].0);
-                    for g in g {
-                        let tr = self.render_ty(self.vars[g.0].0);
-                        accum = format!("{accum}, {tr}")
-                    }
-                }
+                let accum: String = if !g.is_empty() {
+                    g.iter()
+                        .map(|x| self.render_ty(self.vars[x.0].0))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                } else {
+                    String::default()
+                };
                 format!("{n}[{accum}]")
             }
             TyInfo::Func(l, r) => {
@@ -212,13 +243,27 @@ impl<'env> Solver<'env> {
             }
             TyInfo::Ref(t) => format!("{t}:{}", self.render_ty(self.vars[t.0].0)),
             TyInfo::Generic(n) => format!("?{n}"),
+            TyInfo::Tuple(t) => {
+                format!(
+                    "{{{}}}",
+                    t.iter()
+                        .map(|x| self.render_ty(self.vars[x.0].0))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+                // c let mut accum = String::new;
+
+                // for v in t.iter() {
+
+                // }
+            }
             _ => format!("{}", t),
         }
     }
 
     fn unify(&mut self, a: TyVar, b: TyVar, span: SimpleSpan<usize, FileID>) -> CompResult<TyInfo> {
         use TyInfo::{Bool, Func, Generic, Num, Ref, String, Unit, Unknown, User};
-        trace!("Unify {a} {b}");
+        //trace!("Unify {a} {b}");
         let (a_info, b_info) = (self.vars[a.0].0, self.vars[b.0].0);
         match (a_info, b_info) {
             (Unknown, _) => {
@@ -235,10 +280,11 @@ impl<'env> Solver<'env> {
             (_, Ref(b1)) => self.unify(a, b1, span),
             (Num, Num) | (Bool, Bool) | (String, String) | (Unit, Unit) => Ok(a_info),
             (Func(a_i, a_o), Func(b_i, b_o)) => {
-                let i = self.unify(b_i, a_i, span)?;
-                let o = self.unify(a_o, b_o, span)?;
-                dbg!(o);
-                Ok(Func(b_i, b_o))
+                self.unify(a_i, b_i, span)?;
+                self.unify(a_o, b_o, span)?;
+                //dbg!(&self.render_ty(a_info));
+                //coresdbg!(o);
+                Ok(Func(a_i, a_o))
             }
             (User(a_name, a_g), User(b_name, b_g))
                 if a_name == b_name && {
@@ -250,22 +296,21 @@ impl<'env> Solver<'env> {
             {
                 Ok(User(b_name, b_g))
             }
-            (_, Generic(t)) => {
+            (_, Generic(_)) => {
                 //dbg!(a, t);
                 self.vars[b.0].0 = Ref(a);
                 Ok(Ref(a))
                 //Ok(Ref(a))
             }
-            (Generic(_), _) => {
-                self.vars[a.0].0 = Ref(b);
-                Ok(Ref(b))
-            }
-
+            // (Generic(_), _) => {
+            //     //self.vars[a.0].0 = Ref(b);
+            //     Ok(Ref(b))
+            // }
             (a_info, b_info) => {
                 let a_info = self.render_ty(a_info);
                 let b_info = self.render_ty(b_info);
                 Err(
-                    DynamicErr::new(format!("Type mismatch between {a_info} and {b_info}i"))
+                    DynamicErr::new(format!("Type mismatch between {a_info} and {b_info}"))
                         .label((format!("expected '{b_info}' here, found '{a_info}'"), span))
                         .extra_labels(vec![
                             (format!("this is {a_info}"), self.vars[a.0].1),
@@ -283,7 +328,7 @@ impl<'env> Solver<'env> {
                 //self.render_ty(self.vars[b.0].0),
             )
         })
-        .inspect_err(|x| trace!("!! Could not unify {a} {b}"))
+        .inspect_err(|_| trace!("!! Could not unify {a} {b}"))
     }
 
     pub fn check_expr(
@@ -319,7 +364,15 @@ impl<'env> Solver<'env> {
                 Ok(out_ty)
             }
             Expr::Lambda(arg, body) => {
-                let arg_ty = self.create_ty(TyInfo::Unknown, arg.1);
+                use std::hash::Hash;
+                let arg_ty = self.create_ty(
+                    TyInfo::Generic({
+                        let mut hasher = FxHasher::default();
+                        self.vars.hash(&mut hasher);
+                        format!("{}", hasher.finish()).leak()
+                    }),
+                    arg.1,
+                );
                 self.env.push((arg.0.clone(), arg_ty));
                 let body_ty = self.check_expr(body)?;
                 self.env.pop();
@@ -329,12 +382,10 @@ impl<'env> Solver<'env> {
                 //let backup_parent = self.current_parent.clone();
                 //self.current_parent =SimpleQuant::Func(func.0.get_ident().unwrap_or("?".to_string()));
                 let func_ty = self.check_expr(func)?;
-                dbg!(func_ty);
                 let arg_ty = self.check_expr(arg)?;
-                dbg!(arg_ty);
                 let out_ty = self.create_ty(TyInfo::Unknown, expr.1);
                 let func_req_ty = self.create_ty(TyInfo::Func(arg_ty, out_ty), func.1);
-                //homelet t = self.unify(func_ty, func_req_ty, arg.1)?;
+
                 let t = self.unify(func_req_ty, func_ty, arg.1)?;
                 self.create_ty(t, expr.1);
                 //self.current_parent = backup_parent;
@@ -342,6 +393,10 @@ impl<'env> Solver<'env> {
             }
             Expr::Add(l, r) | Expr::Mul(l, r) | Expr::Sub(l, r) | Expr::Div(l, r) => {
                 let out_ty = self.create_ty(TyInfo::Num, expr.1);
+
+                // let curry = self.create_ty(TyInfo::Func(out_ty, out_ty), r.1);
+                // let implicit_func = self.create_ty(TyInfo::Func(out_ty, curry), l.1);
+
                 let l_ty = self.check_expr(l)?;
                 self.unify(l_ty, out_ty, l.1)?;
                 let r_ty = self.check_expr(r)?;
@@ -368,11 +423,13 @@ impl<'env> Solver<'env> {
             }
             Expr::FieldAccess(l, r) => {
                 let left_ty = self.check_expr(l)?;
-                let info = self.vars[left_ty.0].0;
-                if !matches!(info, TyInfo::Unknown) && !matches!(info, TyInfo::Generic(_))
+                let (info, span) = self.vars[left_ty.0];
+                // dbg!(left_ty, r);
+                if matches!(info, TyInfo::User(_, _))
+                // if !matches!(info, TyInfo::Unknown) && !matches!(info, TyInfo::Generic(_))
                 // if let Ok(t) = self.solve(left_ty)
                 {
-                    let ident = SimpleQuant::Type(info.get_user_name());
+                    let ident = SimpleQuant::Type(info.get_user_name().unwrap());
                     let fields = self
                         .master_env
                         .get_children(&ident, &self.package)
@@ -385,8 +442,42 @@ impl<'env> Solver<'env> {
 
                     //dbg!(fields);
                     Ok(converted)
+                } else if let TyInfo::Tuple(v) = info {
+                    if let Expr::Number(n) = r.0 {
+                        if !(n.fract() == 0f64) {
+                            Err(DynamicErr::new(
+                                "Cannot index by a floating point number".to_string(),
+                            )
+                            .label(("this".to_string(), r.1))
+                            .into())
+                        } else {
+                            Ok(v.get(n.0 as usize).cloned().ok_or(
+                                DynamicErr::new("Index out of range".to_string())
+                                    .label((
+                                        format!(
+                                            "'{}' is out of range for a tuple with {} fields",
+                                            n.0 as usize,
+                                            v.len()
+                                        ),
+                                        r.1,
+                                    ))
+                                    .extra_labels(vec![(
+                                        format!(
+                                            "{} tuples use zero-based indexing",
+                                            self.render_ty(info)
+                                        ),
+                                        span,
+                                    )]),
+                            )?)
+                        }
+                    } else {
+                        panic!()
+                        // Err()
+                    }
+                    // if matches!(r.0, Expr::Number(_))
+                    // Ok(info.get_tuple_index(r.get_num_literal()?).unwrap())
                 } else {
-                    let path = SimpleQuant::from_expr(expr);
+                    let path = SimpleQuant::from_expr(expr)?;
 
                     //dbg!(&path);
                     let [_heads @ .., second, last] = path.as_slice() else {
@@ -405,13 +496,21 @@ impl<'env> Solver<'env> {
                 //todo!("{:?} {:?}", l_ty, solved_l);
             }
             Expr::Tuple(es) => {
-                let mut iter = es.iter();
-                let first_ty = self.check_expr(iter.next().unwrap())?;
-                let out_ty = self.create_ty(TyInfo::Tuple(first_ty, es.len()), expr.1);
-                for element in iter {
-                    let e_ty = self.check_expr(element)?;
-                    self.unify(e_ty, first_ty, element.1)?;
+                let iter = es.iter();
+                // let first_ty = self.check_expr(iter.next().unwrap())?;
+                // let out_ty = self.create_ty(TyInfo::Tuple(first_ty, es.len()), expr.1);
+                // for element in iter {
+                // let e_ty = self.check_expr(element)?;
+                // self.unify(e_ty, first_ty, element.1)?;
+                // }
+
+                let mut vec = vec![];
+                for x in iter {
+                    let ty = self.check_expr(x)?;
+                    vec.push(ty);
                 }
+
+                let out_ty = self.create_ty(TyInfo::Tuple(vec.leak()), expr.1);
                 Ok(out_ty)
             }
             Expr::FieldedConstructor(name, given_fields) => {
@@ -424,7 +523,7 @@ impl<'env> Solver<'env> {
 
                 let sty = self.master_env.check_item(i, &self.package)?;
                 //dbg!(&fty);
-                if let Item::Struct(StructEntry { ref ty }) = *sty {
+                if let Item::Struct(StructEntry { .. }) = *sty {
                     if fields.len() != given_fields.len() {
                         return Err(DynamicErr::new(format!(
                             "Field count mismatch: expected {}, found {}",
@@ -500,7 +599,7 @@ impl<'env> Solver<'env> {
                     .ok_or(errors::not_defined(&quant, &name.1))?;
 
                 //dbg!(&variants);
-                let variant = SimpleQuant::from_expr(name).last().cloned().unwrap();
+                let variant = SimpleQuant::from_expr(name)?.last().cloned().unwrap();
                 let item = variants
                     .into_iter()
                     .filter(|x| x.0.is(&variant))
@@ -612,6 +711,11 @@ impl<'env> Solver<'env> {
     pub fn solve(&self, var: TyVar) -> CompResult<Spanned<Ty>> {
         let span = self.vars[var.0].1;
         match self.vars[var.0].0 {
+            // TyInfo::Generic(n) => Err(DynamicErr::new(format!(
+            //     "could not solve for ?{n}, check your types"
+            // ))
+            // .label(("this".to_string(), self.vars[var.0].1))
+            // .into()),
             TyInfo::Unknown => {
                 //panic!("cannot infer type {:?}, is Unknown", var)
 
@@ -637,15 +741,16 @@ impl<'env> Solver<'env> {
                 let e =
                     self.search_masterenv(&SimpleQuant::Type(n.to_string()), &self.vars[var.0].1)?;
                 let mut generics = vec![];
+
                 for gen in g {
                     generics.push(self.solve(*gen)?);
                 }
                 //dbg!(&generics);
 
-                if let Item::Struct(StructEntry { ref ty, .. }) = *e {
-                    Ok(ty.clone())
-                } else if let Item::Enum(EnumEntry { ref ty, .. }) = *e {
-                    Ok(ty.clone())
+                if let Some(t) = e.get_ty() {
+                    let new = t.0.monomorph_user(&generics);
+                    dbg!(&new);
+                    Ok((new, t.1))
                 } else {
                     Err(
                         DynamicErr::new(format!("{} should be a type", self.vars[var.0].0))
@@ -658,16 +763,20 @@ impl<'env> Solver<'env> {
                 }
             }
             TyInfo::Variant(p, _) => self.solve(p),
-            TyInfo::Tuple(t, s) => {
-                let inner_ty = self.solve(t)?;
-                Ok((Ty::Tuple(vec![(inner_ty)], s), span))
+            TyInfo::Tuple(t) => {
+                let mut v = vec![];
+                for t in t {
+                    v.push(self.solve(*t)?);
+                }
+
+                Ok((Ty::Tuple(v), span))
             }
             TyInfo::Generic(n) => Ok((
                 Ty::Generic((Expr::Ident(n.to_string()), self.vars[var.0].1)),
                 self.vars[var.0].1,
             )), //self.solve(t.unwrap()),
         }
-        .inspect(move |t| trace!("Solved {} => {}", self.render_ty(self.vars[var.0].0), t.0))
+        .inspect(|t| trace!("Solved {} => {}", self.render_ty(self.vars[var.0].0), t.0))
         // let _ = t
         //     .as_ref()
         //     .inspect(|t| println!("    Solved {} => {}", var, t));

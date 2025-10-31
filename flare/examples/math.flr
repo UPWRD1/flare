@@ -7,7 +7,7 @@ package Math =
     enum S =
         Bad 
 
-    let factorial: num -> num x  =
+    let factorial x  : num -> num =
         if x == 0 then
         
 	        1

@@ -1,5 +1,5 @@
 //#[warn(clippy::pedantic)]
-
+#[allow(clippy::derived_hash_with_manual_eq)]
 pub mod passes;
 pub mod resource;
 

@@ -10,22 +10,25 @@ package Main =
    # extern println: str -> unit
 
     #extern concat: str -> str -> str
-    #extern display_num: num -> str
+    extern format: ?T -> str
     #extern exit: num -> unit
 
     #struct S =
     #    d: str,
     #    f: str -> num -> str
 
-    let id: ?T -> ?T x =
+    # let id x : ?T -> ?T =
+    let id x = 
         x
+        
     
-    let main = id 3 
-        # let a = Option.Some {"asdf"} in
-        #    id a
+    let main =
+        let test = id(3) in
+         let a = {1, id("am"), "different"}  in
+             a.1
 
-        # let b = Option.Some {3} in
-        #    (unwrap a) * (unwrap b)
+        # let b = Option.Some {{3, 4, 5}.3} in
+           # (unwrap a) * (unwrap b)
 
         # let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
         #    let en = Option.Some {"asdf"} in

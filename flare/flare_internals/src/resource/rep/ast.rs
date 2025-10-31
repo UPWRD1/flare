@@ -1,4 +1,4 @@
-use std::{hash::Hash, path::PathBuf, rc::Rc};
+use std::{hash::Hash, path::PathBuf};
 
 use ordered_float::OrderedFloat;
 
@@ -25,7 +25,7 @@ pub enum Pattern {
     Variant(Box<Spanned<Expr>>, Vec<Spanned<Self>>),
 }
 
-impl Pattern{
+impl Pattern {
     pub fn get_ident(&self) -> Option<String> {
         match self {
             Self::Variant(n, _) => n.0.get_ident(),
@@ -75,26 +75,18 @@ pub enum Expr {
     Access(Box<Spanned<Self>>),
     Call(Box<Spanned<Self>>, Box<Spanned<Self>>),
     FieldAccess(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    If(
-        Box<Spanned<Self>>,
-        Box<Spanned<Self>>,
-        Box<Spanned<Self>>,
-    ),
+    If(Box<Spanned<Self>>, Box<Spanned<Self>>, Box<Spanned<Self>>),
     Match(
         Box<Spanned<Self>>,
         Vec<(Spanned<Pattern>, Box<Spanned<Self>>)>,
     ),
     Lambda(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    Let(
-        Box<Spanned<Self>>,
-        Box<Spanned<Self>>,
-        Box<Spanned<Self>>,
-    ),
+    Let(Box<Spanned<Self>>, Box<Spanned<Self>>, Box<Spanned<Self>>),
     Struct(Vec<(Box<Spanned<Self>>, Spanned<Self>)>),
     Tuple(Vec<Spanned<Self>>),
 }
 
-impl<'expr> Expr {
+impl Expr {
     pub fn get_ident(&self) -> Option<String> {
         match self {
             Expr::Ident(ref s) => Some(s.to_string()),
@@ -141,11 +133,7 @@ pub enum Definition {
     Import(Spanned<Expr>),
     Struct(StructDef),
     Enum(EnumDef),
-    Let(
-        Spanned<Expr>,
-        Spanned<Expr>,
-        Option<Spanned<Ty>>,
-    ),
+    Let(Spanned<Expr>, Spanned<Expr>, Option<Spanned<Ty>>),
     Extern(Spanned<Expr>, Spanned<Ty>),
 }
 

@@ -312,7 +312,10 @@ where
                 )
                 .clone()
                 .map_with(|(name, generics), e| {
-                    (Ty::User(name.clone(), generics.unwrap_or_default()), e.span())
+                    (
+                        Ty::User(name.clone(), generics.unwrap_or_default()),
+                        e.span(),
+                    )
                 }),
             // Generic Type
             just(Token::Question)
@@ -322,10 +325,7 @@ where
             type_list
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with(|types, e| {
-                    let len = types.len();
-                    (Ty::Tuple(types, len), e.span())
-                }),
+                .map_with(|types, e| (Ty::Tuple(types), e.span())),
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
             (Ty::Arrow(Box::new(x), Box::new(y)), e.span())
@@ -458,7 +458,11 @@ where
                     .then(expr.clone())
                     .map_with(|((lhs, rhs), then), e| {
                         (
-                            Expr::Let(Box::new((Expr::Pat(lhs.clone()), lhs.1)), Box::new(rhs), Box::new(then)),
+                            Expr::Let(
+                                Box::new((Expr::Pat(lhs.clone()), lhs.1)),
+                                Box::new(rhs),
+                                Box::new(then),
+                            ),
                             e.span(),
                         )
                     }),
@@ -470,7 +474,10 @@ where
                     .then_ignore(just(Token::Else))
                     .then(expr.clone())
                     .map_with(|((test, then), otherwise), e| {
-                        (Expr::If(Box::new(test), Box::new(then), Box::new(otherwise)), e.span())
+                        (
+                            Expr::If(Box::new(test), Box::new(then), Box::new(otherwise)),
+                            e.span(),
+                        )
                     })
                     .labelled("if expression")
                     .as_context(),
@@ -489,7 +496,9 @@ where
                             //.repeated()
                             .collect::<Vec<_>>(),
                     )
-                    .map_with(|(matchee, arms), e| (Expr::Match(Box::new(matchee), arms), e.span())),
+                    .map_with(|(matchee, arms), e| {
+                        (Expr::Match(Box::new(matchee), arms), e.span())
+                    }),
             ))
         })
         .boxed();
@@ -529,7 +538,12 @@ where
             infix(
                 left(5),
                 select_ref! { Token::ComparisonOp(c) => *c },
-                |left, op, right, e| (Expr::Comparison(Box::new(left), op, Box::new(right)), e.span()),
+                |left, op, right, e| {
+                    (
+                        Expr::Comparison(Box::new(left), op, Box::new(right)),
+                        e.span(),
+                    )
+                },
             )
             .boxed(),
             // Calls
@@ -551,14 +565,27 @@ where
 
     let definition = recursive(move |_| {
         // Toplevel Let binding
+        // let let_binding = just(Token::Let)
+        //     .ignore_then(ident)
+        //     .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
+        //     .then(ident.repeated().foldr_with(
+        //         just(Token::Eq).ignore_then(expression.clone()),
+        //         |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+        //     ))
+        //     .map(|((name, ty), value)| Definition::Let(name, value, ty))
+        //     .labelled("let-declaration")
+        //     .as_context();
         let let_binding = just(Token::Let)
             .ignore_then(ident)
+            .then(ident.repeated().collect::<Vec<_>>())
             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
-            .then(ident.repeated().foldr_with(
-                just(Token::Eq).ignore_then(expression.clone()),
-                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
-            ))
-            .map(|((name, ty), value)| Definition::Let(name, value, ty))
+            .then(just(Token::Eq).ignore_then(expression.clone()))
+            .map_with(|(((name, args), ty), body), e| {
+                let value = args.into_iter().rev().fold(body, |acc, arg| {
+                    (Expr::Lambda(Box::new(arg), Box::new(acc)), e.span())
+                });
+                Definition::Let(name, value, ty)
+            })
             .labelled("let-declaration")
             .as_context();
 

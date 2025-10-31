@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use super::super::errors::CompResult;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -46,6 +48,7 @@ impl SimpleQuant {
     pub fn name(&self) -> String {
         match self {
             SimpleQuant::Root => String::from("root"),
+
             SimpleQuant::Package(n)
             | SimpleQuant::Type(n)
             | SimpleQuant::Func(n)
@@ -59,15 +62,15 @@ impl SimpleQuant {
         self.name() == rhs.name()
     }
 
-    pub fn from_expr(expr: &Spanned<Expr>) -> Vec<Self> {
+    pub fn from_expr(expr: &Spanned<Expr>) -> CompResult<Vec<Self>> {
         struct CheckFieldAccess<'s> {
-            f: &'s dyn Fn(&Self, &Spanned<Expr>, Vec<SimpleQuant>) -> Vec<SimpleQuant>,
+            f: &'s dyn Fn(&Self, &Spanned<Expr>, Vec<SimpleQuant>) -> CompResult<Vec<SimpleQuant>>,
         }
         let cfa = CheckFieldAccess {
             f: &|cfa: &CheckFieldAccess<'_>,
                  e: &Spanned<Expr>,
                  mut accum: Vec<SimpleQuant>|
-             -> Vec<SimpleQuant> {
+             -> CompResult<Vec<SimpleQuant>> {
                 //dbg!(&q);
                 match &e.0 {
                     Expr::FieldAccess(l, r) => {
@@ -76,9 +79,10 @@ impl SimpleQuant {
                         (cfa.f)(cfa, r, accum)
                         //self.graph.node_weight(n).cloned()
                     }
+
                     e => {
                         accum.push(Self::Wildcard(e.get_ident().unwrap()));
-                        accum
+                        Ok(accum)
                     }
                 }
             },
