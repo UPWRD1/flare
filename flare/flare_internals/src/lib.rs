@@ -1,5 +1,14 @@
-//#[warn(clippy::pedantic)]
+// #[warn(clippy::pedantic)]
+#[deny(
+    clippy::perf,
+    clippy::correctness,
+    clippy::suspicious,
+    clippy::complexity,
+    clippy::style
+)]
+#[deny()]
 #[allow(clippy::derived_hash_with_manual_eq)]
+#[allow(clippy::type_complexity)]
 pub mod passes;
 pub mod resource;
 
@@ -104,19 +113,19 @@ pub fn parse_program(ctx: &mut Context, id: FileID) -> CompResult<Program> {
     }
 }
 
-pub fn compile_program(ctx: &mut Context, id: FileID) -> CompResult<(Program, Duration)> {
+pub fn compile_program(ctx: &mut Context, id: FileID) -> CompResult<((), Duration)> {
     let now: Instant = Instant::now();
 
     let program = parse_program(ctx, id)?;
     //dbg!(program.clone());
     //dbg!(program.clone());
-    let e = Environment::build(program.clone())?;
+    let e = Environment::build(&program)?;
     //dbg!(&e);
     e.check()?;
     //dbg!(&e);
     let elapsed = now.elapsed();
 
-    Ok((program, elapsed))
+    Ok(((), elapsed))
 }
 
 // pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {

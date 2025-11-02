@@ -105,7 +105,7 @@ pub struct Solver<'env> {
     //src: &'src str,
     master_env: &'env Environment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
     vars: Vec<(TyInfo, SimpleSpan<usize, FileID>)>,
-    env: Vec<(Expr, TyVar)>,
+    env: Vec<(Spanned<Expr>, TyVar)>,
     package: &'env SimpleQuant,
     hasher: FxHasher,
     // phantom: PhantomData<&'env ()>,
@@ -198,18 +198,18 @@ impl<'env> Solver<'env> {
                     generics.push(lty)
                 }
 
-                TyInfo::User(n.0.get_ident().unwrap_or("?"), generics.leak())
+                TyInfo::User(n.0.get_ident(n.1).unwrap_or("?"), generics.leak())
             }
 
             //Ty::Variant(v) => TyInfo::User(v.get_name().leak()),
             Ty::Generic(n) => {
                 if let Some(v) = self.vars.iter().find(|x| {
                     let x = x.0.get_user_name();
-                    x.is_some() && x == Some(n.0.get_ident().unwrap())
+                    x.is_some() && x == Some(n.0.get_ident(n.1).unwrap())
                 }) {
                     v.0
                 } else {
-                    TyInfo::Generic(n.0.get_ident().unwrap())
+                    TyInfo::Generic(n.0.get_ident(n.1).unwrap())
                 }
                 //let unknown = self.create_ty(TyInfo::Unknown, n.1);
                 //TyInfo::Unknown
@@ -222,7 +222,7 @@ impl<'env> Solver<'env> {
 
     fn convert_ty_with_generics(&mut self, t: &Ty, g: Vec<TyVar>) -> TyInfo {
         match t {
-            Ty::User(ref n, ..) => TyInfo::User(n.0.get_ident().unwrap_or("?"), g.leak()),
+            Ty::User(ref n, ..) => TyInfo::User(n.0.get_ident(n.1).unwrap_or("?"), g.leak()),
             _ => todo!("{:?}", t),
         }
     }
@@ -356,7 +356,7 @@ impl<'env> Solver<'env> {
                     .env
                     .iter()
                     .rev()
-                    .find(|(n, _)| n.get_ident().unwrap() == *name)
+                    .find(|(n, _)| n.0.get_ident(n.1).unwrap() == *name)
                 {
                     Ok(*tv)
                 } else {
@@ -365,14 +365,14 @@ impl<'env> Solver<'env> {
             }
             Expr::Let(lhs, rhs, then) => {
                 let rhs_ty = self.check_expr(rhs)?;
-                self.env.push((lhs.0, rhs_ty));
+                self.env.push((**lhs, rhs_ty));
                 let out_ty = self.check_expr(then)?;
                 self.env.pop();
                 Ok(out_ty)
             }
             Expr::Lambda(arg, body) => {
                 let arg_ty = self.new_anon_generic(arg.1);
-                self.env.push((arg.0, arg_ty));
+                self.env.push((**arg, arg_ty));
                 let body_ty = self.check_expr(body)?;
                 self.env.pop();
                 Ok(self.create_ty(TyInfo::Func(arg_ty, body_ty), expr.1))
@@ -433,7 +433,7 @@ impl<'env> Solver<'env> {
                         .master_env
                         .get_children(&ident, self.package)
                         .ok_or(errors::not_defined(&ident, &expr.1))?;
-                    let desired_field_q = SimpleQuant::Field(r.0.get_ident().unwrap());
+                    let desired_field_q = SimpleQuant::Field(r.0.get_ident(r.1).unwrap());
                     let f = fields.iter().find(|x| x.0.is(&desired_field_q)).unwrap();
                     //dbg!(&f);
                     let fty = self.convert_ty(&f.1.get_ty().unwrap().0);
@@ -513,7 +513,7 @@ impl<'env> Solver<'env> {
                 Ok(out_ty)
             }
             Expr::FieldedConstructor(name, given_fields) => {
-                let ident = SimpleQuant::Type(name.0.get_ident().unwrap());
+                let ident = SimpleQuant::Type(name.0.get_ident(name.1).unwrap());
 
                 let (i, fields) = self
                     .master_env
@@ -554,8 +554,8 @@ impl<'env> Solver<'env> {
                             .ok_or(
                                 DynamicErr::new(format!(
                                     "No such field '{}' in struct '{}'",
-                                    fname.0.get_ident().unwrap(),
-                                    name.0.get_ident().unwrap()
+                                    fname.0.get_ident(fname.1)?,
+                                    name.0.get_ident(fname.1)?
                                 ))
                                 .label((format!("{:?} doesn't exist", fname.0), fname.1)),
                             )?
@@ -587,7 +587,7 @@ impl<'env> Solver<'env> {
             }
             Expr::Constructor(name, given_fields) => {
                 //let e = self.check_expr(name)?;
-                let ident = name.0.get_ident().unwrap();
+                let ident = name.0.get_ident(name.1)?;
                 let quant = SimpleQuant::Type(ident);
 
                 // Enum Variants
@@ -652,7 +652,7 @@ impl<'env> Solver<'env> {
         &mut self,
         expr: &Spanned<Expr>,
     ) -> Result<TyVar, crate::resource::errors::CompilerErr> {
-        let name = expr.0.get_ident().unwrap();
+        let name = expr.0.get_ident(expr.1)?;
         if let Ok(e) = self.search_masterenv(&SimpleQuant::Func(name), &expr.1) {
             // BEAUTIFUL!
             let fty = if self

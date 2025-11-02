@@ -373,7 +373,7 @@ where
                     )
                 } else {
                     (
-                        Pattern::Atom(PatternAtom::Variable(name.0.get_ident().unwrap())),
+                        Pattern::Atom(PatternAtom::Variable(name.0.get_ident(name.1).unwrap())),
                         e.span(),
                     )
                 }

@@ -24,7 +24,7 @@ use crate::resource::{
     },
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Environment {
     //pub items: Trie<SimpleQuant, Index>,
     //pub arena: Arena<Node>,
@@ -39,12 +39,12 @@ impl Environment {
         self.graph.add_edge(parent_node, ix, k);
         ix
     }
-
+    #[must_use]
     pub fn value(&self, idx: NodeIndex) -> Option<&Item> {
         self.graph.node_weight(idx)
     }
 
-    pub fn build(p: Program) -> CompResult<Environment> {
+    pub fn build(p: &Program) -> CompResult<Environment> {
         let mut g = Graph::new();
         let mut current_node = g.add_node(Item::Root);
 
@@ -55,8 +55,8 @@ impl Environment {
         let mut pack_imports: HashMap<SimpleQuant, Vec<Spanned<Expr>>> = HashMap::new();
 
         // Start building each package's contents
-        for package in p.packages {
-            let package_name = package.0.name.0.get_ident().unwrap();
+        for package in &p.packages {
+            let package_name = package.0.name.0.get_ident(package.0.name.1)?;
 
             let mut deps = Vec::new();
             // let mut subpackages = HashMap::new();
@@ -75,54 +75,55 @@ impl Environment {
             let old_current = current_node;
             current_node = p_id;
 
-            for item in package.0.items {
+            for item in &package.0.items {
                 match item {
                     Definition::Import(import_item) => {
-                        deps.push(import_item);
+                        deps.push(*import_item);
                     }
                     Definition::Struct(StructDef { the_ty, fields }) => {
                         let ident = SimpleQuant::Type(the_ty.0.get_user_name().unwrap());
 
-                        let struct_entry = Item::Struct(StructEntry { ty: the_ty });
+                        let struct_entry = Item::Struct(StructEntry { ty: *the_ty });
 
                         let struct_node = me.add(current_node, ident, struct_entry);
                         for f in fields {
-                            let field_name = SimpleQuant::Field(f.0 .0.get_ident().unwrap());
-                            let field_entry = Item::Field(f);
+                            let field_name = SimpleQuant::Field(f.0 .0.get_ident(f.0 .1).unwrap());
+                            let field_entry = Item::Field(*f);
                             me.add(struct_node, field_name, field_entry);
                         }
                     }
                     Definition::Enum(EnumDef { the_ty, variants }) => {
                         let ident = SimpleQuant::Type(the_ty.0.get_user_name().unwrap());
                         //let the_ty = (Ty::User(name.clone(), vec![]), name.1);
-                        let enum_entry = Item::Enum(EnumEntry { ty: the_ty });
+                        let enum_entry = Item::Enum(EnumEntry { ty: *the_ty });
                         let enum_node = me.add(current_node, ident, enum_entry);
                         for v in variants {
                             let variant_name =
-                                SimpleQuant::Variant(v.0.name.0.get_ident().unwrap());
-                            let variant_entry = Item::Variant(v);
+                                SimpleQuant::Variant(v.0.name.0.get_ident(v.1).unwrap());
+                            let variant_entry = Item::Variant(*v);
                             me.add(enum_node, variant_name, variant_entry);
                         }
                     }
                     Definition::Let(name, body, ty) => {
-                        let ident = SimpleQuant::Func(name.0.get_ident().unwrap());
+                        let ident = SimpleQuant::Func(name.0.get_ident(name.1)?);
                         let cell = OnceCell::new();
                         if let Some(ty) = ty {
-                            let _ = cell.set(ty);
+                            let _ = cell.set(*ty);
                         }
+                        let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
                         let entry = Item::Let {
-                            name,
-                            sig: Box::leak(Box::new(cell)),
-                            body,
+                            name: *name,
+                            sig: leak_cell,
+                            body: *body,
                         };
                         me.add(current_node, ident, entry);
                     }
                     Definition::Extern(n, ty) => {
-                        let ident = SimpleQuant::Func(n.0.get_ident().unwrap());
+                        let ident = SimpleQuant::Func(n.0.get_ident(n.1)?);
                         let entry = Item::Extern {
                             //parent: current_parent.clone(),
-                            name: n,
-                            sig: ty,
+                            name: *n,
+                            sig: *ty,
                         };
                         me.add(current_node, ident, entry);
                     }
@@ -165,6 +166,7 @@ impl Environment {
         Ok(me)
     }
 
+    #[must_use]
     pub fn get_from_context(&self, q: &SimpleQuant, packctx: &SimpleQuant) -> Option<NodeIndex> {
         let paths = self.search_for_edge(q)?;
         //dbg!(&paths);
@@ -175,8 +177,8 @@ impl Environment {
         }
         None
     }
-
-    pub fn raw_get_node_and_children(
+    #[must_use]
+    fn raw_get_node_and_children(
         &self,
         q: &SimpleQuant,
         packctx: &SimpleQuant,
@@ -189,6 +191,7 @@ impl Environment {
         Some((parent, children))
     }
 
+    #[must_use]
     pub fn get_node_and_children(
         &self,
         q: &SimpleQuant,
@@ -201,12 +204,22 @@ impl Environment {
             node_w,
             children
                 .iter()
-                .map(|c| (c.weight(), self.value(c.target()).unwrap()))
+                .map(|c| {
+                    (
+                        c.weight(),
+                        // # SAFETY: `self.value()` returns none only if the node
+                        // doesn't exist. We know the node exists because we
+                        // are iterating over the children of the parent.
+                        unsafe { self.value(c.target()).unwrap_unchecked() },
+                    )
+                })
                 .collect(),
         ))
     }
 
-    pub fn raw_get_children(
+    #[must_use]
+    // #[allow(dead_code)]
+    fn raw_get_children(
         &self,
         q: &SimpleQuant,
         packctx: &SimpleQuant,
@@ -219,12 +232,14 @@ impl Environment {
         Some(children)
     }
 
+    #[must_use]
+    /// Get the children of a node given the the node's quantifier and context to search in.
     pub fn get_children(
         &self,
         q: &SimpleQuant,
         packctx: &SimpleQuant,
     ) -> Option<Vec<(&SimpleQuant, &Item)>> {
-        let (_, children) = self.raw_get_node_and_children(q, packctx)?;
+        let children = self.raw_get_children(q, packctx)?;
 
         Some(
             children
@@ -319,7 +334,7 @@ impl Environment {
             .get_from_context(&SimpleQuant::Func("main"), &SimpleQuant::Package("Main"))
             //.get(&quantifier!(Root, Package("Main"), Func("main"), End).into_simple())
             .unwrap();
-        let main_item = self.value(main_idx).cloned().unwrap();
+        let main_item = self.value(main_idx).unwrap();
         if cfg!(debug_assertions) {
             let dot = petgraph::dot::Dot::with_config(
                 &self.graph,
@@ -331,7 +346,7 @@ impl Environment {
             info!("{:?}", dot);
         }
 
-        self.check_item(&main_item, &SimpleQuant::Package("Main"))?;
+        self.check_item(main_item, &SimpleQuant::Package("Main"))?;
         Ok(())
         //dbg!(&main);
     }

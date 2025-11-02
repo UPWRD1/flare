@@ -54,16 +54,16 @@ impl Ty {
 
     pub fn get_user_name(&self) -> Option<&'static str> {
         match self {
-            Self::User(name, _) => Some(name.0.get_ident()?),
-            Self::Variant(v) => Some(v.name.0.get_ident()?),
+            Self::User(name, _) => name.0.get_ident(name.1).ok(),
+            Self::Variant(v) => v.name.0.get_ident(v.name.1).ok(),
             _ => None,
         }
     }
 
     pub fn get_raw_expr_name(&self) -> Option<Spanned<Expr>> {
         match self {
-            Self::User(name, _) => Some(name.clone()),
-            Self::Variant(v) => Some(v.name.clone()),
+            Self::User(name, _) => Some(*name),
+            Self::Variant(v) => Some(v.name),
             _ => None,
         }
     }
@@ -99,9 +99,9 @@ impl fmt::Display for Ty {
             }
 
             Ty::Arrow(l, r) => write!(f, "({} -> {})", l.0, r.0),
-            Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident().unwrap_or("?")),
+            Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident(n.1).unwrap_or("?")),
             Ty::User(n, args) => {
-                write!(f, "{}[", n.0.get_ident().unwrap_or("?"))?;
+                write!(f, "{}[", n.0.get_ident(n.1).unwrap_or("?"))?;
                 for a in args.iter() {
                     write!(f, "{}, ", a.0)?;
                 }

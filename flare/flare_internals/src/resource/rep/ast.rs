@@ -1,6 +1,9 @@
 use std::{hash::Hash, path::Path};
 
+use chumsky::span::SimpleSpan;
 use ordered_float::OrderedFloat;
+
+use crate::resource::errors::{CompResult, DynamicErr};
 
 use super::{
     quantifier::SimpleQuant,
@@ -28,11 +31,11 @@ pub enum Pattern {
 impl Pattern {
     pub fn get_ident(&self) -> Option<&'static str> {
         match self {
-            Self::Variant(n, _) => n.0.get_ident(),
+            Self::Variant(n, _) => n.0.get_ident(n.1).ok(),
             Self::Atom(a) => match a {
                 PatternAtom::Type(t) => Some(t.0.get_raw_name()),
                 PatternAtom::Variable(s) => Some(s),
-                _ => None,
+                _ => None, // errors::bad_ident(expr, s),
             },
             Self::Tuple(_) => None,
         }
@@ -99,49 +102,53 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn get_ident(&self) -> Option<&'static str> {
+    pub fn get_ident(&self, span: SimpleSpan<usize, u64>) -> CompResult<&'static str> {
         match self {
-            Expr::Ident(s) => Some(s),
+            Expr::Ident(s) => Ok(s),
             Expr::FieldAccess(base, _field) => {
-                Some(base.0.get_ident()?)
+                Ok(base.0.get_ident(base.1)?)
                 //todo!()
                 //Some(base.0.get_ident()?.append(field.0.get_ident()?))
             }
-            Expr::Access(expr) => expr.0.get_ident(),
-            Expr::Call(func, _) => func.0.get_ident(),
-            Expr::Lambda(arg, _) => arg.0.get_ident(),
+            Expr::Access(expr) => expr.0.get_ident(expr.1),
+            Expr::Call(func, _) => func.0.get_ident(func.1),
+            Expr::Lambda(arg, _) => arg.0.get_ident(arg.1),
             Expr::Pat(p) => {
                 if let Pattern::Atom(PatternAtom::Variable(s)) = p.0 {
-                    Some(s)
+                    Ok(s)
                 } else {
-                    None
+                    Err(DynamicErr::new("cannot get ident")
+                        .label((format!("{self:?}"), span))
+                        .into())
                 }
             }
-            _ => None,
+            _ => Err(DynamicErr::new("cannot get ident")
+                .label((format!("{self:?}"), span))
+                .into()),
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct StructDef {
     pub the_ty: Spanned<Ty>,
     pub fields: Vec<(Spanned<Expr>, Spanned<Ty>)>,
     //pub generics: Vec<Spanned<Expr>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct EnumDef {
     pub the_ty: Spanned<Ty>,
 
     pub variants: Vec<Spanned<EnumVariant>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ImportItem {
     pub items: Vec<Spanned<Expr>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Definition {
     Import(Spanned<Expr>),
     Struct(StructDef),
@@ -150,13 +157,13 @@ pub enum Definition {
     Extern(Spanned<Expr>, Spanned<Ty>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Package {
     pub name: Spanned<Expr>,
     pub items: Vec<Definition>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Program {
     pub packages: Vec<(Package, &'static Path, &'static str)>,
 }

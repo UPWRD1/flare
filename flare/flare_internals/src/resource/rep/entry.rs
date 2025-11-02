@@ -1,4 +1,4 @@
-use std::{cell::OnceCell, path::Path, sync::OnceLock};
+use std::{cell::OnceCell, path::Path};
 
 use super::{
     ast::Expr,
@@ -67,13 +67,13 @@ impl Item {
         match self {
             Item::Root => todo!(),
             Item::Filename(s) => s,
-            Item::Package(PackageEntry { name, .. }) => name.0.get_ident().unwrap().clone(),
-            Item::Struct(StructEntry { ty, .. }) => ty.0.get_user_name().unwrap().clone(),
-            Item::Enum(EnumEntry { ty, .. }) => ty.0.get_user_name().unwrap().clone(),
-            Item::Variant((EnumVariant { name, .. }, _)) => name.0.get_ident().unwrap().clone(),
-            Item::Field((name, ..)) => name.0.get_ident().unwrap().clone(),
-            Item::Let { name, .. } => name.0.get_ident().unwrap().clone(),
-            Item::Extern { name, .. } => name.0.get_ident().unwrap().clone(),
+            Item::Package(PackageEntry { name, .. }) => name.0.get_ident(name.1).unwrap(),
+            Item::Struct(StructEntry { ty, .. }) => ty.0.get_user_name().unwrap(),
+            Item::Enum(EnumEntry { ty, .. }) => ty.0.get_user_name().unwrap(),
+            Item::Variant((EnumVariant { name, .. }, _)) => name.0.get_ident(name.1).unwrap(),
+            Item::Field((name, ..)) => name.0.get_ident(name.1).unwrap(),
+            Item::Let { name, .. } => name.0.get_ident(name.1).unwrap(),
+            Item::Extern { name, .. } => name.0.get_ident(name.1).unwrap(),
             _ => panic!(),
         }
     }
@@ -90,10 +90,10 @@ impl Item {
     pub fn get_ty(&self) -> Option<Spanned<Ty>> {
         match self {
             Self::Let { sig, .. } => sig.get().cloned(),
-            Self::Struct(StructEntry { ty, .. }) => Some(ty.clone()),
-            Self::Enum(EnumEntry { ty, .. }) => Some(ty.clone()),
-            Self::Variant(v) => Some((Ty::Variant(v.0.clone()), v.1)),
-            Self::Field((_, ty)) => Some(ty.clone()),
+            Self::Struct(StructEntry { ty, .. }) => Some(*ty),
+            Self::Enum(EnumEntry { ty, .. }) => Some(*ty),
+            Self::Variant(v) => Some((Ty::Variant(v.0), v.1)),
+            Self::Field((_, ty)) => Some(*ty),
             _ => None,
         }
     }

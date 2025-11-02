@@ -32,7 +32,7 @@ pub fn typechecking_bench(c: &mut Criterion) {
 
     //dbg!(program.clone());
     //dbg!(program.clone());
-    let e = Environment::build(program.clone()).unwrap();
+    let e = Environment::build(&program).unwrap();
     c.bench_function("type_check", |b| b.iter(|| black_box(e.check())));
     //c.bench_function("fib 20", |b| b.iter(|| flare::passes::midend::typechecking::(black_box(20))));
 }
@@ -66,7 +66,7 @@ pub fn env_build_bench(c: &mut Criterion) {
     group.throughput(Throughput::Elements(program.packages.len() as u64));
 
     group.bench_function("env_build", |b| {
-        b.iter(|| black_box(Environment::build(program.clone()).unwrap()))
+        b.iter(|| black_box(Environment::build(&program).unwrap()))
     });
     group.finish();
     //c.bench_function("fib 20", |b| b.iter(|| flare::passes::midend::typechecking::(black_box(20))));

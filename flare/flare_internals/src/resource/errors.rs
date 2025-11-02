@@ -1,6 +1,7 @@
 use std::{any::Any, fmt::Display, io::Cursor, ops::Deref};
 
 mod templates {
+    use crate::resource::rep::ast::Expr;
     use crate::resource::{errors::DynamicErr, rep::quantifier::SimpleQuant};
     use crate::*;
     use chumsky::span::SimpleSpan;
@@ -8,6 +9,12 @@ mod templates {
         DynamicErr::new(format!("Could not find a definition for '{q}'"))
             .label((format!("'{q}' not found in scope"), *s))
             //.src(self.src.to_string())
+            .into()
+    }
+
+    pub fn bad_ident(expr: &Expr, s: &SimpleSpan<usize, u64>) -> CompilerErr {
+        DynamicErr::new("cannot get ident")
+            .label((format!("{expr:?}"), *s))
             .into()
     }
 }
@@ -160,9 +167,9 @@ impl DynamicErr {
         }
     }
 
-    pub fn label(self, label: (String, SimpleSpan<usize, FileID>)) -> Self {
+    pub fn label(self, label: (impl Into<String>, SimpleSpan<usize, FileID>)) -> Self {
         Self {
-            label: Some(label),
+            label: Some((label.0.into(), label.1)),
             ..self
         }
     }

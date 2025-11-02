@@ -73,15 +73,15 @@ impl SimpleQuant {
              -> CompResult<Vec<SimpleQuant>> {
                 //dbg!(&q);
                 match &e.0 {
-                    Expr::FieldAccess(ref l, r) => {
-                        accum.push(Self::Wildcard(l.0.get_ident().unwrap()));
+                    Expr::FieldAccess(l, r) => {
+                        accum.push(Self::Wildcard(l.0.get_ident(l.1).unwrap()));
 
                         (cfa.f)(cfa, r, accum)
                         //self.graph.node_weight(n).cloned()
                     }
 
-                    e => {
-                        accum.push(Self::Wildcard(e.get_ident().unwrap()));
+                    ex => {
+                        accum.push(Self::Wildcard(ex.get_ident(e.1).unwrap()));
                         Ok(accum)
                     }
                 }
@@ -123,7 +123,7 @@ impl Quantifier {
     }
 
     #[must_use = "Quantifiers should be consumed for queries or generation"]
-    pub fn into_simple<'q>(&'q self) -> Vec<SimpleQuant> {
+    pub fn into_simple(&self) -> Vec<SimpleQuant> {
         let mut res = vec![];
         fn collapse(top: &Quantifier, result: &mut Vec<SimpleQuant>) {
             match top {
