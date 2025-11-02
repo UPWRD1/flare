@@ -9,4 +9,4 @@ use chumsky::span::SimpleSpan;
 
 use files::FileID;
 
-pub type Spanned<T> = (T, SimpleSpan<usize, FileID>);
+pub type Spanned<T: Copy> = (T, SimpleSpan<usize, FileID>);

@@ -1,4 +1,4 @@
-use std::{cell::OnceCell, path::PathBuf};
+use std::{cell::OnceCell, path::Path, sync::OnceLock};
 
 use super::{
     ast::Expr,
@@ -6,34 +6,35 @@ use super::{
     Spanned,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PackageEntry {
     pub name: Spanned<Expr>,
 
-    pub file: PathBuf,
+    pub file: &'static Path,
     //    pub deps: Vec<Spanned<Expr>>,
 
     //contains: Vec<Index>, // Consider using pure index-based referencing instead of the Trie
-    pub src: String,
+    pub src: &'static str,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct StructEntry {
     //parent: Quantifier,
     pub ty: Spanned<Ty>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct EnumEntry {
     //parent: Quantifier,
     //pub name: String,
     pub ty: Spanned<Ty>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+// #[derive(Debug, PartialEq, Eq)]
 pub enum Item {
     Root,
-    Filename(String),
+    Filename(&'static str),
     Package(PackageEntry),
     Struct(StructEntry),
     Enum(EnumEntry),
@@ -42,30 +43,30 @@ pub enum Item {
     Field((Spanned<Expr>, Spanned<Ty>)),
     Let {
         name: Spanned<Expr>,
-        sig: OnceCell<Spanned<Ty>>,
+        sig: &'static OnceCell<Spanned<Ty>>,
         body: Spanned<Expr>,
     },
     Extern {
         name: Spanned<Expr>,
         sig: Spanned<Ty>,
     },
-    Dummy(String),
+    Dummy(&'static str),
 }
 
 impl Item {
     #[must_use]
     pub fn get_sig(&self) -> Option<&Spanned<Ty>> {
         match self {
-            Item::Let { sig, .. } => sig.get(),
+            Item::Let { sig, .. } => sig.get(), //Some(sig.as_ref().unwrap()),
             Item::Extern { sig, .. } => Some(sig),
             _ => None,
         }
     }
 
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> &'static str {
         match self {
             Item::Root => todo!(),
-            Item::Filename(s) => s.clone(),
+            Item::Filename(s) => s,
             Item::Package(PackageEntry { name, .. }) => name.0.get_ident().unwrap().clone(),
             Item::Struct(StructEntry { ty, .. }) => ty.0.get_user_name().unwrap().clone(),
             Item::Enum(EnumEntry { ty, .. }) => ty.0.get_user_name().unwrap().clone(),
@@ -78,7 +79,7 @@ impl Item {
     }
 
     #[must_use]
-    pub fn get_file(&self) -> Option<&PathBuf> {
+    pub fn get_file(&self) -> Option<&Path> {
         match self {
             Item::Package(PackageEntry { file, .. }) => Some(file),
             _ => None,
@@ -88,7 +89,7 @@ impl Item {
     #[must_use]
     pub fn get_ty(&self) -> Option<Spanned<Ty>> {
         match self {
-            Self::Let { sig, .. } => Some(sig.get().unwrap().clone()),
+            Self::Let { sig, .. } => sig.get().cloned(),
             Self::Struct(StructEntry { ty, .. }) => Some(ty.clone()),
             Self::Enum(EnumEntry { ty, .. }) => Some(ty.clone()),
             Self::Variant(v) => Some((Ty::Variant(v.0.clone()), v.1)),
@@ -100,7 +101,7 @@ impl Item {
 
 impl Default for Item {
     fn default() -> Self {
-        Self::Dummy("".to_string())
+        Self::Dummy("")
     }
 }
 

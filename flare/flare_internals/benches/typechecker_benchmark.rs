@@ -1,6 +1,7 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use flare_internals::resource::rep::ast::Package;
 use flare_internals::*;
 use flare_internals::{passes::midend::environment::Environment, resource::rep::ast::Program};
 
@@ -9,7 +10,7 @@ const TEST_FILE: &str =
 //    "~/Documents/GitHub/flare/flare/flare_internals/benches/bench_code/bench1.flr";
 
 pub fn typechecking_bench(c: &mut Criterion) {
-    let path = PathBuf::from(TEST_FILE).canonicalize().unwrap();
+    let path: &'static Path = PathBuf::from(TEST_FILE).canonicalize().unwrap().leak();
     let parent_dir = path.parent().unwrap();
     let dir_contents = std::fs::read_dir(parent_dir)
         .unwrap()
@@ -18,15 +19,15 @@ pub fn typechecking_bench(c: &mut Criterion) {
         .collect::<Vec<_>>();
 
     let id: u64 = 0;
-    let ctx = Context::new(&path, id);
+    let ctx = Context::new(path, id);
 
     let processed = dir_contents.iter().map(|entry| {
-        let file_path = entry.path();
+        let file_path: &'static Path = entry.path().leak();
         let (pack, str) = parse_file(&ctx, id).unwrap();
         (pack, file_path, str)
     });
     let program = Program {
-        packages: processed.collect(),
+        packages: processed.collect::<Vec<_>>(),
     };
 
     //dbg!(program.clone());
@@ -37,7 +38,7 @@ pub fn typechecking_bench(c: &mut Criterion) {
 }
 
 pub fn env_build_bench(c: &mut Criterion) {
-    let path = PathBuf::from(TEST_FILE).canonicalize().unwrap();
+    let path: &'static Path = PathBuf::from(TEST_FILE).canonicalize().unwrap().leak();
     let parent_dir = path.parent().unwrap();
     let dir_contents = std::fs::read_dir(parent_dir)
         .unwrap()
@@ -45,15 +46,18 @@ pub fn env_build_bench(c: &mut Criterion) {
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
         .collect::<Vec<_>>();
     let id: u64 = 0;
-    let ctx = Context::new(&path, id);
+    let ctx = Context::new(path, id);
 
-    let processed = dir_contents.iter().map(|entry| {
-        let file_path = entry.path();
-        let (pack, str) = parse_file(&ctx, id).unwrap();
-        (pack, file_path, str)
-    });
+    let processed: Vec<(Package, &Path, &str)> = dir_contents
+        .iter()
+        .map(|entry| {
+            let file_path: &'static Path = entry.path().leak();
+            let (pack, str): (_, &'static str) = parse_file(&ctx, id).unwrap();
+            (pack, file_path, str)
+        })
+        .collect();
     let program = Program {
-        packages: processed.collect(),
+        packages: processed,
     };
 
     //dbg!(program.clone());
@@ -69,15 +73,15 @@ pub fn env_build_bench(c: &mut Criterion) {
 }
 
 pub fn master_bench(c: &mut Criterion) {
-    let path = PathBuf::from(TEST_FILE).canonicalize().unwrap();
+    let path: &'static Path = PathBuf::from(TEST_FILE).canonicalize().unwrap().leak();
     let id: u64 = 0;
 
-    let ctx = Context::new(&path, id);
+    let mut ctx = Context::new(path, id);
 
     //dbg!(program.clone());
     //dbg!(program.clone());
     c.bench_function("master_bench", |b| {
-        b.iter(|| black_box(flare_internals::compile_program(&ctx, id)))
+        b.iter(|| black_box(flare_internals::compile_program(&mut ctx, id)))
     });
     //c.bench_function("fib 20", |b| b.iter(|| flare::passes::midend::typechecking::(black_box(20))));
 }

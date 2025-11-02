@@ -4,10 +4,7 @@ use petgraph::graph::NodeIndex;
 
 use crate::resource::rep::{mir::VarId, quantifier::SimpleQuant};
 #[allow(dead_code)]
-use crate::{
-    passes::midend::environment::Environment,
-    resource::rep::mir::ANF,
-};
+use crate::{passes::midend::environment::Environment, resource::rep::mir::ANF};
 
 pub struct Transformer<'env> {
     env: &'env Environment,
@@ -31,10 +28,9 @@ impl<'env> Transformer<'env> {
     }
 
     pub fn transform(&mut self) -> ANF {
-        let main = self.env.get_from_context(
-            &SimpleQuant::Func("main".to_string()),
-            &SimpleQuant::Package("Main".to_string()),
-        );
+        let main = self
+            .env
+            .get_from_context(&SimpleQuant::Func("main"), &SimpleQuant::Package("Main"));
 
         todo!()
     }

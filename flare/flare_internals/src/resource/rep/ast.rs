@@ -1,4 +1,4 @@
-use std::{hash::Hash, path::PathBuf};
+use std::{hash::Hash, path::Path};
 
 use ordered_float::OrderedFloat;
 
@@ -9,29 +9,29 @@ use super::{
 };
 
 /// Type representing an atomic value within a pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum PatternAtom {
-    Strlit(String),
+    Strlit(&'static str),
     Num(OrderedFloat<f64>),
-    Variable(String),
-    Type(Box<Spanned<Ty>>),
+    Variable(&'static str),
+    Type(&'static Spanned<Ty>),
 }
 
 /// Type representing a Pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Pattern {
     Atom(PatternAtom),
-    Tuple(Vec<Spanned<Self>>),
-    Variant(Box<Spanned<Expr>>, Vec<Spanned<Self>>),
+    Tuple(&'static [Spanned<Self>]),
+    Variant(&'static Spanned<Expr>, &'static [Spanned<Self>]),
 }
 
 impl Pattern {
-    pub fn get_ident(&self) -> Option<String> {
+    pub fn get_ident(&self) -> Option<&'static str> {
         match self {
             Self::Variant(n, _) => n.0.get_ident(),
             Self::Atom(a) => match a {
                 PatternAtom::Type(t) => Some(t.0.get_raw_name()),
-                PatternAtom::Variable(s) => Some(s.to_string()),
+                PatternAtom::Variable(s) => Some(s),
                 _ => None,
             },
             Self::Tuple(_) => None,
@@ -51,56 +51,68 @@ pub enum ComparisonOp {
 
 /// Type representing an Expression.
 /// You will typically encounter ```Expr``` as a ```Spanned<Expr>```, which is decorated with a span for diagnostic information.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Expr {
-    Ident(String),
+    Ident(&'static str),
     Number(ordered_float::OrderedFloat<f64>),
-    String(String),
+    String(&'static str),
     Bool(bool),
 
-    ExternFunc(Vec<SimpleQuant>),
+    ExternFunc(&'static [SimpleQuant]),
 
     Unit,
-    Constructor(Box<Spanned<Self>>, Vec<Spanned<Self>>),
-    FieldedConstructor(Box<Spanned<Self>>, Vec<(Spanned<Self>, Spanned<Self>)>),
+    // Constructor(&'static Spanned<Self>, Vec<Spanned<Self>>),
+    Constructor(&'static Spanned<Self>, &'static [Spanned<Self>]),
+    FieldedConstructor(
+        &'static Spanned<Self>,
+        &'static [(Spanned<Self>, Spanned<Self>)],
+    ),
 
     Pat(Spanned<Pattern>),
 
-    Mul(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    Div(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    Add(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    Sub(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    Comparison(Box<Spanned<Self>>, ComparisonOp, Box<Spanned<Self>>),
+    Mul(&'static Spanned<Self>, &'static Spanned<Self>),
+    Div(&'static Spanned<Self>, &'static Spanned<Self>),
+    Add(&'static Spanned<Self>, &'static Spanned<Self>),
+    Sub(&'static Spanned<Self>, &'static Spanned<Self>),
+    Comparison(&'static Spanned<Self>, ComparisonOp, &'static Spanned<Self>),
 
-    Access(Box<Spanned<Self>>),
-    Call(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    FieldAccess(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    If(Box<Spanned<Self>>, Box<Spanned<Self>>, Box<Spanned<Self>>),
-    Match(
-        Box<Spanned<Self>>,
-        Vec<(Spanned<Pattern>, Box<Spanned<Self>>)>,
+    Access(&'static Spanned<Self>),
+    Call(&'static Spanned<Self>, &'static Spanned<Self>),
+    FieldAccess(&'static Spanned<Self>, &'static Spanned<Self>),
+    If(
+        &'static Spanned<Self>,
+        &'static Spanned<Self>,
+        &'static Spanned<Self>,
     ),
-    Lambda(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    Let(Box<Spanned<Self>>, Box<Spanned<Self>>, Box<Spanned<Self>>),
-    Struct(Vec<(Box<Spanned<Self>>, Spanned<Self>)>),
-    Tuple(Vec<Spanned<Self>>),
+    Match(
+        &'static Spanned<Self>,
+        &'static [(Spanned<Pattern>, Spanned<Self>)],
+    ),
+    Lambda(&'static Spanned<Self>, &'static Spanned<Self>),
+    Let(
+        &'static Spanned<Self>,
+        &'static Spanned<Self>,
+        &'static Spanned<Self>,
+    ),
+    Struct(&'static [(Spanned<Self>, Spanned<Self>)]),
+    Tuple(&'static [Spanned<Self>]),
 }
 
 impl Expr {
-    pub fn get_ident(&self) -> Option<String> {
+    pub fn get_ident(&self) -> Option<&'static str> {
         match self {
-            Expr::Ident(ref s) => Some(s.to_string()),
-            Expr::FieldAccess(ref base, ref _field) => {
+            Expr::Ident(s) => Some(s),
+            Expr::FieldAccess(base, _field) => {
                 Some(base.0.get_ident()?)
                 //todo!()
                 //Some(base.0.get_ident()?.append(field.0.get_ident()?))
             }
-            Expr::Access(ref expr) => expr.0.get_ident(),
-            Expr::Call(ref func, _) => func.0.get_ident(),
-            Expr::Lambda(ref arg, _) => arg.0.get_ident(),
+            Expr::Access(expr) => expr.0.get_ident(),
+            Expr::Call(func, _) => func.0.get_ident(),
+            Expr::Lambda(arg, _) => arg.0.get_ident(),
             Expr::Pat(p) => {
-                if let Pattern::Atom(PatternAtom::Variable(ref s)) = p.0 {
-                    Some(s.to_string())
+                if let Pattern::Atom(PatternAtom::Variable(s)) = p.0 {
+                    Some(s)
                 } else {
                     None
                 }
@@ -120,6 +132,7 @@ pub struct StructDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnumDef {
     pub the_ty: Spanned<Ty>,
+
     pub variants: Vec<Spanned<EnumVariant>>,
 }
 
@@ -145,5 +158,5 @@ pub struct Package {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
-    pub packages: Vec<(Package, PathBuf, String)>,
+    pub packages: Vec<(Package, &'static Path, &'static str)>,
 }

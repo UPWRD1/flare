@@ -17,12 +17,12 @@ use crate::resource::{
 /// Type representing the tokens produced by the lexer. Is private, since tokens are only used in the first stage of parsing.
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
-enum Token<'src> {
-    Ident(&'src str),
+enum Token {
+    Ident(&'static str),
     Num(f64),
 
-    Strlit(&'src str),
-    Comment(&'src str),
+    Strlit(&'static str),
+    Comment(&'static str),
     Parens(Vec<Spanned<Self>>),
 
     ///Contains the erroneous token's src
@@ -76,7 +76,7 @@ enum Token<'src> {
     TyUnit,
 }
 
-impl std::fmt::Display for Token<'_> {
+impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Token::Ident(x) => write!(f, "{x}"),
@@ -140,17 +140,17 @@ impl std::fmt::Display for Token<'_> {
 }
 
 /// The primary lexer function.
-fn lexer<'src, I>() -> impl Parser<
-    'src,
+fn lexer<I>() -> impl Parser<
+    'static,
     I,
-    Vec<(Token<'src>, SimpleSpan<usize, u64>)>,
-    extra::Full<Rich<'src, char, SimpleSpan<usize, ()>>, SimpleState<u64>, ()>, /*extra::Err<Rich<'src, char>>*/
+    Vec<(Token, SimpleSpan<usize, u64>)>,
+    extra::Full<Rich<'static, char, SimpleSpan<usize, ()>>, SimpleState<u64>, ()>, /*extra::Err<Rich<'src, char>>*/
 >
 //where I:  BorrowInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + StrInput<'src> + SliceInput<'src>,
 where
-    I: ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>>
-        + SliceInput<'src, Slice = &'src str, Span = SimpleSpan<usize, ()>>
-        + StrInput<'src, Span = SimpleSpan<usize, ()>>,
+    I: ValueInput<'static, Token = char, Span = SimpleSpan<usize, ()>>
+        + SliceInput<'static, Slice = &'static str, Span = SimpleSpan<usize, ()>>
+        + StrInput<'static, Span = SimpleSpan<usize, ()>>,
     //where I: str
 {
     let comment = just("#")
@@ -261,24 +261,23 @@ where
 }
 
 /// The main parser function.
-fn parser<'tokens, 'src: 'tokens, I, M>(
+fn parser<I, M>(
     make_input: M,
 ) -> impl Parser<
-    'tokens,
+    'static,
     I,
     Package,
-    extra::Full<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>, SimpleState<u64>, ()>,
+    extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, SimpleState<u64>, ()>,
 >
 //) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>>>
 where
-    I: BorrowInput<'tokens, Token = Token<'src>, Span = SimpleSpan<usize, FileID>>,
+    I: BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>>,
     // Because this function is generic over the input type, we need the caller to tell us how to create a new input,
     // `I`, from a nested token tree. This function serves that purpose.
-    M: Fn(SimpleSpan<usize, FileID>, &'tokens [Spanned<Token<'src>>]) -> I + Clone + 'src,
+    M: Fn(SimpleSpan<usize, FileID>, &'static [Spanned<Token>]) -> I + Clone + 'static,
 {
     // Basic tokens
-    let ident = select_ref! { Token::Ident(x) => *x }
-        .map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
+    let ident = select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Expr::Ident(x), e.span()));
 
     let ty = recursive(|ty| {
         let type_list = ty
@@ -290,7 +289,10 @@ where
         // This is super hacky, but it does give us a nice infix operator
         let path = ident
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                (
+                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    e.span(),
+                )
             })
             .boxed()])
             .or(ident)
@@ -313,7 +315,7 @@ where
                 .clone()
                 .map_with(|(name, generics), e| {
                     (
-                        Ty::User(name.clone(), generics.unwrap_or_default()),
+                        Ty::User(name, generics.unwrap_or_default().leak()),
                         e.span(),
                     )
                 }),
@@ -325,10 +327,13 @@ where
             type_list
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with(|types, e| (Ty::Tuple(types), e.span())),
+                .map_with(|types, e| (Ty::Tuple(types.leak()), e.span())),
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-            (Ty::Arrow(Box::new(x), Box::new(y)), e.span())
+            (
+                Ty::Arrow(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                e.span(),
+            )
         })])
     });
 
@@ -339,7 +344,10 @@ where
 
         let path = ident
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                (
+                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    e.span(),
+                )
             })
             .boxed()])
             .or(ident)
@@ -350,7 +358,7 @@ where
                 .collect::<Vec<Spanned<Pattern>>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
-                .map_with(|p, e| (Pattern::Tuple(p), e.span())),
+                .map_with(|p, e| (Pattern::Tuple(p.leak()), e.span())),
             path.then(
                 pat.separated_by(just(Token::Comma))
                     .collect::<Vec<_>>()
@@ -359,7 +367,10 @@ where
             )
             .map_with(|(name, args), e| {
                 if let Some(args) = args {
-                    (Pattern::Variant(Box::new(name), args), e.span())
+                    (
+                        Pattern::Variant(Box::leak(Box::new(name)), args.leak()),
+                        e.span(),
+                    )
                 } else {
                     (
                         Pattern::Atom(PatternAtom::Variable(name.0.get_ident().unwrap())),
@@ -373,21 +384,28 @@ where
                 .map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),
             // Strings
             select_ref! { Token::Strlit(x) => (*x).to_string() }
-                .map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.to_string())), e.span())),
-            ty.clone()
-                .map_with(|x, e| (Pattern::Atom(PatternAtom::Type(Box::new(x))), e.span())),
+                .map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.leak())), e.span())),
+            ty.clone().map_with(|x, e| {
+                (
+                    Pattern::Atom(PatternAtom::Type(Box::leak(Box::new(x)))),
+                    e.span(),
+                )
+            }),
         ))
     });
 
     // Expression parser
     let expression = recursive(|expr| {
         let rname = select_ref! { Token::Ident(x) => *x };
-        let ident = rname.map_with(|x, e| (Expr::Ident(x.to_string()), e.span()));
+        let ident = rname.map_with(|x, e| (Expr::Ident(x), e.span()));
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
         let path = ident
             .pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                (
+                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    e.span(),
+                )
             })
             .boxed()])
             .memoized();
@@ -398,8 +416,7 @@ where
                 select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
                     .map_with(|x, e| (x, e.span())),
                 // Strings
-                select_ref! { Token::Strlit(x) => Expr::String((*x).to_string()) }
-                    .map_with(|x, e| (x, e.span())),
+                select_ref! { Token::Strlit(x) => Expr::String(x) }.map_with(|x, e| (x, e.span())),
                 // True
                 just(Token::True).map_with(|_, e| (Expr::Bool(true), e.span())),
                 // False
@@ -414,7 +431,10 @@ where
                     )
                     .map_with(|(name, args), e| {
                         if !args.is_empty() {
-                            (Expr::Constructor(Box::new(name), args), e.span())
+                            (
+                                Expr::Constructor(Box::leak(Box::new(name)), args.leak()),
+                                e.span(),
+                            )
                         } else {
                             name
                         }
@@ -433,7 +453,10 @@ where
                     )
                     .map_with(|(name, args), e| {
                         if let Some(args) = args {
-                            (Expr::FieldedConstructor(Box::new(name), args), e.span())
+                            (
+                                Expr::FieldedConstructor(Box::leak(Box::new(name)), args.leak()),
+                                e.span(),
+                            )
                         } else {
                             name
                         }
@@ -445,7 +468,7 @@ where
                     .separated_by(just(Token::Comma))
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|items, e| (Expr::Tuple(items), e.span()))
+                    .map_with(|items, e| (Expr::Tuple(items.leak()), e.span()))
                     .labelled("tuple")
                     .as_context(),
                 // let x = y in z
@@ -459,9 +482,9 @@ where
                     .map_with(|((lhs, rhs), then), e| {
                         (
                             Expr::Let(
-                                Box::new((Expr::Pat(lhs.clone()), lhs.1)),
-                                Box::new(rhs),
-                                Box::new(then),
+                                Box::leak(Box::new((Expr::Pat(lhs), lhs.1))),
+                                Box::leak(Box::new(rhs)),
+                                Box::leak(Box::new(then)),
                             ),
                             e.span(),
                         )
@@ -475,7 +498,11 @@ where
                     .then(expr.clone())
                     .map_with(|((test, then), otherwise), e| {
                         (
-                            Expr::If(Box::new(test), Box::new(then), Box::new(otherwise)),
+                            Expr::If(
+                                Box::leak(Box::new(test)),
+                                Box::leak(Box::new(then)),
+                                Box::leak(Box::new(otherwise)),
+                            ),
                             e.span(),
                         )
                     })
@@ -489,7 +516,7 @@ where
                             .ignore_then(pattern.clone())
                             .then_ignore(just(Token::Then))
                             .then(expr.clone())
-                            .map(|(p, e)| (p, Box::new(e)))
+                            .map(|(p, e)| (p, e))
                             .separated_by(just(Token::Comma))
                             .allow_trailing()
                             //                            .allow_trailing()
@@ -497,7 +524,10 @@ where
                             .collect::<Vec<_>>(),
                     )
                     .map_with(|(matchee, arms), e| {
-                        (Expr::Match(Box::new(matchee), arms), e.span())
+                        (
+                            Expr::Match(Box::leak(Box::new(matchee)), arms.leak()),
+                            e.span(),
+                        )
                     }),
             ))
         })
@@ -509,7 +539,12 @@ where
             // fn x y = z
             just(Token::Fn).ignore_then(ident.repeated().foldr_with(
                 just(Token::FatArrow).ignore_then(expr.clone()),
-                |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+                |arg, body, e| {
+                    (
+                        Expr::Lambda(Box::leak(Box::new(arg)), Box::leak(Box::new(body))),
+                        e.span(),
+                    )
+                },
             )),
             // ( x )
             expr.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
@@ -517,22 +552,34 @@ where
         .pratt(vec![
             // Multiply
             infix(left(8), just(Token::Asterisk), |x, _, y, e| {
-                (Expr::Mul(Box::new(x), Box::new(y)), e.span())
+                (
+                    Expr::Mul(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    e.span(),
+                )
             })
             .boxed(),
             // Divide
             infix(left(8), just(Token::Slash), |x, _, y, e| {
-                (Expr::Div(Box::new(x), Box::new(y)), e.span())
+                (
+                    Expr::Div(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    e.span(),
+                )
             })
             .boxed(),
             // Add
             infix(left(7), just(Token::Plus), |x, _, y, e| {
-                (Expr::Add(Box::new(x), Box::new(y)), e.span())
+                (
+                    Expr::Add(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    e.span(),
+                )
             })
             .boxed(),
             // Subtract
             infix(left(7), just(Token::Minus), |x, _, y, e| {
-                (Expr::Sub(Box::new(x), Box::new(y)), e.span())
+                (
+                    Expr::Sub(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    e.span(),
+                )
             })
             .boxed(),
             infix(
@@ -540,7 +587,7 @@ where
                 select_ref! { Token::ComparisonOp(c) => *c },
                 |left, op, right, e| {
                     (
-                        Expr::Comparison(Box::new(left), op, Box::new(right)),
+                        Expr::Comparison(Box::leak(Box::new(left)), op, Box::leak(Box::new(right))),
                         e.span(),
                     )
                 },
@@ -548,15 +595,22 @@ where
             .boxed(),
             // Calls
             infix(left(9), empty(), |func, (), arg, e| {
-                (Expr::Call(Box::new(func), Box::new(arg)), e.span())
+                (
+                    Expr::Call(Box::leak(Box::new(func)), Box::leak(Box::new(arg))),
+                    e.span(),
+                )
             })
             .boxed(),
             // Field Access
             infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (Expr::FieldAccess(Box::new(x), Box::new(y)), e.span())
+                (
+                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    e.span(),
+                )
             })
             .boxed(),
         ])
+        // .map(|x| Box::leak(Box::new(x)))
         .boxed()
         .memoized()
         .labelled("expression")
@@ -570,7 +624,7 @@ where
         //     .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
         //     .then(ident.repeated().foldr_with(
         //         just(Token::Eq).ignore_then(expression.clone()),
-        //         |arg, body, e| (Expr::Lambda(Box::new(arg), Box::new(body)), e.span()),
+        //         |arg, body, e| (Expr::Lambda(Box::leak(arg), Box::leak(body)), e.span()),
         //     ))
         //     .map(|((name, ty), value)| Definition::Let(name, value, ty))
         //     .labelled("let-declaration")
@@ -582,7 +636,10 @@ where
             .then(just(Token::Eq).ignore_then(expression.clone()))
             .map_with(|(((name, args), ty), body), e| {
                 let value = args.into_iter().rev().fold(body, |acc, arg| {
-                    (Expr::Lambda(Box::new(arg), Box::new(acc)), e.span())
+                    (
+                        Expr::Lambda(Box::leak(Box::new(arg)), Box::leak(Box::new(acc))),
+                        e.span(),
+                    )
                 });
                 Definition::Let(name, value, ty)
             })
@@ -612,12 +669,20 @@ where
                         .collect::<Vec<_>>()
                         .delimited_by(just(Token::LBrace), just(Token::RBrace)),
                 )
-                .map_with(|(name, types), e| (EnumVariant { name, types }, e.span())),
+                .map_with(|(name, types), e| {
+                    (
+                        EnumVariant {
+                            name,
+                            types: types.leak(),
+                        },
+                        e.span(),
+                    )
+                }),
             ident.map_with(|x, e| {
                 (
                     EnumVariant {
                         name: x,
-                        types: vec![],
+                        types: vec![].leak(),
                     },
                     e.span(),
                 )
@@ -720,17 +785,17 @@ fn parse_failure(
 }
 
 /// Compiler black magic function that transforms the token vector into a parsable item.
-fn make_input<'src>(
+fn make_input(
     eoi: SimpleSpan<usize, FileID>,
-    toks: &'src [(Token<'src>, SimpleSpan<usize, FileID>)],
-) -> impl BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan<usize, FileID>> {
+    toks: &'static [(Token, SimpleSpan<usize, FileID>)],
+) -> impl BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> {
     //toks.map(eoi, |(t, s)| (t, s))
     toks.map(eoi, |(t, s)| (t, s))
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(input: &str, fid: FileID) -> CompResult<Package> {
-    let tokens = match lexer()
+pub fn parse(input: &'static str, fid: FileID) -> CompResult<Package> {
+    let tokens: Vec<(Token, SimpleSpan<usize, u64>)> = match lexer()
         .parse_with_state(input, &mut SimpleState::from(0))
         .into_result()
     {
@@ -750,7 +815,7 @@ pub fn parse(input: &str, fid: FileID) -> CompResult<Package> {
 
     let packg: Result<Package, CompilerErr> = match parser(make_input)
         .parse_with_state(
-            make_input(SimpleSpan::new(fid, 0..input.len()), &tokens),
+            make_input(SimpleSpan::new(fid, 0..input.len()), tokens.leak()),
             &mut SimpleState::from(0),
         )
         .into_result()

@@ -30,11 +30,11 @@ fn main() -> CompResult<()> {
     match prog_args.len() {
         3 => match prog_args[1].as_str() {
             "-c" | "--compile" => {
-                let filename: PathBuf = PathBuf::from(&prog_args[2]).canonicalize()?;
-                let id = convert_path_to_id(&filename);
+                let filename = PathBuf::from(&prog_args[2]).canonicalize()?.leak();
+                let id = convert_path_to_id(filename);
 
-                let ctx = Context::new(&filename, id);
-                match compile_program(&ctx, id) {
+                let mut ctx = Context::new(filename, id);
+                match compile_program(&mut ctx, id) {
                     //.inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
                     //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
                     Ok((_code, elapsed)) => {

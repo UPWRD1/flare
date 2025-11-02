@@ -8,9 +8,9 @@ use petgraph::{
     graph::{DiGraph, NodeIndex},
     visit::EdgeRef,
 };
+use std::cell::OnceCell;
 use std::collections::HashMap;
 use std::hash::RandomState;
-use std::{cell::OnceCell, fmt::Debug};
 
 use crate::passes::midend::typechecking::Solver;
 
@@ -24,7 +24,7 @@ use crate::resource::{
     },
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Environment {
     //pub items: Trie<SimpleQuant, Index>,
     //pub arena: Arena<Node>,
@@ -68,7 +68,7 @@ impl Environment {
                 file: package.1,
                 src: package.2,
             });
-            let package_quant = SimpleQuant::Package(package_name.clone());
+            let package_quant = SimpleQuant::Package(package_name);
 
             let p_id = me.add(current_node, package_quant.clone(), package_entry);
 
@@ -99,21 +99,20 @@ impl Environment {
                         let enum_node = me.add(current_node, ident, enum_entry);
                         for v in variants {
                             let variant_name =
-                                SimpleQuant::Variant(v.0.name.0.get_ident().unwrap().clone());
+                                SimpleQuant::Variant(v.0.name.0.get_ident().unwrap());
                             let variant_entry = Item::Variant(v);
                             me.add(enum_node, variant_name, variant_entry);
                         }
                     }
                     Definition::Let(name, body, ty) => {
                         let ident = SimpleQuant::Func(name.0.get_ident().unwrap());
-
                         let cell = OnceCell::new();
                         if let Some(ty) = ty {
                             let _ = cell.set(ty);
                         }
                         let entry = Item::Let {
                             name,
-                            sig: cell,
+                            sig: Box::leak(Box::new(cell)),
                             body,
                         };
                         me.add(current_node, ident, entry);
@@ -242,10 +241,10 @@ impl Environment {
         Some(node_w)
     }
 
-    fn get_all_targets_edge<'env, 'k>(
-        &'env self,
+    fn get_all_targets_edge<'envi, 'k>(
+        &'envi self,
         k: &'k SimpleQuant,
-    ) -> impl Iterator<Item = NodeIndex> + use<'env, 'k> {
+    ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'k> {
         let edges = self.graph.edge_references().filter(|x| x.weight().is(k));
         edges.map(|x| x.target())
     }
@@ -312,15 +311,15 @@ impl Environment {
         (rec.f)(&rec, self, self.root, q) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
     }
 
-    pub fn check(&self) -> CompResult<()> {
+    pub fn check(&self) -> CompResult<()>
+// where
+        // 'env: 'src,
+    {
         let main_idx = self
-            .get_from_context(
-                &SimpleQuant::Func("main".to_string()),
-                &SimpleQuant::Package("Main".to_string()),
-            )
+            .get_from_context(&SimpleQuant::Func("main"), &SimpleQuant::Package("Main"))
             //.get(&quantifier!(Root, Package("Main"), Func("main"), End).into_simple())
             .unwrap();
-        let main_item = self.graph.node_weight(main_idx).unwrap();
+        let main_item = self.value(main_idx).cloned().unwrap();
         if cfg!(debug_assertions) {
             let dot = petgraph::dot::Dot::with_config(
                 &self.graph,
@@ -332,33 +331,48 @@ impl Environment {
             info!("{:?}", dot);
         }
 
-        self.check_item(main_item, &SimpleQuant::Package("Main".to_string()))?;
-        //dbg!(&main);
+        self.check_item(&main_item, &SimpleQuant::Package("Main"))?;
         Ok(())
+        //dbg!(&main);
     }
 
-    pub fn check_item<'e>(&self, item: &'e Item, packctx: &SimpleQuant) -> CompResult<&'e Item> {
+    pub fn check_item<'env>(
+        &self,
+        item: &'env Item,
+        packctx: &SimpleQuant,
+    ) -> CompResult<&'env Item>
+// where
+        // 'src: 'env, // 'env: 'src, // 'env: 'src,
+    {
         //println!("Checking {:?}", entry);
         //match *entry.borrow_mut() {
-
         if let Item::Let {
             ref name,
-            ref sig,
+            ref mut sig,
             ref body,
             ..
         } = if item.get_sig().is_none() {
-            item
+            *item
         } else {
+            // Early Return
             return Ok(item);
         } {
-            let mut tc = Solver::new(self, packctx.clone());
+            //let the_sig: &OnceCell<Spanned<crate::resource::rep::types::Ty<'src>>> = sig;
+            let mut tc = Solver::new(self, packctx); //WTF?
             let tv = tc.check_expr(body)?;
-            let fn_sig = tc.solve(tv)?.clone();
+            let fn_sig/*: Spanned<crate::resource::rep::types::Ty<'src>>*/ = tc.solve(tv)?;
+
             //dbg!(&fn_sig);
-            let _ = sig.set((
+            // sig = Some((
+            //     fn_sig.0,
+            //     SimpleSpan::new(name.1.context, name.1.into_range()),
+            // ));
+            let val = (
                 fn_sig.0,
                 SimpleSpan::new(name.1.context, name.1.into_range()),
-            ));
+            );
+            let _ = sig.set(val);
+            // let _ = sig.replace(val);
         }
         info!("Checked {}: {}", item.name(), item.get_ty().unwrap().0);
         Ok(item)
@@ -381,20 +395,20 @@ mod tests {
     fn make_graph() -> Environment {
         let mut graph: DiGraph<Item, SimpleQuant> = DiGraph::new();
         let root = graph.add_node(Item::Root);
-        let lib_foo = graph.add_node(Item::Dummy("libFoo".to_string()));
-        let foo = graph.add_node(Item::Dummy("foo".to_string()));
-        let lib_bar = graph.add_node(Item::Dummy("libBar".to_string()));
-        let bar = graph.add_node(Item::Dummy("Bar".to_string()));
-        let baz = graph.add_node(Item::Dummy("baz".to_string()));
-        let bar_foo = graph.add_node(Item::Dummy("fooooo".to_string()));
+        let lib_foo = graph.add_node(Item::Dummy("libFoo"));
+        let foo = graph.add_node(Item::Dummy("foo"));
+        let lib_bar = graph.add_node(Item::Dummy("libBar"));
+        let bar = graph.add_node(Item::Dummy("Bar"));
+        let baz = graph.add_node(Item::Dummy("baz"));
+        let bar_foo = graph.add_node(Item::Dummy("fooooo"));
 
         graph.extend_with_edges(&[
-            (root, lib_foo, SimpleQuant::Package(String::from("Foo"))),
-            (lib_foo, foo, SimpleQuant::Func(String::from("foo"))),
-            (root, lib_bar, SimpleQuant::Package(String::from("Bar"))),
-            (lib_bar, bar, SimpleQuant::Type(String::from("Bar"))),
-            (bar, baz, SimpleQuant::Field(String::from("f1"))),
-            (lib_bar, bar_foo, SimpleQuant::Func(String::from("foo"))),
+            (root, lib_foo, SimpleQuant::Package("Foo")),
+            (lib_foo, foo, SimpleQuant::Func("foo")),
+            (root, lib_bar, SimpleQuant::Package("Bar")),
+            (lib_bar, bar, SimpleQuant::Type("Bar")),
+            (bar, baz, SimpleQuant::Field("f1")),
+            (lib_bar, bar_foo, SimpleQuant::Func("foo")),
         ]);
 
         Environment { graph, root }
@@ -411,14 +425,8 @@ mod tests {
     #[test]
     fn get_node_exists() {
         let e = make_graph();
-        let search1 = e.get_node(
-            &SimpleQuant::Func("foo".to_string()),
-            &SimpleQuant::Package("Foo".to_string()),
-        );
-        let search2 = e.get_node(
-            &SimpleQuant::Type("Bar".to_string()),
-            &SimpleQuant::Package("Bar".to_string()),
-        );
+        let search1 = e.get_node(&SimpleQuant::Func("foo"), &SimpleQuant::Package("Foo"));
+        let search2 = e.get_node(&SimpleQuant::Type("Bar"), &SimpleQuant::Package("Bar"));
 
         assert!(search1.is_some());
         assert!(search2.is_some());
@@ -427,28 +435,19 @@ mod tests {
     #[test]
     fn get_node_dne() {
         let e = make_graph();
-        let found = e.get_node(
-            &SimpleQuant::Func("Bar".to_string()),
-            &SimpleQuant::Package("libFoo".to_string()),
-        );
+        let found = e.get_node(&SimpleQuant::Func("Bar"), &SimpleQuant::Package("libFoo"));
         assert!(found.is_none())
     }
 
     #[test]
     fn get_paths() {
         let e = make_graph();
-        let res = e.search_for_edge(&SimpleQuant::Func("foo".to_string()));
+        let res = e.search_for_edge(&SimpleQuant::Func("foo"));
         assert_eq!(
             res,
             Some(vec![
-                vec![
-                    SimpleQuant::Package("Foo".to_string()),
-                    SimpleQuant::Func("foo".to_string())
-                ],
-                vec![
-                    SimpleQuant::Package("Bar".to_string()),
-                    SimpleQuant::Func("foo".to_string())
-                ]
+                vec![SimpleQuant::Package("Foo"), SimpleQuant::Func("foo")],
+                vec![SimpleQuant::Package("Bar"), SimpleQuant::Func("foo")]
             ])
         );
     }

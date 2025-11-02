@@ -4,15 +4,11 @@ pub mod passes;
 pub mod resource;
 
 use std::{
-    fs::File,
     hash::{Hash, Hasher},
-    io::Read,
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    path::Path,
     time::{Duration, Instant},
 };
 
-use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
@@ -33,39 +29,32 @@ use crate::{
 //use crate::root::resource::tk::{Tk, Token};
 #[derive(Debug, Clone)]
 pub struct Context {
-    pub filectx: Arc<Mutex<FxHashMap<FileID, FileSource>>>,
+    pub filectx: FxHashMap<FileID, FileSource<'static>>,
 }
 
 impl Context {
-    pub fn new(src_path: &Path, id: FileID) -> Self {
-        let mut src_text = String::new();
-        let mut src = File::open(src_path).unwrap();
-        src.read_to_string(&mut src_text).unwrap();
+    pub fn new(src_path: &'static Path, id: FileID) -> Self {
+        let src_text = std::fs::read_to_string(src_path).unwrap();
+
+        // Leak the string to get a 'static lifetime, then cast to 'src
+        let src_text: &'static str = Box::leak(src_text.into_boxed_str());
         let source = FileSource {
-            filename: src_path.to_path_buf(),
+            filename: src_path,
             src_text,
         };
         Context {
-            filectx: Mutex::from(vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>())
-                .into(),
+            filectx: vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>(),
         }
     }
 }
 
-pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, String)> {
-    let mut src_string = String::new();
+pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, &'static str)> {
+    let src_text = std::fs::read_to_string(ctx.filectx.get(&id).unwrap().filename).unwrap();
 
-    let mut src = File::open(
-        &ctx.filectx
-            .clone()
-            .lock()
-            .unwrap()
-            .get(&id)
-            .unwrap()
-            .filename,
-    )?;
-    src.read_to_string(&mut src_string)?;
-    let res = parser::parse(&src_string.clone(), id)?; //TODO: handle errors properly
+    // Leak the string to get a 'static lifetime, then cast to 'src
+    let src_string: &'static str = Box::leak(src_text.into_boxed_str());
+
+    let res = parser::parse(src_string, id)?; //TODO: handle errors properly
 
     Ok((res, src_string))
 }
@@ -77,38 +66,31 @@ pub fn convert_path_to_id(path: &Path) -> FileID {
     hasher.finish()
 }
 
-pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
-    let context = ctx.filectx.lock().unwrap();
-
-    let src_path = &context.get(&id).unwrap().filename;
+pub fn parse_program(ctx: &mut Context, id: FileID) -> CompResult<Program> {
+    let src_path = ctx.filectx.get(&id).unwrap().filename;
     let path = src_path.canonicalize().unwrap();
     let parent_dir = path.parent().unwrap();
     let dir_contents = std::fs::read_dir(parent_dir)?
-        .par_bridge()
         .filter_map(Result::ok)
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
         .map(|x| {
-            let mut src_text = String::new();
+            let src_text = std::fs::read_to_string(src_path).unwrap();
+            // Leak the string to get a 'static lifetime, then cast to 'src
+            let src_text = Box::leak(src_text.into_boxed_str());
 
-            let mut src = File::open(x.path()).unwrap();
-            src.read_to_string(&mut src_text).unwrap();
             FileSource {
-                filename: x.path(),
+                filename: x.path().leak(),
                 src_text,
             }
         })
         .collect::<Vec<_>>();
-    drop(context);
-
-    let processed: Vec<Result<(Package, PathBuf, String), CompilerErr>> = dir_contents
+    let processed: Vec<Result<(Package, &Path, &str), CompilerErr>> = dir_contents
         .iter()
         .map(|entry| {
-            let converted_id = convert_path_to_id(&entry.filename);
-            let mut file_context = ctx.filectx.lock().unwrap();
-            file_context.insert(converted_id, entry.clone());
-            drop(file_context);
+            let converted_id = convert_path_to_id(entry.filename);
+            ctx.filectx.insert(converted_id, entry.clone());
             let (pack, str) = parse_file(ctx, converted_id)?;
-            Ok((pack, entry.filename.clone(), str))
+            Ok((pack, entry.filename, str))
         })
         .collect();
     let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
@@ -122,7 +104,7 @@ pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
     }
 }
 
-pub fn compile_program(ctx: &Context, id: FileID) -> CompResult<(Program, Duration)> {
+pub fn compile_program(ctx: &mut Context, id: FileID) -> CompResult<(Program, Duration)> {
     let now: Instant = Instant::now();
 
     let program = parse_program(ctx, id)?;

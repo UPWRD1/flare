@@ -2,7 +2,7 @@ use super::{ast::Expr, Spanned};
 use std::fmt;
 
 /// Represents a primitive type within `Ty`
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum PrimitiveType {
     Num,
     Str,
@@ -11,12 +11,12 @@ pub enum PrimitiveType {
 }
 
 /// Represents a type in the parser and master environment.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Ty {
     Primitive(PrimitiveType),
-    User(Spanned<Expr>, Vec<Spanned<Self>>),
-    Tuple(Vec<Spanned<Self>>),
-    Arrow(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    User(Spanned<Expr>, &'static [Spanned<Self>]),
+    Tuple(&'static [Spanned<Self>]),
+    Arrow(&'static Spanned<Self>, &'static Spanned<Self>),
     Generic(Spanned<Expr>),
     Variant(EnumVariant),
     Module(Spanned<Expr>),
@@ -28,10 +28,10 @@ pub enum Ty {
 //     Associated(Spanned<Expr>, Vec<Spanned<Ty>>),
 // }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct EnumVariant {
     pub name: Spanned<Expr>,
-    pub types: Vec<Spanned<Ty>>,
+    pub types: &'static [Spanned<Ty>],
 }
 
 // impl EnumVariant {
@@ -52,7 +52,7 @@ impl Ty {
         }
     }
 
-    pub fn get_user_name(&self) -> Option<String> {
+    pub fn get_user_name(&self) -> Option<&'static str> {
         match self {
             Self::User(name, _) => Some(name.0.get_ident()?),
             Self::Variant(v) => Some(v.name.0.get_ident()?),
@@ -68,13 +68,13 @@ impl Ty {
         }
     }
 
-    pub fn get_raw_name(&self) -> String {
-        format!("{self}")
+    pub fn get_raw_name(&self) -> &'static str {
+        format!("{self}").leak()
     }
 
-    pub fn monomorph_user(self, g: &[Spanned<Ty>]) -> Self {
+    pub fn monomorph_user(self, g: &'static [Spanned<Ty>]) -> Self {
         match self {
-            Self::User(name, _) => Self::User(name, g.to_vec()),
+            Self::User(name, _) => Self::User(name, g),
             _ => unreachable!("Cannot monomorph non-generic type"),
         }
     }
@@ -92,16 +92,16 @@ impl fmt::Display for Ty {
 
             Ty::Tuple(t) => {
                 write!(f, "{{")?;
-                for i in t {
+                for i in t.iter() {
                     write!(f, "{}, ", i.0)?;
                 }
                 write!(f, "}}")
             }
 
             Ty::Arrow(l, r) => write!(f, "({} -> {})", l.0, r.0),
-            Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident().unwrap_or("?".to_string())),
+            Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident().unwrap_or("?")),
             Ty::User(n, args) => {
-                write!(f, "{}[", n.0.get_ident().unwrap_or("?".to_string()))?;
+                write!(f, "{}[", n.0.get_ident().unwrap_or("?"))?;
                 for a in args.iter() {
                     write!(f, "{}, ", a.0)?;
                 }

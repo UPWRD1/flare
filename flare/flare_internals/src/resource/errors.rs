@@ -1,8 +1,8 @@
 use std::{any::Any, fmt::Display, io::Cursor, ops::Deref};
 
 mod templates {
+    use crate::resource::{errors::DynamicErr, rep::quantifier::SimpleQuant};
     use crate::*;
-    use crate::resource::{errors::DynamicErr, rep::quantifier::SimpleQuant,};
     use chumsky::span::SimpleSpan;
     pub fn not_defined(q: &SimpleQuant, s: &SimpleSpan<usize, u64>) -> CompilerErr {
         DynamicErr::new(format!("Could not find a definition for '{q}'"))
@@ -31,7 +31,7 @@ pub trait AnnotatableError: ReportableError {
 #[derive(Debug, Error)]
 pub struct CompilerErr(Box<dyn ReportableError>);
 
-use crate::{FileID, Context};
+use crate::{Context, FileID};
 
 impl Display for CompilerErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -174,7 +174,7 @@ impl DynamicErr {
         }
     }
 
-    pub fn generate_sources(&self, context: &Context) -> Vec<(String, String)> {
+    pub fn generate_sources(&self, context: &Context) -> Vec<(&'static str, &'static str)> {
         let mut source_ids: Vec<u64> = vec![];
         let label_origin = self.label.as_ref().unwrap().1.context;
         source_ids.push(label_origin);
@@ -185,12 +185,8 @@ impl DynamicErr {
         source_ids.append(&mut extra_labels_origin);
         let mut new_sources = vec![];
         for k in source_ids {
-            let contex = context.filectx.lock().unwrap();
-            let ent = contex.get(&k).unwrap().clone();
-            new_sources.push((
-                ent.filename.to_str().unwrap().to_string(),
-                ent.src_text.clone(),
-            ))
+            let ent = context.filectx.get(&k).unwrap().clone();
+            new_sources.push((ent.filename.to_str().unwrap(), ent.src_text))
         }
 
         new_sources
@@ -222,7 +218,7 @@ pub struct GeneralErr {
     label: (String, SimpleSpan<usize, FileID>),
     extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
     context: Context,
-    sources: Vec<(String, String)>,
+    sources: Vec<(&'static str, &'static str)>,
 }
 
 // impl GeneralErr {
@@ -248,10 +244,7 @@ impl std::fmt::Display for GeneralErr {
         let mut buf = Cursor::new(vec![]);
         let rep = Report::build(
             ReportKind::Error,
-            (
-                self.sources.first().unwrap().clone().0,
-                self.label.1.into_range(),
-            ),
+            (self.sources.first().unwrap().0, self.label.1.into_range()),
         )
         .with_config(
             ariadne::Config::new()
@@ -262,16 +255,13 @@ impl std::fmt::Display for GeneralErr {
         .with_label(
             Label::new((
                 {
-                    let handle = self.context.filectx.lock().unwrap();
-                    let res = handle
+                    self.context
+                        .filectx
                         .get(&self.label.1.context)
                         .unwrap()
                         .filename
                         .to_str()
                         .unwrap()
-                        .to_string();
-                    drop(handle);
-                    res
                 },
                 self.label.1.into_range(),
             ))
@@ -282,14 +272,11 @@ impl std::fmt::Display for GeneralErr {
             Label::new((
                 self.context
                     .filectx
-                    .lock()
-                    .unwrap()
                     .get(&label2.1.context)
                     .unwrap()
                     .filename
                     .to_str()
-                    .unwrap()
-                    .to_string(),
+                    .unwrap(),
                 label2.1.into_range(),
             ))
             .with_message(label2.0.as_str())

@@ -21,12 +21,12 @@ pub enum Quantifier {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SimpleQuant {
     Root,
-    Package(String),
-    Type(String),
-    Func(String),
-    Variant(String),
-    Field(String),
-    Wildcard(String),
+    Package(&'static str),
+    Type(&'static str),
+    Func(&'static str),
+    Variant(&'static str),
+    Field(&'static str),
+    Wildcard(&'static str),
 }
 
 impl std::fmt::Display for SimpleQuant {
@@ -45,16 +45,16 @@ impl std::fmt::Display for SimpleQuant {
 use crate::resource::rep::{ast::Expr, Spanned};
 
 impl SimpleQuant {
-    pub fn name(&self) -> String {
+    pub fn name(&self) -> &'static str {
         match self {
-            SimpleQuant::Root => String::from("root"),
+            SimpleQuant::Root => "root",
 
             SimpleQuant::Package(n)
             | SimpleQuant::Type(n)
             | SimpleQuant::Func(n)
             | SimpleQuant::Variant(n)
             | SimpleQuant::Field(n)
-            | SimpleQuant::Wildcard(n) => n.clone(),
+            | SimpleQuant::Wildcard(n) => n,
         }
     }
 
@@ -73,7 +73,7 @@ impl SimpleQuant {
              -> CompResult<Vec<SimpleQuant>> {
                 //dbg!(&q);
                 match &e.0 {
-                    Expr::FieldAccess(l, r) => {
+                    Expr::FieldAccess(ref l, r) => {
                         accum.push(Self::Wildcard(l.0.get_ident().unwrap()));
 
                         (cfa.f)(cfa, r, accum)
@@ -123,7 +123,7 @@ impl Quantifier {
     }
 
     #[must_use = "Quantifiers should be consumed for queries or generation"]
-    pub fn into_simple(&self) -> Vec<SimpleQuant> {
+    pub fn into_simple<'q>(&'q self) -> Vec<SimpleQuant> {
         let mut res = vec![];
         fn collapse(top: &Quantifier, result: &mut Vec<SimpleQuant>) {
             match top {
@@ -132,22 +132,22 @@ impl Quantifier {
                     collapse(q, result);
                 }
                 Quantifier::Package(n, q) => {
-                    result.push(SimpleQuant::Package(n.to_string()));
+                    result.push(SimpleQuant::Package(n.clone().leak()));
                     collapse(q, result);
                 }
                 Quantifier::Type(n, q) => {
-                    result.push(SimpleQuant::Type(n.to_string()));
+                    result.push(SimpleQuant::Type(n.clone().leak()));
                     collapse(q, result);
                 }
                 Quantifier::Func(n, q) => {
-                    result.push(SimpleQuant::Func(n.to_string()));
+                    result.push(SimpleQuant::Func(n.clone().leak()));
                     collapse(q, result);
                 }
                 Quantifier::Field(n) => {
-                    result.push(SimpleQuant::Field(n.to_string()));
+                    result.push(SimpleQuant::Field(n.clone().leak()));
                 }
                 Quantifier::Variant(n, q) => {
-                    result.push(SimpleQuant::Field(n.to_string()));
+                    result.push(SimpleQuant::Field(n.clone().leak()));
                     collapse(q, result);
                 }
                 Quantifier::End => {}
