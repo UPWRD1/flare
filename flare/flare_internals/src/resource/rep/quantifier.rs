@@ -1,22 +1,20 @@
-use std::rc::Rc;
-
 use super::super::errors::CompResult;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u8)]
-pub enum Quantifier {
-    Root(Rc<Self>),
-    Package(String, Rc<Self>),
-    Type(String, Rc<Self>),
-    Effect(String, Rc<Self>),
-    Func(String, Rc<Self>),
-    Variable(String),
-    Variant(String, Rc<Self>),
-    Field(String),
-    End,
-}
+// #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
+// #[repr(u8)]
+// pub enum Quantifier {
+//     Root(&'static Self),
+//     Package(&'static str, &'static Self),
+//     Type(&'static str, &'static Self),
+//     Effect(&'static str, &'static Self),
+//     Func(&'static str, &'static Self),
+//     Variable(&'static str),
+//     Variant(&'static str, &'static Self),
+//     Field(&'static str),
+//     End,
+// }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SimpleQuant {
@@ -91,114 +89,114 @@ impl SimpleQuant {
     }
 }
 
-impl Quantifier {
-    #[must_use]
-    pub fn append(&self, a: Self) -> Self {
-        match self {
-            Self::Root(quantifier) => Self::Root(Rc::new(quantifier.append(a))),
-            Self::Package(n, quantifier) => {
-                Self::Package(n.to_string(), Rc::new(quantifier.append(a)))
-            }
-            Self::Type(n, quantifier) => Self::Type(n.to_string(), Rc::new(quantifier.append(a))),
-            Self::Effect(n, quantifier) => Self::Type(n.to_string(), Rc::new(quantifier.append(a))),
-            Self::Func(n, quantifier) => Self::Func(n.to_string(), Rc::new(quantifier.append(a))),
-            Self::Variable(_) => todo!(),
-            Self::Variant(n, quantifier) => {
-                Self::Variant(n.to_string(), Rc::new(quantifier.append(a)))
-            }
-            Self::Field(_) => a,
+// impl Quantifier {
+//     #[must_use]
+//     pub fn append(&self, a: Self) -> &'static Self {
+//         match self {
+//             Self::Root(quantifier) => Box::leak(Box::new(Self::Root(quantifier.append(a)))),
+//             Self::Package(n, quantifier) => {
+//                 Box::leak(Box::new(Self::Package(n, quantifier.append(a))))
+//             }
+//             Self::Type(n, quantifier) => Box::leak(Box::new(Self::Type(n, quantifier.append(a)))),
+//             Self::Effect(n, quantifier) => Box::leak(Box::new(Self::Type(n, quantifier.append(a)))),
+//             Self::Func(n, quantifier) => Box::leak(Box::new(Self::Func(n, quantifier.append(a)))),
+//             Self::Variable(_) => todo!(),
+//             Self::Variant(n, quantifier) => {
+//                 Box::leak(Box::new(Self::Variant(n, quantifier.append(a))))
+//             }
+//             Self::Field(_) => Box::leak(Box::new(a)),
 
-            Self::End => a,
-        }
-    }
+//             Self::End => Box::leak(Box::new(a)),
+//         }
+//     }
 
-    #[must_use]
-    pub fn get_func_name(&self) -> Option<&String> {
-        match self {
-            Quantifier::Root(e) | Quantifier::Package(_, e) => e.get_func_name(),
-            Quantifier::Func(n, _) => Some(n),
-            Quantifier::End => None,
-            _ => panic!(),
-        }
-    }
+//     #[must_use]
+//     pub fn get_func_name(&self) -> Option<&'static str> {
+//         match self {
+//             Quantifier::Root(e) | Quantifier::Package(_, e) => e.get_func_name(),
+//             Quantifier::Func(n, _) => Some(n),
+//             Quantifier::End => None,
+//             _ => panic!(),
+//         }
+//     }
 
-    #[must_use = "Quantifiers should be consumed for queries or generation"]
-    pub fn into_simple(&self) -> Vec<SimpleQuant> {
-        let mut res = vec![];
-        fn collapse(top: &Quantifier, result: &mut Vec<SimpleQuant>) {
-            match top {
-                Quantifier::Root(q) => {
-                    //result.push(SimpleQuant::Root);
-                    collapse(q, result);
-                }
-                Quantifier::Package(n, q) => {
-                    result.push(SimpleQuant::Package(n.clone().leak()));
-                    collapse(q, result);
-                }
-                Quantifier::Type(n, q) => {
-                    result.push(SimpleQuant::Type(n.clone().leak()));
-                    collapse(q, result);
-                }
-                Quantifier::Func(n, q) => {
-                    result.push(SimpleQuant::Func(n.clone().leak()));
-                    collapse(q, result);
-                }
-                Quantifier::Field(n) => {
-                    result.push(SimpleQuant::Field(n.clone().leak()));
-                }
-                Quantifier::Variant(n, q) => {
-                    result.push(SimpleQuant::Field(n.clone().leak()));
-                    collapse(q, result);
-                }
-                Quantifier::End => {}
-                _ => todo!(),
-            }
-        }
-        collapse(self, &mut res);
-        //res.reverse();
-        res
+//     #[must_use = "Quantifiers should be consumed for queries or generation"]
+//     pub fn into_simple(self) -> Vec<SimpleQuant> {
+//         let mut res = vec![];
+//         fn collapse(top: Quantifier, result: &mut Vec<SimpleQuant>) {
+//             match top {
+//                 Quantifier::Root(q) => {
+//                     //result.push(SimpleQuant::Root);
+//                     collapse(*q, result);
+//                 }
+//                 Quantifier::Package(n, q) => {
+//                     result.push(SimpleQuant::Package(n));
+//                     collapse(*q, result);
+//                 }
+//                 Quantifier::Type(n, q) => {
+//                     result.push(SimpleQuant::Type(n));
+//                     collapse(*q, result);
+//                 }
+//                 Quantifier::Func(n, q) => {
+//                     result.push(SimpleQuant::Func(n));
+//                     collapse(*q, result);
+//                 }
+//                 Quantifier::Field(n) => {
+//                     result.push(SimpleQuant::Field(n));
+//                 }
+//                 Quantifier::Variant(n, q) => {
+//                     result.push(SimpleQuant::Field(n));
+//                     collapse(*q, result);
+//                 }
+//                 Quantifier::End => {}
+//                 _ => todo!(),
+//             }
+//         }
+//         collapse(self, &mut res);
+//         //res.reverse();
+//         res
 
-        // let mut h = DefaultHasher::new();
-        // self.hash(&mut h);
-        // h.finish().to_be_bytes().to_vec()
-    }
-}
+//         // let mut h = DefaultHasher::new();
+//         // self.hash(&mut h);
+//         // h.finish().to_be_bytes().to_vec()
+//     }
+// }
 
-#[macro_export]
-macro_rules! quantifier {
+// #[macro_export]
+// macro_rules! quantifier {
 
-    // Base case: just End
-    (End) => {
+//     // Base case: just End
+//     (End) => {
 
-        Quantifier::End
-    };
+//         Quantifier::End
+//     };
 
-    // Variable case (no children)
-    (Variable($name:expr)) => {
-        Quantifier::Variable($name)
-    };
+//     // Variable case (no children)
+//     (Variable($name:expr)) => {
+//         Quantifier::Variable($name)
+//     };
 
-    // Root with child
-    (Root, $($rest:tt)*) => {
-        Quantifier::Root(std::rc::Rc::new(quantifier!($($rest)*)))
-    };
+//     // Root with child
+//     (Root, $($rest:tt)*) => {
+//         Quantifier::Root(Box::leak(Box::new(quantifier!($($rest)*))))
+//     };
 
-    // Module with child
-    (Package($name:expr), $($rest:tt)*) => {
-        Quantifier::Package($name.to_string(), std::rc::Rc::new(quantifier!($($rest)*)))
-    };
+//     // Module with child
+//     (Package($name:expr), $($rest:tt)*) => {
+//         Quantifier::Package($name, Box::leak(Box::new(quantifier!($($rest)*))))
+//     };
 
-    // Type with child
-    (Type($name:expr), $($rest:tt)*) => {
-        Quantifier::Type($name.to_string(), std::rc::Rc::new(quantifier!($($rest)*)))
-    };
+//     // Type with child
+//     (Type($name:expr), $($rest:tt)*) => {
+//         Quantifier::Type($name, std::rc::Rc::new(quantifier!($($rest)*)))
+//     };
 
-    (Effect($name:expr), $($rest:tt)*) => {
-        Quantifier::Effect($name.to_string(), std::rc::Rc::new(quantifier!($($rest)*)))
-    };
+//     (Effect($name:expr), $($rest:tt)*) => {
+//         Quantifier::Effect($name, Box::leak(Box::new(quantifier!($($rest)*))))
+//     };
 
-    // Func with child
-    (Func($name:expr), $($rest:tt)*) => {
-        Quantifier::Func($name.to_string(), std::rc::Rc::new(quantifier!($($rest)*)))
-    };
-}
+//     // Func with child
+//     (Func($name:expr), $($rest:tt)*) => {
+//         Quantifier::Func($name, Box::leak(Box::new(quantifier!($($rest)*))))
+//     };
+// }

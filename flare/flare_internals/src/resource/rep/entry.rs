@@ -87,13 +87,13 @@ impl Item {
     }
 
     #[must_use]
-    pub fn get_ty(&self) -> Option<Spanned<Ty>> {
+    pub fn get_ty(&self) -> Option<&Spanned<Ty>> {
         match self {
-            Self::Let { sig, .. } => sig.get().cloned(),
-            Self::Struct(StructEntry { ty, .. }) => Some(*ty),
-            Self::Enum(EnumEntry { ty, .. }) => Some(*ty),
-            Self::Variant(v) => Some((Ty::Variant(v.0), v.1)),
-            Self::Field((_, ty)) => Some(*ty),
+            Self::Let { sig, .. } => sig.get(),
+            Self::Struct(StructEntry { ty, .. }) => Some(ty),
+            Self::Enum(EnumEntry { ty, .. }) => Some(ty),
+            Self::Variant(v) => Some(Box::leak(Box::new((Ty::Variant(v.0), v.1)))),
+            Self::Field((_, ty)) => Some(ty),
             _ => None,
         }
     }
