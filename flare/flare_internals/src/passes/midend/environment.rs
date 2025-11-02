@@ -19,7 +19,7 @@ use crate::resource::{
     rep::{
         ast::{Definition, EnumDef, Expr, Program, StructDef},
         entry::{EnumEntry, Item, PackageEntry, StructEntry},
-        quantifier::SimpleQuant,
+        quantifier::QualifierFragment,
         Spanned,
     },
 };
@@ -28,13 +28,13 @@ use crate::resource::{
 pub struct Environment {
     //pub items: Trie<SimpleQuant, Index>,
     //pub arena: Arena<Node>,
-    pub graph: DiGraph<Item, SimpleQuant>,
+    pub graph: DiGraph<Item, QualifierFragment>,
     //    pub cache: RefCell<HashMap<(SimpleQuant, SimpleQuant), NodeIndex>>,
     pub root: NodeIndex,
 }
 
 impl Environment {
-    fn add(&mut self, parent_node: NodeIndex, k: SimpleQuant, v: Item) -> NodeIndex {
+    fn add(&mut self, parent_node: NodeIndex, k: QualifierFragment, v: Item) -> NodeIndex {
         let ix = self.graph.add_node(v);
         self.graph.add_edge(parent_node, ix, k);
         ix
@@ -52,7 +52,7 @@ impl Environment {
             graph: g,
             root: current_node,
         };
-        let mut pack_imports: HashMap<SimpleQuant, Vec<Spanned<Expr>>> = HashMap::new();
+        let mut pack_imports: HashMap<QualifierFragment, Vec<Spanned<Expr>>> = HashMap::new();
 
         // Start building each package's contents
         for package in &p.packages {
@@ -68,7 +68,7 @@ impl Environment {
                 file: package.1,
                 src: package.2,
             });
-            let package_quant = SimpleQuant::Package(package_name);
+            let package_quant = QualifierFragment::Package(package_name);
 
             let p_id = me.add(current_node, package_quant.clone(), package_entry);
 
@@ -81,31 +81,32 @@ impl Environment {
                         deps.push(*import_item);
                     }
                     Definition::Struct(StructDef { the_ty, fields }) => {
-                        let ident = SimpleQuant::Type(the_ty.0.get_user_name().unwrap());
+                        let ident = QualifierFragment::Type(the_ty.0.get_user_name().unwrap());
 
                         let struct_entry = Item::Struct(StructEntry { ty: *the_ty });
 
                         let struct_node = me.add(current_node, ident, struct_entry);
                         for f in fields {
-                            let field_name = SimpleQuant::Field(f.0 .0.get_ident(f.0 .1).unwrap());
+                            let field_name =
+                                QualifierFragment::Field(f.0 .0.get_ident(f.0 .1).unwrap());
                             let field_entry = Item::Field(*f);
                             me.add(struct_node, field_name, field_entry);
                         }
                     }
                     Definition::Enum(EnumDef { the_ty, variants }) => {
-                        let ident = SimpleQuant::Type(the_ty.0.get_user_name().unwrap());
+                        let ident = QualifierFragment::Type(the_ty.0.get_user_name().unwrap());
                         //let the_ty = (Ty::User(name.clone(), vec![]), name.1);
                         let enum_entry = Item::Enum(EnumEntry { ty: *the_ty });
                         let enum_node = me.add(current_node, ident, enum_entry);
                         for v in variants {
                             let variant_name =
-                                SimpleQuant::Variant(v.0.name.0.get_ident(v.1).unwrap());
+                                QualifierFragment::Variant(v.0.name.0.get_ident(v.1).unwrap());
                             let variant_entry = Item::Variant(*v);
                             me.add(enum_node, variant_name, variant_entry);
                         }
                     }
                     Definition::Let(name, body, ty) => {
-                        let ident = SimpleQuant::Func(name.0.get_ident(name.1)?);
+                        let ident = QualifierFragment::Func(name.0.get_ident(name.1)?);
                         let cell = OnceCell::new();
                         if let Some(ty) = ty {
                             let _ = cell.set(*ty);
@@ -119,7 +120,7 @@ impl Environment {
                         me.add(current_node, ident, entry);
                     }
                     Definition::Extern(n, ty) => {
-                        let ident = SimpleQuant::Func(n.0.get_ident(n.1)?);
+                        let ident = QualifierFragment::Func(n.0.get_ident(n.1)?);
                         let entry = Item::Extern {
                             //parent: current_parent.clone(),
                             name: *n,
@@ -137,7 +138,7 @@ impl Environment {
             let package = me.get(&[name.clone()][..]).unwrap();
 
             for dep in deps {
-                let path = SimpleQuant::from_expr(dep);
+                let path = QualifierFragment::from_expr(dep);
                 let imports: Vec<NodeIndex> = if let Some(n) = me.get(&path?) {
                     if matches!(me.value(n).unwrap(), Item::Package(_)) {
                         me.graph
@@ -167,7 +168,11 @@ impl Environment {
     }
 
     #[must_use]
-    pub fn get_from_context(&self, q: &SimpleQuant, packctx: &SimpleQuant) -> Option<NodeIndex> {
+    pub fn get_from_context(
+        &self,
+        q: &QualifierFragment,
+        packctx: &QualifierFragment,
+    ) -> Option<NodeIndex> {
         let paths = self.search_for_edge(q)?;
         //dbg!(&paths);
         for path in &paths {
@@ -180,9 +185,9 @@ impl Environment {
     #[must_use]
     fn raw_get_node_and_children(
         &self,
-        q: &SimpleQuant,
-        packctx: &SimpleQuant,
-    ) -> Option<(NodeIndex, Vec<EdgeReference<'_, SimpleQuant>>)> {
+        q: &QualifierFragment,
+        packctx: &QualifierFragment,
+    ) -> Option<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {
         let parent = self.get_from_context(q, packctx)?;
         let children: Vec<_> = self
             .graph
@@ -194,9 +199,9 @@ impl Environment {
     #[must_use]
     pub fn get_node_and_children(
         &self,
-        q: &SimpleQuant,
-        packctx: &SimpleQuant,
-    ) -> Option<(&Item, Vec<(&SimpleQuant, &Item)>)> {
+        q: &QualifierFragment,
+        packctx: &QualifierFragment,
+    ) -> Option<(&Item, Vec<(&QualifierFragment, &Item)>)> {
         let (node, children) = self.raw_get_node_and_children(q, packctx)?;
         let node_w = self.value(node)?;
 
@@ -221,9 +226,9 @@ impl Environment {
     // #[allow(dead_code)]
     fn raw_get_children(
         &self,
-        q: &SimpleQuant,
-        packctx: &SimpleQuant,
-    ) -> Option<Vec<EdgeReference<'_, SimpleQuant>>> {
+        q: &QualifierFragment,
+        packctx: &QualifierFragment,
+    ) -> Option<Vec<EdgeReference<'_, QualifierFragment>>> {
         let parent = self.get_from_context(q, packctx)?;
         let children: Vec<_> = self
             .graph
@@ -236,9 +241,9 @@ impl Environment {
     /// Get the children of a node given the the node's quantifier and context to search in.
     pub fn get_children(
         &self,
-        q: &SimpleQuant,
-        packctx: &SimpleQuant,
-    ) -> Option<Vec<(&SimpleQuant, &Item)>> {
+        q: &QualifierFragment,
+        packctx: &QualifierFragment,
+    ) -> Option<Vec<(&QualifierFragment, &Item)>> {
         let children = self.raw_get_children(q, packctx)?;
 
         Some(
@@ -249,7 +254,7 @@ impl Environment {
         )
     }
 
-    pub fn get_node(&self, q: &SimpleQuant, packctx: &SimpleQuant) -> Option<&Item> {
+    pub fn get_node(&self, q: &QualifierFragment, packctx: &QualifierFragment) -> Option<&Item> {
         let node = self.get_from_context(q, packctx)?;
         let node_w = self.value(node)?;
 
@@ -258,17 +263,17 @@ impl Environment {
 
     fn get_all_targets_edge<'envi, 'k>(
         &'envi self,
-        k: &'k SimpleQuant,
+        k: &'k QualifierFragment,
     ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'k> {
         let edges = self.graph.edge_references().filter(|x| x.weight().is(k));
         edges.map(|x| x.target())
     }
 
     /// Optionally returns a vector of the possible paths to an item fragment.
-    fn search_for_edge(&self, k: &SimpleQuant) -> Option<Vec<Vec<SimpleQuant>>> {
+    fn search_for_edge(&self, k: &QualifierFragment) -> Option<Vec<Vec<QualifierFragment>>> {
         use petgraph::algo::*;
         use petgraph::prelude::*;
-        let mut paths: Vec<Vec<SimpleQuant>> = vec![];
+        let mut paths: Vec<Vec<QualifierFragment>> = vec![];
         let targets = self.get_all_targets_edge(k);
         for target in targets {
             let real_paths: Vec<Vec<NodeIndex>> =
@@ -295,21 +300,21 @@ impl Environment {
     }
 
     /// Gets an absolute path and verifies it
-    fn get<'graph>(&'graph self, q: &[SimpleQuant]) -> Option<NodeIndex> {
+    fn get<'graph>(&'graph self, q: &[QualifierFragment]) -> Option<NodeIndex> {
         //let _ = self.graph.edges(self.root).map(|x| dbg!(x));
         struct Rec<'s, 'graph, T> {
             f: &'s dyn Fn(
                 &Rec<'s, 'graph, T>,
                 &'graph T,
                 NodeIndex,
-                &[SimpleQuant],
+                &[QualifierFragment],
             ) -> Option<NodeIndex>,
         }
         let rec = Rec {
             f: &|rec: &Rec<'_, 'graph, _>,
                  graph_self: &'graph Self,
                  n: NodeIndex,
-                 q: &[SimpleQuant]|
+                 q: &[QualifierFragment]|
              -> Option<NodeIndex> {
                 //dbg!(&q);
                 match q {
@@ -331,7 +336,10 @@ impl Environment {
         // 'env: 'src,
     {
         let main_idx = self
-            .get_from_context(&SimpleQuant::Func("main"), &SimpleQuant::Package("Main"))
+            .get_from_context(
+                &QualifierFragment::Func("main"),
+                &QualifierFragment::Package("Main"),
+            )
             //.get(&quantifier!(Root, Package("Main"), Func("main"), End).into_simple())
             .unwrap();
         let main_item = self.value(main_idx).unwrap();
@@ -346,7 +354,7 @@ impl Environment {
             info!("{:?}", dot);
         }
 
-        self.check_item(main_item, &SimpleQuant::Package("Main"))?;
+        self.check_item(main_item, &QualifierFragment::Package("Main"))?;
         Ok(())
         //dbg!(&main);
     }
@@ -354,7 +362,7 @@ impl Environment {
     pub fn check_item<'env>(
         &self,
         item: &'env Item,
-        packctx: &SimpleQuant,
+        packctx: &QualifierFragment,
     ) -> CompResult<&'env Item>
 // where
         // 'src: 'env, // 'env: 'src, // 'env: 'src,
@@ -399,13 +407,13 @@ mod tests {
     use crate::{
         passes::midend::environment::Environment,
         // quantifier,
-        resource::rep::{entry::Item, quantifier::SimpleQuant},
+        resource::rep::{entry::Item, quantifier::QualifierFragment},
     };
 
     use petgraph::prelude::*;
 
     fn make_graph() -> Environment {
-        let mut graph: DiGraph<Item, SimpleQuant> = DiGraph::new();
+        let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
         let root = graph.add_node(Item::Root);
         let lib_foo = graph.add_node(Item::Dummy("libFoo"));
         let foo = graph.add_node(Item::Dummy("foo"));
@@ -415,12 +423,12 @@ mod tests {
         let bar_foo = graph.add_node(Item::Dummy("fooooo"));
 
         graph.extend_with_edges(&[
-            (root, lib_foo, SimpleQuant::Package("Foo")),
-            (lib_foo, foo, SimpleQuant::Func("foo")),
-            (root, lib_bar, SimpleQuant::Package("Bar")),
-            (lib_bar, bar, SimpleQuant::Type("Bar")),
-            (bar, baz, SimpleQuant::Field("f1")),
-            (lib_bar, bar_foo, SimpleQuant::Func("foo")),
+            (root, lib_foo, QualifierFragment::Package("Foo")),
+            (lib_foo, foo, QualifierFragment::Func("foo")),
+            (root, lib_bar, QualifierFragment::Package("Bar")),
+            (lib_bar, bar, QualifierFragment::Type("Bar")),
+            (bar, baz, QualifierFragment::Field("f1")),
+            (lib_bar, bar_foo, QualifierFragment::Func("foo")),
         ]);
 
         Environment { graph, root }
@@ -437,8 +445,14 @@ mod tests {
     #[test]
     fn get_node_exists() {
         let e = make_graph();
-        let search1 = e.get_node(&SimpleQuant::Func("foo"), &SimpleQuant::Package("Foo"));
-        let search2 = e.get_node(&SimpleQuant::Type("Bar"), &SimpleQuant::Package("Bar"));
+        let search1 = e.get_node(
+            &QualifierFragment::Func("foo"),
+            &QualifierFragment::Package("Foo"),
+        );
+        let search2 = e.get_node(
+            &QualifierFragment::Type("Bar"),
+            &QualifierFragment::Package("Bar"),
+        );
 
         assert!(search1.is_some());
         assert!(search2.is_some());
@@ -447,19 +461,28 @@ mod tests {
     #[test]
     fn get_node_dne() {
         let e = make_graph();
-        let found = e.get_node(&SimpleQuant::Func("Bar"), &SimpleQuant::Package("libFoo"));
+        let found = e.get_node(
+            &QualifierFragment::Func("Bar"),
+            &QualifierFragment::Package("libFoo"),
+        );
         assert!(found.is_none())
     }
 
     #[test]
     fn get_paths() {
         let e = make_graph();
-        let res = e.search_for_edge(&SimpleQuant::Func("foo"));
+        let res = e.search_for_edge(&QualifierFragment::Func("foo"));
         assert_eq!(
             res,
             Some(vec![
-                vec![SimpleQuant::Package("Foo"), SimpleQuant::Func("foo")],
-                vec![SimpleQuant::Package("Bar"), SimpleQuant::Func("foo")]
+                vec![
+                    QualifierFragment::Package("Foo"),
+                    QualifierFragment::Func("foo")
+                ],
+                vec![
+                    QualifierFragment::Package("Bar"),
+                    QualifierFragment::Func("foo")
+                ]
             ])
         );
     }

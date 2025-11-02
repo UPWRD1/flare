@@ -2,10 +2,10 @@ use std::{any::Any, fmt::Display, io::Cursor, ops::Deref};
 
 mod templates {
     use crate::resource::rep::ast::Expr;
-    use crate::resource::{errors::DynamicErr, rep::quantifier::SimpleQuant};
+    use crate::resource::{errors::DynamicErr, rep::quantifier::QualifierFragment};
     use crate::*;
     use chumsky::span::SimpleSpan;
-    pub fn not_defined(q: &SimpleQuant, s: &SimpleSpan<usize, u64>) -> CompilerErr {
+    pub fn not_defined(q: &QualifierFragment, s: &SimpleSpan<usize, u64>) -> CompilerErr {
         DynamicErr::new(format!("Could not find a definition for '{q}'"))
             .label((format!("'{q}' not found in scope"), *s))
             //.src(self.src.to_string())

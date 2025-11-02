@@ -6,7 +6,7 @@ use ordered_float::OrderedFloat;
 use crate::resource::errors::{CompResult, DynamicErr};
 
 use super::{
-    quantifier::SimpleQuant,
+    quantifier::QualifierFragment,
     types::{EnumVariant, Ty},
     Spanned,
 };
@@ -61,7 +61,7 @@ pub enum Expr {
     String(&'static str),
     Bool(bool),
 
-    ExternFunc(&'static [SimpleQuant]),
+    ExternFunc(&'static [QualifierFragment]),
 
     Unit,
     // Constructor(&'static Spanned<Self>, Vec<Spanned<Self>>),

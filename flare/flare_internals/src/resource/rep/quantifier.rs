@@ -2,22 +2,8 @@ use super::super::errors::CompResult;
 
 use serde::{Deserialize, Serialize};
 
-// #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy)]
-// #[repr(u8)]
-// pub enum Quantifier {
-//     Root(&'static Self),
-//     Package(&'static str, &'static Self),
-//     Type(&'static str, &'static Self),
-//     Effect(&'static str, &'static Self),
-//     Func(&'static str, &'static Self),
-//     Variable(&'static str),
-//     Variant(&'static str, &'static Self),
-//     Field(&'static str),
-//     End,
-// }
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SimpleQuant {
+pub enum QualifierFragment {
     Root,
     Package(&'static str),
     Type(&'static str),
@@ -27,7 +13,7 @@ pub enum SimpleQuant {
     Wildcard(&'static str),
 }
 
-impl std::fmt::Display for SimpleQuant {
+impl std::fmt::Display for QualifierFragment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Root => write!(f, "Root"),
@@ -42,17 +28,17 @@ impl std::fmt::Display for SimpleQuant {
 }
 use crate::resource::rep::{ast::Expr, Spanned};
 
-impl SimpleQuant {
+impl QualifierFragment {
     pub fn name(&self) -> &'static str {
         match self {
-            SimpleQuant::Root => "root",
+            QualifierFragment::Root => "root",
 
-            SimpleQuant::Package(n)
-            | SimpleQuant::Type(n)
-            | SimpleQuant::Func(n)
-            | SimpleQuant::Variant(n)
-            | SimpleQuant::Field(n)
-            | SimpleQuant::Wildcard(n) => n,
+            QualifierFragment::Package(n)
+            | QualifierFragment::Type(n)
+            | QualifierFragment::Func(n)
+            | QualifierFragment::Variant(n)
+            | QualifierFragment::Field(n)
+            | QualifierFragment::Wildcard(n) => n,
         }
     }
 
@@ -62,13 +48,17 @@ impl SimpleQuant {
 
     pub fn from_expr(expr: &Spanned<Expr>) -> CompResult<Vec<Self>> {
         struct CheckFieldAccess<'s> {
-            f: &'s dyn Fn(&Self, &Spanned<Expr>, Vec<SimpleQuant>) -> CompResult<Vec<SimpleQuant>>,
+            f: &'s dyn Fn(
+                &Self,
+                &Spanned<Expr>,
+                Vec<QualifierFragment>,
+            ) -> CompResult<Vec<QualifierFragment>>,
         }
         let cfa = CheckFieldAccess {
             f: &|cfa: &CheckFieldAccess<'_>,
                  e: &Spanned<Expr>,
-                 mut accum: Vec<SimpleQuant>|
-             -> CompResult<Vec<SimpleQuant>> {
+                 mut accum: Vec<QualifierFragment>|
+             -> CompResult<Vec<QualifierFragment>> {
                 //dbg!(&q);
                 match &e.0 {
                     Expr::FieldAccess(l, r) => {
@@ -88,115 +78,3 @@ impl SimpleQuant {
         (cfa.f)(&cfa, expr, vec![])
     }
 }
-
-// impl Quantifier {
-//     #[must_use]
-//     pub fn append(&self, a: Self) -> &'static Self {
-//         match self {
-//             Self::Root(quantifier) => Box::leak(Box::new(Self::Root(quantifier.append(a)))),
-//             Self::Package(n, quantifier) => {
-//                 Box::leak(Box::new(Self::Package(n, quantifier.append(a))))
-//             }
-//             Self::Type(n, quantifier) => Box::leak(Box::new(Self::Type(n, quantifier.append(a)))),
-//             Self::Effect(n, quantifier) => Box::leak(Box::new(Self::Type(n, quantifier.append(a)))),
-//             Self::Func(n, quantifier) => Box::leak(Box::new(Self::Func(n, quantifier.append(a)))),
-//             Self::Variable(_) => todo!(),
-//             Self::Variant(n, quantifier) => {
-//                 Box::leak(Box::new(Self::Variant(n, quantifier.append(a))))
-//             }
-//             Self::Field(_) => Box::leak(Box::new(a)),
-
-//             Self::End => Box::leak(Box::new(a)),
-//         }
-//     }
-
-//     #[must_use]
-//     pub fn get_func_name(&self) -> Option<&'static str> {
-//         match self {
-//             Quantifier::Root(e) | Quantifier::Package(_, e) => e.get_func_name(),
-//             Quantifier::Func(n, _) => Some(n),
-//             Quantifier::End => None,
-//             _ => panic!(),
-//         }
-//     }
-
-//     #[must_use = "Quantifiers should be consumed for queries or generation"]
-//     pub fn into_simple(self) -> Vec<SimpleQuant> {
-//         let mut res = vec![];
-//         fn collapse(top: Quantifier, result: &mut Vec<SimpleQuant>) {
-//             match top {
-//                 Quantifier::Root(q) => {
-//                     //result.push(SimpleQuant::Root);
-//                     collapse(*q, result);
-//                 }
-//                 Quantifier::Package(n, q) => {
-//                     result.push(SimpleQuant::Package(n));
-//                     collapse(*q, result);
-//                 }
-//                 Quantifier::Type(n, q) => {
-//                     result.push(SimpleQuant::Type(n));
-//                     collapse(*q, result);
-//                 }
-//                 Quantifier::Func(n, q) => {
-//                     result.push(SimpleQuant::Func(n));
-//                     collapse(*q, result);
-//                 }
-//                 Quantifier::Field(n) => {
-//                     result.push(SimpleQuant::Field(n));
-//                 }
-//                 Quantifier::Variant(n, q) => {
-//                     result.push(SimpleQuant::Field(n));
-//                     collapse(*q, result);
-//                 }
-//                 Quantifier::End => {}
-//                 _ => todo!(),
-//             }
-//         }
-//         collapse(self, &mut res);
-//         //res.reverse();
-//         res
-
-//         // let mut h = DefaultHasher::new();
-//         // self.hash(&mut h);
-//         // h.finish().to_be_bytes().to_vec()
-//     }
-// }
-
-// #[macro_export]
-// macro_rules! quantifier {
-
-//     // Base case: just End
-//     (End) => {
-
-//         Quantifier::End
-//     };
-
-//     // Variable case (no children)
-//     (Variable($name:expr)) => {
-//         Quantifier::Variable($name)
-//     };
-
-//     // Root with child
-//     (Root, $($rest:tt)*) => {
-//         Quantifier::Root(Box::leak(Box::new(quantifier!($($rest)*))))
-//     };
-
-//     // Module with child
-//     (Package($name:expr), $($rest:tt)*) => {
-//         Quantifier::Package($name, Box::leak(Box::new(quantifier!($($rest)*))))
-//     };
-
-//     // Type with child
-//     (Type($name:expr), $($rest:tt)*) => {
-//         Quantifier::Type($name, std::rc::Rc::new(quantifier!($($rest)*)))
-//     };
-
-//     (Effect($name:expr), $($rest:tt)*) => {
-//         Quantifier::Effect($name, Box::leak(Box::new(quantifier!($($rest)*))))
-//     };
-
-//     // Func with child
-//     (Func($name:expr), $($rest:tt)*) => {
-//         Quantifier::Func($name, Box::leak(Box::new(quantifier!($($rest)*))))
-//     };
-// }

@@ -11,7 +11,7 @@ use crate::{
             ast::Expr,
             entry::{Item, StructEntry},
             files::FileID,
-            quantifier::SimpleQuant,
+            quantifier::QualifierFragment,
             types::{EnumVariant, PrimitiveType, Ty},
             Spanned,
         },
@@ -106,7 +106,7 @@ pub struct Solver<'env> {
     master_env: &'env Environment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
     vars: Vec<(TyInfo, SimpleSpan<usize, FileID>)>,
     env: Vec<(Spanned<Expr>, TyVar)>,
-    package: &'env SimpleQuant,
+    package: &'env QualifierFragment,
     hasher: FxHasher,
     // phantom: PhantomData<&'env ()>,
     //current_parent: SimpleQuant,
@@ -116,7 +116,7 @@ impl<'env> Solver<'env> {
     #[must_use]
     pub fn new(
         master_env: &'env Environment,
-        package: &'env SimpleQuant, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
+        package: &'env QualifierFragment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
     ) -> Solver<'env> {
         Solver {
             //src,
@@ -132,7 +132,7 @@ impl<'env> Solver<'env> {
 
     fn search_masterenv(
         &self,
-        q: &SimpleQuant,
+        q: &QualifierFragment,
         s: &SimpleSpan<usize, u64>,
     ) -> CompResult<&'env Item> {
         //trace!("searching env for {q}");
@@ -428,12 +428,12 @@ impl<'env> Solver<'env> {
                 // if !matches!(info, TyInfo::Unknown) && !matches!(info, TyInfo::Generic(_))
                 // if let Ok(t) = self.solve(left_ty)
                 {
-                    let ident = SimpleQuant::Type(info.get_user_name().unwrap());
+                    let ident = QualifierFragment::Type(info.get_user_name().unwrap());
                     let fields = self
                         .master_env
                         .get_children(&ident, self.package)
                         .ok_or(errors::not_defined(&ident, &expr.1))?;
-                    let desired_field_q = SimpleQuant::Field(r.0.get_ident(r.1).unwrap());
+                    let desired_field_q = QualifierFragment::Field(r.0.get_ident(r.1).unwrap());
                     let f = fields.iter().find(|x| x.0.is(&desired_field_q)).unwrap();
                     //dbg!(&f);
                     let fty = self.convert_ty(&f.1.get_ty().unwrap().0);
@@ -476,7 +476,7 @@ impl<'env> Solver<'env> {
                     // if matches!(r.0, Expr::Number(_))
                     // Ok(info.get_tuple_index(r.get_num_literal()?).unwrap())
                 } else {
-                    let path = SimpleQuant::from_expr(expr)?;
+                    let path = QualifierFragment::from_expr(expr)?;
 
                     //dbg!(&path);
                     let [_heads @ .., second, last] = path.as_slice() else {
@@ -513,7 +513,7 @@ impl<'env> Solver<'env> {
                 Ok(out_ty)
             }
             Expr::FieldedConstructor(name, given_fields) => {
-                let ident = SimpleQuant::Type(name.0.get_ident(name.1).unwrap());
+                let ident = QualifierFragment::Type(name.0.get_ident(name.1).unwrap());
 
                 let (i, fields) = self
                     .master_env
@@ -588,7 +588,7 @@ impl<'env> Solver<'env> {
             Expr::Constructor(name, given_fields) => {
                 //let e = self.check_expr(name)?;
                 let ident = name.0.get_ident(name.1)?;
-                let quant = SimpleQuant::Type(ident);
+                let quant = QualifierFragment::Type(ident);
 
                 // Enum Variants
                 let (the_enum, variants) = self
@@ -597,7 +597,7 @@ impl<'env> Solver<'env> {
                     .ok_or(errors::not_defined(&quant, &name.1))?;
 
                 //dbg!(&variants);
-                let vname = SimpleQuant::from_expr(name)?;
+                let vname = QualifierFragment::from_expr(name)?;
                 let variant = vname.last().unwrap();
                 let item = variants
                     .into_iter()
@@ -653,7 +653,7 @@ impl<'env> Solver<'env> {
         expr: &Spanned<Expr>,
     ) -> Result<TyVar, crate::resource::errors::CompilerErr> {
         let name = expr.0.get_ident(expr.1)?;
-        if let Ok(e) = self.search_masterenv(&SimpleQuant::Func(name), &expr.1) {
+        if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name), &expr.1) {
             // BEAUTIFUL!
             let fty = if self
                 .master_env
@@ -685,7 +685,7 @@ impl<'env> Solver<'env> {
             } else {
                 unreachable!("Should be a function")
             }
-        } else if let Ok(e) = self.search_masterenv(&SimpleQuant::Type(name), &expr.1) {
+        } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name), &expr.1) {
             // BEAUTIFUL!
             let ty = self
                 .master_env
@@ -695,7 +695,10 @@ impl<'env> Solver<'env> {
             let info = self.convert_ty(&ty.0);
             Ok(self.create_ty(info, ty.1))
         } else {
-            Err(errors::not_defined(&SimpleQuant::Wildcard(name), &expr.1))
+            Err(errors::not_defined(
+                &QualifierFragment::Wildcard(name),
+                &expr.1,
+            ))
         }
 
         //e.get_sig()
@@ -737,7 +740,7 @@ impl<'env> Solver<'env> {
                 span,
             )),
             TyInfo::User(n, g) => {
-                let e = self.search_masterenv(&SimpleQuant::Type(n), &self.vars[var.0].1)?;
+                let e = self.search_masterenv(&QualifierFragment::Type(n), &self.vars[var.0].1)?;
                 let mut generics = vec![];
 
                 for gen in g {

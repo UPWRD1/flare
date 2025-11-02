@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use petgraph::graph::NodeIndex;
 
-use crate::resource::rep::{mir::VarId, quantifier::SimpleQuant};
+use crate::resource::rep::{mir::VarId, quantifier::QualifierFragment};
 #[allow(dead_code)]
 use crate::{passes::midend::environment::Environment, resource::rep::mir::ANF};
 
@@ -30,7 +30,7 @@ impl<'env> Transformer<'env> {
     pub fn transform(&mut self) -> ANF {
         let main = self
             .env
-            .get_from_context(&SimpleQuant::Func("main"), &SimpleQuant::Package("Main"));
+            .get_from_context(&QualifierFragment::Func("main"), &QualifierFragment::Package("Main"));
 
         todo!()
     }
