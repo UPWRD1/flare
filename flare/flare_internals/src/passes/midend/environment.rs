@@ -8,12 +8,17 @@ use petgraph::{
     graph::{DiGraph, NodeIndex},
     visit::EdgeRef,
 };
+use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 use std::cell::OnceCell;
-use std::collections::HashMap;
+// use std::collections::HashMap;
 use std::hash::RandomState;
 
 use crate::passes::midend::typechecking::Solver;
 
+use crate::resource::rep::ast::{ImplDef, Package};
+use crate::resource::rep::entry::FunctionItem;
+use crate::resource::rep::types::EnumVariant;
 use crate::resource::{
     errors::CompResult,
     rep::{
@@ -24,7 +29,7 @@ use crate::resource::{
     },
 };
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Environment {
     //pub items: Trie<SimpleQuant, Index>,
     //pub arena: Arena<Node>,
@@ -44,7 +49,7 @@ impl Environment {
         self.graph.node_weight(idx)
     }
 
-    pub fn build(p: &Program) -> CompResult<Environment> {
+    pub fn build(p: &Program) -> CompResult<Self> {
         let mut g = Graph::new();
         let mut current_node = g.add_node(Item::Root);
 
@@ -52,7 +57,8 @@ impl Environment {
             graph: g,
             root: current_node,
         };
-        let mut pack_imports: HashMap<QualifierFragment, Vec<Spanned<Expr>>> = HashMap::new();
+        let mut pack_imports: FxHashMap<QualifierFragment, Vec<Spanned<Expr>>> =
+            FxHashMap::default();
 
         // Start building each package's contents
         for package in &p.packages {
@@ -94,14 +100,22 @@ impl Environment {
                         }
                     }
                     Definition::Enum(EnumDef { the_ty, variants }) => {
-                        let ident = QualifierFragment::Type(the_ty.0.get_user_name().unwrap());
+                        let parent_name = the_ty.0.get_user_name().unwrap();
+                        let ident = QualifierFragment::Type(parent_name);
                         //let the_ty = (Ty::User(name.clone(), vec![]), name.1);
                         let enum_entry = Item::Enum(EnumEntry { ty: *the_ty });
                         let enum_node = me.add(current_node, ident, enum_entry);
                         for v in variants {
                             let variant_name =
                                 QualifierFragment::Variant(v.0.name.0.get_ident(v.1).unwrap());
-                            let variant_entry = Item::Variant(*v);
+                            let v = (
+                                EnumVariant {
+                                    parent_name: Some(parent_name),
+                                    ..v.0
+                                },
+                                v.1,
+                            );
+                            let variant_entry = Item::Variant(v);
                             me.add(enum_node, variant_name, variant_entry);
                         }
                     }
@@ -112,11 +126,11 @@ impl Environment {
                             let _ = cell.set(*ty);
                         }
                         let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
-                        let entry = Item::Let {
+                        let entry = Item::Function(FunctionItem {
                             name: *name,
                             sig: leak_cell,
                             body: *body,
-                        };
+                        });
                         me.add(current_node, ident, entry);
                     }
                     Definition::Extern(n, ty) => {
@@ -127,6 +141,24 @@ impl Environment {
                             sig: *ty,
                         };
                         me.add(current_node, ident, entry);
+                    }
+                    Definition::ImplDef(ImplDef { the_ty, methods }) => {
+                        let type_name = QualifierFragment::Type(the_ty.0.get_user_name().unwrap());
+                        // let type_node = me.get_from_context(&type_name, &package_quant).unwrap();
+                        let type_node = me.get(&[package_quant.clone(), type_name]).unwrap();
+                        // dbg!(me.value(type_node));
+                        for (method_name, method_body, method_ty) in methods {
+                            let method_qual =
+                                QualifierFragment::Method(method_name.0.get_ident(method_name.1)?);
+                            let cell = OnceCell::from(*method_ty);
+                            let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
+                            let the_method = Item::Function(FunctionItem {
+                                name: *method_name,
+                                sig: leak_cell,
+                                body: *method_body,
+                            });
+                            me.add(type_node, method_qual, the_method);
+                        }
                     }
                 }
             }
@@ -192,6 +224,21 @@ impl Environment {
         let children: Vec<_> = self
             .graph
             .edges_directed(parent, petgraph::Direction::Outgoing)
+            .collect();
+        Some((parent, children))
+    }
+
+    #[must_use]
+    pub fn raw_get_node_and_children_indexes(
+        &self,
+        q: &QualifierFragment,
+        packctx: &QualifierFragment,
+    ) -> Option<(NodeIndex, Vec<NodeIndex>)> {
+        let parent = self.get_from_context(q, packctx)?;
+        let children: Vec<_> = self
+            .graph
+            .edges_directed(parent, petgraph::Direction::Outgoing)
+            .map(|c| c.target())
             .collect();
         Some((parent, children))
     }
@@ -369,12 +416,12 @@ impl Environment {
     {
         //println!("Checking {:?}", entry);
         //match *entry.borrow_mut() {
-        if let Item::Let {
+        if let Item::Function(FunctionItem {
             ref name,
             ref mut sig,
             ref body,
             ..
-        } = if item.get_sig().is_none() {
+        }) = if item.get_sig().is_none() {
             *item
         } else {
             // Early Return

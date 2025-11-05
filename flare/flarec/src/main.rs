@@ -4,7 +4,7 @@
 use std::{env, io::Write, path::PathBuf};
 
 use flare_internals::{
-    Context, compile_program, convert_path_to_id,
+    Context, convert_path_to_id,
     resource::errors::{CompResult, ReportableError},
 };
 fn enable_loggin() {
@@ -34,7 +34,7 @@ fn main() -> CompResult<()> {
                 let id = convert_path_to_id(filename);
 
                 let mut ctx = Context::new(filename, id);
-                match compile_program(&mut ctx, id) {
+                match ctx.compile_program(id) {
                     //.inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
                     //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
                     Ok((_code, elapsed)) => {
@@ -57,15 +57,15 @@ fn main() -> CompResult<()> {
                 Ok(())
             }
             "--generate" | "-g" => {
-                use bnf::Grammar;
+                // use bnf::Grammar;
 
-                let input = include_str!("../../grammar.bnf");
-                let grammar: Grammar = input.parse().unwrap();
-                let sentence = grammar.generate();
-                match sentence {
-                    Ok(s) => println!("random sentence: {}", s),
-                    Err(e) => println!("something went wrong: {}!", e),
-                }
+                // let input = include_str!("../../grammar.bnf");
+                // let grammar: Grammar = input.parse().unwrap();
+                // let sentence = grammar.generate();
+                // match sentence {
+                //     Ok(s) => println!("random sentence: {}", s),
+                //     Err(e) => println!("something went wrong: {}!", e),
+                // }
                 Ok(())
             }
             &_ => todo!(),

@@ -1,0 +1,4 @@
+package Seq =
+	extern type Seq[?T]
+	extern let from_tuple : ?T -> Seq[?T]
+

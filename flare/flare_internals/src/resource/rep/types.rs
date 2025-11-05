@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use super::{ast::Expr, Spanned};
 use std::fmt;
 
 /// Represents a primitive type within `Ty`
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize)]
 pub enum PrimitiveType {
     Num,
     Str,
@@ -11,12 +13,14 @@ pub enum PrimitiveType {
 }
 
 /// Represents a type in the parser and master environment.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize)]
 pub enum Ty {
     Primitive(PrimitiveType),
     User(Spanned<Expr>, &'static [Spanned<Self>]),
     Tuple(&'static [Spanned<Self>]),
+    Seq(&'static Spanned<Self>),
     Arrow(&'static Spanned<Self>, &'static Spanned<Self>),
+    Myself,
     Generic(Spanned<Expr>),
     Variant(EnumVariant),
     Module(Spanned<Expr>),
@@ -28,8 +32,9 @@ pub enum Ty {
 //     Associated(Spanned<Expr>, Vec<Spanned<Ty>>),
 // }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize)]
 pub struct EnumVariant {
+    pub parent_name: Option<&'static str>,
     pub name: Spanned<Expr>,
     pub types: &'static [Spanned<Ty>],
 }
@@ -72,6 +77,13 @@ impl Ty {
         format!("{self}").leak()
     }
 
+    pub fn get_variant(&self) -> Option<EnumVariant> {
+        match self {
+            Self::Variant(v) => Some(*v),
+            _ => None,
+        }
+    }
+
     pub fn monomorph_user(self, g: &'static [Spanned<Ty>]) -> Self {
         match self {
             Self::User(name, _) => Self::User(name, g),
@@ -97,6 +109,9 @@ impl fmt::Display for Ty {
                 }
                 write!(f, "}}")
             }
+            Ty::Seq(t) => {
+                write!(f, "Seq {{{}}}", t.0)
+            }
 
             Ty::Arrow(l, r) => write!(f, "({} -> {})", l.0, r.0),
             Ty::Generic(n) => write!(f, "Generic({})", n.0.get_ident(n.1).unwrap_or("?")),
@@ -112,6 +127,9 @@ impl fmt::Display for Ty {
             }
             Ty::Module(n) => {
                 write!(f, "Module {n:?}")
+            }
+            Ty::Myself => {
+                write!(f, "self")
             }
         }
     }

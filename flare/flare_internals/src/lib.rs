@@ -1,13 +1,20 @@
 // #[warn(clippy::pedantic)]
+
+#[forbid(unused_unsafe, clippy::fallible_impl_from)]
 #[deny(
     clippy::perf,
     clippy::correctness,
     clippy::suspicious,
     clippy::complexity,
-    clippy::style
+    clippy::style,
+    clippy::branches_sharing_code,
+    clippy::use_self,
+    clippy::box_collection,
+    clippy::boxed_local,
+    clippy::redundant_allocation,
+    clippy::deref_by_slicing
 )]
-#[deny()]
-#[allow(clippy::derived_hash_with_manual_eq)]
+#[warn(clippy::large_stack_frames, clippy::panic, clippy::dbg_macro)]
 #[allow(clippy::type_complexity)]
 pub mod passes;
 pub mod resource;
@@ -55,17 +62,70 @@ impl Context {
             filectx: vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>(),
         }
     }
-}
 
-pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, &'static str)> {
-    let src_text = std::fs::read_to_string(ctx.filectx.get(&id).unwrap().filename).unwrap();
+    pub fn parse_file(&self, id: FileID) -> CompResult<(Package, &'static str)> {
+        let src_text = std::fs::read_to_string(self.filectx.get(&id).unwrap().filename).unwrap();
 
-    // Leak the string to get a 'static lifetime, then cast to 'src
-    let src_string: &'static str = Box::leak(src_text.into_boxed_str());
+        // Leak the string to get a 'static lifetime, then cast to 'src
+        let src_string: &'static str = Box::leak(src_text.into_boxed_str());
 
-    let res = parser::parse(src_string, id)?; //TODO: handle errors properly
+        let res = parser::parse(src_string, id)?; //TODO: handle errors properly
 
-    Ok((res, src_string))
+        Ok((res, src_string))
+    }
+
+    pub fn parse_program(&mut self, id: FileID) -> CompResult<Program> {
+        let src_path = self.filectx.get(&id).unwrap().filename;
+        let path = src_path.canonicalize().unwrap();
+        let parent_dir = path.parent().unwrap();
+        let dir_contents = std::fs::read_dir(parent_dir)?
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
+            .map(|x| {
+                let src_text = std::fs::read_to_string(src_path).unwrap();
+                // Leak the string to get a 'static lifetime, then cast to 'src
+                let src_text = Box::leak(src_text.into_boxed_str());
+
+                FileSource {
+                    filename: x.path().leak(),
+                    src_text,
+                }
+            })
+            .collect::<Vec<_>>();
+        let processed: Vec<Result<(Package, &Path, &str), CompilerErr>> = dir_contents
+            .iter()
+            .map(|entry| {
+                let converted_id = convert_path_to_id(entry.filename);
+                self.filectx.insert(converted_id, entry.clone());
+                let (pack, str) = self.parse_file(converted_id)?;
+                Ok((pack, entry.filename, str))
+            })
+            .collect();
+        let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
+        let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();
+        let errors: Vec<_> = errors.into_iter().map(Result::unwrap_err).collect();
+
+        if errors.is_empty() {
+            Ok(Program { packages: v })
+        } else {
+            Err(ErrorCollection::new(errors).into())
+        }
+    }
+
+    pub fn compile_program(&mut self, id: FileID) -> CompResult<((), Duration)> {
+        let now: Instant = Instant::now();
+
+        let program = self.parse_program(id)?;
+        // dbg!(&program);
+
+        let e = Environment::build(&program)?;
+        //dbg!(&e);
+        e.check()?;
+        //dbg!(&e);
+        let elapsed = now.elapsed();
+
+        Ok(((), elapsed))
+    }
 }
 
 pub fn convert_path_to_id(path: &Path) -> FileID {
@@ -73,59 +133,6 @@ pub fn convert_path_to_id(path: &Path) -> FileID {
     path.hash(&mut hasher);
     //path.canonicalize().unwrap().hash(&mut hasher);
     hasher.finish()
-}
-
-pub fn parse_program(ctx: &mut Context, id: FileID) -> CompResult<Program> {
-    let src_path = ctx.filectx.get(&id).unwrap().filename;
-    let path = src_path.canonicalize().unwrap();
-    let parent_dir = path.parent().unwrap();
-    let dir_contents = std::fs::read_dir(parent_dir)?
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
-        .map(|x| {
-            let src_text = std::fs::read_to_string(src_path).unwrap();
-            // Leak the string to get a 'static lifetime, then cast to 'src
-            let src_text = Box::leak(src_text.into_boxed_str());
-
-            FileSource {
-                filename: x.path().leak(),
-                src_text,
-            }
-        })
-        .collect::<Vec<_>>();
-    let processed: Vec<Result<(Package, &Path, &str), CompilerErr>> = dir_contents
-        .iter()
-        .map(|entry| {
-            let converted_id = convert_path_to_id(entry.filename);
-            ctx.filectx.insert(converted_id, entry.clone());
-            let (pack, str) = parse_file(ctx, converted_id)?;
-            Ok((pack, entry.filename, str))
-        })
-        .collect();
-    let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
-    let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();
-    let errors: Vec<_> = errors.into_iter().map(Result::unwrap_err).collect();
-
-    if errors.is_empty() {
-        Ok(Program { packages: v })
-    } else {
-        Err(ErrorCollection::new(errors).into())
-    }
-}
-
-pub fn compile_program(ctx: &mut Context, id: FileID) -> CompResult<((), Duration)> {
-    let now: Instant = Instant::now();
-
-    let program = parse_program(ctx, id)?;
-    //dbg!(program.clone());
-    //dbg!(program.clone());
-    let e = Environment::build(&program)?;
-    //dbg!(&e);
-    e.check()?;
-    //dbg!(&e);
-    let elapsed = now.elapsed();
-
-    Ok(((), elapsed))
 }
 
 // pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {

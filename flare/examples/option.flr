@@ -3,6 +3,12 @@ package Option =
         Some { ?T },
         None
 
+    # impl Option[?T] =
+    #     def do_something self x y : ?T -> ?T -> ?T =
+    #         match self
+    #             | Some {_} then x,
+    #             | None then y, 
+    
     let unwrap_or o fallback : Option[?T] -> ?T -> ?T =
         match o
             | Some {n} then n,
@@ -17,3 +23,5 @@ package Option =
         match x
             | Some {_} then true,
             | None then false,
+
+    

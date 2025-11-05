@@ -5,7 +5,7 @@ package Main =
     #use Opt.Option
     #use Opt.unwrap
     #use Opt.unwrap_or
-    use Option
+    #use Option
 
    # extern println: str -> unit
 
@@ -17,15 +17,18 @@ package Main =
     #    d: str,
     #    f: str -> num -> str
 
-    # let id x : ?T -> ?T =
-    let id x = 
+    let id x : ?T -> ?T =
+    # let id x = 
         x
-        
-    
+
+    # struct S =
+    #     f: num
+         
     let main =
-        let test = id(3) in
+        # let o = S {f = 3} in
+        let test = 2 in
          let a = {1, id("am"), "different"}  in
-             a.1
+             a.test
 
         # let b = Option.Some {{3, 4, 5}.3} in
            # (unwrap a) * (unwrap b)

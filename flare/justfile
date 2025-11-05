@@ -9,6 +9,9 @@ release:
 run:
     cargo run -p flarec  -- -c examples/ntest.flr
 
+compile path:
+    cargo run -p flarec -- -c {{path}}
+
 run-release:
     cargo run --release -p flarec -- -c examples/ntest.flr
 

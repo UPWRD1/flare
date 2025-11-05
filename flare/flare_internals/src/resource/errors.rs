@@ -41,7 +41,7 @@ pub struct CompilerErr(Box<dyn ReportableError>);
 use crate::{Context, FileID};
 
 impl Display for CompilerErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
@@ -136,7 +136,7 @@ impl From<std::io::Error> for CompilerErrKind {
 pub struct ErrorCollection(Vec<CompilerErr>);
 
 impl Display for ErrorCollection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for e in &self.0 {
             e.fmt(f)?;
         }
@@ -214,7 +214,7 @@ impl DynamicErr {
 }
 
 impl std::fmt::Display for DynamicErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Dynamic Error: {:?}", self)
     }
 }
@@ -247,7 +247,7 @@ pub struct GeneralErr {
 // }
 
 impl std::fmt::Display for GeneralErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut buf = Cursor::new(vec![]);
         let rep = Report::build(
             ReportKind::Error,

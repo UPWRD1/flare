@@ -8,18 +8,20 @@ pub enum QualifierFragment {
     Package(&'static str),
     Type(&'static str),
     Func(&'static str),
+    Method(&'static str),
     Variant(&'static str),
     Field(&'static str),
     Wildcard(&'static str),
 }
 
 impl std::fmt::Display for QualifierFragment {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Root => write!(f, "Root"),
             Self::Package(n) => write!(f, "Package {n}"),
             Self::Type(n) => write!(f, "Type {n}"),
             Self::Func(n) => write!(f, "Function {n}"),
+            Self::Method(n) => write!(f, "Method {n}"),
             Self::Field(n) => write!(f, "Field {n}"),
             Self::Variant(n) => write!(f, "Variant {n}"),
             Self::Wildcard(n) => write!(f, "{n}"),
@@ -31,14 +33,14 @@ use crate::resource::rep::{ast::Expr, Spanned};
 impl QualifierFragment {
     pub fn name(&self) -> &'static str {
         match self {
-            QualifierFragment::Root => "root",
-
-            QualifierFragment::Package(n)
-            | QualifierFragment::Type(n)
-            | QualifierFragment::Func(n)
-            | QualifierFragment::Variant(n)
-            | QualifierFragment::Field(n)
-            | QualifierFragment::Wildcard(n) => n,
+            Self::Root => "root",
+            Self::Package(n)
+            | Self::Type(n)
+            | Self::Func(n)
+            | Self::Method(n)
+            | Self::Variant(n)
+            | Self::Field(n)
+            | Self::Wildcard(n) => n,
         }
     }
 
