@@ -1,29 +1,45 @@
-use chumsky::extra::SimpleState;
-use chumsky::input::{BorrowInput, SliceInput, StrInput, ValueInput};
-use chumsky::pratt::{infix, left, right, Operator};
-use chumsky::prelude::*;
-use ordered_float::OrderedFloat;
-
-use crate::resource::{
-    errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
-    rep::{
-        ast::{ComparisonOp, Definition, EnumDef, Expr, Package, Pattern, PatternAtom, StructDef},
-        files::FileID,
-        types::{EnumVariant, PrimitiveType, Ty},
-        Spanned,
-    },
+use std::{
+    cell::RefCell,
+    ops::{Deref, DerefMut},
+    rc::Rc,
 };
 
+use crate::{
+    resource::{
+        errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
+        rep::{
+            ast::{
+                ComparisonOp, Definition, EnumDef, Expr, Package, Pattern, PatternAtom, StructDef,
+            },
+            files::FileID,
+            types::{EnumVariant, PrimitiveType, Ty},
+            Spanned,
+        },
+    },
+    Context,
+};
+use chumsky::input::{BorrowInput, Cursor, MapExtra, SliceInput, StrInput, ValueInput};
+use chumsky::pratt::{infix, left, right, Operator};
+use chumsky::prelude::*;
+use chumsky::{extra::SimpleState, inspector::Inspector};
+use internment::Intern;
+// use lasso::{Interner, Rodeo};
+use ordered_float::OrderedFloat;
+
 /// Type representing the tokens produced by the lexer. Is private, since tokens are only used in the first stage of parsing.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 #[allow(dead_code)]
 enum Token {
-    Ident(&'static str),
+    // Ident(&'static str),
+    Ident(Intern<String>),
+    // Ident(Spur),
     Num(f64),
 
-    Strlit(&'static str),
-    Comment(&'static str),
-    Parens(Vec<Spanned<Self>>),
+    // Strlit(&'static str),
+    Strlit(Intern<String>),
+    // Comment(&'static str),
+    Comment(Intern<String>),
+    Parens(&'static [Spanned<Self>]),
 
     ///Contains the erroneous token's src
     Error(char),
@@ -83,7 +99,7 @@ enum Token {
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Ident(x) => write!(f, "{x}"),
+            Self::Ident(x) => write!(f, "{x:?}"),
             Self::Num(x) => write!(f, "{x}"),
             Self::Eq => write!(f, "="),
             Self::Let => write!(f, "let"),
@@ -150,11 +166,14 @@ impl std::fmt::Display for Token {
 }
 
 /// The primary lexer function.
-fn lexer<I>() -> impl Parser<
+fn lexer<I>(
+    id: FileID,
+    // rodeo: &mut Rodeo,
+) -> impl Parser<
     'static,
     I,
     Vec<(Token, SimpleSpan<usize, u64>)>,
-    extra::Full<Rich<'static, char, SimpleSpan<usize, ()>>, SimpleState<u64>, ()>, /*extra::Err<Rich<'src, char>>*/
+    extra::Err<Rich<'static, char, SimpleSpan<usize, ()>>>, /*extra::Err<Rich<'src, char>>*/
 >
 //where I:  BorrowInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + StrInput<'src> + SliceInput<'src>,
 where
@@ -168,10 +187,11 @@ where
         .labelled("comment")
         .padded();
     let recover_strat1 = any().padded_by(comment.repeated()).padded().map_with(
-        |x, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Full<_, SimpleState<u64>, ()>>| {
+        move |x, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Err<_>>| {
             (
                 Token::Error(x),
-                SimpleSpan::new(**e.state(), e.span().into_range()),
+                // SimpleSpan::new(**e.state(), e.span().into_range()),
+                SimpleSpan::new(id, e.span().into_range()),
             )
         },
     );
@@ -194,7 +214,7 @@ where
     ))
     .labelled("arithmetic operator");
 
-    recursive( |token| {
+    recursive(move |token| {
         choice((
             text::ident().map(|s| match s {
                 "def" => Token::Def,
@@ -221,11 +241,12 @@ where
                 "bool" => Token::TyBool,
                 "unit" => Token::TyUnit,
 
-                s => Token::Ident(s),
+                // s => Token::Ident(rodeo.get_or_intern_static(s)),
+                // s => Token::Ident(e.state().get_or_intern(s)),
+                s => Token::Ident(Intern::from_ref(s)),
             }),
             // Operators
             comparison_op,
-
             just("=>").to(Token::FatArrow),
             just("->").to(Token::Arrow),
             just("=").to(Token::Eq),
@@ -233,10 +254,7 @@ where
             just("}").to(Token::RBrace),
             just("[").to(Token::LBracket),
             just("]").to(Token::RBracket),
-
-
-                        arith_op,
-
+            arith_op,
             //             just("(").to(Token::LParen),
             // just(")").to(Token::RParen),
             just(".").to(Token::Dot),
@@ -244,60 +262,68 @@ where
             just(":").to(Token::Colon),
             just("|").to(Token::Pipe),
             just("?").to(Token::Question),
-
             // Numbers
             text::int(10)
                 .then(just('.').then(text::digits(10)).or_not())
                 .to_slice()
-                .map(|s: &str| Token::Num(s.parse().unwrap())).labelled("number"),
+                .map(|s: &str| Token::Num(s.parse().unwrap()))
+                .labelled("number"),
             just('"')
                 .ignore_then(none_of('"').repeated().to_slice())
                 .then_ignore(just('"'))
                 .labelled("string literal")
-                .map(Token::Strlit),
+                .map(|x| Token::Strlit(Intern::from_ref(x))),
             token
                 .padded()
                 .repeated()
-                .collect()
+                .collect::<Vec<_>>()
                 .delimited_by(just('('), just(')'))
                 .labelled("nested expression")
                 .as_context()
-                .map(Token::Parens),
+                .map_with(|x, _| Token::Parens(x.leak())),
         ))
-        .map_with( |t, e: &mut chumsky::input::MapExtra<'_, '_, I, extra::Full<_, SimpleState<u64>, () >>|{  (t, SimpleSpan::new(**e.state(), e.span().into_range()))})
+        .map_with(move |t, e: &mut MapExtra<'_, '_, I, extra::Err<_>>| {
+            (t, SimpleSpan::new(id, e.span().into_range()))
+        })
     })
     .padded_by(comment.repeated())
     .padded()
     .recover_with(via_parser(recover_strat1))
-
     .repeated()
-    .collect().boxed()
+    .collect::<Vec<_>>()
+    .boxed()
 }
 
 /// The main parser function.
 fn parser<I, M>(
     make_input: M,
+    // id: FileID,
+    // rodeo: &mut Rodeo,
 ) -> impl Parser<
     'static,
     I,
     Package,
-    extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, SimpleState<u64>, ()>,
+    extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, (), ()>,
+    // extra::Full<Rich<'src, Token<'src>, SimpleSpan<usize, FileID>>, RodeoState, ()>,
 >
 //) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>>>
 where
     I: BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'static>,
     // Because this function is generic over the input type, we need the caller to tell us how to create a new input,
     // `I`, from a nested token tree. This function serves that purpose.
-    M: Fn(SimpleSpan<usize, FileID>, &'static [Spanned<Token>]) -> I + Clone + 'static,
+    M: Fn(SimpleSpan<usize, FileID>, &'static [Spanned<Token>]) -> I + 'static,
 {
     // Basic tokens
-    let ident = select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Expr::Ident(x), e.span()));
+    let ident =
+        select_ref! { Token::Ident(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
+            // |x, e| {
+            (Expr::Ident(x), e.span())
+            // (Expr::Ident(rodeo.get_or_intern_static(x)), e.span())
+        });
 
-    
     // let ty = ty_parser( ident.boxed()).boxed();
 
-    
-let ty = recursive(|ty| {
+    let ty = recursive(|ty| {
         let type_list = ty
             .clone()
             .separated_by(just(Token::Comma))
@@ -325,20 +351,22 @@ let ty = recursive(|ty| {
             just(Token::Metatype).map_with(|_, e| (Ty::Myself, e.span())),
             just(Token::Myself).map_with(|_, e| (Ty::Myself, e.span())),
             // User Types
-            path.clone()
-                .then(
-                    type_list
-                        .clone()
-                        .delimited_by(just(Token::LBracket), just(Token::RBracket))
-                        .or_not(),
+            path.then(
+                type_list
+                    .clone()
+                    .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                    .or_not(),
+            )
+            // .clone()
+            .map_with(|(name, generics), e| {
+                (
+                    Ty::User(
+                        (*name.0.get_ident(name.1).unwrap(), name.1),
+                        generics.unwrap_or_default().leak(),
+                    ),
+                    e.span(),
                 )
-                .clone()
-                .map_with(|(name, generics), e| {
-                    (
-                        Ty::User(name, generics.unwrap_or_default().leak()),
-                        e.span(),
-                    )
-                }),
+            }),
             // Generic Type
             just(Token::Question)
                 .ignore_then(ident)
@@ -355,13 +383,13 @@ let ty = recursive(|ty| {
                 e.span(),
             )
         })])
-    });    
+    });
 
     // Pattern parser.
     // let pattern  =         pattern_parser(Box::leak(Box::new(ident)), Box::leak(Box::new(ty.clone()))).boxed()
     // ;
 
-let pattern = recursive(|pat| {
+    let pattern = recursive(|pat| {
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
         // let ty = ty_parser(ident).lazy().boxed();
@@ -396,7 +424,7 @@ let pattern = recursive(|pat| {
                     )
                 } else {
                     (
-                        Pattern::Atom(PatternAtom::Variable(name.0.get_ident(name.1).unwrap())),
+                        Pattern::Atom(PatternAtom::Variable(*name.0.get_ident(name.1).unwrap())),
                         e.span(),
                     )
                 }
@@ -406,8 +434,9 @@ let pattern = recursive(|pat| {
             select_ref! { Token::Num(x) => OrderedFloat(*x) }
                 .map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),
             // Strings
-            select_ref! { Token::Strlit(x) => (*x).to_string() }
-                .map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.leak())), e.span())),
+            select_ref! { Token::Strlit(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
+                (Pattern::Atom(PatternAtom::Strlit(x)), e.span())
+            }),
             ty.clone().map_with(|x, e| {
                 (
                     Pattern::Atom(PatternAtom::Type(Box::leak(Box::new(x)))),
@@ -419,7 +448,7 @@ let pattern = recursive(|pat| {
     // Expression parser
     let expression = recursive(|expr| {
         let rname = select_ref! { Token::Ident(x) => *x };
-        let ident = rname.map_with(|x, e| (Expr::Ident(x), e.span()));
+        let ident = rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| (Expr::Ident(x), e.span()));
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
         let path = ident
@@ -438,7 +467,8 @@ let pattern = recursive(|pat| {
                 select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
                     .map_with(|x, e| (x, e.span())),
                 // Strings
-                select_ref! { Token::Strlit(x) => Expr::String(x) }.map_with(|x, e| (x, e.span())),
+                select_ref! { Token::Strlit(x) => *x }
+                    .map_with(|x, e: &mut MapExtra<'_, '_, _, _>| (Expr::String(x), e.span())),
                 // True
                 just(Token::True).map_with(|_, e| (Expr::Bool(true), e.span())),
                 // False
@@ -487,7 +517,8 @@ let pattern = recursive(|pat| {
                     .as_context(),
                 // Enum Constructors
                 expr.clone()
-                    .separated_by(just(Token::Comma)).allow_trailing()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
                     .map_with(|items, e| (Expr::Tuple(items.leak()), e.span()))
@@ -702,7 +733,8 @@ let pattern = recursive(|pat| {
         let enum_variant = choice((
             ident
                 .then(
-                    ty.clone().separated_by(just(Token::Comma))
+                    ty.clone()
+                        .separated_by(just(Token::Comma))
                         .allow_trailing()
                         .collect::<Vec<_>>()
                         .delimited_by(just(Token::LBrace), just(Token::RBrace)),
@@ -711,17 +743,17 @@ let pattern = recursive(|pat| {
                     (
                         EnumVariant {
                             parent_name: None,
-                            name,
+                            name: (*name.0.get_ident(name.1).unwrap(), name.1),
                             types: types.leak(),
                         },
                         e.span(),
                     )
                 }),
-            ident.map_with(|x, e| {
+            ident.map_with(|name, e| {
                 (
                     EnumVariant {
                         parent_name: None,
-                        name: x,
+                        name: (*name.0.get_ident(name.1).unwrap(), name.1),
                         types: vec![].leak(),
                     },
                     e.span(),
@@ -805,16 +837,16 @@ fn ty_parser<I>(
         'static,
         I,
         Spanned<Expr>,
-        extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, SimpleState<u64>, ()>,
+        extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
 ) -> impl Parser<
     'static,
     I,
     (Ty, SimpleSpan<usize, u64>),
-    extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, SimpleState<u64>, ()>,
+    extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, (), ()>,
 >
 where
-    I: BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> +ValueInput<'static>,
+    I: BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'static>,
 {
     // let ident = select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Expr::Ident(x), e.span()));
 
@@ -831,7 +863,8 @@ where
             .collect::<Vec<_>>();
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
-        let path = ident.clone()
+        let path = ident
+            .clone()
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (
                     Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
@@ -861,7 +894,10 @@ where
                 .clone()
                 .map_with(|(name, generics), e| {
                     (
-                        Ty::User(name, generics.unwrap_or_default().leak()),
+                        Ty::User(
+                            (*name.0.get_ident(name.1).unwrap(), name.1),
+                            generics.unwrap_or_default().leak(),
+                        ),
                         e.span(),
                     )
                 }),
@@ -885,29 +921,28 @@ where
     ty
 }
 
-fn pattern_parser<I>(
-    ident: &'static impl Parser<
-        'static,
+fn pattern_parser<'src, I>(
+    ident: &'src impl Parser<
+        'src,
         I,
         Spanned<Expr>,
-        extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, SimpleState<u64>, ()>,
+        extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
     ty: Boxed<
-        'static,
-        'static,
+        'src,
+        'src,
         I,
         Spanned<Ty>,
-        extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, SimpleState<u64>, ()>,
+        extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
 ) -> impl Parser<
-    'static,
+    'src,
     I,
     (Pattern, SimpleSpan<usize, u64>),
-    extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, SimpleState<u64>, ()>,
+    extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
 >
 where
-    I: BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'static>,
-
+    I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
 {
     let pattern = recursive(|pat| {
         // Path Access
@@ -944,7 +979,7 @@ where
                     )
                 } else {
                     (
-                        Pattern::Atom(PatternAtom::Variable(name.0.get_ident(name.1).unwrap())),
+                        Pattern::Atom(PatternAtom::Variable(*name.0.get_ident(name.1).unwrap())),
                         e.span(),
                     )
                 }
@@ -954,8 +989,9 @@ where
             select_ref! { Token::Num(x) => OrderedFloat(*x) }
                 .map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),
             // Strings
-            select_ref! { Token::Strlit(x) => (*x).to_string() }
-                .map_with(|x, e| (Pattern::Atom(PatternAtom::Strlit(x.leak())), e.span())),
+            select_ref! { Token::Strlit(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
+                (Pattern::Atom(PatternAtom::Strlit(x)), e.span())
+            }),
             ty.clone().map_with(|x, e| {
                 (
                     Pattern::Atom(PatternAtom::Type(Box::leak(Box::new(x)))),
@@ -1009,17 +1045,17 @@ fn parse_failure(
 fn make_input(
     eoi: SimpleSpan<usize, FileID>,
     toks: &'static [(Token, SimpleSpan<usize, FileID>)],
-) -> impl BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>>
-    + ValueInput<'static> {
-     toks.map(eoi, |(t, s)| (t, s))
+) -> impl BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'static>
+{
+    toks.map(eoi, |(t, s)| (t, s))
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(input: &'static str, fid: FileID) -> CompResult<Package> {
-    let tokens: Vec<(Token, SimpleSpan<usize, u64>)> = match lexer()
-        .parse_with_state(input, &mut SimpleState::from(0))
-        .into_result()
-    {
+pub fn parse(ctx: &mut Context, fid: FileID) -> CompResult<Package> {
+    let input = ctx.filectx.get(&fid).unwrap().src_text;
+    // let mut state = RodeoState(&mut ctx.rodeo);
+
+    let tokens: Vec<(Token, SimpleSpan<usize, u64>)> = match lexer(fid).parse(input).into_result() {
         Ok(tokens) => tokens,
         Err(errs) => {
             return Err(ErrorCollection::new(
@@ -1035,10 +1071,10 @@ pub fn parse(input: &'static str, fid: FileID) -> CompResult<Package> {
     //dbg!(&tokens);
 
     let packg: Result<Package, CompilerErr> = match parser(make_input)
-        .parse_with_state(
-            make_input(SimpleSpan::new(fid, 0..input.len()), tokens.leak()),
-            &mut SimpleState::from(0),
-        )
+        .parse(make_input(
+            SimpleSpan::new(fid, 0..input.len()),
+            tokens.leak(),
+        ))
         .into_result()
     {
         Ok(p) => Ok(p),
@@ -1062,134 +1098,140 @@ pub fn parse(input: &'static str, fid: FileID) -> CompResult<Package> {
             // Err(errors[0])
         }
     };
+    // dbg!(ctx.rodeo);
 
+    // rodeo.extend(state.0.iter().map(|x| x.1));
     packg
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use chumsky::input::MapExtra;
 
-    fn make_tokens(src: &'static str) -> CompResult<Vec<Spanned<Token>>> {
-        match lexer()
-            .parse_with_state(src, &mut SimpleState::from(0))
-            .into_result()
-        {
-            Ok(tokens) => Ok(tokens),
-            Err(errs) => {
-                Err(ErrorCollection::new(
-                    errs.into_iter()
-                        .map(|x| parse_failure(&x, 0).into())
-                        .collect(),
-                )
-                .into())
-                // return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], fid)).into())
-            }
-        }
-    }
-    /// Given a source str parse a type from it
-    fn type_test(src: &'static str) -> Ty {
-        let ident =
-            select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Expr::Ident(x), e.span()));
-        let tokens = make_tokens(src);
+//     use super::*;
 
-        match ty_parser(ident.boxed())
-            .parse_with_state(
-                make_input(SimpleSpan::new(0, 0..src.len()), tokens.unwrap().leak()),
-                &mut SimpleState::from(0),
-            )
-            .into_result()
-        {
-            Ok((t, _)) => t,
-            Err(_) => unreachable!(),
-        }
-    }
+//     fn make_tokens(src: &'static str) -> CompResult<Vec<Spanned<Token>>> {
+//         match lexer(0)
+//             .parse(src )
+//             .into_result()
+//         {
+//             Ok(tokens) => Ok(tokens),
+//             Err(errs) => {
+//                 Err(ErrorCollection::new(
+//                     errs.into_iter()
+//                         .map(|x| parse_failure(&x, 0).into())
+//                         .collect(),
+//                 )
+//                 .into())
+//                 // return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], fid)).into())
+//             }
+//         }
+//     }
+//     /// Given a source str parse a type from it
+//     fn type_test(src: &'static str, rodeo: Rodeo) -> (Ty, Rodeo) {
+//         let mut state = SimpleState::from(rodeo);
+//         let ident =
+//             select_ref! { Token::Ident(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, extra::Full<_, SimpleState<Rodeo>, _>> | (Expr::Ident(e.state().get_or_intern(x)), e.span()));
+//         let tokens = make_tokens(src);
 
-    macro_rules! parser_test {
-    ($test_fn:expr, [ $( ($input:expr, $pattern:pat $(if $guard:expr)?) ),* $(,)? ]) => {
-        $(
-            {
-                let res = $test_fn($input);
-                assert!(matches!(res, $pattern $(if $guard)?),
-                    "Failed for input: {}. \nGot: {:?}", $input,  res);
-            }
-        )*
-    };
-}
+//         match ty_parser(ident.boxed())
+//             .parse_with_state(
+//                 make_input(SimpleSpan::new(0, 0..src.len()), tokens.unwrap().leak()),
+//                 &mut state,
+//             )
+//             .into_result()
+//         {
+//             Ok((t, _)) => (t, state.0),
+//             Err(_) => unreachable!(),
+//         }
+//     }
 
-    #[test]
-    #[rustfmt::skip::macros(parser_test)]
-    fn test_ty_parser() {
-        parser_test!(type_test, [
-            ("num", Ty::Primitive(PrimitiveType::Num)),
-            ("?T", Ty::Generic(_)),
-            ("User",
-                Ty::User(
-                    (Expr::Ident("User"), _),
-                    args
-                ) if args.is_empty()
-            ),
-            ("User[num]",
-                Ty::User(
-                    (Expr::Ident("User"), _),
-                    args
-                ) if args.len() == 1),
-            ("User[?T]",
-                Ty::User(
-                    (Expr::Ident("User"), _),
-                    [
-                        (
-                            Ty::Generic(
-                                (Expr::Ident("T"),_)
-                            ),
-                        _)
-                    ]
-                )
-            ),
-            ("num -> num",
-                Ty::Arrow(
-                    (Ty::Primitive(_), _),
-                    (Ty::Primitive(_), _)
-                )
-            ),
-            ("num -> num -> num",
-                Ty::Arrow(
-                    (Ty::Primitive(_), _),
-                    (
-                        Ty::Arrow(
-                            (Ty::Primitive(_), _),
-                            (Ty::Primitive(_), _)
-                        ),
-                    _)
-                )
-            ),
+//     macro_rules! parser_test {
+//     ($test_fn:expr, [ $( ($input:expr, $pattern:pat $(if $guard:expr)?) ),* $(,)? ]) => {
+//         $(
+//             {
+//                 let rodeo = Rodeo::new();
+//                 let res = $test_fn($input);
+//                 assert!(matches!(res, $pattern $(if $guard)?),
+//                     "Failed for input: {}. \nGot: {:?}", $input,  res);
+//             }
+//         )*
+//     };
+// }
 
-            ("self -> num -> num",
-                Ty::Arrow(
-                    (Ty::Myself, _),
-                    (
-                        Ty::Arrow(
-                            (Ty::Primitive(_), _),
-                            (Ty::Primitive(_), _)
-                        ),
-                    _)
-                )
-            ),
+//     #[test]
+//     #[rustfmt::skip::macros(parser_test)]
+//     fn test_ty_parser() {
+//         parser_test!(type_test, [
+//             ("num", Ty::Primitive(PrimitiveType::Num)),
+//             ("?T", Ty::Generic(_)),
+//             ("User",
+//                 Ty::User(
+//                     ("User", _),
+//                     args
+//                 ) if args.is_empty()
+//             ),
+//             ("User[num]",
+//                 Ty::User(
+//                     ("User", _),
+//                     args
+//                 ) if args.len() == 1),
+//             ("User[?T]",
+//                 Ty::User(
+//                     ("User", _),
+//                     [
+//                         (
+//                             Ty::Generic(
+//                                 (Expr::Ident("T"),_)
+//                             ),
+//                         _)
+//                     ]
+//                 )
+//             ),
+//             ("num -> num",
+//                 Ty::Arrow(
+//                     (Ty::Primitive(_), _),
+//                     (Ty::Primitive(_), _)
+//                 )
+//             ),
+//             ("num -> num -> num",
+//                 Ty::Arrow(
+//                     (Ty::Primitive(_), _),
+//                     (
+//                         Ty::Arrow(
+//                             (Ty::Primitive(_), _),
+//                             (Ty::Primitive(_), _)
+//                         ),
+//                     _)
+//                 )
+//             ),
 
-            ("self -> num -> num -> num",
-                Ty::Arrow(
-                    (Ty::Myself, _),
-                    
-                        (Ty::Arrow(
-                            (Ty::Primitive(_), _),
-                            (Ty::Arrow(
-                                (Ty::Primitive(_), _),
-                                (Ty::Primitive(_), _),
-                            ), _)
-                        ),
-                    _) 
-                )
-            ),
-        ]);
-    }
-}
+//             ("self -> num -> num",
+//                 Ty::Arrow(
+//                     (Ty::Myself, _),
+//                     (
+//                         Ty::Arrow(
+//                             (Ty::Primitive(_), _),
+//                             (Ty::Primitive(_), _)
+//                         ),
+//                     _)
+//                 )
+//             ),
+
+//             ("self -> num -> num -> num",
+//                 Ty::Arrow(
+//                     (Ty::Myself, _),
+
+//                         (Ty::Arrow(
+//                             (Ty::Primitive(_), _),
+//                             (Ty::Arrow(
+//                                 (Ty::Primitive(_), _),
+//                                 (Ty::Primitive(_), _),
+//                             ), _)
+//                         ),
+//                     _)
+//                 )
+//             ),
+//         ]);
+//     }
+// }

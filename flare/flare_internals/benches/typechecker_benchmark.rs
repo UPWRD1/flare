@@ -2,9 +2,10 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use flare_internals::resource::rep::ast::Package;
+use flare_internals::passes::midend::typechecking::Solver;
 use flare_internals::*;
 use flare_internals::{passes::midend::environment::Environment, resource::rep::ast::Program};
+use internment::Intern;
 
 static TEST_FILE: LazyLock<&'static Path> = LazyLock::new(|| {
     let relative_path = PathBuf::from("benches/bench_code/bench1.flr");
@@ -15,51 +16,34 @@ static TEST_FILE: LazyLock<&'static Path> = LazyLock::new(|| {
 
 pub fn typechecking_bench(c: &mut Criterion) {
     //let path: &'static Path = PathBuf::from(TEST_FILE).read_dir().canonicalize().unwrap().leak();
-    let parent_dir = TEST_FILE.parent().unwrap();
-
-    let dir_contents = std::fs::read_dir(parent_dir)
-        .unwrap()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
-        .collect::<Vec<_>>();
-
     let id: u64 = 0;
-    let ctx = Context::new(*TEST_FILE, id);
+    let mut ctx = Context::new(*TEST_FILE, id);
 
-    let processed = dir_contents.iter().map(|entry| {
-        let file_path: &'static Path = entry.path().leak();
-        let (pack, str) = ctx.parse_file(id).unwrap();
-        (pack, file_path, str)
-    });
+    let pack = ctx.parse_file(id).unwrap();
+    let processed = vec![(pack, id)];
     let program = Program {
-        packages: processed.collect::<Vec<_>>(),
+        packages: processed,
     };
 
     //dbg!(program.clone());
     //dbg!(program.clone());
+
+    let main = Intern::from_ref("Main");
     let e = Environment::build(&program).unwrap();
-    c.bench_function("type_check", |b| b.iter(|| black_box(e.check())));
+    let mut tc = Solver::new(
+        &e,
+        resource::rep::quantifier::QualifierFragment::Package(main),
+    );
+    c.bench_function("type_check", |b| b.iter(|| black_box(tc.check())));
     //c.bench_function("fib 20", |b| b.iter(|| flare::passes::midend::typechecking::(black_box(20))));
 }
 
 pub fn env_build_bench(c: &mut Criterion) {
-    let parent_dir = TEST_FILE.parent().unwrap();
-    let dir_contents = std::fs::read_dir(parent_dir)
-        .unwrap()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
-        .collect::<Vec<_>>();
     let id: u64 = 0;
-    let ctx = Context::new(*TEST_FILE, id);
+    let mut ctx = Context::new(*TEST_FILE, id);
 
-    let processed: Vec<(Package, &Path, &str)> = dir_contents
-        .iter()
-        .map(|entry| {
-            let file_path: &'static Path = entry.path().leak();
-            let (pack, str): (_, &'static str) = ctx.parse_file(id).unwrap();
-            (pack, file_path, str)
-        })
-        .collect();
+    let pack = ctx.parse_file(id).unwrap();
+    let processed = vec![(pack, id)];
     let program = Program {
         packages: processed,
     };

@@ -1,6 +1,8 @@
 use std::{cell::OnceCell, path::Path};
 
-use serde::{Deserialize, Serialize};
+use internment::Intern;
+// use lasso::Spur;
+use serde::Serialize;
 
 use super::{
     ast::Expr,
@@ -11,12 +13,11 @@ use super::{
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 pub struct PackageEntry {
     pub name: Spanned<Expr>,
-
-    pub file: &'static Path,
+    // pub file: &'static Path,
     //    pub deps: Vec<Spanned<Expr>>,
 
     //contains: Vec<Index>, // Consider using pure index-based referencing instead of the Trie
-    pub src: &'static str,
+    // pub src: &'static str,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
@@ -33,7 +34,7 @@ pub struct EnumEntry {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
-// #[serde(from = "FunctionItemRepr")]
+#[serde(from = "FunctionItemRepr")]
 #[serde(into = "FunctionItemRepr")]
 pub struct FunctionItem {
     pub name: Spanned<Expr>,
@@ -73,7 +74,7 @@ impl From<FunctionItem> for FunctionItemRepr {
 // #[serde(bound(deserialize = "'static: 'de"))]
 pub enum Item {
     Root,
-    Filename(&'static str),
+    Filename(Intern<String>),
     Package(PackageEntry),
     Struct(StructEntry),
     Enum(EnumEntry),
@@ -105,32 +106,43 @@ impl Item {
         }
     }
 
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> &Intern<String> {
         match self {
             Item::Root => todo!(),
-            Item::Filename(s) => s,
+            // Item::Filename(s) => s,
             Item::Package(PackageEntry { name, .. }) => name.0.get_ident(name.1).unwrap(),
-            Item::Struct(StructEntry { ty, .. }) => ty.0.get_user_name().unwrap(),
-            Item::Enum(EnumEntry { ty, .. }) => ty.0.get_user_name().unwrap(),
-            Item::Variant((EnumVariant { name, .. }, _)) => name.0.get_ident(name.1).unwrap(),
-            Item::Field((name, ..)) => name.0.get_ident(name.1).unwrap(),
-            Item::Function(FunctionItem { name, .. }) => name.0.get_ident(name.1).unwrap(),
-            Item::Extern { name, .. } => name.0.get_ident(name.1).unwrap(),
+            Item::Struct(StructEntry { ty, .. }) => ty.0.get_user_name().as_ref().unwrap(),
+            Item::Enum(EnumEntry { ty, .. }) => ty.0.get_user_name().as_ref().unwrap(),
+            // Item::Variant((EnumVariant { name, .. }, _)) => &name.0,
+            Item::Field((name, ..)) => name.0.get_ident(name.1).as_ref().unwrap(),
+            Item::Function(FunctionItem { name, .. }) => name.0.get_ident(name.1).as_ref().unwrap(),
+            Item::Extern { name, .. } => name.0.get_ident(name.1).as_ref().unwrap(),
             _ => panic!(),
         }
     }
 
+    // #[must_use]
+    // pub fn get_file(&self) -> Option<&Path> {
+    //     match self {
+    //         Item::Package(PackageEntry { file, .. }) => Some(file),
+    //         _ => None,
+    //     }
+    // }
+
     #[must_use]
-    pub fn get_file(&self) -> Option<&Path> {
+    pub fn get_ty(self) -> Option<Spanned<Ty>> {
         match self {
-            Item::Package(PackageEntry { file, .. }) => Some(file),
+            Self::Function(FunctionItem { sig, .. }) => sig.get().copied(),
+            Self::Struct(StructEntry { ty, .. }) => Some(ty),
+            Self::Enum(EnumEntry { ty, .. }) => Some(ty),
+            Self::Variant((v, s)) => Some((Ty::Variant(v), s)),
+            Self::Field((_, ty)) => Some(ty),
             _ => None,
         }
     }
 
-    #[must_use]
-    pub fn get_ty(&self) -> Option<&Spanned<Ty>> {
-        match self {
+    pub fn get_ty_ref(&self) -> Option<&Spanned<Ty>> {
+        match &self {
             Self::Function(FunctionItem { sig, .. }) => sig.get(),
             Self::Struct(StructEntry { ty, .. }) => Some(ty),
             Self::Enum(EnumEntry { ty, .. }) => Some(ty),

@@ -30,7 +30,7 @@ use rustc_hash::{FxHashMap, FxHasher};
 use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
-        midend::environment::Environment,
+        midend::{environment::Environment, typechecking::Solver},
         parser,
     },
     resource::{
@@ -43,7 +43,7 @@ use crate::{
 };
 
 //use crate::root::resource::tk::{Tk, Token};
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Context {
     pub filectx: FxHashMap<FileID, FileSource<'static>>,
 }
@@ -63,22 +63,41 @@ impl Context {
         }
     }
 
-    pub fn parse_file(&self, id: FileID) -> CompResult<(Package, &'static str)> {
-        let src_text = std::fs::read_to_string(self.filectx.get(&id).unwrap().filename).unwrap();
+    // pub fn to_static(self) -> Context {
+    //     Context {
+    //         filectx: self
+    //             .filectx
+    //             .into_iter()
+    //             .map(|(k, v)| {
+    //                 let k: (u64, FileSource<'static>) = (
+    //                     k,
+    //                     FileSource {
+    //                         filename: v.filename.to_path_buf().leak(),
+    //                         src_text: v.src_text.to_string().leak(),
+    //                     },
+    //                 );
+    //                 k
+    //             })
+    //             .collect(),
+    //     }
+    // }
+
+    pub fn parse_file(&mut self, id: FileID) -> CompResult<Package> {
+        // let src_text = std::fs::read_to_string(self.filectx.get(&id).unwrap().filename).unwrap();
 
         // Leak the string to get a 'static lifetime, then cast to 'src
-        let src_string: &'static str = Box::leak(src_text.into_boxed_str());
+        // let src_string: &'static str = Box::leak(src_text.into_boxed_str());
 
-        let res = parser::parse(src_string, id)?; //TODO: handle errors properly
+        let res = parser::parse(self, id)?; //TODO: handle errors properly
 
-        Ok((res, src_string))
+        Ok(res)
     }
 
     pub fn parse_program(&mut self, id: FileID) -> CompResult<Program> {
         let src_path = self.filectx.get(&id).unwrap().filename;
         let path = src_path.canonicalize().unwrap();
         let parent_dir = path.parent().unwrap();
-        let dir_contents = std::fs::read_dir(parent_dir)?
+        let dir_contents: Vec<FileSource<'static>> = std::fs::read_dir(parent_dir)?
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
             .map(|x| {
@@ -92,15 +111,24 @@ impl Context {
                 }
             })
             .collect::<Vec<_>>();
-        let processed: Vec<Result<(Package, &Path, &str), CompilerErr>> = dir_contents
-            .iter()
-            .map(|entry| {
-                let converted_id = convert_path_to_id(entry.filename);
-                self.filectx.insert(converted_id, entry.clone());
-                let (pack, str) = self.parse_file(converted_id)?;
-                Ok((pack, entry.filename, str))
-            })
-            .collect();
+        let mut processed: Vec<Result<(Package, FileID), CompilerErr>> = vec![];
+        // dir_contents
+        //     .iter()
+        //     .map(|entry: &FileSource<'src>| {
+        //         let converted_id = convert_path_to_id(entry.filename);
+        //         self.filectx.insert(converted_id, entry.clone());
+        //         let (pack, str): (Package<'src>, &str) = self.parse_file(converted_id)?;
+        //         Ok((pack, entry.filename, str))
+        //     })
+        //     .collect();
+        for entry in dir_contents {
+            let converted_id = convert_path_to_id(entry.filename);
+            self.filectx.insert(converted_id, entry.clone());
+            let pack = self.parse_file(converted_id)?;
+            processed.push(Ok((pack, converted_id)))
+        }
+        // dbg!(&processed);
+
         let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
         let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();
         let errors: Vec<_> = errors.into_iter().map(Result::unwrap_err).collect();
@@ -114,13 +142,13 @@ impl Context {
 
     pub fn compile_program(&mut self, id: FileID) -> CompResult<((), Duration)> {
         let now: Instant = Instant::now();
-
         let program = self.parse_program(id)?;
         // dbg!(&program);
 
         let e = Environment::build(&program)?;
         //dbg!(&e);
-        e.check()?;
+        let mut s = Solver::new(&e, resource::rep::quantifier::QualifierFragment::Root);
+        s.check()?;
         //dbg!(&e);
         let elapsed = now.elapsed();
 

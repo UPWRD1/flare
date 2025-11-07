@@ -1,8 +1,12 @@
 use std::hash::{Hash, Hasher};
 
-use chumsky::span::SimpleSpan;
-use itertools::Itertools;
+use chumsky::span::{SimpleSpan, Span};
+use internment::Intern;
 use ordered_float::{Float, OrderedFloat};
+use petgraph::{
+    dot::Config,
+    graph::{EdgeReference, NodeIndex},
+};
 use rustc_hash::FxHasher;
 
 use crate::{
@@ -20,13 +24,15 @@ use crate::{
     },
 };
 
-use log::trace;
+use log::{info, trace};
 
 pub use checkable_types::{TyInfo, TyVar};
 mod checkable_types {
 
     use std::{fmt, hash::Hash};
 
+    use internment::Intern;
+    // use lasso::Spur;
     use ordered_float::OrderedFloat;
     #[derive(Copy, Clone, Debug, PartialEq, Hash)]
     pub struct TyVar(pub usize);
@@ -41,8 +47,8 @@ mod checkable_types {
     pub enum TyInfo {
         Unknown,
         Ref(TyVar),
-        User(&'static str, &'static [TyVar]),
-        Variant(TyVar, &'static str),
+        User(Intern<String>, &'static [TyVar]),
+        Variant(TyVar, Intern<String>),
         Unit,
         Num(OrderedFloat<f64>),
         Bool,
@@ -50,34 +56,34 @@ mod checkable_types {
         Func(TyVar, TyVar),
         Tuple(&'static [TyVar]),
         Seq(&'static TyVar),
-        Generic(&'static str),
+        Generic(Intern<String>),
     }
 
-    impl fmt::Display for TyInfo {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            match self {
-                Self::Unknown => write!(f, "Unknown"),
-                Self::Ref(n) => write!(f, "{n}"),
-                Self::User(n, g) => write!(f, "{n}{g:?}"),
-                Self::Num(_) => write!(f, "num"),
-                Self::Bool => write!(f, "bool"),
-                Self::Func(l, r) => write!(f, "({l} -> {r})"),
-                Self::Variant(l, r) => write!(f, "({l}.{r})"),
+    // impl fmt::Display for TyInfo<'_> {
+    //     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    //         match self {
+    //             Self::Unknown => write!(f, "Unknown"),
+    //             Self::Ref(n) => write!(f, "{n}"),
+    //             Self::User(n, g) => write!(f, "{n}{g:?}"),
+    //             Self::Num(_) => write!(f, "num"),
+    //             Self::Bool => write!(f, "bool"),
+    //             Self::Func(l, r) => write!(f, "({l} -> {r})"),
+    //             Self::Variant(l, r) => write!(f, "({l}.{r})"),
 
-                Self::Unit => write!(f, "unit"),
-                Self::String => write!(f, "str"),
-                Self::Tuple(t) => write!(f, "{{{t:?}}}"),
-                Self::Seq(t) => write!(f, "Seq {t:?}"),
-                Self::Generic(n) => write!(f, "?{n}"),
-            }
-        }
-    }
+    //             Self::Unit => write!(f, "unit"),
+    //             Self::String => write!(f, "str"),
+    //             Self::Tuple(t) => write!(f, "{{{t:?}}}"),
+    //             Self::Seq(t) => write!(f, "Seq {t:?}"),
+    //             Self::Generic(n) => write!(f, "?{n}"),
+    //         }
+    //     }
+    // }
 
     impl TyInfo {
-        pub fn get_user_name(&self) -> Option<&'static str> {
+        pub fn get_user_name(&self) -> Option<Intern<String>> {
             match self {
-                Self::User(n, _) => Some(n),
-                Self::Generic(n) => Some(n),
+                Self::User(n, _) => Some(*n),
+                Self::Generic(n) => Some(*n),
                 _ => None,
             }
         }
@@ -130,78 +136,21 @@ mod checkable_types {
     }
 }
 
-pub struct Solver<'env> {
-    //src: &'src str,
-    master_env: &'env Environment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
+#[derive(Debug, Clone)]
+struct SolverEnv {
     vars: Vec<(TyInfo, SimpleSpan<usize, FileID>)>,
     env: Vec<(Spanned<Expr>, TyVar)>,
-    package: &'env QualifierFragment,
-    hasher: FxHasher,
+    package: QualifierFragment,
 }
 
-impl<'env> Solver<'env> {
-    #[must_use]
-    pub fn new(
-        master_env: &'env Environment,
-        package: &'env QualifierFragment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
-    ) -> Self {
-        Solver {
-            //src,
-            package,
-            //current_parent: SimpleQuant::Root,
-            master_env,
-            vars: vec![],
-            env: vec![],
-            hasher: FxHasher::default(),
-            // phantom: PhantomData,
-        }
+impl SolverEnv {
+    fn env_push(&mut self, expr: Spanned<Expr>, var: TyVar) {
+        self.env.push((expr, var))
     }
 
-    fn search_masterenv(
-        &self,
-        q: &QualifierFragment,
-        s: &SimpleSpan<usize, u64>,
-    ) -> CompResult<&'env Item> {
-        //trace!("searching env for {q}");
-        let search = self.master_env.get_from_context(q, self.package);
-        if let Some(i) = search {
-            Ok(self.master_env.graph.node_weight(i).unwrap())
-        } else {
-            Err(errors::not_defined(q, s))
-        }
-    }
-
-    fn create_ty(&mut self, info: TyInfo, span: SimpleSpan<usize, FileID>) -> TyVar {
-        let info = match info {
-            TyInfo::Generic(n) => {
-                if let Some((i, _v)) = self
-                    .vars
-                    .iter()
-                    .enumerate()
-                    .find(|(_i, x)| x.0.get_user_name() == Some(n))
-                {
-                    TyInfo::Ref(TyVar(i))
-                    // v.0
-                } else {
-                    info
-                }
-            }
-            _ => info,
-        };
-        self.vars.push((info, span));
-        let v = TyVar(self.vars.len() - 1);
-        trace!("{} = {}", v, self.render_ty(self.vars[v.0].0));
-        v
-    }
-
-    fn new_anon_generic(&mut self, span: SimpleSpan<usize, FileID>) -> TyVar {
-        let hasher = &mut self.hasher;
-        self.vars.hash(hasher);
-        self.create_ty(
-            TyInfo::Generic(format!("{}", self.hasher.finish()).leak()),
-            span,
-        )
-    }
+    // fn env_pop(&mut self) {
+    //     self.env.pop();
+    // }
 
     fn convert_ty(&mut self, t: &Ty) -> CompResult<TyInfo> {
         match t {
@@ -228,21 +177,18 @@ impl<'env> Solver<'env> {
                     generics.push(lty)
                 }
 
-                Ok(TyInfo::User(
-                    n.0.get_ident(n.1).unwrap_or("?"),
-                    generics.leak(),
-                ))
+                Ok(TyInfo::User(n.0, generics.leak()))
             }
 
             //Ty::Variant(v) => TyInfo::User(v.get_name().leak()),
             Ty::Generic(n) => {
                 if let Some(v) = self.vars.iter().find(|x| {
                     let x = x.0.get_user_name();
-                    x.is_some() && x == Some(n.0.get_ident(n.1).unwrap())
+                    x.is_some() && x == Some(*n.0.get_ident(n.1).unwrap())
                 }) {
                     Ok(v.0)
                 } else {
-                    Ok(TyInfo::Generic(n.0.get_ident(n.1)?))
+                    Ok(TyInfo::Generic(*n.0.get_ident(n.1)?))
                 }
                 //let unknown = self.create_ty(TyInfo::Unknown, n.1);
                 //TyInfo::Unknown
@@ -261,72 +207,91 @@ impl<'env> Solver<'env> {
                     .find(|x| x.0.get_user_name() == *parent_name)
                     .unwrap();
                 let parent_var = self.create_ty(parent.0, parent.1);
-                Ok(TyInfo::Variant(parent_var, name.0.get_ident(name.1)?))
+                Ok(TyInfo::Variant(parent_var, name.0))
             }
 
             _ => todo!("{:?}", t),
         }
     }
 
-    fn convert_ty_with_generics(&mut self, t: &Ty, g: Vec<TyVar>) -> TyInfo {
-        match t {
-            Ty::User(ref n, ..) => TyInfo::User(n.0.get_ident(n.1).unwrap_or("?"), g.leak()),
-            _ => todo!("{:?}", t),
-        }
-    }
+    // fn convert_ty_with_generics(&mut self, t: &Ty, g: Vec<TyVar>) -> TyInfo {
+    //     match t {
+    //         Ty::User(ref n, ..) => TyInfo::User(n.0, g.leak()),
+    //         _ => todo!("{:?}", t),
+    //     }
+    // }
 
-    fn render_ty(&self, t: TyInfo) -> String {
-        match t {
-            TyInfo::Unknown => "Unknown".to_string(),
-            TyInfo::User(n, g) => {
-                let accum: String = if !g.is_empty() {
-                    g.iter()
-                        .map(|x| self.render_ty(self.vars[x.0].0))
-                        .collect::<Vec<String>>()
-                        .join(", ")
+    fn create_ty(&mut self, info: TyInfo, span: SimpleSpan<usize, FileID>) -> TyVar {
+        let info = match info {
+            TyInfo::Generic(n) => {
+                if let Some((i, _v)) = self
+                    .vars
+                    .iter()
+                    .enumerate()
+                    .find(|(_i, x)| x.0.get_user_name() == Some(n))
+                {
+                    TyInfo::Ref(TyVar(i))
+                    // v.0
                 } else {
-                    String::default()
-                };
-                format!("{n}[{accum}]")
+                    info
+                }
             }
-            TyInfo::Func(l, r) => {
-                format!(
-                    "({} -> {})",
-                    self.render_ty(self.vars[l.0].0),
-                    self.render_ty(self.vars[r.0].0)
-                )
-            }
-            TyInfo::Ref(t) => format!("{t}:{}", self.render_ty(self.vars[t.0].0)),
-            TyInfo::Generic(n) => format!("?{n}"),
-            TyInfo::Tuple(t) => {
-                format!(
-                    "{{{}}}",
-                    t.iter()
-                        .map(|x| self.render_ty(self.vars[x.0].0))
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                )
-                // c let mut accum = String::new;
+            _ => info,
+        };
+        self.vars.push((info, span));
 
-                // for v in t.iter() {
+        // trace!("{} = {}", v, self.render_ty(self.local.vars[v.0].0));
+        TyVar(self.vars.len() - 1)
+    }
+}
 
-                // }
-            }
-            _ => format!("{}", t),
+pub struct Solver<'env> {
+    //src: &'src str,
+    // master_env: &'env mut Environment<'src>, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
+    master_env: &'env Environment,
+    // vars: Vec<(TyInfo<'src>, SimpleSpan<usize, FileID>)>,
+    // env: Vec<(Spanned<Expr<'src>>, TyVar)>,
+    local: SolverEnv,
+    // package: QualifierFragment,
+    hasher: FxHasher,
+    // phantom: PhantomData<&'env ()>,
+}
+
+impl<'env> Solver<'env> {
+    #[must_use]
+    pub fn new(
+        master_env: &'env Environment,
+        package: QualifierFragment, /*Trie<SimpleQuant, Rc<RefCell<Entry>>>*/
+    ) -> Self {
+        let local: SolverEnv = SolverEnv {
+            vars: vec![],
+            env: vec![],
+            package,
+        };
+        Solver {
+            master_env,
+            local,
+            hasher: FxHasher::default(),
         }
     }
 
-    fn unify(&mut self, a: TyVar, b: TyVar, span: SimpleSpan<usize, FileID>) -> CompResult<TyInfo> {
+    fn unify(
+        &mut self,
+        a: TyVar,
+        b: TyVar,
+        span: SimpleSpan<usize, FileID>,
+        // local: &mut SolverEnv<'src>,
+    ) -> CompResult<TyInfo> {
         use TyInfo::{Bool, Func, Generic, Num, Ref, String, Unit, Unknown, User};
         //trace!("Unify {a} {b}");
-        let (a_info, b_info) = (self.vars[a.0].0, self.vars[b.0].0);
+        let (a_info, b_info) = (self.local.vars[a.0].0, self.local.vars[b.0].0);
         match (a_info, b_info) {
             (Unknown, _) => {
-                self.vars[a.0].0 = Ref(b);
+                self.local.vars[a.0].0 = Ref(b);
                 Ok(Ref(b))
             }
             (_, Unknown) => {
-                self.vars[b.0].0 = Ref(a);
+                self.local.vars[b.0].0 = Ref(a);
                 Ok(Ref(a))
             }
 
@@ -353,7 +318,7 @@ impl<'env> Solver<'env> {
             }
             (_, Generic(_)) => {
                 //dbg!(a, t);
-                self.vars[b.0].0 = Ref(a);
+                self.local.vars[b.0].0 = Ref(a);
                 Ok(Ref(a))
                 //Ok(Ref(a))
             }
@@ -368,8 +333,8 @@ impl<'env> Solver<'env> {
                     DynamicErr::new(format!("Type mismatch between {a_info} and {b_info}"))
                         .label((format!("expected '{b_info}' here, found '{a_info}'"), span))
                         .extra_labels(vec![
-                            (format!("this is {a_info}"), self.vars[a.0].1),
-                            (format!("this is {b_info}"), self.vars[b.0].1),
+                            (format!("this is {a_info}"), self.local.vars[a.0].1),
+                            (format!("this is {b_info}"), self.local.vars[b.0].1),
                         ])
                         .into(),
                 )
@@ -386,25 +351,105 @@ impl<'env> Solver<'env> {
         .inspect_err(|_| trace!("!! Could not unify {a} {b}"))
     }
 
+    fn render_ty(&self, t: TyInfo) -> String {
+        match t {
+            TyInfo::Unknown => "Unknown".to_string(),
+            TyInfo::User(n, g) => {
+                let accum: String = if !g.is_empty() {
+                    g.iter()
+                        .map(|x| self.render_ty(self.local.vars[x.0].0))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                } else {
+                    String::default()
+                };
+                format!("{}[{accum}]", &n)
+            }
+            TyInfo::Func(l, r) => {
+                format!(
+                    "({} -> {})",
+                    self.render_ty(self.local.vars[l.0].0),
+                    self.render_ty(self.local.vars[r.0].0)
+                )
+            }
+            TyInfo::Ref(t) => format!("{t}:{}", self.render_ty(self.local.vars[t.0].0)),
+            TyInfo::Generic(n) => format!("?{}", &n),
+            TyInfo::Tuple(t) => {
+                format!(
+                    "{{{}}}",
+                    t.iter()
+                        .map(|x| self.render_ty(self.local.vars[x.0].0))
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                )
+                // c let mut accum = String::new;
+
+                // for v in t.iter() {
+
+                // }
+            }
+            TyInfo::Variant(ty_var, n) => {
+                format!("{}.{}", self.render_ty(self.local.vars[ty_var.0].0), &n)
+            }
+            TyInfo::Unit => "Unit".to_string(),
+            TyInfo::Num(ordered_float) => format!("num{ordered_float}"),
+            TyInfo::Bool => "Bool".to_string(),
+            TyInfo::String => "str".to_string(),
+            TyInfo::Seq(ty_var) => format!("Seq[{}]", self.render_ty(self.local.vars[ty_var.0].0)),
+        }
+    }
+    fn search_masterenv(
+        &mut self,
+        q: &QualifierFragment,
+        s: &SimpleSpan<usize, u64>,
+    ) -> CompResult<&'env Item> {
+        //trace!("searching env for {q}");
+        let search = self.master_env.get_from_context(q, &self.local.package);
+        if let Some(i) = search {
+            Ok(self.master_env.value(i).unwrap())
+        } else {
+            Err(errors::not_defined(q, s))
+        }
+    }
+
+    fn new_anon_generic(
+        &mut self,
+        span: SimpleSpan<usize, FileID>,
+        // locl: &mut SolverEnv<'src>,
+    ) -> TyVar {
+        self.local.vars.hash(&mut self.hasher);
+        let name = Intern::from_ref(format!("{}", self.hasher.finish()).leak());
+        self.local.create_ty(TyInfo::Generic(name), span)
+    }
+
+    fn convert_ty_with_generics(&self, t: &Ty, g: Vec<TyVar>) -> TyInfo {
+        match t {
+            Ty::User(ref n, ..) => TyInfo::User(n.0, g.leak()),
+            _ => todo!("{:?}", t),
+        }
+    }
+
     pub fn check_expr(
         &mut self,
         expr: &Spanned<Expr>,
+        // local: &'env mut SolverEnv<'src>,
         //env: &mut Vec<(Expr, TyVar)>,
     ) -> CompResult<TyVar> {
         //dbg!(&self.current_parent);
         //trace!("checking {:?}\n", expr.0);
         match &expr.0 {
-            Expr::Unit => Ok(self.create_ty(TyInfo::Unit, expr.1)),
-            Expr::Number(n) => Ok(self.create_ty(TyInfo::Num(*n), expr.1)),
-            Expr::String(_) => Ok(self.create_ty(TyInfo::String, expr.1)),
-            Expr::Bool(_) => Ok(self.create_ty(TyInfo::Bool, expr.1)),
+            Expr::Unit => Ok(self.local.create_ty(TyInfo::Unit, expr.1)),
+            Expr::Number(n) => Ok(self.local.create_ty(TyInfo::Num(*n), expr.1)),
+            Expr::String(_) => Ok(self.local.create_ty(TyInfo::String, expr.1)),
+            Expr::Bool(_) => Ok(self.local.create_ty(TyInfo::Bool, expr.1)),
             Expr::Ident(name) => {
                 //dbg!(&self.env);
                 if let Some((_e, tv)) = self
+                    .local
                     .env
                     .iter()
                     .rev()
-                    .find(|(n, _)| n.0.get_ident(n.1).unwrap() == *name)
+                    .find(|(n, _)| *n.0.get_ident(n.1).unwrap() == *name)
                 {
                     Ok(*tv)
                 } else {
@@ -413,31 +458,33 @@ impl<'env> Solver<'env> {
             }
             Expr::Let(lhs, rhs, then) => {
                 let rhs_ty = self.check_expr(rhs)?;
-                self.env.push((**lhs, rhs_ty));
+                self.local.env_push(**lhs, rhs_ty);
                 let out_ty = self.check_expr(then)?;
-                self.env.pop();
+                self.local.env.pop();
                 Ok(out_ty)
             }
             Expr::Lambda(arg, body) => {
                 let arg_ty = self.new_anon_generic(arg.1);
-                self.env.push((**arg, arg_ty));
+                self.local.env_push(**arg, arg_ty);
                 let body_ty = self.check_expr(body)?;
-                self.env.pop();
-                Ok(self.create_ty(TyInfo::Func(arg_ty, body_ty), expr.1))
+                self.local.env.pop();
+                Ok(self.local.create_ty(TyInfo::Func(arg_ty, body_ty), expr.1))
             }
             Expr::Call(func, arg) => {
                 let func_ty = self.check_expr(func)?;
                 let arg_ty = self.check_expr(arg)?;
-                let out_ty = self.create_ty(TyInfo::Unknown, expr.1);
-                let func_req_ty = self.create_ty(TyInfo::Func(arg_ty, out_ty), func.1);
+                let out_ty = self.local.create_ty(TyInfo::Unknown, expr.1);
+                let func_req_ty = self.local.create_ty(TyInfo::Func(arg_ty, out_ty), func.1);
 
                 let t = self.unify(func_req_ty, func_ty, arg.1)?;
-                self.create_ty(t, expr.1);
+                self.local.create_ty(t, expr.1);
                 //self.current_parent = backup_parent;
                 Ok(out_ty)
             }
             Expr::Add(l, r) | Expr::Mul(l, r) | Expr::Sub(l, r) | Expr::Div(l, r) => {
-                let out_ty = self.create_ty(TyInfo::Num(OrderedFloat::nan()), expr.1);
+                let out_ty = self
+                    .local
+                    .create_ty(TyInfo::Num(OrderedFloat::nan()), expr.1);
 
                 // let curry = self.create_ty(TyInfo::Func(out_ty, out_ty), r.1);
                 // let implicit_func = self.create_ty(TyInfo::Func(out_ty, curry), l.1);
@@ -449,7 +496,7 @@ impl<'env> Solver<'env> {
                 Ok(out_ty)
             }
             Expr::Comparison(l, _op, r) => {
-                let out_ty = self.create_ty(TyInfo::Bool, expr.1);
+                let out_ty = self.local.create_ty(TyInfo::Bool, expr.1);
                 let l_ty = self.check_expr(l)?;
                 let r_ty = self.check_expr(r)?;
                 self.unify(l_ty, r_ty, expr.1)?;
@@ -457,7 +504,7 @@ impl<'env> Solver<'env> {
             }
 
             Expr::If(cond, then, otherwise) => {
-                let out_ty = self.create_ty(TyInfo::Bool, cond.1);
+                let out_ty = self.local.create_ty(TyInfo::Bool, cond.1);
                 let cond_ty = self.check_expr(cond)?;
                 self.unify(cond_ty, out_ty, cond.1)?;
                 let then_ty = self.check_expr(then)?;
@@ -468,7 +515,7 @@ impl<'env> Solver<'env> {
             }
             Expr::FieldAccess(l, r) => {
                 let left_ty = self.check_expr(l)?;
-                let (info, span) = self.vars[left_ty.0];
+                let (info, span) = self.local.vars[left_ty.0];
                 // dbg!(left_ty, r);
                 if matches!(info, TyInfo::User(_, _))
                 // if !matches!(info, TyInfo::Unknown) && !matches!(info, TyInfo::Generic(_))
@@ -477,13 +524,15 @@ impl<'env> Solver<'env> {
                     let ident = QualifierFragment::Type(info.get_user_name().unwrap());
                     let fields = self
                         .master_env
-                        .get_children(&ident, self.package)
+                        // .clone()
+                        .get_children(&ident, &self.local.package)
+                        .clone()
                         .ok_or(errors::not_defined(&ident, &expr.1))?;
                     let fields: Vec<_> = fields
                         .iter()
                         .filter(|x| matches!(x.0, QualifierFragment::Field(_)))
                         .collect();
-                    let desired_field_q = QualifierFragment::Field(r.0.get_ident(r.1)?);
+                    let desired_field_q = QualifierFragment::Field(*r.0.get_ident(r.1)?);
                     // dbg!(&desired_field_q);
                     // dbg!(&fields);
                     let f = fields
@@ -491,17 +540,17 @@ impl<'env> Solver<'env> {
                         .find(|x| x.0.is(&desired_field_q))
                         .ok_or(errors::not_defined(&desired_field_q, &r.1))?;
                     //dbg!(&f);
-                    let fty = self.convert_ty(&f.1.get_ty().unwrap().0)?;
-                    let converted = self.create_ty(fty, expr.1);
+                    let fty = self.local.convert_ty(&f.1.get_ty().unwrap().0)?;
+                    let converted = self.local.create_ty(fty, expr.1);
 
                     //dbg!(fields);
                     Ok(converted)
                 } else if let TyInfo::Tuple(v) = info {
                     let r_ty = self.check_expr(r)?;
-                    let num = self.create_ty(TyInfo::Num(OrderedFloat::nan()), r.1);
+                    let num = self.local.create_ty(TyInfo::Num(OrderedFloat::nan()), r.1);
                     self.unify(r_ty, num, expr.1)?;
                     //dbg!(r_ty);
-                    if let TyInfo::Num(n) = self.vars[r_ty.0].0 {
+                    if let TyInfo::Num(n) = self.local.vars[r_ty.0].0 {
                         if Float::fract(n) != 0f64 {
                             Err(DynamicErr::new(
                                 "Cannot index by a floating point number".to_string(),
@@ -547,11 +596,11 @@ impl<'env> Solver<'env> {
                     };
                     let entry = self
                         .master_env
-                        .get_node(second, self.package)
+                        .get_node(second, &self.local.package)
                         .ok_or(errors::not_defined(last, &expr.1))?;
                     let entry_ty = entry.get_ty().unwrap().0;
-                    let tyinfo = self.convert_ty(&entry_ty)?;
-                    let tv = self.create_ty(tyinfo, expr.1);
+                    let tyinfo = self.local.convert_ty(&entry_ty)?;
+                    let tv = self.local.create_ty(tyinfo, expr.1);
                     Ok(tv)
                 }
 
@@ -572,25 +621,24 @@ impl<'env> Solver<'env> {
                     vec.push(ty);
                 }
 
-                let out_ty = self.create_ty(TyInfo::Tuple(vec.leak()), expr.1);
+                let out_ty = self.local.create_ty(TyInfo::Tuple(vec.leak()), expr.1);
                 Ok(out_ty)
             }
             Expr::FieldedConstructor(name, given_fields) => {
-                let ident = QualifierFragment::Type(name.0.get_ident(name.1).unwrap());
+                let ident = QualifierFragment::Type(*name.0.get_ident(name.1).unwrap());
 
                 let (i, fields) = self
                     .master_env
-                    .get_node_and_children(&ident, self.package)
+                    .get_node_and_children(&ident, &self.local.package)
                     .ok_or(errors::not_defined(&ident, &name.1))?;
-
                 let fields: Vec<_> = fields
                     .iter()
                     .filter(|x| matches!(x.0, QualifierFragment::Field(_)))
                     .collect();
 
-                let sty = self.master_env.check_item(i, self.package)?;
+                let sty = self.check_item(i, self.local.package)?;
                 //dbg!(&fty);
-                if let Item::Struct(StructEntry { .. }) = *sty {
+                if let Item::Struct(StructEntry { .. }) = sty {
                     if fields.len() != given_fields.len() {
                         return Err(DynamicErr::new(format!(
                             "Field count mismatch: expected {}, found {}",
@@ -603,7 +651,7 @@ impl<'env> Solver<'env> {
                     }
                     //let paired_fields = fields.iter().zip(given_fields.iter());
                     let map: Vec<&(Spanned<Expr>, Spanned<Ty>)> = fields
-                        .iter()
+                        .into_iter()
                         .map(move |f| {
                             if let Item::Field(v) = f.1 {
                                 v
@@ -629,14 +677,15 @@ impl<'env> Solver<'env> {
                             )?
                             .1;
                         let given_ty = self.check_expr(value)?;
-                        let expected_ty = self.convert_ty(&def_ty.0)?;
-                        let expected_ty_var = self.create_ty(expected_ty, def_ty.1);
+                        let expected_ty = self.local.convert_ty(&def_ty.0)?;
+                        let expected_ty_var = self.local.create_ty(expected_ty, def_ty.1);
                         self.unify(given_ty, expected_ty_var, value.1)?;
                     }
-                    let struct_tyinfo =
-                        self.convert_ty(i.get_ty().map(|x| x.0).as_ref().unwrap())?;
+                    let struct_tyinfo = self
+                        .local
+                        .convert_ty(i.get_ty().map(|x| x.0).as_ref().unwrap())?;
 
-                    let out_ty = self.create_ty(struct_tyinfo, name.1);
+                    let out_ty = self.local.create_ty(struct_tyinfo, name.1);
                     Ok(out_ty)
                 } else {
                     panic!("Should be a struct")
@@ -646,9 +695,9 @@ impl<'env> Solver<'env> {
             }
             Expr::ExternFunc(name) => {
                 let e = self.search_masterenv(name.last().unwrap(), &expr.1)?;
-                if let Item::Extern { ref sig, .. } = *e {
-                    let converted = self.convert_ty(&sig.0);
-                    let out_ty = self.create_ty(converted?, expr.1);
+                if let Item::Extern { ref sig, .. } = e {
+                    let converted = self.local.convert_ty(&sig.0)?;
+                    let out_ty = self.local.create_ty(converted, expr.1);
                     Ok(out_ty)
                 } else {
                     panic!("Should be an extern")
@@ -657,12 +706,12 @@ impl<'env> Solver<'env> {
             Expr::Constructor(name, given_fields) => {
                 //let e = self.check_expr(name)?;
                 let ident = name.0.get_ident(name.1)?;
-                let quant = QualifierFragment::Type(ident);
+                let quant = QualifierFragment::Type(*ident);
 
                 // Enum Variants
                 let (the_enum, variants) = self
                     .master_env
-                    .get_node_and_children(&quant, self.package)
+                    .get_node_and_children(&quant, &self.local.package)
                     .ok_or(errors::not_defined(&quant, &name.1))?;
 
                 //dbg!(&variants);
@@ -701,8 +750,9 @@ impl<'env> Solver<'env> {
                         //dbg!(fname);
 
                         let given_ty = self.check_expr(value)?;
-                        let expected_ty = self.convert_ty(&def_ty.0)?;
-                        let expected_ty_var = self.create_ty(expected_ty, def_ty.1);
+
+                        let expected_ty = self.local.convert_ty(&def_ty.0)?;
+                        let expected_ty_var = self.local.create_ty(expected_ty, def_ty.1);
                         if matches!(expected_ty, TyInfo::Generic(_)) {
                             generics.push(given_ty)
                         }
@@ -713,7 +763,7 @@ impl<'env> Solver<'env> {
                         the_enum.get_ty().map(|x| x.0).as_ref().unwrap(),
                         generics,
                     );
-                    let out_ty = self.create_ty(enum_tyinfo, name.1);
+                    let out_ty = self.local.create_ty(enum_tyinfo, name.1);
                     //self.unify(e.unwrap(), out_ty, expr.1)?;
                     Ok(out_ty)
                 } else {
@@ -723,168 +773,124 @@ impl<'env> Solver<'env> {
             Expr::Match(matchee, patterns) => {
                 let matchee_tyvar = self.check_expr(matchee)?;
                 let matchee_realtype = self.solve(matchee_tyvar)?;
-                let qfrag = QualifierFragment::Type(matchee_realtype.0.get_user_name().unwrap());
+                let qfrag = QualifierFragment::Type(*matchee_realtype.0.get_user_name().unwrap());
                 let (item, children) = self
                     .master_env
-                    .raw_get_node_and_children_indexes(&qfrag, self.package)
+                    .raw_get_node_and_children_indexes(&qfrag, &self.local.package)
                     .ok_or(errors::not_defined(&qfrag, &expr.1))?;
-                let unknown = self.create_ty(TyInfo::Unknown, patterns[0].1 .1);
+                let unknown = self.local.create_ty(TyInfo::Unknown, patterns[0].1 .1);
 
                 // insert the pattern bindings for each arm
                 for (pattern, then) in patterns.iter() {
-                    let mut accum: Vec<(Spanned<Expr>, TyVar)> = vec![];
-                    struct PatternUpdater<'s, T> {
-                        pub f: &'s dyn Fn(
-                            &'s PatternUpdater<'s, T>,
-                            &mut T,
-                            Option<Spanned<Ty>>,
-                            &mut Vec<(Spanned<Expr>, TyVar)>,
-                            &Spanned<Pattern>,
-                        ) -> CompResult<()>,
-                    }
-                    let mut pu = PatternUpdater {
-                        f: &|rec: &'_ PatternUpdater<'_, _>,
-                             self_: &mut Self,
-                             context: Option<Spanned<Ty>>,
-                             accum: &mut Vec<_>,
-                             p: &Spanned<Pattern>| {
-                            match p.0 {
-                                Pattern::Atom(pattern_atom) => match pattern_atom {
-                                    crate::resource::rep::ast::PatternAtom::Variable(v) => {
-                                        let tyvar = if let Some(t) = context {
-                                            let info = self_.convert_ty(&t.0)?;
-                                            self_.create_ty(info, t.1)
-                                        } else {
-                                            self_.create_ty(TyInfo::Unknown, p.1)
-                                        };
-                                        // dbg!(tyvar);
-                                        // Add the variable to the accumulator
-                                        accum.push(((Expr::Ident(v), p.1), tyvar));
-                                        // count += 1;
-                                        Ok(())
-                                    }
-                                    _ => Ok(()),
-                                },
-                                Pattern::Tuple(items) => todo!(),
-                                Pattern::Variant(n, fields) => {
-                                    let vqfrag =
-                                        QualifierFragment::Variant(n.0.get_ident(n.1).unwrap());
-                                    // Check if the variant is valid
-                                    if let Some(idx) = children.iter().find(|x| {
-                                        self.master_env.value(**x).unwrap().name() == vqfrag.name()
-                                    }) {
-                                        if let Item::Variant((EnumVariant { types, .. }, s)) =
-                                            self.master_env.value(*idx).unwrap()
-                                        {
-                                            for (pat_field, ty) in fields.iter().zip(types.iter()) {
-                                                (rec.f)(rec, self_, Some(*ty), accum, pat_field)?;
-                                            }
-                                            Ok(())
-                                        } else {
-                                            panic!()
-                                        }
-                                    } else {
-                                        Err(errors::not_defined(&vqfrag, &n.1))
-                                    }
-                                }
-                            }
-                        },
-                    };
+                    let len = self.prepare_pat_context(*pattern, None, &children)?;
+
                     // Bind the variables in the pattern
-                    (pu.f)(&mut pu, self, None, &mut accum, pattern)?;
-                    let len = accum.len();
-                    for var in accum {
-                        self.env.push(var);
-                    }
                     let then_ty = self.check_expr(then)?;
                     self.unify(then_ty, unknown, then.1)?;
                     // Remove the variables created during pattern matching
-                    self.env.truncate(self.env.len() - len);
+                    self.local.env.truncate(self.local.env.len() - len);
                 }
 
                 Ok(unknown)
                 // todo!()
             }
-            // Expr::MethodAccess(o, m) => {
-            //     let obj_ident = o.0.get_ident(o.1)?;
-            //     let obj_tyvar = self.check_expr(o)?;
-            //     let obj_type = self.solve(obj_tyvar)?;
-            //     let obj_qual = QualifierFragment::Type(obj_type.0.get_user_name().unwrap());
-            //     let children = self
-            //         .master_env
-            //         .get_children(&obj_qual, self.package)
-            //         .ok_or(errors::not_defined(&obj_qual, &o.1))?;
-            //     // dbg!(&children);
-            //     let target = QualifierFragment::Method(m.0.get_ident(m.1).unwrap());
-            //     let (_, v) = children.iter().find(|x| matches!(x.0, target)).unwrap();
-            //     let sig = v.get_sig().unwrap();
-            //     let method_type = self.convert_ty(&sig.0);
-            //     let method_tyvar = self.create_ty(method_type, sig.1);
 
-            //     dbg!(m);
-            //     let new_call = m.0.inject_call_start(**o, m.1);
-            //     dbg!(new_call);
-
-            //     self.env.push((new_call, method_tyvar));
-            //     let res = self.check_expr(m)?;
-            //     self.env.pop();
-            //     Ok(res)
-
-            //     // todo!("{:?}", v);
-            // }
             _ => todo!("Failed to check {:?}", expr.0),
         }
+    }
+
+    #[allow(clippy::single_match)]
+    fn prepare_pat_context(
+        &mut self,
+        p: Spanned<Pattern>,
+        context: Option<&Spanned<Ty>>,
+        // local: &mut SolverEnv<'src>,
+        children: &[NodeIndex],
+    ) -> CompResult<usize> {
+        let mut count = 0usize;
+
+        match p.0 {
+            Pattern::Atom(pattern_atom) => match pattern_atom {
+                crate::resource::rep::ast::PatternAtom::Variable(v) => {
+                    let tyvar = if let Some(t) = context {
+                        let info = self.local.convert_ty(&t.0)?;
+                        self.local.create_ty(info, t.1)
+                    } else {
+                        self.local.create_ty(TyInfo::Unknown, p.1)
+                    };
+                    // dbg!(tyvar);
+                    // Add the variable to the accumulator
+                    self.local.env_push((Expr::Ident(v), p.1), tyvar);
+                    count += 1;
+                }
+                _ => {}
+            },
+            Pattern::Tuple(items) => todo!(),
+            Pattern::Variant(n, fields) => {
+                let vqfrag = QualifierFragment::Variant(*n.0.get_ident(n.1).unwrap());
+                // Check if the variant is valid
+                if let Some(idx) = children
+                    .iter()
+                    .find(|x| self.master_env.value(**x).unwrap().name() == vqfrag.name())
+                {
+                    if let Item::Variant((EnumVariant { types, .. }, s)) =
+                        self.master_env.value(*idx).unwrap()
+                    {
+                        for (pat_field, ty) in fields.iter().zip(types.iter()) {
+                            self.prepare_pat_context(*pat_field, Some(ty), children)?;
+                        }
+                    } else {
+                        panic!()
+                    }
+                } else {
+                    return Err(errors::not_defined(&vqfrag, &n.1));
+                }
+            }
+        }
+        Ok(count)
     }
 
     fn resolve_name(
         &mut self,
         expr: &Spanned<Expr>,
+        // local: &mut SolverEnv<'src>,
     ) -> Result<TyVar, crate::resource::errors::CompilerErr> {
         let name = expr.0.get_ident(expr.1)?;
-        if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name), &expr.1) {
+        if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(*name), &expr.1) {
             // BEAUTIFUL!
-            let fty = if self
-                .master_env
-                .check_item(e, self.package)?
-                .get_sig()
-                .is_some()
-            {
+            let fty = if self.check_item(e, self.local.package)?.get_sig().is_some() {
                 e
             } else {
-                let l = self.create_ty(TyInfo::Unknown, expr.1);
-                let r = self.create_ty(TyInfo::Unknown, expr.1);
-                return Ok(self.create_ty(TyInfo::Func(l, r), expr.1));
+                let l = self.local.create_ty(TyInfo::Unknown, expr.1);
+                let r = self.local.create_ty(TyInfo::Unknown, expr.1);
+                return Ok(self.local.create_ty(TyInfo::Func(l, r), expr.1));
             };
             //dbg!(&fty);
-            if let Item::Function(FunctionItem { sig, .. }) = *fty {
+            if let Item::Function(FunctionItem { sig, .. }) = fty {
                 //let (l, r) = sig.get().unwrap().0.get_arrow();
 
                 // let converted_l = self.convert_ty(&l.0);
                 // let converted_r = self.convert_ty(&r.0);
                 // let lty = self.create_ty(converted_l, l.1);
                 // let rty = self.create_ty(converted_r, r.1);
-                let info = self.convert_ty(&sig.get().unwrap().0)?;
-                let fn_ty = self.create_ty(info, expr.1);
+                let info = self.local.convert_ty(&sig.get().unwrap().0)?;
+                let fn_ty = self.local.create_ty(info, expr.1);
                 Ok(fn_ty)
-            } else if let Item::Extern { ref sig, .. } = *fty {
-                let info = self.convert_ty(&sig.0)?;
-                let fn_ty = self.create_ty(info, expr.1);
+            } else if let Item::Extern { ref sig, .. } = fty {
+                let info = self.local.convert_ty(&sig.0)?;
+                let fn_ty = self.local.create_ty(info, expr.1);
                 Ok(fn_ty)
             } else {
                 unreachable!("Should be a function")
             }
-        } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name), &expr.1) {
+        } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(*name), &expr.1) {
             // BEAUTIFUL!
-            let ty = self
-                .master_env
-                .check_item(e, self.package)?
-                .get_ty()
-                .unwrap();
-            let info = self.convert_ty(&ty.0)?;
-            Ok(self.create_ty(info, ty.1))
+            let ty = self.check_item(e, self.local.package)?.get_ty().unwrap();
+            let info = self.local.convert_ty(&ty.0)?;
+            Ok(self.local.create_ty(info, ty.1))
         } else {
             Err(errors::not_defined(
-                &QualifierFragment::Wildcard(name),
+                &QualifierFragment::Wildcard(*name),
                 &expr.1,
             ))
         }
@@ -898,9 +904,13 @@ impl<'env> Solver<'env> {
         // }
     }
 
-    pub fn solve(&mut self, var: TyVar) -> CompResult<Spanned<Ty>> {
-        let span = self.vars[var.0].1;
-        match self.vars[var.0].0 {
+    pub fn solve(
+        &mut self,
+        var: TyVar,
+        // local: &'env mut SolverEnv<'src>,
+    ) -> CompResult<Spanned<Ty>> {
+        let span = self.local.vars[var.0].1;
+        match self.local.vars[var.0].0 {
             // TyInfo::Generic(n) => Err(DynamicErr::new(format!(
             //     "could not solve for ?{n}, check your types"
             // ))
@@ -911,7 +921,7 @@ impl<'env> Solver<'env> {
 
                 Err(
                     DynamicErr::new(format!("cannot infer type {var:?}, is Unknown"))
-                        .label(("has unknown type".to_string(), self.vars[var.0].1))
+                        .label(("has unknown type".to_string(), span))
                         .into(),
                 )
             }
@@ -922,13 +932,16 @@ impl<'env> Solver<'env> {
             TyInfo::Unit => Ok((Ty::Primitive(PrimitiveType::Unit), span)),
             TyInfo::Func(i, o) => Ok((
                 Ty::Arrow(
-                    Box::leak(Box::new((self.solve(i)?.0, self.vars[i.0].1))),
-                    Box::leak(Box::new((self.solve(o)?.0, self.vars[o.0].1))),
+                    Box::leak(Box::new((self.solve(i)?.0, self.local.vars[i.0].1))),
+                    Box::leak(Box::new((self.solve(o)?.0, self.local.vars[o.0].1))),
                 ),
                 span,
             )),
             TyInfo::User(n, g) => {
-                let e = self.search_masterenv(&QualifierFragment::Type(n), &self.vars[var.0].1)?;
+                let e = self.search_masterenv(
+                    &QualifierFragment::Type(n),
+                    &self.local.vars[var.0].1.clone(),
+                )?;
                 let mut generics = vec![];
 
                 for gen in g {
@@ -941,14 +954,15 @@ impl<'env> Solver<'env> {
                     //dbg!(&new);
                     Ok((new, t.1))
                 } else {
-                    Err(
-                        DynamicErr::new(format!("{} should be a type", self.vars[var.0].0))
-                            .label((
-                                format!("{:?} is not a type", self.vars[var.0].0),
-                                self.vars[var.0].1,
-                            ))
-                            .into(),
-                    )
+                    Err(DynamicErr::new(format!(
+                        "{} should be a type",
+                        self.render_ty(self.local.vars[var.0].0)
+                    ))
+                    .label((
+                        format!("{:?} is not a type", self.local.vars[var.0].0),
+                        span,
+                    ))
+                    .into())
                 }
             }
             TyInfo::Variant(p, _) => self.solve(p),
@@ -964,14 +978,93 @@ impl<'env> Solver<'env> {
                 let t = self.solve(*t)?;
                 Ok((Ty::Seq(Box::leak(Box::new(t))), span))
             }
-            TyInfo::Generic(n) => Ok((
-                Ty::Generic((Expr::Ident(n), self.vars[var.0].1)),
-                self.vars[var.0].1,
-            )), //self.solve(t.unwrap()),
+            TyInfo::Generic(n) => Ok((Ty::Generic((Expr::Ident(n), span)), span)), //self.solve(t.unwrap()),
         }
-        .inspect(|t| trace!("Solved {} => {}", self.render_ty(self.vars[var.0].0), t.0))
+        .inspect(|&t| {
+            trace!(
+                "Solved {} => {}",
+                self.render_ty(self.local.vars[var.0].0),
+                t.0
+            )
+        })
         // let _ = t
         //     .as_ref()
         //     .inspect(|t| println!("    Solved {} => {}", var, t));
+    }
+
+    pub fn check(&mut self) -> CompResult<()> {
+        if cfg!(debug_assertions) {
+            let render = |_, k: EdgeReference<QualifierFragment>| {
+                let w = k.weight().name();
+                format!("label = \"{}\"", k.weight())
+            };
+            let dot = petgraph::dot::Dot::with_attr_getters(
+                &self.master_env.graph,
+                &[
+                    Config::EdgeNoLabel,
+                    Config::NodeNoLabel,
+                    Config::RankDir(petgraph::dot::RankDir::LR),
+                ],
+                &render,
+                &|_, _| "".to_string(),
+            );
+            info!("{:?}", dot);
+        }
+
+        let mainpack = Intern::from_ref("Main");
+        let main_idx = self
+            .master_env
+            .get_from_context(
+                &QualifierFragment::Func(Intern::from_ref("main")),
+                &QualifierFragment::Package(mainpack),
+            )
+            //.get(&quantifier!(Root, Package("Main"), Func("main"), End).into_simple())
+            .unwrap();
+
+        let main_item = self.master_env.value(main_idx).unwrap();
+
+        self.check_item(main_item, QualifierFragment::Package(mainpack))?;
+        Ok(())
+        //dbg!(&main);
+    }
+
+    pub fn check_item(
+        &mut self,
+        item: &'env Item,
+        packctx: QualifierFragment,
+    ) -> CompResult<&'env Item> {
+        //println!("Checking {:?}", entry);
+        //match *entry.borrow_mut() {
+        if let Item::Function(FunctionItem {
+            ref name,
+            sig,
+            ref body,
+            ..
+        }) = if item.get_sig().is_none() {
+            item
+        } else {
+            // Early Return
+            return Ok(item);
+        } {
+            //let the_sig: &OnceCell<Spanned<crate::resource::rep::types::Ty<'src>>> = sig;
+            let mut tc = Solver::new(self.master_env, packctx);
+
+            // let previous_local = self.local.clone();
+            // self.local = SolverEnv {
+            // vars: vec![],
+            // env: vec![],
+            // c};
+            let tv = tc.check_expr(body)?;
+            let fn_sig/*: Spanned<crate::resource::rep::types::Ty<'src>>*/ = tc.solve(tv)?;
+
+            let val = (
+                fn_sig.0,
+                SimpleSpan::new(name.1.context, name.1.into_range()),
+            );
+            let _ = sig.set(val);
+            // self.local = previous_local;
+        }
+        // info!("Checked {}: {}", item.name(), item.get_ty().unwrap().0);
+        Ok(item)
     }
 }

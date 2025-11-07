@@ -1,39 +1,41 @@
 use super::super::errors::CompResult;
 
+use internment::Intern;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QualifierFragment {
     Root,
-    Package(&'static str),
-    Type(&'static str),
-    Func(&'static str),
-    Method(&'static str),
-    Variant(&'static str),
-    Field(&'static str),
-    Wildcard(&'static str),
+    Package(Intern<String>),
+    Type(Intern<String>),
+    Func(Intern<String>),
+    Method(Intern<String>),
+    Variant(Intern<String>),
+    Field(Intern<String>),
+    Wildcard(Intern<String>),
 }
 
-impl std::fmt::Display for QualifierFragment {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::Root => write!(f, "Root"),
-            Self::Package(n) => write!(f, "Package {n}"),
-            Self::Type(n) => write!(f, "Type {n}"),
-            Self::Func(n) => write!(f, "Function {n}"),
-            Self::Method(n) => write!(f, "Method {n}"),
-            Self::Field(n) => write!(f, "Field {n}"),
-            Self::Variant(n) => write!(f, "Variant {n}"),
-            Self::Wildcard(n) => write!(f, "{n}"),
-        }
-    }
-}
+//
+// impl std::fmt::Display for QualifierFragment {
+//     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//         match self {
+//             Self::Root => write!(f, "Root"),
+//             Self::Package(n) => write!(f, "Package {n}"),
+//             Self::Type(n) => write!(f, "Type {n}"),
+//             Self::Func(n) => write!(f, "Function {n}"),
+//             Self::Method(n) => write!(f, "Method {n}"),
+//             Self::Field(n) => write!(f, "Field {n}"),
+//             Self::Variant(n) => write!(f, "Variant {n}"),
+//             Self::Wildcard(n) => write!(f, "{n}"),
+//         }
+//     }
+// }
 use crate::resource::rep::{ast::Expr, Spanned};
 
 impl QualifierFragment {
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> &Intern<String> {
         match self {
-            Self::Root => "root",
+            Self::Root => panic!(),
             Self::Package(n)
             | Self::Type(n)
             | Self::Func(n)
@@ -48,11 +50,11 @@ impl QualifierFragment {
         self.name() == rhs.name()
     }
 
-    pub fn from_expr(expr: &Spanned<Expr>) -> CompResult<Vec<Self>> {
+    pub fn from_expr(expr: &Spanned<Expr>) -> CompResult<Vec<QualifierFragment>> {
         struct CheckFieldAccess<'s> {
             f: &'s dyn Fn(
-                &Self,
-                &Spanned<Expr>,
+                &'s Self,
+                &'s Spanned<Expr>,
                 Vec<QualifierFragment>,
             ) -> CompResult<Vec<QualifierFragment>>,
         }
@@ -64,19 +66,33 @@ impl QualifierFragment {
                 //dbg!(&q);
                 match &e.0 {
                     Expr::FieldAccess(l, r) => {
-                        accum.push(Self::Wildcard(l.0.get_ident(l.1).unwrap()));
+                        accum.push(Self::Wildcard(*l.0.get_ident(l.1).unwrap()));
 
                         (cfa.f)(cfa, r, accum)
                         //self.graph.node_weight(n).cloned()
                     }
 
                     ex => {
-                        accum.push(Self::Wildcard(ex.get_ident(e.1).unwrap()));
+                        accum.push(Self::Wildcard(*ex.get_ident(e.1).unwrap()));
                         Ok(accum)
                     }
                 }
             },
         };
         (cfa.f)(&cfa, expr, vec![])
+    }
+}
+impl std::fmt::Display for QualifierFragment {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Root => write!(f, "Root"),
+            Self::Package(n) => write!(f, "Package {n}"),
+            Self::Type(n) => write!(f, "Type {n}"),
+            Self::Func(n) => write!(f, "Function {n}"),
+            Self::Method(n) => write!(f, "Method {n}"),
+            Self::Field(n) => write!(f, "Field {n}"),
+            Self::Variant(n) => write!(f, "Variant {n}"),
+            Self::Wildcard(n) => write!(f, "{n}"),
+        }
     }
 }

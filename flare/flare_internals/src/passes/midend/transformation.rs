@@ -27,11 +27,11 @@ impl<'env> Transformer<'env> {
         id
     }
 
-    pub fn transform(&mut self) -> ANF {
-        let main = self
-            .env
-            .get_from_context(&QualifierFragment::Func("main"), &QualifierFragment::Package("Main"));
+    // pub fn transform(&mut self) -> ANF {
+    //     let main = self
+    //         .env
+    //         .get_from_context(&QualifierFragment::Func("main"), &QualifierFragment::Package("Main"));
 
-        todo!()
-    }
+    // todo!()
+    // }
 }

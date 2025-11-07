@@ -1,13 +1,14 @@
-use std::{any::Any, fmt::Display, io::Cursor, ops::Deref};
+use std::{any::Any, borrow::Cow, fmt::Display, io::Cursor, ops::Deref};
 
 mod templates {
+
     use crate::resource::rep::ast::Expr;
     use crate::resource::{errors::DynamicErr, rep::quantifier::QualifierFragment};
     use crate::*;
     use chumsky::span::SimpleSpan;
     pub fn not_defined(q: &QualifierFragment, s: &SimpleSpan<usize, u64>) -> CompilerErr {
-        DynamicErr::new(format!("Could not find a definition for '{q}'"))
-            .label((format!("'{q}' not found in scope"), *s))
+        DynamicErr::new(format!("Could not find a definition for '{}'", &q.name()))
+            .label((format!("'{}' not found in scope", &q.name()), *s))
             //.src(self.src.to_string())
             .into()
     }
@@ -19,6 +20,7 @@ mod templates {
     }
 }
 
+use rustc_hash::FxHashMap;
 pub(crate) use templates::*;
 
 use ariadne::{sources, Color, Label, Report, ReportKind};
@@ -28,7 +30,7 @@ use thiserror::Error;
 
 pub type CompResult<T> = Result<T, CompilerErr>;
 pub trait ReportableError: Any + Display + std::error::Error + Send + Sync {
-    fn report(&self, ctx: &Context);
+    fn report<'src>(&self, ctx: &Context);
 }
 
 pub trait AnnotatableError: ReportableError {
@@ -38,7 +40,7 @@ pub trait AnnotatableError: ReportableError {
 #[derive(Debug, Error)]
 pub struct CompilerErr(Box<dyn ReportableError>);
 
-use crate::{Context, FileID};
+use crate::{resource::rep::files::FileSource, Context, FileID};
 
 impl Display for CompilerErr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -110,7 +112,7 @@ impl CompilerErrKind {
 }
 
 impl ReportableError for CompilerErrKind {
-    fn report(&self, ctx: &Context) {
+    fn report<'src>(&self, ctx: &Context) {
         match self {
             CompilerErrKind::General(error) => eprintln!("{error}"),
             CompilerErrKind::Other(error) => eprintln!("{error}"),
@@ -181,7 +183,10 @@ impl DynamicErr {
         }
     }
 
-    pub fn generate_sources(&self, context: &Context) -> Vec<(&'static str, &'static str)> {
+    pub fn generate_sources<'src>(
+        &self,
+        context: &Context,
+    ) -> Vec<(Cow<'src, str>, Cow<'src, str>)> {
         let mut source_ids: Vec<u64> = vec![];
         let label_origin = self.label.as_ref().unwrap().1.context;
         source_ids.push(label_origin);
@@ -193,21 +198,21 @@ impl DynamicErr {
         let mut new_sources = vec![];
         for k in source_ids {
             let ent = context.filectx.get(&k).unwrap().clone();
-            new_sources.push((ent.filename.to_str().unwrap(), ent.src_text))
+            new_sources.push((ent.filename.to_str().unwrap().into(), ent.src_text.into()))
         }
 
         new_sources
     }
 
     pub fn get_gen(self, context: &Context) -> GeneralErr {
-        let s = self.generate_sources(context);
+        let s = self.generate_sources(&context);
         GeneralErr {
             msg: self.msg,
             label: self
                 .label
                 .unwrap_or(("here".to_string(), SimpleSpan::new(0, 0..0))),
             extra_labels: self.extra_labels.unwrap_or_default(),
-            context: context.clone(),
+            context: context.filectx.clone(),
             sources: s,
         }
     }
@@ -219,13 +224,13 @@ impl std::fmt::Display for DynamicErr {
     }
 }
 /// Opaque Error created from DynamicErr.
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub struct GeneralErr {
     msg: String,
     label: (String, SimpleSpan<usize, FileID>),
     extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
-    context: Context,
-    sources: Vec<(&'static str, &'static str)>,
+    context: FxHashMap<FileID, FileSource<'static>>,
+    sources: Vec<(Cow<'static, str>, Cow<'static, str>)>,
 }
 
 // impl GeneralErr {
@@ -251,7 +256,10 @@ impl std::fmt::Display for GeneralErr {
         let mut buf = Cursor::new(vec![]);
         let rep = Report::build(
             ReportKind::Error,
-            (self.sources.first().unwrap().0, self.label.1.into_range()),
+            (
+                self.sources.first().unwrap().0.clone(),
+                self.label.1.into_range(),
+            ),
         )
         .with_config(
             ariadne::Config::new()
@@ -263,12 +271,12 @@ impl std::fmt::Display for GeneralErr {
             Label::new((
                 {
                     self.context
-                        .filectx
                         .get(&self.label.1.context)
                         .unwrap()
                         .filename
                         .to_str()
                         .unwrap()
+                        .into()
                 },
                 self.label.1.into_range(),
             ))
@@ -278,12 +286,12 @@ impl std::fmt::Display for GeneralErr {
         .with_labels(self.extra_labels.iter().map(|label2| {
             Label::new((
                 self.context
-                    .filectx
                     .get(&label2.1.context)
                     .unwrap()
                     .filename
                     .to_str()
-                    .unwrap(),
+                    .unwrap()
+                    .into(),
                 label2.1.into_range(),
             ))
             .with_message(label2.0.as_str())
