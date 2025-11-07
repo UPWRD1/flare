@@ -15,7 +15,7 @@
     clippy::deref_by_slicing
 )]
 #[warn(clippy::large_stack_frames, clippy::panic, clippy::dbg_macro)]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::diverging_sub_expression)]
 pub mod passes;
 pub mod resource;
 
@@ -83,14 +83,8 @@ impl Context {
     // }
 
     pub fn parse_file(&mut self, id: FileID) -> CompResult<Package> {
-        // let src_text = std::fs::read_to_string(self.filectx.get(&id).unwrap().filename).unwrap();
-
-        // Leak the string to get a 'static lifetime, then cast to 'src
-        // let src_string: &'static str = Box::leak(src_text.into_boxed_str());
-
-        let res = parser::parse(self, id)?; //TODO: handle errors properly
-
-        Ok(res)
+        println!("Parsing {id}");
+        parser::parse(self, id)
     }
 
     pub fn parse_program(&mut self, id: FileID) -> CompResult<Program> {
@@ -125,9 +119,13 @@ impl Context {
             let converted_id = convert_path_to_id(entry.filename);
             self.filectx.insert(converted_id, entry.clone());
             let pack = self.parse_file(converted_id)?;
+            // dbg!(&pack.name);
             processed.push(Ok((pack, converted_id)))
         }
-        // dbg!(&processed);
+        // dbg!(&processed
+        //     .iter()
+        //     .filter(|x| x.is_ok())
+        //     .map(|x| x.as_ref().unwrap().1));
 
         let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
         let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();

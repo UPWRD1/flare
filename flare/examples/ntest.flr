@@ -7,10 +7,11 @@ package Main =
     #use Opt.unwrap_or
     #use Option
 
-   # extern println: str -> unit
+    extern println: str -> unit
 
     #extern concat: str -> str -> str
     extern format: ?T -> str
+    extern tuple_to_seq: ?T -> Seq[?U]
     #extern exit: num -> unit
 
     #struct S =
@@ -21,15 +22,25 @@ package Main =
     # let id x = 
         x
 
+    let looper limit f items : num -> Seq[?T] -> (?T -> unit) -> num =
+        let looper_helper = fn c =>
+            if c == limit then
+                limit
+            else
+                let _ = f(items.c) in looper_helper(c+1)
+         in
+            looper_helper(0)
+    
     # struct S =
     #     f: num
          
     let main =
         # let o = S {f = 3} in
         let test = 2 in
-         let a = {1, id("am"), "different"}  in
-             a.test
-
+         let a = Seq {"I", id("am"), "different"}  in
+            # let s = tuple_to_seq(a) in
+            looper 2 a println 
+             
         # let b = Option.Some {{3, 4, 5}.3} in
            # (unwrap a) * (unwrap b)
 

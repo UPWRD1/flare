@@ -1,8 +1,10 @@
-use std::{cell::OnceCell, path::Path};
+use std::cell::OnceCell;
 
 use internment::Intern;
 // use lasso::Spur;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+use crate::resource::rep::files::FileID;
 
 use super::{
     ast::Expr,
@@ -10,9 +12,10 @@ use super::{
     Spanned,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct PackageEntry {
     pub name: Spanned<Expr>,
+    pub id: FileID,
     // pub file: &'static Path,
     //    pub deps: Vec<Spanned<Expr>>,
 
@@ -20,20 +23,20 @@ pub struct PackageEntry {
     // pub src: &'static str,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct StructEntry {
     //parent: Quantifier,
     pub ty: Spanned<Ty>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct EnumEntry {
     //parent: Quantifier,
     //pub name: String,
     pub ty: Spanned<Ty>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 #[serde(from = "FunctionItemRepr")]
 #[serde(into = "FunctionItemRepr")]
 pub struct FunctionItem {
@@ -42,7 +45,7 @@ pub struct FunctionItem {
     pub body: Spanned<Expr>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct FunctionItemRepr(Spanned<Expr>, Option<Spanned<Ty>>, Spanned<Expr>);
 
 impl From<FunctionItemRepr> for FunctionItem {
@@ -69,7 +72,7 @@ impl From<FunctionItem> for FunctionItemRepr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 // #[derive(Debug, PartialEq, Eq)]
 // #[serde(bound(deserialize = "'static: 'de"))]
 pub enum Item {
@@ -93,6 +96,7 @@ pub enum Item {
         name: Spanned<Expr>,
         sig: Spanned<Ty>,
     },
+    #[serde(skip)]
     Dummy(&'static str),
 }
 
@@ -117,6 +121,22 @@ impl Item {
             Item::Field((name, ..)) => name.0.get_ident(name.1).as_ref().unwrap(),
             Item::Function(FunctionItem { name, .. }) => name.0.get_ident(name.1).as_ref().unwrap(),
             Item::Extern { name, .. } => name.0.get_ident(name.1).as_ref().unwrap(),
+            _ => panic!(),
+        }
+    }
+
+    pub fn get_raw_name(&self) -> Option<Spanned<&Intern<String>>> {
+        match self {
+            Item::Root => todo!(),
+            Item::Package(PackageEntry { name, .. }) => {
+                Some((name.0.get_ident(name.1).ok()?, name.1))
+            }
+            Item::Struct(StructEntry { ty }) => Some((ty.0.get_user_name()?, ty.1)),
+            Item::Enum(EnumEntry { ty }) => todo!(),
+            Item::Variant(_) => todo!(),
+            Item::Field(_) => todo!(),
+            Item::Function(function_item) => todo!(),
+            Item::Extern { name, sig } => todo!(),
             _ => panic!(),
         }
     }
@@ -158,38 +178,3 @@ impl Default for Item {
         Self::Dummy("")
     }
 }
-
-// impl fmt::Display for Item {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         match self {
-//             Item::Package(PackageEntry { name, .. }) => {
-//                 write!(f, "{}", name.0.get_ident().unwrap())
-//             }
-//             Item::Struct(StructEntry { name, .. }) => write!(
-//                 f,
-//                 "{}",
-//                 name.0.get_ident().unwrap(),
-
-//             ),
-
-//             Item::Enum(v) => {
-//                 write!(f, "{v:?}")
-//             }
-//             Item::Let { name, sig, .. } => {
-//                 if let Some(sig) = sig.get() {
-//                     write!(f, "{}: {:?}", name.0.get_ident().unwrap(), sig)
-//                 } else {
-//                     write!(f, "{}: ?", name.0.get_ident().unwrap())
-//                 }
-//             }
-//             Item::Variant(v) => write!(f, "{:?}", v),
-//             Item::Field(t) => write!(f, "{:?}", t),
-
-//             Item::Filename(n) => write!(f, "File {n}"),
-//             Item::Root => write!(f, "Root"),
-//             Item::Extern { name, sig, .. } => {
-//                 write!(f, "extern {}: {:?}", name.0.get_ident().unwrap(), sig)
-//             }
-//         }
-//     }
-// }

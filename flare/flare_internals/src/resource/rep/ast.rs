@@ -1,13 +1,11 @@
-use std::{hash::Hash, path::Path};
+use std::hash::Hash;
 
-// use lasso::Intern<String>;
-use internment::Intern;
-// use super::{deserialize_static, deserialize_static_str};
 use crate::resource::{
     errors::{CompResult, DynamicErr},
     rep::files::FileID,
 };
 use chumsky::span::SimpleSpan;
+use internment::Intern;
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -58,9 +56,9 @@ enum PatternAtomHelper {
 impl From<PatternAtom> for PatternAtomHelper {
     fn from(atom: PatternAtom) -> Self {
         match atom {
-            PatternAtom::Strlit(s) => PatternAtomHelper::Strlit((&*s).to_string()),
+            PatternAtom::Strlit(s) => PatternAtomHelper::Strlit((*s).to_string()),
             PatternAtom::Num(n) => PatternAtomHelper::Num(n),
-            PatternAtom::Variable(v) => PatternAtomHelper::Variable((&*v).to_string()),
+            PatternAtom::Variable(v) => PatternAtomHelper::Variable((*v).to_string()),
             PatternAtom::Type(ty) => PatternAtomHelper::Type(Box::new(*ty)),
         }
     }
@@ -217,12 +215,12 @@ impl Expr {
                     Ok(s)
                 } else {
                     Err(DynamicErr::new("cannot get ident")
-                        .label((format!("{self:?}"), span))
+                        .label(format!("{self:?}"), span)
                         .into())
                 }
             }
             _ => Err(DynamicErr::new("cannot get ident")
-                .label((format!("{self:?}"), span))
+                .label(format!("{self:?}"), span)
                 .into()),
         }
     }
@@ -230,7 +228,7 @@ impl Expr {
     pub fn get_num(&self, span: SimpleSpan<usize, u64>) -> CompResult<OrderedFloat<f64>> {
         match self {
             Self::Number(n) => Ok(*n),
-            _ => Err(DynamicErr::new("Not a number").label(("here", span)).into()),
+            _ => Err(DynamicErr::new("Not a number").label("here", span).into()),
         }
     }
 
@@ -300,9 +298,9 @@ enum ExprHelper {
 impl From<Expr> for ExprHelper {
     fn from(expr: Expr) -> Self {
         match expr {
-            Expr::Ident(s) => ExprHelper::Ident((&*s).to_string()),
+            Expr::Ident(s) => ExprHelper::Ident((*s).to_string()),
             Expr::Number(n) => ExprHelper::Number(n),
-            Expr::String(s) => ExprHelper::String((&*s).to_string()),
+            Expr::String(s) => ExprHelper::String((*s).to_string()),
             Expr::Bool(b) => ExprHelper::Bool(b),
             Expr::ExternFunc(frags) => ExprHelper::ExternFunc(frags.to_vec()),
             Expr::Unit => ExprHelper::Unit,

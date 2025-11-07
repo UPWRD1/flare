@@ -1,4 +1,3 @@
-use core::panic;
 use petgraph::graph::EdgeReference;
 use petgraph::Graph;
 use petgraph::{
@@ -6,11 +5,12 @@ use petgraph::{
     visit::EdgeRef,
 };
 use rustc_hash::FxHashMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::cell::OnceCell;
 // use std::collections::HashMap;
 use std::hash::RandomState;
 
+use crate::resource::errors::DynamicErr;
 use crate::resource::rep::ast::ImplDef;
 use crate::resource::rep::entry::FunctionItem;
 use crate::resource::rep::types::EnumVariant;
@@ -24,7 +24,7 @@ use crate::resource::{
     },
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Environment {
     //pub items: Trie<SimpleQuant, Index>,
     //pub arena: Arena<Node>,
@@ -60,15 +60,10 @@ impl Environment {
             let package_name = package.0.name.0.get_ident(package.0.name.1)?;
 
             let mut deps = Vec::new();
-            // let mut subpackages = HashMap::new();
-            // let mut structs = HashMap::new();
-            // let mut enums = HashMap::new();
-            // let mut funcs = HashMap::new();
-            // let fsource = ctx.filectx.get(&package.1).unwrap();
             let package_entry = Item::Package(PackageEntry {
                 name: package.0.name,
-                // file: fsource.filename,
-                // src: fsource.src_text,
+                id: package.1, // file: fsource.filename,
+                               // src: fsource.src_text,
             });
             let package_quant = QualifierFragment::Package(*package_name);
 
@@ -177,7 +172,9 @@ impl Environment {
                         vec![n]
                     }
                 } else {
-                    panic!()
+                    return Err(DynamicErr::new("Import does not exist")
+                        .label("this", dep.1)
+                        .into());
                 };
                 for import in imports {
                     let the_name = me
@@ -368,7 +365,7 @@ impl Environment {
         (rec.f)(&rec, self, self.root, q) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
     }
 
-    //
+    fn serialize() {}
 }
 
 #[cfg(test)]

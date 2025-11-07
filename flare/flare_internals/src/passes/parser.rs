@@ -1,9 +1,3 @@
-use std::{
-    cell::RefCell,
-    ops::{Deref, DerefMut},
-    rc::Rc,
-};
-
 use crate::{
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
@@ -18,10 +12,9 @@ use crate::{
     },
     Context,
 };
-use chumsky::input::{BorrowInput, Cursor, MapExtra, SliceInput, StrInput, ValueInput};
+use chumsky::input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput};
 use chumsky::pratt::{infix, left, right, Operator};
 use chumsky::prelude::*;
-use chumsky::{extra::SimpleState, inspector::Inspector};
 use internment::Intern;
 // use lasso::{Interner, Rodeo};
 use ordered_float::OrderedFloat;
@@ -30,15 +23,15 @@ use ordered_float::OrderedFloat;
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[allow(dead_code)]
 enum Token {
-    // Ident(&'static str),
-    Ident(Intern<String>),
+    Ident(&'static str),
+    // Ident(),
     // Ident(Spur),
     Num(f64),
 
-    // Strlit(&'static str),
-    Strlit(Intern<String>),
-    // Comment(&'static str),
-    Comment(Intern<String>),
+    Strlit(&'static str),
+    // Strlit(Intern<String>),
+    Comment(&'static str),
+    // Comment(Intern<String>),
     Parens(&'static [Spanned<Self>]),
 
     ///Contains the erroneous token's src
@@ -243,7 +236,7 @@ where
 
                 // s => Token::Ident(rodeo.get_or_intern_static(s)),
                 // s => Token::Ident(e.state().get_or_intern(s)),
-                s => Token::Ident(Intern::from_ref(s)),
+                s => Token::Ident(s),
             }),
             // Operators
             comparison_op,
@@ -272,7 +265,7 @@ where
                 .ignore_then(none_of('"').repeated().to_slice())
                 .then_ignore(just('"'))
                 .labelled("string literal")
-                .map(|x| Token::Strlit(Intern::from_ref(x))),
+                .map(Token::Strlit),
             token
                 .padded()
                 .repeated()
@@ -317,7 +310,7 @@ where
     let ident =
         select_ref! { Token::Ident(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
             // |x, e| {
-            (Expr::Ident(x), e.span())
+            (Expr::Ident(Intern::from_ref(x)), e.span())
             // (Expr::Ident(rodeo.get_or_intern_static(x)), e.span())
         });
 
@@ -376,6 +369,7 @@ where
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .map_with(|types, e| (Ty::Tuple(types.leak()), e.span())),
+            ty.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
             (
@@ -435,7 +429,10 @@ where
                 .map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),
             // Strings
             select_ref! { Token::Strlit(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
-                (Pattern::Atom(PatternAtom::Strlit(x)), e.span())
+                (
+                    Pattern::Atom(PatternAtom::Strlit(Intern::from_ref(x))),
+                    e.span(),
+                )
             }),
             ty.clone().map_with(|x, e| {
                 (
@@ -448,7 +445,9 @@ where
     // Expression parser
     let expression = recursive(|expr| {
         let rname = select_ref! { Token::Ident(x) => *x };
-        let ident = rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| (Expr::Ident(x), e.span()));
+        let ident = rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
+            (Expr::Ident(Intern::from_ref(x)), e.span())
+        });
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
         let path = ident
@@ -467,8 +466,11 @@ where
                 select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
                     .map_with(|x, e| (x, e.span())),
                 // Strings
-                select_ref! { Token::Strlit(x) => *x }
-                    .map_with(|x, e: &mut MapExtra<'_, '_, _, _>| (Expr::String(x), e.span())),
+                select_ref! { Token::Strlit(x) => *x }.map_with(
+                    |x, e: &mut MapExtra<'_, '_, _, _>| {
+                        (Expr::String(Intern::from_ref(x)), e.span())
+                    },
+                ),
                 // True
                 just(Token::True).map_with(|_, e| (Expr::Bool(true), e.span())),
                 // False
@@ -984,13 +986,15 @@ where
                     )
                 }
             }),
-            //select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Pattern::Atom(PatternAtom::Variable(x.to_string())), e.span())),
             // Numbers
             select_ref! { Token::Num(x) => OrderedFloat(*x) }
                 .map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),
             // Strings
             select_ref! { Token::Strlit(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
-                (Pattern::Atom(PatternAtom::Strlit(x)), e.span())
+                (
+                    Pattern::Atom(PatternAtom::Strlit(Intern::from_ref(x))),
+                    e.span(),
+                )
             }),
             ty.clone().map_with(|x, e| {
                 (
@@ -1026,14 +1030,13 @@ fn parse_failure(
     fid: FileID,
 ) -> DynamicErr {
     DynamicErr::new(err.reason().to_string())
-        .label((
+        .label(
             err.found().map_or_else(
                 || "end of input".to_string(),
                 |c| format!("Unexpected '{c}'"),
             ),
             err.span().annotate(fid),
-            //err.span()
-        ))
+        )
         .extra_labels(
             err.contexts()
                 .map(|(l, s)| (format!("while parsing this {l}"), s.annotate(fid)))
@@ -1053,8 +1056,6 @@ fn make_input(
 /// Public parsing function. Produces a parse tree from a source string.
 pub fn parse(ctx: &mut Context, fid: FileID) -> CompResult<Package> {
     let input = ctx.filectx.get(&fid).unwrap().src_text;
-    // let mut state = RodeoState(&mut ctx.rodeo);
-
     let tokens: Vec<(Token, SimpleSpan<usize, u64>)> = match lexer(fid).parse(input).into_result() {
         Ok(tokens) => tokens,
         Err(errs) => {
@@ -1064,7 +1065,6 @@ pub fn parse(ctx: &mut Context, fid: FileID) -> CompResult<Package> {
                     .collect(),
             )
             .into());
-            // return Err(CompilerErrKind::Dynamic(parse_failure(&errs[0], fid)).into())
         }
     };
 
@@ -1081,26 +1081,12 @@ pub fn parse(ctx: &mut Context, fid: FileID) -> CompResult<Package> {
         Err(e) => {
             let errs = ErrorCollection::new(
                 e.iter()
-                    .map(|e| {
-                        parse_failure(
-                            e, //SimpleSpan::new(fid, e.first().unwrap().span()),
-                            fid,
-                        )
-                        .into()
-                    })
+                    .map(|e| parse_failure(e, fid).into())
                     .collect::<Vec<CompilerErr>>(),
             );
             Err(errs.into())
-            // let errors = e
-            //     .iter()
-            //     .map(|e| CompilerErr::Dynamic(parse_failure(&e, input)))
-            //     .collect::<Vec<_>>();
-            // Err(errors[0])
         }
     };
-    // dbg!(ctx.rodeo);
-
-    // rodeo.extend(state.0.iter().map(|x| x.1));
     packg
 }
 

@@ -1,4 +1,11 @@
-use std::{any::Any, borrow::Cow, fmt::Display, io::Cursor, ops::Deref};
+use std::{
+    any::Any,
+    borrow::Cow,
+    fmt::{self, Display},
+    io::Cursor,
+    ops::Deref,
+    process::exit,
+};
 
 mod templates {
 
@@ -8,14 +15,14 @@ mod templates {
     use chumsky::span::SimpleSpan;
     pub fn not_defined(q: &QualifierFragment, s: &SimpleSpan<usize, u64>) -> CompilerErr {
         DynamicErr::new(format!("Could not find a definition for '{}'", &q.name()))
-            .label((format!("'{}' not found in scope", &q.name()), *s))
+            .label(format!("'{}' not found in scope", &q.name()), *s)
             //.src(self.src.to_string())
             .into()
     }
 
     pub fn bad_ident(expr: &Expr, s: &SimpleSpan<usize, u64>) -> CompilerErr {
         DynamicErr::new("cannot get ident")
-            .label((format!("{expr:?}"), *s))
+            .label(format!("{expr:?}"), *s)
             .into()
     }
 }
@@ -30,7 +37,7 @@ use thiserror::Error;
 
 pub type CompResult<T> = Result<T, CompilerErr>;
 pub trait ReportableError: Any + Display + std::error::Error + Send + Sync {
-    fn report<'src>(&self, ctx: &Context);
+    fn report(&self, ctx: &Context);
 }
 
 pub trait AnnotatableError: ReportableError {
@@ -90,6 +97,9 @@ pub enum CompilerErrKind {
     #[error(transparent)]
     ErrorCollection(#[from] ErrorCollection),
 
+    #[error(transparent)]
+    Fatal(#[from] FatalErr),
+
     //#[error(transparent)]
     //Typecheck(#[from] TypecheckingError),
     // #[error(transparent)]
@@ -124,6 +134,7 @@ impl ReportableError for CompilerErrKind {
                     e.report(ctx);
                 }
             }
+            CompilerErrKind::Fatal(_) => unreachable!(),
         }
     }
 }
@@ -138,7 +149,7 @@ impl From<std::io::Error> for CompilerErrKind {
 pub struct ErrorCollection(Vec<CompilerErr>);
 
 impl Display for ErrorCollection {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for e in &self.0 {
             e.fmt(f)?;
         }
@@ -169,9 +180,9 @@ impl DynamicErr {
         }
     }
 
-    pub fn label(self, label: (impl Into<String>, SimpleSpan<usize, FileID>)) -> Self {
+    pub fn label(self, label: impl Into<String>, span: SimpleSpan<usize, FileID>) -> Self {
         Self {
-            label: Some((label.0.into(), label.1)),
+            label: Some((label.into(), span)),
             ..self
         }
     }
@@ -183,10 +194,7 @@ impl DynamicErr {
         }
     }
 
-    pub fn generate_sources<'src>(
-        &self,
-        context: &Context,
-    ) -> Vec<(Cow<'src, str>, Cow<'src, str>)> {
+    pub fn generate_sources(&self, context: &Context) -> Vec<(&'static str, &'static str)> {
         let mut source_ids: Vec<u64> = vec![];
         let label_origin = self.label.as_ref().unwrap().1.context;
         source_ids.push(label_origin);
@@ -198,14 +206,14 @@ impl DynamicErr {
         let mut new_sources = vec![];
         for k in source_ids {
             let ent = context.filectx.get(&k).unwrap().clone();
-            new_sources.push((ent.filename.to_str().unwrap().into(), ent.src_text.into()))
+            new_sources.push((ent.filename.to_str().unwrap(), ent.src_text))
         }
 
         new_sources
     }
 
     pub fn get_gen(self, context: &Context) -> GeneralErr {
-        let s = self.generate_sources(&context);
+        let s = self.generate_sources(context);
         GeneralErr {
             msg: self.msg,
             label: self
@@ -219,7 +227,7 @@ impl DynamicErr {
 }
 
 impl std::fmt::Display for DynamicErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> fmt::Result {
         write!(f, "Dynamic Error: {:?}", self)
     }
 }
@@ -230,36 +238,15 @@ pub struct GeneralErr {
     label: (String, SimpleSpan<usize, FileID>),
     extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
     context: FxHashMap<FileID, FileSource<'static>>,
-    sources: Vec<(Cow<'static, str>, Cow<'static, str>)>,
+    sources: Vec<(&'static str, &'static str)>,
 }
 
-// impl GeneralErr {
-//     pub fn new(
-//         msg: impl Into<String>,
-//         label: (String, SimpleSpan),
-//         filename: Option<impl Into<String>>,
-//         extra_labels: Option<Vec<(String, SimpleSpan)>>,
-//         src: String,
-//     ) -> Self {
-//         Self {
-//             filename: filename.and_then(|f| Some(f.into())),
-//             msg: msg.into(),
-//             label,
-//             extra_labels,
-//             src: Some(src),
-//         }
-//     }
-// }
-
 impl std::fmt::Display for GeneralErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut buf = Cursor::new(vec![]);
         let rep = Report::build(
             ReportKind::Error,
-            (
-                self.sources.first().unwrap().0.clone(),
-                self.label.1.into_range(),
-            ),
+            (self.sources.first().unwrap().0, self.label.1.into_range()),
         )
         .with_config(
             ariadne::Config::new()
@@ -276,7 +263,6 @@ impl std::fmt::Display for GeneralErr {
                         .filename
                         .to_str()
                         .unwrap()
-                        .into()
                 },
                 self.label.1.into_range(),
             ))
@@ -290,8 +276,7 @@ impl std::fmt::Display for GeneralErr {
                     .unwrap()
                     .filename
                     .to_str()
-                    .unwrap()
-                    .into(),
+                    .unwrap(),
                 label2.1.into_range(),
             ))
             .with_message(label2.0.as_str())
@@ -309,8 +294,39 @@ impl std::fmt::Display for GeneralErr {
     }
 }
 
-// impl ReportableError for GeneralErr {
-//     fn report(&self, ctx: Context) {
-//         eprintln!("{}", self);
-//     }
-// }
+/// A wrapper struct for a fatal, terminating error.
+/// Essentially a glorified wrapper for `panic!()`.
+#[derive(Error, Debug)]
+#[allow(dead_code)]
+pub struct FatalErr(String);
+
+impl ReportableError for FatalErr {
+    fn report<'src>(&self, _: &Context) {
+        unreachable!()
+    }
+}
+
+impl fmt::Display for FatalErr {
+    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unreachable!()
+    }
+}
+
+impl FatalErr {
+    /// Create a new `FatalErr`.
+    /// Note that the act of creating a `FatalErr` terminates the program.
+    #[inline]
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new(msg: String) -> ! {
+        eprintln!("Uh oh!");
+        eprintln!("flarec encountered a fatal error during compilation.");
+        eprintln!("This is likely a bug within flarec.");
+        eprintln!("Please file an issue here:");
+        eprintln!("\thttps://github.com/UPWRD1/flare/issues/new/choose");
+
+        eprintln!("Error details:");
+        eprintln!("\t{msg}");
+        eprintln!("flarec will now exit.");
+        exit(1)
+    }
+}
