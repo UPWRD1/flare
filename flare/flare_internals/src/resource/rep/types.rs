@@ -19,10 +19,10 @@ pub enum PrimitiveType {
 pub enum Ty {
     Primitive(PrimitiveType),
     // #[serde(deserialize_with = "deserialize_slice")]
-    User(Spanned<Intern<String>>, &'static [Spanned<Self>]),
-    Tuple(&'static [Spanned<Self>]),
-    Seq(&'static Spanned<Self>),
-    Arrow(&'static Spanned<Self>, &'static Spanned<Self>),
+    User(Spanned<Intern<String>>, Intern<[Spanned<Self>]>),
+    Tuple(Intern<[Spanned<Self>]>),
+    Seq(Intern<Spanned<Self>>),
+    Arrow(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
     Myself,
     Generic(Spanned<Expr>),
     Variant(EnumVariant),
@@ -35,59 +35,59 @@ pub enum Ty {
 //     Associated(Spanned<Expr>, Vec<Spanned<Ty>>),
 // }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize)]
-#[serde(into = "EnumVariantHelper")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize, Deserialize)]
+// #[serde(into = "EnumVariantHelper")]
 pub struct EnumVariant {
     pub parent_name: Option<Intern<String>>,
     // pub name: Spanned<Expr>,
     pub name: Spanned<Intern<String>>,
-    pub types: &'static [Spanned<Ty>],
+    pub types: Intern<Vec<Spanned<Ty>>>,
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(rename = "EnumVariant")]
-struct EnumVariantHelper {
-    pub parent_name: Option<String>,
-    pub name: Spanned<String>,
-    pub types: Vec<Spanned<Ty>>,
-}
+// #[derive(Deserialize, Serialize)]
+// #[serde(rename = "EnumVariant")]
+// struct EnumVariantHelper {
+//     pub parent_name: Option<String>,
+//     pub name: Spanned<String>,
+//     pub types: Vec<Spanned<Ty>>,
+// }
 
-impl From<EnumVariant> for EnumVariantHelper {
-    fn from(variant: EnumVariant) -> Self {
-        EnumVariantHelper {
-            parent_name: variant.parent_name.map(|x| x.to_string()),
-            name: (variant.name.0.to_string(), variant.name.1),
-            types: variant.types.to_vec(),
-        }
-    }
-}
-
-impl From<EnumVariantHelper> for EnumVariant {
-    fn from(helper: EnumVariantHelper) -> Self {
-        EnumVariant {
-            parent_name: helper.parent_name.map(|x| x.into()),
-            name: (helper.name.0.into(), helper.name.1),
-            types: Box::leak(helper.types.into_boxed_slice()),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for EnumVariant {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        EnumVariantHelper::deserialize(deserializer).map(Into::into)
-    }
-}
-// impl EnumVariant {
-//     pub fn get_name(&self) -> String {
-//         match self {
-//             Self::Simple(n) => n.0.get_ident().unwrap(),
-//             Self::Associated(n, ..) => n.0.get_ident().unwrap(),
+// impl From<EnumVariant> for EnumVariantHelper {
+//     fn from(variant: EnumVariant) -> Self {
+//         EnumVariantHelper {
+//             parent_name: variant.parent_name.map(|x| x.to_string()),
+//             name: (variant.name.0.to_string(), variant.name.1),
+//             types: variant.types.to_vec(),
 //         }
 //     }
 // }
+
+// impl From<EnumVariantHelper> for EnumVariant {
+//     fn from(helper: EnumVariantHelper) -> Self {
+//         EnumVariant {
+//             parent_name: helper.parent_name.map(|x| x.into()),
+//             name: (helper.name.0.into(), helper.name.1),
+//             types: Box::leak(helper.types.into_boxed_slice()),
+//         }
+//     }
+// }
+
+// impl<'de> Deserialize<'de> for EnumVariant {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: Deserializer<'de>,
+//     {
+//         EnumVariantHelper::deserialize(deserializer).map(Into::into)
+//     }
+// }
+// // impl EnumVariant {
+// //     pub fn get_name(&self) -> String {
+// //         match self {
+// //             Self::Simple(n) => n.0.get_ident().unwrap(),
+// //             Self::Associated(n, ..) => n.0.get_ident().unwrap(),
+// //         }
+// //     }
+// // }
 
 impl Ty {
     pub fn get_arrow(&self) -> (&Spanned<Self>, &Spanned<Self>) {
@@ -117,7 +117,7 @@ impl Ty {
         }
     }
 
-    pub fn monomorph_user(self, g: &'static [Spanned<Ty>]) -> Self {
+    pub fn monomorph_user(self, g: Intern<[Spanned<Ty>]>) -> Self {
         match self {
             Self::User(name, _) => Self::User(name, g),
             _ => unreachable!("Cannot monomorph non-generic type"),
@@ -158,12 +158,10 @@ impl From<TyHelper> for Ty {
     fn from(helper: TyHelper) -> Self {
         match helper {
             TyHelper::Primitive(p) => Ty::Primitive(p),
-            TyHelper::User(name, generics) => {
-                Ty::User(name, Box::leak(generics.into_boxed_slice()))
-            }
-            TyHelper::Tuple(types) => Ty::Tuple(Box::leak(types.into_boxed_slice())),
-            TyHelper::Seq(ty) => Ty::Seq(Box::leak(ty)),
-            TyHelper::Arrow(from, to) => Ty::Arrow(Box::leak(from), Box::leak(to)),
+            TyHelper::User(name, generics) => Ty::User(name, Intern::from(generics.as_slice())),
+            TyHelper::Tuple(types) => Ty::Tuple(Intern::from(types.as_slice())),
+            TyHelper::Seq(ty) => Ty::Seq(Intern::from(ty)),
+            TyHelper::Arrow(from, to) => Ty::Arrow(Intern::from(from), Intern::from(to)),
             TyHelper::Myself => Ty::Myself,
             TyHelper::Generic(expr) => Ty::Generic(expr),
             TyHelper::Variant(variant) => Ty::Variant(variant),

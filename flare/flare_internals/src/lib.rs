@@ -83,7 +83,6 @@ impl Context {
     // }
 
     pub fn parse_file(&mut self, id: FileID) -> CompResult<Package> {
-        println!("Parsing {id}");
         parser::parse(self, id)
     }
 
@@ -95,7 +94,7 @@ impl Context {
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
             .map(|x| {
-                let src_text = std::fs::read_to_string(src_path).unwrap();
+                let src_text = std::fs::read_to_string(x.path()).unwrap();
                 // Leak the string to get a 'static lifetime, then cast to 'src
                 let src_text = Box::leak(src_text.into_boxed_str());
 

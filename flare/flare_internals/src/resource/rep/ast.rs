@@ -16,8 +16,7 @@ use super::{
 };
 
 /// Type representing an atomic value within a pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize)]
-#[serde(into = "PatternAtomHelper")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize, Deserialize)]
 pub enum PatternAtom {
     // #[serde(deserialize_with = "deserialize_static_str")]
     Strlit(Intern<String>),
@@ -27,101 +26,22 @@ pub enum PatternAtom {
     Variable(Intern<String>),
 
     // #[serde(deserialize_with = "deserialize_static")]
-    Type(&'static Spanned<Ty>),
+    Type(Intern<Spanned<Ty>>),
 }
 
 /// Type representing a Pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize)]
-#[serde(into = "PatternHelper")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize, Deserialize)]
 pub enum Pattern {
     // #[serde(borrow)]
     Atom(PatternAtom),
 
     // #[serde(deserialize_with = "deserialize_static")]
-    Tuple(&'static [Spanned<Self>]),
+    Tuple(Intern<Vec<Spanned<Self>>>),
 
     // #[serde(deserialize_with = "deserialize_static")]
-    Variant(&'static Spanned<Expr>, &'static [Spanned<Self>]),
+    Variant(Intern<Spanned<Expr>>, Intern<Vec<Spanned<Self>>>),
 }
 
-#[derive(Deserialize, Serialize)]
-#[serde(rename = "PatternAtom")]
-enum PatternAtomHelper {
-    Strlit(String),
-    Num(OrderedFloat<f64>),
-    Variable(String),
-    Type(Box<Spanned<Ty>>),
-}
-
-impl From<PatternAtom> for PatternAtomHelper {
-    fn from(atom: PatternAtom) -> Self {
-        match atom {
-            PatternAtom::Strlit(s) => PatternAtomHelper::Strlit((*s).to_string()),
-            PatternAtom::Num(n) => PatternAtomHelper::Num(n),
-            PatternAtom::Variable(v) => PatternAtomHelper::Variable((*v).to_string()),
-            PatternAtom::Type(ty) => PatternAtomHelper::Type(Box::new(*ty)),
-        }
-    }
-}
-
-impl From<PatternAtomHelper> for PatternAtom {
-    fn from(helper: PatternAtomHelper) -> Self {
-        match helper {
-            PatternAtomHelper::Strlit(s) => PatternAtom::Strlit(s.into()),
-            PatternAtomHelper::Num(n) => PatternAtom::Num(n),
-            PatternAtomHelper::Variable(v) => PatternAtom::Variable(v.into()),
-            PatternAtomHelper::Type(ty) => PatternAtom::Type(Box::leak(ty)),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for PatternAtom {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        PatternAtomHelper::deserialize(deserializer).map(Into::into)
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename = "Pattern")]
-enum PatternHelper {
-    Atom(PatternAtom),
-    Tuple(Vec<Spanned<Pattern>>),
-    Variant(Box<Spanned<Expr>>, Vec<Spanned<Pattern>>),
-}
-
-impl From<Pattern> for PatternHelper {
-    fn from(pattern: Pattern) -> Self {
-        match pattern {
-            Pattern::Atom(atom) => PatternHelper::Atom(atom),
-            Pattern::Tuple(elems) => PatternHelper::Tuple(elems.to_vec()),
-            Pattern::Variant(expr, pats) => PatternHelper::Variant(Box::new(*expr), pats.to_vec()),
-        }
-    }
-}
-
-impl From<PatternHelper> for Pattern {
-    fn from(helper: PatternHelper) -> Self {
-        match helper {
-            PatternHelper::Atom(atom) => Pattern::Atom(atom),
-            PatternHelper::Tuple(elems) => Pattern::Tuple(Box::leak(elems.into_boxed_slice())),
-            PatternHelper::Variant(expr, pats) => {
-                Pattern::Variant(Box::leak(expr), Box::leak(pats.into_boxed_slice()))
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Pattern {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        PatternHelper::deserialize(deserializer).map(Into::into)
-    }
-}
 impl Pattern {
     pub fn get_ident(&self) -> Option<&Intern<String>> {
         match self {
@@ -156,46 +76,46 @@ pub enum Expr {
     String(Intern<String>),
     Bool(bool),
 
-    ExternFunc(&'static [QualifierFragment]),
+    ExternFunc(Intern<[QualifierFragment]>),
     Unit,
-    // Constructor(&'static Spanned<Self>, Vec<Spanned<Self>>),
-    Constructor(&'static Spanned<Self>, &'static [Spanned<Self>]),
+    // Constructor(Intern<Spanned<Self>>, Vec<Spanned<Self>>),
+    Constructor(Intern<Spanned<Self>>, Intern<[Spanned<Self>]>),
     FieldedConstructor(
-        &'static Spanned<Self>,
-        &'static [(Spanned<Self>, Spanned<Self>)],
+        Intern<Spanned<Self>>,
+        Intern<[(Spanned<Self>, Spanned<Self>)]>,
     ),
 
     Pat(Spanned<Pattern>),
 
-    Mul(&'static Spanned<Self>, &'static Spanned<Self>),
-    Div(&'static Spanned<Self>, &'static Spanned<Self>),
-    Add(&'static Spanned<Self>, &'static Spanned<Self>),
-    Sub(&'static Spanned<Self>, &'static Spanned<Self>),
-    Comparison(&'static Spanned<Self>, ComparisonOp, &'static Spanned<Self>),
+    Mul(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    Div(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    Add(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    Sub(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    Comparison(Intern<Spanned<Self>>, ComparisonOp, Intern<Spanned<Self>>),
 
-    Access(&'static Spanned<Self>),
-    Call(&'static Spanned<Self>, &'static Spanned<Self>),
-    FieldAccess(&'static Spanned<Self>, &'static Spanned<Self>),
-    MethodAccess(&'static Spanned<Self>, &'static Spanned<Self>),
+    Access(Intern<Spanned<Self>>),
+    Call(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    FieldAccess(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    MethodAccess(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
     Myself,
 
     If(
-        &'static Spanned<Self>,
-        &'static Spanned<Self>,
-        &'static Spanned<Self>,
+        Intern<Spanned<Self>>,
+        Intern<Spanned<Self>>,
+        Intern<Spanned<Self>>,
     ),
     Match(
-        &'static Spanned<Self>,
-        &'static [(Spanned<Pattern>, Spanned<Self>)],
+        Intern<Spanned<Self>>,
+        Intern<[(Spanned<Pattern>, Spanned<Self>)]>,
     ),
-    Lambda(&'static Spanned<Self>, &'static Spanned<Self>),
+    Lambda(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
     Let(
-        &'static Spanned<Self>,
-        &'static Spanned<Self>,
-        &'static Spanned<Self>,
+        Intern<Spanned<Self>>,
+        Intern<Spanned<Self>>,
+        Intern<Spanned<Self>>,
     ),
-    Struct(&'static [(Spanned<Self>, Spanned<Self>)]),
-    Tuple(&'static [Spanned<Self>]),
+    Struct(Intern<[(Spanned<Self>, Spanned<Self>)]>),
+    Tuple(Intern<[Spanned<Self>]>),
 }
 
 impl Expr {
@@ -239,11 +159,11 @@ impl Expr {
     ) -> Spanned<Self> {
         match self {
             Self::Call(l, r) => (
-                Self::Call(Box::leak(Box::new(l.0.inject_call_start(arg, span))), r),
+                Self::Call(Intern::from(l.0.inject_call_start(arg, span)), r),
                 span,
             ),
             Self::Ident(n) => (
-                Self::Call(Box::leak(Box::new((self, span))), Box::leak(Box::new(arg))),
+                Self::Call(Intern::from((self, span)), Intern::from(arg)),
                 span,
             ),
             _ => panic!(),
@@ -344,39 +264,47 @@ impl From<ExprHelper> for Expr {
             ExprHelper::Number(n) => Expr::Number(n),
             ExprHelper::String(s) => Expr::String(s.into()),
             ExprHelper::Bool(b) => Expr::Bool(b),
-            ExprHelper::ExternFunc(frags) => Expr::ExternFunc(Box::leak(frags.into_boxed_slice())),
+            ExprHelper::ExternFunc(frags) => {
+                Expr::ExternFunc(Intern::<[_]>::from(frags.as_slice()))
+            }
             ExprHelper::Unit => Expr::Unit,
             ExprHelper::Constructor(name, args) => {
-                Expr::Constructor(Box::leak(name), Box::leak(args.into_boxed_slice()))
+                Expr::Constructor(Intern::from(name), Intern::<[_]>::from(args.as_slice()))
             }
             ExprHelper::FieldedConstructor(name, fields) => {
-                Expr::FieldedConstructor(Box::leak(name), Box::leak(fields.into_boxed_slice()))
+                Expr::FieldedConstructor(Intern::from(name), Intern::from(fields.as_slice()))
             }
             ExprHelper::Pat(p) => Expr::Pat(p),
-            ExprHelper::Mul(l, r) => Expr::Mul(Box::leak(l), Box::leak(r)),
-            ExprHelper::Div(l, r) => Expr::Div(Box::leak(l), Box::leak(r)),
-            ExprHelper::Add(l, r) => Expr::Add(Box::leak(l), Box::leak(r)),
-            ExprHelper::Sub(l, r) => Expr::Sub(Box::leak(l), Box::leak(r)),
-            ExprHelper::Comparison(l, op, r) => Expr::Comparison(Box::leak(l), op, Box::leak(r)),
-            ExprHelper::Access(e) => Expr::Access(Box::leak(e)),
-            ExprHelper::Call(f, arg) => Expr::Call(Box::leak(f), Box::leak(arg)),
-            ExprHelper::FieldAccess(e, field) => Expr::FieldAccess(Box::leak(e), Box::leak(field)),
+            ExprHelper::Mul(l, r) => Expr::Mul(Intern::from(l), Intern::from(r)),
+            ExprHelper::Div(l, r) => Expr::Div(Intern::from(l), Intern::from(r)),
+            ExprHelper::Add(l, r) => Expr::Add(Intern::from(l), Intern::from(r)),
+            ExprHelper::Sub(l, r) => Expr::Sub(Intern::from(l), Intern::from(r)),
+            ExprHelper::Comparison(l, op, r) => {
+                Expr::Comparison(Intern::from(l), op, Intern::from(r))
+            }
+            ExprHelper::Access(e) => Expr::Access(Intern::from(e)),
+            ExprHelper::Call(f, arg) => Expr::Call(Intern::from(f), Intern::from(arg)),
+            ExprHelper::FieldAccess(e, field) => {
+                Expr::FieldAccess(Intern::from(e), Intern::from(field))
+            }
             ExprHelper::MethodAccess(e, method) => {
-                Expr::MethodAccess(Box::leak(e), Box::leak(method))
+                Expr::MethodAccess(Intern::from(e), Intern::from(method))
             }
             ExprHelper::Myself => Expr::Myself,
             ExprHelper::If(cond, then, els) => {
-                Expr::If(Box::leak(cond), Box::leak(then), Box::leak(els))
+                Expr::If(Intern::from(cond), Intern::from(then), Intern::from(els))
             }
             ExprHelper::Match(scrutinee, arms) => {
-                Expr::Match(Box::leak(scrutinee), Box::leak(arms.into_boxed_slice()))
+                Expr::Match(Intern::from(scrutinee), Intern::from(arms.as_slice()))
             }
-            ExprHelper::Lambda(param, body) => Expr::Lambda(Box::leak(param), Box::leak(body)),
+            ExprHelper::Lambda(param, body) => {
+                Expr::Lambda(Intern::from(param), Intern::from(body))
+            }
             ExprHelper::Let(pat, val, body) => {
-                Expr::Let(Box::leak(pat), Box::leak(val), Box::leak(body))
+                Expr::Let(Intern::from(pat), Intern::from(val), Intern::from(body))
             }
-            ExprHelper::Struct(fields) => Expr::Struct(Box::leak(fields.into_boxed_slice())),
-            ExprHelper::Tuple(elems) => Expr::Tuple(Box::leak(elems.into_boxed_slice())),
+            ExprHelper::Struct(fields) => Expr::Struct(Intern::from(fields.as_slice())),
+            ExprHelper::Tuple(elems) => Expr::Tuple(Intern::from(elems.as_slice())),
         }
     }
 }

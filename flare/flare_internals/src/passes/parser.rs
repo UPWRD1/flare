@@ -289,7 +289,7 @@ where
 
 /// The main parser function.
 fn parser<I, M>(
-    make_input: M,
+    make_input: &'static M,
     // id: FileID,
     // rodeo: &mut Rodeo,
 ) -> impl Parser<
@@ -322,12 +322,21 @@ where
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect::<Vec<_>>();
+
+        let grouping = Parser::nested_in::<
+            _,
+            I,
+            extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, (), ()>,
+        >(
+            ty.clone(),
+            select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
+        );
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
         let path = ident
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (
-                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    Expr::FieldAccess(Intern::from(x), Intern::from(y)),
                     e.span(),
                 )
             })
@@ -355,7 +364,7 @@ where
                 (
                     Ty::User(
                         (*name.0.get_ident(name.1).unwrap(), name.1),
-                        generics.unwrap_or_default().leak(),
+                        Intern::from(generics.unwrap_or_default().as_slice()),
                     ),
                     e.span(),
                 )
@@ -368,15 +377,13 @@ where
             type_list
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with(|types, e| (Ty::Tuple(types.leak()), e.span())),
-            ty.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
+                .map_with(|types, e| (Ty::Tuple(Intern::from(types.as_slice())), e.span())),
+            grouping, // ty.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-            (
-                Ty::Arrow(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
-                e.span(),
-            )
+            (Ty::Arrow(Intern::from(x), Intern::from(y)), e.span())
         })])
+        .map_with(|x, e| x)
     });
 
     // Pattern parser.
@@ -390,7 +397,7 @@ where
         let path = ident
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (
-                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    Expr::FieldAccess(Intern::from(x), Intern::from(y)),
                     e.span(),
                 )
             })
@@ -403,7 +410,7 @@ where
                 .collect::<Vec<Spanned<Pattern>>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
-                .map_with(|p, e| (Pattern::Tuple(p.leak()), e.span())),
+                .map_with(|p, e| (Pattern::Tuple(Intern::from(p)), e.span())),
             path.then(
                 pat.separated_by(just(Token::Comma))
                     .collect::<Vec<_>>()
@@ -413,7 +420,7 @@ where
             .map_with(|(name, args), e| {
                 if let Some(args) = args {
                     (
-                        Pattern::Variant(Box::leak(Box::new(name)), args.leak()),
+                        Pattern::Variant(Intern::from(name), Intern::from(args)),
                         e.span(),
                     )
                 } else {
@@ -434,12 +441,8 @@ where
                     e.span(),
                 )
             }),
-            ty.clone().map_with(|x, e| {
-                (
-                    Pattern::Atom(PatternAtom::Type(Box::leak(Box::new(x)))),
-                    e.span(),
-                )
-            }),
+            ty.clone()
+                .map_with(|x, e| (Pattern::Atom(PatternAtom::Type(Intern::from(x))), e.span())),
         ))
     });
     // Expression parser
@@ -453,7 +456,7 @@ where
         let path = ident
             .pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
                 (
-                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    Expr::FieldAccess(Intern::from(x), Intern::from(y)),
                     e.span(),
                 )
             })
@@ -486,7 +489,10 @@ where
                     .map_with(|(name, args), e| {
                         if !args.is_empty() {
                             (
-                                Expr::Constructor(Box::leak(Box::new(name)), args.leak()),
+                                Expr::Constructor(
+                                    Intern::from(name),
+                                    Intern::from(args.as_slice()),
+                                ),
                                 e.span(),
                             )
                         } else {
@@ -508,7 +514,10 @@ where
                     .map_with(|(name, args), e| {
                         if let Some(args) = args {
                             (
-                                Expr::FieldedConstructor(Box::leak(Box::new(name)), args.leak()),
+                                Expr::FieldedConstructor(
+                                    Intern::from(name),
+                                    Intern::from(args.as_slice()),
+                                ),
                                 e.span(),
                             )
                         } else {
@@ -523,7 +532,9 @@ where
                     .allow_trailing()
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|items, e| (Expr::Tuple(items.leak()), e.span()))
+                    .map_with(|items, e| {
+                        (Expr::Tuple(Intern::<[_]>::from(items.as_slice())), e.span())
+                    })
                     .labelled("tuple")
                     .as_context(),
                 // let x = y in z
@@ -537,9 +548,9 @@ where
                     .map_with(|((lhs, rhs), then), e| {
                         (
                             Expr::Let(
-                                Box::leak(Box::new((Expr::Pat(lhs), lhs.1))),
-                                Box::leak(Box::new(rhs)),
-                                Box::leak(Box::new(then)),
+                                Intern::from((Expr::Pat(lhs), lhs.1)),
+                                Intern::from(rhs),
+                                Intern::from(then),
                             ),
                             e.span(),
                         )
@@ -554,9 +565,9 @@ where
                     .map_with(|((test, then), otherwise), e| {
                         (
                             Expr::If(
-                                Box::leak(Box::new(test)),
-                                Box::leak(Box::new(then)),
-                                Box::leak(Box::new(otherwise)),
+                                Intern::from(test),
+                                Intern::from(then),
+                                Intern::from(otherwise),
                             ),
                             e.span(),
                         )
@@ -580,7 +591,7 @@ where
                     )
                     .map_with(|(matchee, arms), e| {
                         (
-                            Expr::Match(Box::leak(Box::new(matchee)), arms.leak()),
+                            Expr::Match(Intern::from(matchee), Intern::from(arms.as_slice())),
                             e.span(),
                         )
                     }),
@@ -596,7 +607,7 @@ where
                 just(Token::FatArrow).ignore_then(expr.clone()),
                 |arg, body, e| {
                     (
-                        Expr::Lambda(Box::leak(Box::new(arg)), Box::leak(Box::new(body))),
+                        Expr::Lambda(Intern::from(arg), Intern::from(body)),
                         e.span(),
                     )
                 },
@@ -607,34 +618,22 @@ where
         .pratt(vec![
             // Multiply
             infix(left(8), just(Token::Asterisk), |x, _, y, e| {
-                (
-                    Expr::Mul(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
-                    e.span(),
-                )
+                (Expr::Mul(Intern::from(x), Intern::from(y)), e.span())
             })
             .boxed(),
             // Divide
             infix(left(8), just(Token::Slash), |x, _, y, e| {
-                (
-                    Expr::Div(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
-                    e.span(),
-                )
+                (Expr::Div(Intern::from(x), Intern::from(y)), e.span())
             })
             .boxed(),
             // Add
             infix(left(7), just(Token::Plus), |x, _, y, e| {
-                (
-                    Expr::Add(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
-                    e.span(),
-                )
+                (Expr::Add(Intern::from(x), Intern::from(y)), e.span())
             })
             .boxed(),
             // Subtract
             infix(left(7), just(Token::Minus), |x, _, y, e| {
-                (
-                    Expr::Sub(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
-                    e.span(),
-                )
+                (Expr::Sub(Intern::from(x), Intern::from(y)), e.span())
             })
             .boxed(),
             infix(
@@ -642,7 +641,7 @@ where
                 select_ref! { Token::ComparisonOp(c) => *c },
                 |left, op, right, e| {
                     (
-                        Expr::Comparison(Box::leak(Box::new(left)), op, Box::leak(Box::new(right))),
+                        Expr::Comparison(Intern::from(left), op, Intern::from(right)),
                         e.span(),
                     )
                 },
@@ -650,15 +649,12 @@ where
             .boxed(),
             // Calls
             infix(left(9), empty(), |func, (), arg, e| {
-                (
-                    Expr::Call(Box::leak(Box::new(func)), Box::leak(Box::new(arg))),
-                    e.span(),
-                )
+                (Expr::Call(Intern::from(func), Intern::from(arg)), e.span())
             })
             .boxed(),
             infix(left(8), just(Token::Arrow), |obj, _, f, e| {
                 (
-                    Expr::MethodAccess(Box::leak(Box::new(obj)), Box::leak(Box::new(f))),
+                    Expr::MethodAccess(Intern::from(obj), Intern::from(f)),
                     e.span(),
                 )
             })
@@ -666,13 +662,13 @@ where
             // Field Access
             infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (
-                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    Expr::FieldAccess(Intern::from(x), Intern::from(y)),
                     e.span(),
                 )
             })
             .boxed(),
         ])
-        // .map(|x| Box::leak(Box::new(x)))
+        // .map(|x| (x))
         .boxed()
         .memoized()
         .labelled("expression")
@@ -688,10 +684,7 @@ where
             .then(just(Token::Eq).ignore_then(expression.clone()))
             .map_with(|(((name, args), ty), body), e| {
                 let value = args.into_iter().rev().fold(body, |acc, arg| {
-                    (
-                        Expr::Lambda(Box::leak(Box::new(arg)), Box::leak(Box::new(acc))),
-                        e.span(),
-                    )
+                    (Expr::Lambda(Intern::from(arg), Intern::from(acc)), e.span())
                 });
                 Definition::Let(name, value, ty)
             })
@@ -746,7 +739,7 @@ where
                         EnumVariant {
                             parent_name: None,
                             name: (*name.0.get_ident(name.1).unwrap(), name.1),
-                            types: types.leak(),
+                            types: Intern::from_ref(types.as_slice()),
                         },
                         e.span(),
                     )
@@ -756,7 +749,7 @@ where
                     EnumVariant {
                         parent_name: None,
                         name: (*name.0.get_ident(name.1).unwrap(), name.1),
-                        types: vec![].leak(),
+                        types: Intern::from_ref(&[][..]),
                     },
                     e.span(),
                 )
@@ -869,7 +862,7 @@ where
             .clone()
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (
-                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    Expr::FieldAccess(Intern::from(x), Intern::from(y)),
                     e.span(),
                 )
             })
@@ -898,7 +891,7 @@ where
                     (
                         Ty::User(
                             (*name.0.get_ident(name.1).unwrap(), name.1),
-                            generics.unwrap_or_default().leak(),
+                            Intern::from(generics.unwrap_or_default().as_slice()),
                         ),
                         e.span(),
                     )
@@ -911,13 +904,10 @@ where
             type_list
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with(|types, e| (Ty::Tuple(types.leak()), e.span())),
+                .map_with(|types, e| (Ty::Tuple(Intern::from(types.as_slice())), e.span())),
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-            (
-                Ty::Arrow(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
-                e.span(),
-            )
+            (Ty::Arrow(Intern::from(x), Intern::from(y)), e.span())
         })])
     });
     ty
@@ -953,7 +943,7 @@ where
         let path = ident
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (
-                    Expr::FieldAccess(Box::leak(Box::new(x)), Box::leak(Box::new(y))),
+                    Expr::FieldAccess(Intern::from(x), Intern::from(y)),
                     e.span(),
                 )
             })
@@ -966,7 +956,7 @@ where
                 .collect::<Vec<Spanned<Pattern>>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
-                .map_with(|p, e| (Pattern::Tuple(p.leak()), e.span())),
+                .map_with(|p, e| (Pattern::Tuple(Intern::from(p)), e.span())),
             path.then(
                 pat.separated_by(just(Token::Comma))
                     .collect::<Vec<_>>()
@@ -976,7 +966,7 @@ where
             .map_with(|(name, args), e| {
                 if let Some(args) = args {
                     (
-                        Pattern::Variant(Box::leak(Box::new(name)), args.leak()),
+                        Pattern::Variant(Intern::from(name), Intern::from(args)),
                         e.span(),
                     )
                 } else {
@@ -996,12 +986,8 @@ where
                     e.span(),
                 )
             }),
-            ty.clone().map_with(|x, e| {
-                (
-                    Pattern::Atom(PatternAtom::Type(Box::leak(Box::new(x)))),
-                    e.span(),
-                )
-            }),
+            ty.clone()
+                .map_with(|x, e| (Pattern::Atom(PatternAtom::Type(Intern::from(x))), e.span())),
         ))
     });
     pattern
@@ -1070,7 +1056,7 @@ pub fn parse(ctx: &mut Context, fid: FileID) -> CompResult<Package> {
 
     //dbg!(&tokens);
 
-    let packg: Result<Package, CompilerErr> = match parser(make_input)
+    let packg: Result<Package, CompilerErr> = match parser(&make_input)
         .parse(make_input(
             SimpleSpan::new(fid, 0..input.len()),
             tokens.leak(),

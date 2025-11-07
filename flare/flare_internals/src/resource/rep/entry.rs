@@ -37,44 +37,41 @@ pub struct EnumEntry {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
-#[serde(from = "FunctionItemRepr")]
-#[serde(into = "FunctionItemRepr")]
 pub struct FunctionItem {
     pub name: Spanned<Expr>,
-    pub sig: &'static OnceCell<Spanned<Ty>>,
+    // pub sig: Intern<OnceCell<Spanned<Ty>>>,
+    pub sig: Option<Spanned<Ty>>,
     pub body: Spanned<Expr>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct FunctionItemRepr(Spanned<Expr>, Option<Spanned<Ty>>, Spanned<Expr>);
+// #[derive(Serialize, Deserialize)]
+// struct FunctionItemRepr(Spanned<Expr>, Option<Spanned<Ty>>, Spanned<Expr>);
 
-impl From<FunctionItemRepr> for FunctionItem {
-    fn from(value: FunctionItemRepr) -> Self {
-        let cell = OnceCell::new();
-        if let Some(v) = value.1 {
-            let _ = cell.set(v);
-        } else {
-            //do nothing
-        };
-        let cell = Box::leak(Box::new(cell));
-        Self {
-            name: value.0,
-            sig: cell,
-            body: value.2,
-        }
-    }
-}
+// impl From<FunctionItemRepr> for FunctionItem {
+//     fn from(value: FunctionItemRepr) -> Self {
+//         // let cell = OnceCell::new();
+//         // if let Some(v) = value.1 {
+//         //     let _ = cell.set(v);
+//         // } else {
+//         //     //do nothing
+//         // };
+//         // let cell = Box::leak(Box::new(cell));
+//         Self {
+//             name: value.0,
+//             sig: cell,
+//             body: value.2,
+//         }
+//     }
+// }
 
-/// Converts a function item into a Serde-friendly representation
-impl From<FunctionItem> for FunctionItemRepr {
-    fn from(value: FunctionItem) -> Self {
-        Self(value.name, value.sig.get().cloned(), value.body)
-    }
-}
+// /// Converts a function item into a Serde-friendly representation
+// impl From<FunctionItem> for FunctionItemRepr {
+//     fn from(value: FunctionItem) -> Self {
+//         Self(value.name, value.sig.get().cloned(), value.body)
+//     }
+// }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
-// #[derive(Debug, PartialEq, Eq)]
-// #[serde(bound(deserialize = "'static: 'de"))]
 pub enum Item {
     Root,
     Filename(Intern<String>),
@@ -104,7 +101,7 @@ impl Item {
     #[must_use]
     pub fn get_sig(&self) -> Option<&Spanned<Ty>> {
         match self {
-            Item::Function(FunctionItem { sig, .. }) => sig.get(), //Some(sig.as_ref().unwrap()),
+            Item::Function(FunctionItem { sig, .. }) => sig.as_ref(), //Some(sig.as_ref().unwrap()),
             Item::Extern { sig, .. } => Some(sig),
             _ => None,
         }
@@ -152,7 +149,7 @@ impl Item {
     #[must_use]
     pub fn get_ty(self) -> Option<Spanned<Ty>> {
         match self {
-            Self::Function(FunctionItem { sig, .. }) => sig.get().copied(),
+            Self::Function(FunctionItem { sig, .. }) => sig,
             Self::Struct(StructEntry { ty, .. }) => Some(ty),
             Self::Enum(EnumEntry { ty, .. }) => Some(ty),
             Self::Variant((v, s)) => Some((Ty::Variant(v), s)),
@@ -163,7 +160,7 @@ impl Item {
 
     pub fn get_ty_ref(&self) -> Option<&Spanned<Ty>> {
         match &self {
-            Self::Function(FunctionItem { sig, .. }) => sig.get(),
+            Self::Function(FunctionItem { sig, .. }) => sig.as_ref(),
             Self::Struct(StructEntry { ty, .. }) => Some(ty),
             Self::Enum(EnumEntry { ty, .. }) => Some(ty),
             Self::Variant((v, s)) => Some(Box::leak(Box::new((Ty::Variant(*v), *s)))),

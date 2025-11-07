@@ -12,6 +12,7 @@ package Main =
     #extern concat: str -> str -> str
     extern format: ?T -> str
     extern tuple_to_seq: ?T -> Seq[?U]
+    extern Seq: Seq[?T]
     #extern exit: num -> unit
 
     #struct S =
@@ -37,9 +38,9 @@ package Main =
     let main =
         # let o = S {f = 3} in
         let test = 2 in
-         let a = Seq {"I", id("am"), "different"}  in
-            # let s = tuple_to_seq(a) in
-            looper 2 a println 
+         let a = {"I", id("am"), "different"}  in
+            let s = tuple_to_seq(a) in
+            looper 2 s println 
              
         # let b = Option.Some {{3, 4, 5}.3} in
            # (unwrap a) * (unwrap b)

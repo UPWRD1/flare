@@ -1,12 +1,11 @@
-use petgraph::graph::EdgeReference;
-use petgraph::Graph;
+// use petgraph::Graph;
 use petgraph::{
-    graph::{DiGraph, NodeIndex},
+    graph::{DiGraph, EdgeReference, NodeIndex},
     visit::EdgeRef,
 };
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-use std::cell::OnceCell;
+// use std::cell::OnceCell;
 // use std::collections::HashMap;
 use std::hash::RandomState;
 
@@ -24,7 +23,8 @@ use crate::resource::{
     },
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
+// #[serde(bound = "'static: 'de")]
 pub struct Environment {
     //pub items: Trie<SimpleQuant, Index>,
     //pub arena: Arena<Node>,
@@ -45,7 +45,7 @@ impl Environment {
     }
 
     pub fn build(p: &Program) -> CompResult<Self> {
-        let mut g = Graph::new();
+        let mut g = DiGraph::new();
         let mut current_node = g.add_node(Item::Root);
 
         let mut me = Self {
@@ -111,14 +111,14 @@ impl Environment {
                     }
                     Definition::Let(name, body, ty) => {
                         let ident = QualifierFragment::Func(*name.0.get_ident(name.1)?);
-                        let cell = OnceCell::new();
-                        if let Some(ty) = ty {
-                            let _ = cell.set(*ty);
-                        }
-                        let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
+                        // let cell = OnceCell::new();
+                        // if let Some(ty) = ty {
+                        //     let _ = cell.set(*ty);
+                        // }
+                        // let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
                         let entry = Item::Function(FunctionItem {
                             name: *name,
-                            sig: leak_cell,
+                            sig: *ty,
                             body: *body,
                         });
                         me.add(current_node, ident, entry);
@@ -140,11 +140,11 @@ impl Environment {
                         for (method_name, method_body, method_ty) in methods {
                             let method_qual =
                                 QualifierFragment::Method(*method_name.0.get_ident(method_name.1)?);
-                            let cell = OnceCell::from(*method_ty);
-                            let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
+                            // let cell = OnceCell::from(*method_ty);
+                            // let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
                             let the_method = Item::Function(FunctionItem {
                                 name: *method_name,
-                                sig: leak_cell,
+                                sig: Some(*method_ty),
                                 body: *method_body,
                             });
                             me.add(type_node, method_qual, the_method);
@@ -364,8 +364,6 @@ impl Environment {
         };
         (rec.f)(&rec, self, self.root, q) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
     }
-
-    fn serialize() {}
 }
 
 #[cfg(test)]
