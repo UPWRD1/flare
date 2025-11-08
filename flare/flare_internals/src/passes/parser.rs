@@ -166,9 +166,9 @@ fn lexer<I>(
     'static,
     I,
     Vec<(Token, SimpleSpan<usize, u64>)>,
-    extra::Err<Rich<'static, char, SimpleSpan<usize, ()>>>, /*extra::Err<Rich<'src, char>>*/
+    extra::Err<Rich<'static, char, SimpleSpan<usize, ()>>>, /*extra::Err<Rich<'static, char>>*/
 >
-//where I:  BorrowInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>> + StrInput<'src> + SliceInput<'src>,
+//where I:  BorrowInput<'static, Token = char, Span = SimpleSpan<usize, ()>> + ValueInput<'static, Token = char, Span = SimpleSpan<usize, ()>> + StrInput<'static> + SliceInput<'static>,
 where
     I: ValueInput<'static, Token = char, Span = SimpleSpan<usize, ()>>
         + SliceInput<'static, Slice = &'static str, Span = SimpleSpan<usize, ()>>
@@ -296,10 +296,10 @@ fn parser<I, M>(
     'static,
     I,
     Package,
-    extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, (), ()>,
-    // extra::Full<Rich<'src, Token<'src>, SimpleSpan<usize, FileID>>, RodeoState, ()>,
+    extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
+    // extra::Full<Rich<'static, Token<'static>, SimpleSpan<usize, FileID>>, RodeoState, ()>,
 >
-//) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'src>, SimpleSpan<usize, FileID>>>>
+//) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'static>, SimpleSpan<usize, FileID>>>>
 where
     I: BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'static>,
     // Because this function is generic over the input type, we need the caller to tell us how to create a new input,
@@ -311,140 +311,13 @@ where
         select_ref! { Token::Ident(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
             // |x, e| {
             (Expr::Ident(Intern::from_ref(x)), e.span())
-            // (Expr::Ident(rodeo.get_or_intern_static(x)), e.span())
+
         });
 
-    // let ty = ty_parser( ident.boxed()).boxed();
+    let ty = ty_parser(make_input, ident.boxed()).boxed();
 
-    let ty = recursive(|ty| {
-        let type_list = ty
-            .clone()
-            .separated_by(just(Token::Comma))
-            .allow_trailing()
-            .collect::<Vec<_>>();
+    let pattern = pattern_parser(ident.boxed(), ty.clone().boxed()).boxed();
 
-        let grouping = Parser::nested_in::<
-            _,
-            I,
-            extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, (), ()>,
-        >(
-            ty.clone(),
-            select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
-        );
-        // Path Access
-        // This is super hacky, but it does give us a nice infix operator
-        let path = ident
-            .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (
-                    Expr::FieldAccess(Intern::from(x), Intern::from(y)),
-                    e.span(),
-                )
-            })
-            .boxed()])
-            .or(ident)
-            .memoized();
-
-        choice((
-            // Primitive Types
-            just(Token::TyNum).map_with(|_, e| (Ty::Primitive(PrimitiveType::Num), e.span())),
-            just(Token::TyStr).map_with(|_, e| (Ty::Primitive(PrimitiveType::Str), e.span())),
-            just(Token::TyBool).map_with(|_, e| (Ty::Primitive(PrimitiveType::Bool), e.span())),
-            just(Token::TyUnit).map_with(|_, e| (Ty::Primitive(PrimitiveType::Unit), e.span())),
-            just(Token::Metatype).map_with(|_, e| (Ty::Myself, e.span())),
-            just(Token::Myself).map_with(|_, e| (Ty::Myself, e.span())),
-            // User Types
-            path.then(
-                type_list
-                    .clone()
-                    .delimited_by(just(Token::LBracket), just(Token::RBracket))
-                    .or_not(),
-            )
-            // .clone()
-            .map_with(|(name, generics), e| {
-                (
-                    Ty::User(
-                        (*name.0.get_ident(name.1).unwrap(), name.1),
-                        Intern::from(generics.unwrap_or_default()),
-                    ),
-                    e.span(),
-                )
-            }),
-            // Generic Type
-            just(Token::Question)
-                .ignore_then(ident)
-                .map_with(|name, e| (Ty::Generic(name), e.span())),
-            // Tuple
-            type_list
-                .clone()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with(|types, e| (Ty::Tuple(Intern::from(types)), e.span())),
-            grouping, // ty.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
-        ))
-        .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
-            (Ty::Arrow(Intern::from(x), Intern::from(y)), e.span())
-        })])
-        .map_with(|x, e| x)
-    });
-
-    // Pattern parser.
-    // let pattern  =         pattern_parser(Box::leak(Box::new(ident)), Box::leak(Box::new(ty.clone()))).boxed()
-    // ;
-
-    let pattern = recursive(|pat| {
-        // Path Access
-        // This is super hacky, but it does give us a nice infix operator
-        // let ty = ty_parser(ident).lazy().boxed();
-        let path = ident
-            .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                (
-                    Expr::FieldAccess(Intern::from(x), Intern::from(y)),
-                    e.span(),
-                )
-            })
-            .boxed()])
-            .or(ident)
-            .memoized();
-        choice((
-            pat.clone()
-                .separated_by(just(Token::Comma))
-                .collect::<Vec<Spanned<Pattern>>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
-                .map_with(|p, e| (Pattern::Tuple(Intern::from(p)), e.span())),
-            path.then(
-                pat.separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .or_not(),
-            )
-            .map_with(|(name, args), e| {
-                if let Some(args) = args {
-                    (
-                        Pattern::Variant(Intern::from(name), Intern::from(args)),
-                        e.span(),
-                    )
-                } else {
-                    (
-                        Pattern::Atom(PatternAtom::Variable(*name.0.get_ident(name.1).unwrap())),
-                        e.span(),
-                    )
-                }
-            }),
-            //select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Pattern::Atom(PatternAtom::Variable(x.to_string())), e.span())),
-            // Numbers
-            select_ref! { Token::Num(x) => OrderedFloat(*x) }
-                .map_with(|x, e| (Pattern::Atom(PatternAtom::Num(x)), e.span())),
-            // Strings
-            select_ref! { Token::Strlit(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
-                (
-                    Pattern::Atom(PatternAtom::Strlit(Intern::from_ref(x))),
-                    e.span(),
-                )
-            }),
-            ty.clone()
-                .map_with(|x, e| (Pattern::Atom(PatternAtom::Type(Intern::from(x))), e.span())),
-        ))
-    });
     // Expression parser
     let expression = recursive(|expr| {
         let rname = select_ref! { Token::Ident(x) => *x };
@@ -487,13 +360,13 @@ where
                             .delimited_by(just(Token::LBrace), just(Token::RBrace)), //.or_not(),
                     )
                     .map_with(|(name, args), e| {
-                        if !args.is_empty() {
+                        if args.is_empty() {
+                            name
+                        } else {
                             (
                                 Expr::Constructor(Intern::from(name), Intern::from(args)),
                                 e.span(),
                             )
-                        } else {
-                            name
                         }
                     })
                     .labelled("enum constructor")
@@ -599,7 +472,7 @@ where
                 just(Token::FatArrow).ignore_then(expr.clone()),
                 |arg, body, e| {
                     (
-                        Expr::Lambda(Intern::from(arg), Intern::from(body)),
+                        Expr::Lambda(Intern::from(arg), Intern::from(body), true),
                         e.span(),
                     )
                 },
@@ -676,7 +549,10 @@ where
             .then(just(Token::Eq).ignore_then(expression.clone()))
             .map_with(|(((name, args), ty), body), e| {
                 let value = args.into_iter().rev().fold(body, |acc, arg| {
-                    (Expr::Lambda(Intern::from(arg), Intern::from(acc)), e.span())
+                    (
+                        Expr::Lambda(Intern::from(arg), Intern::from(acc), false),
+                        e.span(),
+                    )
                 });
                 Definition::Let(name, value, ty)
             })
@@ -818,22 +694,25 @@ where
         .then_ignore(end())
 }
 
-fn ty_parser<I>(
+fn ty_parser<'src, I, M>(
+    make_input: &'src M,
     ident: Boxed<
-        'static,
-        'static,
+        'src,
+        'src,
         I,
         Spanned<Expr>,
-        extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, (), ()>,
+        extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>,
     >,
 ) -> impl Parser<
-    'static,
+    'src,
     I,
     (Ty, SimpleSpan<usize, u64>),
-    extra::Full<Rich<'static, Token, SimpleSpan<usize, FileID>>, (), ()>,
+    extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>,
 >
 where
-    I: BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'static>,
+    I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
+        M: Fn(SimpleSpan<usize, FileID>, &'src [Spanned<Token>]) -> I + 'src,
+
 {
     // let ident = select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Expr::Ident(x), e.span()));
 
@@ -842,7 +721,7 @@ where
     //     .boxed()
     //     .memoized();
 
-    let ty = recursive(|ty| {
+    let ty = recursive(|ty: Recursive<dyn Parser<'_, I, (Ty, SimpleSpan<usize, u64>), _>>| {
         let type_list = ty
             .clone()
             .separated_by(just(Token::Comma))
@@ -850,6 +729,7 @@ where
             .collect::<Vec<_>>();
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
+
         let path = ident
             .clone()
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
@@ -862,6 +742,10 @@ where
             .or(ident.clone())
             .memoized();
 
+        let grouping = Parser::nested_in(
+            ty.clone(),
+            select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
+        );
         choice((
             // Primitive Types
             just(Token::TyNum).map_with(|_, e| (Ty::Primitive(PrimitiveType::Num), e.span())),
@@ -897,16 +781,18 @@ where
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .map_with(|types, e| (Ty::Tuple(Intern::from(types)), e.span())),
+            grouping,
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
             (Ty::Arrow(Intern::from(x), Intern::from(y)), e.span())
         })])
-    });
+    }).boxed();
     ty
 }
 
 fn pattern_parser<'src, I>(
-    ident: &'src impl Parser<
+    ident: Boxed<
+        'src,
         'src,
         I,
         Spanned<Expr>,
@@ -933,6 +819,7 @@ where
         // This is super hacky, but it does give us a nice infix operator
         // let ty = ty_parser(ident).lazy().boxed();
         let path = ident
+            .clone()
             .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
                 (
                     Expr::FieldAccess(Intern::from(x), Intern::from(y)),
@@ -1023,10 +910,10 @@ fn parse_failure(
 }
 
 /// Compiler black magic function that transforms the token vector into a parsable item.
-fn make_input(
+fn make_input<'src>(
     eoi: SimpleSpan<usize, FileID>,
-    toks: &'static [(Token, SimpleSpan<usize, FileID>)],
-) -> impl BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'static>
+    toks: &'src [(Token, SimpleSpan<usize, FileID>)],
+) -> impl BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>
 {
     toks.map(eoi, |(t, s)| (t, s))
 }

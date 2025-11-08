@@ -1,6 +1,5 @@
 package Main = 
-    # use Math.factorial
-    # use Option.Option
+     use Math    # use Option.Option
     # use Option.unwrap
     #use Opt.Option
     #use Opt.unwrap
@@ -20,8 +19,7 @@ package Main =
     #    f: str -> num -> str
 
     let id x : ?T -> ?T =
-    # let id x = 
-        x
+           x
 
     let looper limit f items : num -> Seq[?T] -> (?T -> unit) -> num =
         let looper_helper = fn c =>
@@ -31,21 +29,32 @@ package Main =
                 let _ = f(items.c) in looper_helper(c+1)
          in
             looper_helper(0)
-    
-    # struct S =
-    #     f: num
-         
-    let main =
-        # let o = S {f = 3} in
-        let test = 2 in
-         let a = {"I", id("am"), "different"}  in
-            let s = tuple_to_seq(a) in
-            looper 2 s println 
-             
-        # let b = Option.Some {{3, 4, 5}.3} in
-           # (unwrap a) * (unwrap b)
 
-        # let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
-        #    let en = Option.Some {"asdf"} in
-        #         let f = factorial (unwrap en) in
-        #                i.f i.d (f)
+    enum EyeColor =
+        Blue,
+        Brown,
+        Green,
+        Other,
+
+    struct Person[?T] =
+        name: str,
+        age: num,
+        eye_color: EyeColor,
+        catchphrase: unit -> ?T
+    
+    let main =
+        let bob = Person {
+            name = "bob",
+            age = 1000,
+            eye_color = EyeColor.Green,
+            catchphrase = fn x => "wowzers!"
+        } in bob.catchphrase  # anonymous lambdas should use Unknown instead of generated types
+
+         # let a = id id in a
+        # let o = S {f = 3} in
+        # let test = 2 in
+         # let a = {"I", id("am"), "different"}  in
+            # let s = tuple_to_seq(a) in
+            # looper 2 s println 
+             
+        

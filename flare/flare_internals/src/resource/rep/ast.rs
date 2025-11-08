@@ -103,7 +103,7 @@ pub enum Expr {
         Intern<Spanned<Self>>,
         Intern<Vec<(Spanned<Pattern>, Spanned<Self>)>>,
     ),
-    Lambda(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    Lambda(Intern<Spanned<Self>>, Intern<Spanned<Self>>, bool),
     Let(
         Intern<Spanned<Self>>,
         Intern<Spanned<Self>>,
@@ -124,7 +124,7 @@ impl Expr {
             }
             Expr::Access(expr) => expr.0.get_ident(expr.1),
             Expr::Call(func, _) => func.0.get_ident(func.1),
-            Expr::Lambda(arg, _) => arg.0.get_ident(arg.1),
+            Expr::Lambda(arg, _, _) => arg.0.get_ident(arg.1),
             Expr::Pat(p) => {
                 if let Pattern::Atom(PatternAtom::Variable(s)) = &p.0 {
                     Ok(s)

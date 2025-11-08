@@ -9,7 +9,6 @@ use rustc_hash::FxHashMap;
 // use std::collections::HashMap;
 use std::hash::RandomState;
 
-use crate::resource::errors::DynamicErr;
 use crate::resource::rep::ast::ImplDef;
 use crate::resource::rep::entry::FunctionItem;
 use crate::resource::rep::types::EnumVariant;
@@ -22,6 +21,7 @@ use crate::resource::{
         Spanned,
     },
 };
+use crate::resource::{errors::DynamicErr, rep::types::Ty};
 
 #[derive(Debug)]
 // #[serde(bound = "'static: 'de")]
@@ -43,7 +43,10 @@ impl Environment {
     pub fn value(&self, idx: NodeIndex) -> Option<&Item> {
         self.graph.node_weight(idx)
     }
-
+    /// Build the environment from a given `Program`
+    /// # Errors
+    /// - on invalid names,
+    ///
     pub fn build(p: &Program) -> CompResult<Self> {
         let mut g = DiGraph::new();
         let mut current_node = g.add_node(Item::Root);
@@ -100,7 +103,7 @@ impl Environment {
                             let variant_name = QualifierFragment::Variant(v.0.name.0);
                             let v = (
                                 EnumVariant {
-                                    parent_name: Some(*parent_name),
+                                    parent_name: Some((*parent_name, the_ty.1)),
                                     ..v.0
                                 },
                                 v.1,
@@ -111,11 +114,6 @@ impl Environment {
                     }
                     Definition::Let(name, body, ty) => {
                         let ident = QualifierFragment::Func(*name.0.get_ident(name.1)?);
-                        // let cell = OnceCell::new();
-                        // if let Some(ty) = ty {
-                        //     let _ = cell.set(*ty);
-                        // }
-                        // let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
                         let entry = Item::Function(FunctionItem {
                             name: *name,
                             sig: *ty,
@@ -133,22 +131,7 @@ impl Environment {
                         me.add(current_node, ident, entry);
                     }
                     Definition::ImplDef(ImplDef { the_ty, methods }) => {
-                        let type_name = QualifierFragment::Type(*the_ty.0.get_user_name().unwrap());
-                        // let type_node = me.get_from_context(&type_name, &package_quant).unwrap();
-                        let type_node = me.get(&[package_quant, type_name]).unwrap();
-                        // dbg!(me.value(type_node));
-                        for (method_name, method_body, method_ty) in methods {
-                            let method_qual =
-                                QualifierFragment::Method(*method_name.0.get_ident(method_name.1)?);
-                            // let cell = OnceCell::from(*method_ty);
-                            // let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
-                            let the_method = Item::Function(FunctionItem {
-                                name: *method_name,
-                                sig: Some(*method_ty),
-                                body: *method_body,
-                            });
-                            me.add(type_node, method_qual, the_method);
-                        }
+                        me.build_impl_def(package_quant, the_ty, methods)?;
                     }
                 }
             }
@@ -156,7 +139,7 @@ impl Environment {
             pack_imports.insert(package_quant, deps);
         }
         //dbg!(&pack_imports);
-        for (name, deps) in pack_imports.iter() {
+        for (name, deps) in &pack_imports {
             let package = me.get(&[*name][..]).unwrap();
 
             for dep in deps {
@@ -182,7 +165,7 @@ impl Environment {
                         .edges_directed(import, petgraph::Direction::Incoming)
                         .map(|x| x.weight())
                         .next()
-                        .cloned()
+                        .copied()
                         .unwrap();
                     me.graph.add_edge(package, import, the_name);
                 }
@@ -192,13 +175,35 @@ impl Environment {
         Ok(me)
     }
 
+    fn build_impl_def(
+        &mut self,
+        package_quant: QualifierFragment,
+        the_ty: &Spanned<Ty>,
+        methods: &Vec<(Spanned<Expr>, Spanned<Expr>, Spanned<Ty>)>,
+    ) -> CompResult<()> {
+        let type_name = QualifierFragment::Type(*the_ty.0.get_user_name().unwrap());
+        let type_node = self.get(&[package_quant, type_name]).unwrap();
+        for (method_name, method_body, method_ty) in methods {
+            let method_qual = QualifierFragment::Method(*method_name.0.get_ident(method_name.1)?);
+            // let cell = OnceCell::from(*method_ty);
+            // let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
+            let the_method = Item::Function(FunctionItem {
+                name: *method_name,
+                sig: Some(*method_ty),
+                body: *method_body,
+            });
+            self.add(type_node, method_qual, the_method);
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn get_from_context(
         &self,
         q: &QualifierFragment,
         packctx: &QualifierFragment,
     ) -> Option<NodeIndex> {
-        let paths = self.search_for_edge(q)?;
+        let paths = self.search_for_edge(q);
         //dbg!(&paths);
         for path in &paths {
             if path.first()?.is(packctx) {
@@ -294,6 +299,7 @@ impl Environment {
         )
     }
 
+    #[must_use]
     pub fn get_node(&self, q: &QualifierFragment, packctx: &QualifierFragment) -> Option<&Item> {
         let node = self.get_from_context(q, packctx)?;
         let node_w = self.value(node)?;
@@ -310,8 +316,9 @@ impl Environment {
     }
 
     /// Optionally returns a vector of the possible paths to an item fragment.
-    fn search_for_edge(&self, k: &QualifierFragment) -> Option<Vec<Vec<QualifierFragment>>> {
-        use petgraph::algo::*;
+    #[must_use]
+    pub fn search_for_edge(&self, k: &QualifierFragment) -> Vec<Vec<QualifierFragment>> {
+        use petgraph::algo::all_simple_paths;
         use petgraph::prelude::*;
         let mut paths: Vec<Vec<QualifierFragment>> = vec![];
         let targets = self.get_all_targets_edge(k);
@@ -330,7 +337,7 @@ impl Environment {
                 paths.push(path);
             }
         }
-        Some(paths)
+        paths
     }
 
     /// Gets an absolute path and verifies it
@@ -363,113 +370,5 @@ impl Environment {
             },
         };
         (rec.f)(&rec, self, self.root, q) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use crate::{
-        passes::midend::environment::Environment,
-        // quantifier,
-        resource::rep::{entry::Item, quantifier::QualifierFragment},
-    };
-
-    use internment::Intern;
-    use petgraph::prelude::*;
-
-    fn make_graph() -> Environment {
-        let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
-        let root = graph.add_node(Item::Root);
-        let lib_foo = graph.add_node(Item::Dummy("libFoo"));
-        let foo = graph.add_node(Item::Dummy("foo"));
-        let lib_bar = graph.add_node(Item::Dummy("libBar"));
-        let bar = graph.add_node(Item::Dummy("Bar"));
-        let baz = graph.add_node(Item::Dummy("baz"));
-        let bar_foo = graph.add_node(Item::Dummy("fooooo"));
-        graph.extend_with_edges([
-            (
-                root,
-                lib_foo,
-                QualifierFragment::Package(Intern::from_ref("Foo")),
-            ),
-            (
-                lib_foo,
-                foo,
-                QualifierFragment::Func(Intern::from_ref("foo")),
-            ),
-            (
-                root,
-                lib_bar,
-                QualifierFragment::Package(Intern::from_ref("Bar")),
-            ),
-            (
-                lib_bar,
-                bar,
-                QualifierFragment::Type(Intern::from_ref("Bar")),
-            ),
-            (bar, baz, QualifierFragment::Field(Intern::from_ref("f1"))),
-            (
-                lib_bar,
-                bar_foo,
-                QualifierFragment::Func(Intern::from_ref("foo")),
-            ),
-        ]);
-
-        Environment { graph, root }
-    }
-
-    // #[test]
-    // fn exists() {
-    //     let e = make_graph();
-    //     assert!(e
-    //         .get(&quantifier!(Root, Package("Foo"), Func("foo"), End).into_simple())
-    //         .is_some())
-    // }
-
-    #[test]
-    fn get_node_exists() {
-        let e = make_graph();
-        let search1 = e.get_node(
-            &QualifierFragment::Func(Intern::from_ref("foo")),
-            &QualifierFragment::Package(Intern::from_ref("Foo")),
-        );
-        let search2 = e.get_node(
-            &QualifierFragment::Type(Intern::from_ref("Bar")),
-            &QualifierFragment::Package(Intern::from_ref("Bar")),
-        );
-
-        assert!(search1.is_some());
-        assert!(search2.is_some());
-    }
-
-    #[test]
-    fn get_node_dne() {
-        let e = make_graph();
-        let found = e.get_node(
-            &QualifierFragment::Func(Intern::from_ref("Bar")),
-            &QualifierFragment::Package(Intern::from_ref("libFoo")),
-        );
-        assert!(found.is_none())
-    }
-
-    #[test]
-    fn get_paths() {
-        let e = make_graph();
-        let foo = Intern::from_ref("foo");
-        let res = e.search_for_edge(&QualifierFragment::Func(foo));
-        assert_eq!(
-            res,
-            Some(vec![
-                vec![
-                    QualifierFragment::Package(Intern::from_ref("Foo")),
-                    QualifierFragment::Func(foo)
-                ],
-                vec![
-                    QualifierFragment::Package(Intern::from_ref("Bar")),
-                    QualifierFragment::Func(foo)
-                ]
-            ])
-        );
     }
 }

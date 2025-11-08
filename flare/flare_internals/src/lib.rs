@@ -1,5 +1,4 @@
-// #[warn(clippy::pedantic)]
-
+#[warn(clippy::pedantic)]
 #[forbid(unused_unsafe, clippy::fallible_impl_from)]
 #[deny(
     clippy::perf,
@@ -12,10 +11,15 @@
     clippy::box_collection,
     clippy::boxed_local,
     clippy::redundant_allocation,
-    clippy::deref_by_slicing
+    clippy::deref_by_slicing,
+    clippy::cloned_instead_of_copied
 )]
 #[warn(clippy::large_stack_frames, clippy::panic, clippy::dbg_macro)]
-#[allow(clippy::type_complexity, clippy::diverging_sub_expression)]
+#[allow(
+    clippy::type_complexity,
+    clippy::diverging_sub_expression,
+    clippy::missing_panics_doc
+)]
 pub mod passes;
 pub mod resource;
 

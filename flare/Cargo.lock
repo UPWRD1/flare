@@ -289,7 +289,6 @@ dependencies = [
  "ordered-float",
  "petgraph",
  "qbe",
- "rkyv-with",
  "rustc-hash",
  "thiserror",
 ]
@@ -600,17 +599,6 @@ name = "regex-syntax"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
-
-[[package]]
-name = "rkyv-with"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3308fa04cf25d994d9f662057b67ef69774f3801d59c723bb644ec9ae83f500"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "rustc-hash"

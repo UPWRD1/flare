@@ -37,7 +37,7 @@ pub enum Ty {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 // #[serde(into = "EnumVariantHelper")]
 pub struct EnumVariant {
-    pub parent_name: Option<Intern<String>>,
+    pub parent_name: Option<Spanned<Intern<String>>>,
     // pub name: Spanned<Expr>,
     pub name: Spanned<Intern<String>>,
     pub types: Intern<Vec<Spanned<Ty>>>,
