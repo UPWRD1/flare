@@ -6,19 +6,15 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
-chumsky = {version = "0.10.1", features = ["pratt", "memoization", "extension", "serde"] }
-internment = {version = "0.8.6", features = ["serde"]}
-itertools = "0.13.0"
+chumsky = {version = "0.10.1", features = ["pratt", "memoization",  ] }
+internment = {version = "0.8.6", features = []}
 log = "0.4.28"
-ordered-float = { version = "4.5.0", features = ["serde"] }
-petgraph = {version = "0.8.3", features = ["serde-1", "stable_graph"]}
+ordered-float = { version = "4.5.0", features = [] }
+petgraph = {version = "0.8.3", features = ["serde-1"]}
 qbe = "2.3.0"
-rayon = "1.11.0"
+rkyv-with = "0.1.2"
 rustc-hash = "2.1.1"
-serde = { version = "1.0.210", features = ["derive", "rc", ] }
-serde_json = "1.0.145"
 thiserror = "2.0.7"
-# zerovec = {version = "0.11.5", features = ["derive"]}
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

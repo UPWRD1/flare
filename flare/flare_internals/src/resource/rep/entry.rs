@@ -1,8 +1,5 @@
-use std::cell::OnceCell;
-
 use internment::Intern;
 // use lasso::Spur;
-use serde::{Deserialize, Serialize};
 
 use crate::resource::rep::files::FileID;
 
@@ -12,7 +9,7 @@ use super::{
     Spanned,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PackageEntry {
     pub name: Spanned<Expr>,
     pub id: FileID,
@@ -23,20 +20,20 @@ pub struct PackageEntry {
     // pub src: &'static str,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct StructEntry {
     //parent: Quantifier,
     pub ty: Spanned<Ty>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct EnumEntry {
     //parent: Quantifier,
     //pub name: String,
     pub ty: Spanned<Ty>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct FunctionItem {
     pub name: Spanned<Expr>,
     // pub sig: Intern<OnceCell<Spanned<Ty>>>,
@@ -44,7 +41,7 @@ pub struct FunctionItem {
     pub body: Spanned<Expr>,
 }
 
-// #[derive(Serialize, Deserialize)]
+// #[derive()]
 // struct FunctionItemRepr(Spanned<Expr>, Option<Spanned<Ty>>, Spanned<Expr>);
 
 // impl From<FunctionItemRepr> for FunctionItem {
@@ -71,7 +68,7 @@ pub struct FunctionItem {
 //     }
 // }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Item {
     Root,
     Filename(Intern<String>),
@@ -93,7 +90,6 @@ pub enum Item {
         name: Spanned<Expr>,
         sig: Spanned<Ty>,
     },
-    #[serde(skip)]
     Dummy(&'static str),
 }
 

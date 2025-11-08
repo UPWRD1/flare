@@ -4,7 +4,7 @@ use petgraph::{
     visit::EdgeRef,
 };
 use rustc_hash::FxHashMap;
-use serde::{Deserialize, Serialize};
+// use serde::{Deserialize, Serialize};
 // use std::cell::OnceCell;
 // use std::collections::HashMap;
 use std::hash::RandomState;
@@ -23,7 +23,7 @@ use crate::resource::{
     },
 };
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 // #[serde(bound = "'static: 'de")]
 pub struct Environment {
     //pub items: Trie<SimpleQuant, Index>,

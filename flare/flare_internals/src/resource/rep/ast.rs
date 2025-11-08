@@ -7,7 +7,6 @@ use crate::resource::{
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use ordered_float::OrderedFloat;
-use serde::{Deserialize, Deserializer, Serialize};
 
 use super::{
     quantifier::QualifierFragment,
@@ -16,7 +15,7 @@ use super::{
 };
 
 /// Type representing an atomic value within a pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum PatternAtom {
     // #[serde(deserialize_with = "deserialize_static_str")]
     Strlit(Intern<String>),
@@ -30,15 +29,12 @@ pub enum PatternAtom {
 }
 
 /// Type representing a Pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Pattern {
-    // #[serde(borrow)]
     Atom(PatternAtom),
 
-    // #[serde(deserialize_with = "deserialize_static")]
     Tuple(Intern<Vec<Spanned<Self>>>),
 
-    // #[serde(deserialize_with = "deserialize_static")]
     Variant(Intern<Spanned<Expr>>, Intern<Vec<Spanned<Self>>>),
 }
 
@@ -56,7 +52,7 @@ impl Pattern {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum ComparisonOp {
     Eq,
     Neq,
@@ -68,21 +64,20 @@ pub enum ComparisonOp {
 
 /// Type representing an Expression.
 /// You will typically encounter ```Expr``` as a ```Spanned<Expr>```, which is decorated with a span for diagnostic information.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Serialize)]
-#[serde(into = "ExprHelper")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Expr {
     Ident(Intern<String>),
     Number(ordered_float::OrderedFloat<f64>),
     String(Intern<String>),
     Bool(bool),
 
-    ExternFunc(Intern<[QualifierFragment]>),
+    ExternFunc(Intern<Vec<QualifierFragment>>),
     Unit,
     // Constructor(Intern<Spanned<Self>>, Vec<Spanned<Self>>),
-    Constructor(Intern<Spanned<Self>>, Intern<[Spanned<Self>]>),
+    Constructor(Intern<Spanned<Self>>, Intern<Vec<Spanned<Self>>>),
     FieldedConstructor(
         Intern<Spanned<Self>>,
-        Intern<[(Spanned<Self>, Spanned<Self>)]>,
+        Intern<Vec<(Spanned<Self>, Spanned<Self>)>>,
     ),
 
     Pat(Spanned<Pattern>),
@@ -106,7 +101,7 @@ pub enum Expr {
     ),
     Match(
         Intern<Spanned<Self>>,
-        Intern<[(Spanned<Pattern>, Spanned<Self>)]>,
+        Intern<Vec<(Spanned<Pattern>, Spanned<Self>)>>,
     ),
     Lambda(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
     Let(
@@ -114,8 +109,8 @@ pub enum Expr {
         Intern<Spanned<Self>>,
         Intern<Spanned<Self>>,
     ),
-    Struct(Intern<[(Spanned<Self>, Spanned<Self>)]>),
-    Tuple(Intern<[Spanned<Self>]>),
+    Struct(Intern<Vec<(Spanned<Self>, Spanned<Self>)>>),
+    Tuple(Intern<Vec<Spanned<Self>>>),
 }
 
 impl Expr {
@@ -167,144 +162,6 @@ impl Expr {
                 span,
             ),
             _ => panic!(),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Expr {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        ExprHelper::deserialize(deserializer).map(Into::into)
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename = "Expr")]
-enum ExprHelper {
-    Ident(String),
-    Number(ordered_float::OrderedFloat<f64>),
-    String(String),
-    Bool(bool),
-
-    ExternFunc(Vec<QualifierFragment>),
-    Unit,
-    Constructor(Box<Spanned<Expr>>, Vec<Spanned<Expr>>),
-    FieldedConstructor(Box<Spanned<Expr>>, Vec<(Spanned<Expr>, Spanned<Expr>)>),
-
-    Pat(Spanned<Pattern>),
-
-    Mul(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Div(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Add(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Sub(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Comparison(Box<Spanned<Expr>>, ComparisonOp, Box<Spanned<Expr>>),
-
-    Access(Box<Spanned<Expr>>),
-    Call(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    FieldAccess(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    MethodAccess(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Myself,
-
-    If(Box<Spanned<Expr>>, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Match(Box<Spanned<Expr>>, Vec<(Spanned<Pattern>, Spanned<Expr>)>),
-    Lambda(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Let(Box<Spanned<Expr>>, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
-    Struct(Vec<(Spanned<Expr>, Spanned<Expr>)>),
-    Tuple(Vec<Spanned<Expr>>),
-}
-
-impl From<Expr> for ExprHelper {
-    fn from(expr: Expr) -> Self {
-        match expr {
-            Expr::Ident(s) => ExprHelper::Ident((*s).to_string()),
-            Expr::Number(n) => ExprHelper::Number(n),
-            Expr::String(s) => ExprHelper::String((*s).to_string()),
-            Expr::Bool(b) => ExprHelper::Bool(b),
-            Expr::ExternFunc(frags) => ExprHelper::ExternFunc(frags.to_vec()),
-            Expr::Unit => ExprHelper::Unit,
-            Expr::Constructor(name, args) => {
-                ExprHelper::Constructor(Box::new(*name), args.to_vec())
-            }
-            Expr::FieldedConstructor(name, fields) => {
-                ExprHelper::FieldedConstructor(Box::new(*name), fields.to_vec())
-            }
-            Expr::Pat(p) => ExprHelper::Pat(p),
-            Expr::Mul(l, r) => ExprHelper::Mul(Box::new(*l), Box::new(*r)),
-            Expr::Div(l, r) => ExprHelper::Div(Box::new(*l), Box::new(*r)),
-            Expr::Add(l, r) => ExprHelper::Add(Box::new(*l), Box::new(*r)),
-            Expr::Sub(l, r) => ExprHelper::Sub(Box::new(*l), Box::new(*r)),
-            Expr::Comparison(l, op, r) => ExprHelper::Comparison(Box::new(*l), op, Box::new(*r)),
-            Expr::Access(e) => ExprHelper::Access(Box::new(*e)),
-            Expr::Call(f, arg) => ExprHelper::Call(Box::new(*f), Box::new(*arg)),
-            Expr::FieldAccess(e, field) => ExprHelper::FieldAccess(Box::new(*e), Box::new(*field)),
-            Expr::MethodAccess(e, method) => {
-                ExprHelper::MethodAccess(Box::new(*e), Box::new(*method))
-            }
-            Expr::Myself => ExprHelper::Myself,
-            Expr::If(cond, then, els) => {
-                ExprHelper::If(Box::new(*cond), Box::new(*then), Box::new(*els))
-            }
-            Expr::Match(scrutinee, arms) => ExprHelper::Match(Box::new(*scrutinee), arms.to_vec()),
-            Expr::Lambda(param, body) => ExprHelper::Lambda(Box::new(*param), Box::new(*body)),
-            Expr::Let(pat, val, body) => {
-                ExprHelper::Let(Box::new(*pat), Box::new(*val), Box::new(*body))
-            }
-            Expr::Struct(fields) => ExprHelper::Struct(fields.to_vec()),
-            Expr::Tuple(elems) => ExprHelper::Tuple(elems.to_vec()),
-        }
-    }
-}
-
-impl From<ExprHelper> for Expr {
-    fn from(helper: ExprHelper) -> Self {
-        match helper {
-            ExprHelper::Ident(s) => Expr::Ident(s.into()),
-            ExprHelper::Number(n) => Expr::Number(n),
-            ExprHelper::String(s) => Expr::String(s.into()),
-            ExprHelper::Bool(b) => Expr::Bool(b),
-            ExprHelper::ExternFunc(frags) => {
-                Expr::ExternFunc(Intern::<[_]>::from(frags.as_slice()))
-            }
-            ExprHelper::Unit => Expr::Unit,
-            ExprHelper::Constructor(name, args) => {
-                Expr::Constructor(Intern::from(name), Intern::<[_]>::from(args.as_slice()))
-            }
-            ExprHelper::FieldedConstructor(name, fields) => {
-                Expr::FieldedConstructor(Intern::from(name), Intern::from(fields.as_slice()))
-            }
-            ExprHelper::Pat(p) => Expr::Pat(p),
-            ExprHelper::Mul(l, r) => Expr::Mul(Intern::from(l), Intern::from(r)),
-            ExprHelper::Div(l, r) => Expr::Div(Intern::from(l), Intern::from(r)),
-            ExprHelper::Add(l, r) => Expr::Add(Intern::from(l), Intern::from(r)),
-            ExprHelper::Sub(l, r) => Expr::Sub(Intern::from(l), Intern::from(r)),
-            ExprHelper::Comparison(l, op, r) => {
-                Expr::Comparison(Intern::from(l), op, Intern::from(r))
-            }
-            ExprHelper::Access(e) => Expr::Access(Intern::from(e)),
-            ExprHelper::Call(f, arg) => Expr::Call(Intern::from(f), Intern::from(arg)),
-            ExprHelper::FieldAccess(e, field) => {
-                Expr::FieldAccess(Intern::from(e), Intern::from(field))
-            }
-            ExprHelper::MethodAccess(e, method) => {
-                Expr::MethodAccess(Intern::from(e), Intern::from(method))
-            }
-            ExprHelper::Myself => Expr::Myself,
-            ExprHelper::If(cond, then, els) => {
-                Expr::If(Intern::from(cond), Intern::from(then), Intern::from(els))
-            }
-            ExprHelper::Match(scrutinee, arms) => {
-                Expr::Match(Intern::from(scrutinee), Intern::from(arms.as_slice()))
-            }
-            ExprHelper::Lambda(param, body) => {
-                Expr::Lambda(Intern::from(param), Intern::from(body))
-            }
-            ExprHelper::Let(pat, val, body) => {
-                Expr::Let(Intern::from(pat), Intern::from(val), Intern::from(body))
-            }
-            ExprHelper::Struct(fields) => Expr::Struct(Intern::from(fields.as_slice())),
-            ExprHelper::Tuple(elems) => Expr::Tuple(Intern::from(elems.as_slice())),
         }
     }
 }

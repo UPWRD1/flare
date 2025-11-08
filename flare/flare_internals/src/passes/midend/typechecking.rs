@@ -904,7 +904,7 @@ impl<'env> Solver<'env> {
                 //dbg!(&generics);
 
                 if let Some(t) = e.get_ty() {
-                    let new = t.0.monomorph_user(Intern::from(generics.as_slice()));
+                    let new = t.0.monomorph_user(Intern::from(generics));
                     Ok((new, t.1))
                 } else {
                     Err(DynamicErr::new(format!(
@@ -925,7 +925,7 @@ impl<'env> Solver<'env> {
                     v.push(self.solve(*t)?);
                 }
 
-                Ok((Ty::Tuple(Intern::from(v.as_slice())), span))
+                Ok((Ty::Tuple(Intern::from(v)), span))
             }
             TyInfo::Seq(t) => {
                 let t = self.solve(*t)?;

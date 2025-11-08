@@ -1,6 +1,5 @@
 use std::{
     any::Any,
-    borrow::Cow,
     fmt::{self, Display},
     io::Cursor,
     ops::Deref,

@@ -1,11 +1,16 @@
 use super::super::errors::CompResult;
 
 use internment::Intern;
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// use rkyv::with::{ArchiveWith, DeserializeWith, With};
+// use rkyv::{Archive, Deserialize, Serialize};
+// use rkyv_with::{ArchiveWith, DeserializeWith};
+// use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QualifierFragment {
     Root,
+    // #[with(InternedString)]
     Package(Intern<String>),
     Type(Intern<String>),
     Func(Intern<String>),

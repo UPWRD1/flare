@@ -364,7 +364,7 @@ where
                 (
                     Ty::User(
                         (*name.0.get_ident(name.1).unwrap(), name.1),
-                        Intern::from(generics.unwrap_or_default().as_slice()),
+                        Intern::from(generics.unwrap_or_default()),
                     ),
                     e.span(),
                 )
@@ -377,7 +377,7 @@ where
             type_list
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with(|types, e| (Ty::Tuple(Intern::from(types.as_slice())), e.span())),
+                .map_with(|types, e| (Ty::Tuple(Intern::from(types)), e.span())),
             grouping, // ty.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
@@ -489,10 +489,7 @@ where
                     .map_with(|(name, args), e| {
                         if !args.is_empty() {
                             (
-                                Expr::Constructor(
-                                    Intern::from(name),
-                                    Intern::from(args.as_slice()),
-                                ),
+                                Expr::Constructor(Intern::from(name), Intern::from(args)),
                                 e.span(),
                             )
                         } else {
@@ -514,10 +511,7 @@ where
                     .map_with(|(name, args), e| {
                         if let Some(args) = args {
                             (
-                                Expr::FieldedConstructor(
-                                    Intern::from(name),
-                                    Intern::from(args.as_slice()),
-                                ),
+                                Expr::FieldedConstructor(Intern::from(name), Intern::from(args)),
                                 e.span(),
                             )
                         } else {
@@ -532,9 +526,7 @@ where
                     .allow_trailing()
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|items, e| {
-                        (Expr::Tuple(Intern::<[_]>::from(items.as_slice())), e.span())
-                    })
+                    .map_with(|items, e| (Expr::Tuple(Intern::from(items)), e.span()))
                     .labelled("tuple")
                     .as_context(),
                 // let x = y in z
@@ -591,7 +583,7 @@ where
                     )
                     .map_with(|(matchee, arms), e| {
                         (
-                            Expr::Match(Intern::from(matchee), Intern::from(arms.as_slice())),
+                            Expr::Match(Intern::from(matchee), Intern::from(arms)),
                             e.span(),
                         )
                     }),
@@ -891,7 +883,7 @@ where
                     (
                         Ty::User(
                             (*name.0.get_ident(name.1).unwrap(), name.1),
-                            Intern::from(generics.unwrap_or_default().as_slice()),
+                            Intern::from(generics.unwrap_or_default()),
                         ),
                         e.span(),
                     )
@@ -904,7 +896,7 @@ where
             type_list
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with(|types, e| (Ty::Tuple(Intern::from(types.as_slice())), e.span())),
+                .map_with(|types, e| (Ty::Tuple(Intern::from(types)), e.span())),
         ))
         .pratt(vec![infix(right(9), just(Token::Arrow), |x, _, y, e| {
             (Ty::Arrow(Intern::from(x), Intern::from(y)), e.span())
