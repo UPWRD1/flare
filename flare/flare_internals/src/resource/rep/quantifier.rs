@@ -55,21 +55,21 @@ impl QualifierFragment {
         self.name() == rhs.name()
     }
 
-    pub fn from_expr(expr: &Spanned<Expr>) -> CompResult<Vec<QualifierFragment>> {
+    pub fn from_expr(expr: &Spanned<Intern<Expr>>) -> CompResult<Vec<QualifierFragment>> {
         struct CheckFieldAccess<'s> {
             f: &'s dyn Fn(
                 &'s Self,
-                &'s Spanned<Expr>,
+                &'s Spanned<Intern<Expr>>,
                 Vec<QualifierFragment>,
             ) -> CompResult<Vec<QualifierFragment>>,
         }
         let cfa = CheckFieldAccess {
             f: &|cfa: &CheckFieldAccess<'_>,
-                 e: &Spanned<Expr>,
+                 e: &Spanned<Intern<Expr>>,
                  mut accum: Vec<QualifierFragment>|
              -> CompResult<Vec<QualifierFragment>> {
                 //dbg!(&q);
-                match &e.0 {
+                match &*e.0 {
                     Expr::FieldAccess(l, r) => {
                         accum.push(Self::Wildcard(*l.0.get_ident(l.1).unwrap()));
 

@@ -1,5 +1,5 @@
 package Main = 
-     use Math    # use Option.Option
+    use Math    # use Option.Option
     # use Option.unwrap
     #use Opt.Option
     #use Opt.unwrap
@@ -47,8 +47,8 @@ package Main =
             name = "bob",
             age = 1000,
             eye_color = EyeColor.Green,
-            catchphrase = fn x => "wowzers!"
-        } in bob.catchphrase  # anonymous lambdas should use Unknown instead of generated types
+            catchphrase = fn _ => "wowzers!"
+        } in Math.factorial bob.age
 
          # let a = id id in a
         # let o = S {f = 3} in

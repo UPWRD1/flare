@@ -11,7 +11,7 @@ use super::{
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PackageEntry {
-    pub name: Spanned<Expr>,
+    pub name: Spanned<Intern<Expr>>,
     pub id: FileID,
     // pub file: &'static Path,
     //    pub deps: Vec<Spanned<Expr>>,
@@ -23,22 +23,22 @@ pub struct PackageEntry {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct StructEntry {
     //parent: Quantifier,
-    pub ty: Spanned<Ty>,
+    pub ty: Spanned<Intern<Ty>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct EnumEntry {
     //parent: Quantifier,
     //pub name: String,
-    pub ty: Spanned<Ty>,
+    pub ty: Spanned<Intern<Ty>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct FunctionItem {
-    pub name: Spanned<Expr>,
+    pub name: Spanned<Intern<Expr>>,
     // pub sig: Intern<OnceCell<Spanned<Ty>>>,
-    pub sig: Option<Spanned<Ty>>,
-    pub body: Spanned<Expr>,
+    pub sig: Option<Spanned<Intern<Ty>>>,
+    pub body: Spanned<Intern<Expr>>,
 }
 
 // #[derive()]
@@ -77,7 +77,7 @@ pub enum Item {
     Enum(EnumEntry),
     Variant(Spanned<EnumVariant>),
 
-    Field((Spanned<Expr>, Spanned<Ty>)),
+    Field((Spanned<Intern<Expr>>, Spanned<Intern<Ty>>)),
     Function(FunctionItem),
     // name: Spanned<Expr>,
     // #[serde(borrow = "'static")]
@@ -87,15 +87,15 @@ pub enum Item {
     // sig: &'static OnceCell<Spanned<Ty>>,
     // body: Spanned<Expr>,
     Extern {
-        name: Spanned<Expr>,
-        sig: Spanned<Ty>,
+        name: Spanned<Intern<Expr>>,
+        sig: Spanned<Intern<Ty>>,
     },
     Dummy(&'static str),
 }
 
 impl Item {
     #[must_use]
-    pub fn get_sig(&self) -> Option<&Spanned<Ty>> {
+    pub fn get_sig(&self) -> Option<&Spanned<Intern<Ty>>> {
         match self {
             Item::Function(FunctionItem { sig, .. }) => sig.as_ref(), //Some(sig.as_ref().unwrap()),
             Item::Extern { sig, .. } => Some(sig),
@@ -118,13 +118,11 @@ impl Item {
         }
     }
 
-    pub fn get_raw_name(&self) -> Option<Spanned<&Intern<String>>> {
+    pub fn get_raw_name(&self) -> Option<Spanned<Intern<Expr>>> {
         match self {
             Item::Root => todo!(),
-            Item::Package(PackageEntry { name, .. }) => {
-                Some((name.0.get_ident(name.1).ok()?, name.1))
-            }
-            Item::Struct(StructEntry { ty }) => Some((ty.0.get_user_name()?, ty.1)),
+            Item::Package(PackageEntry { name, .. }) => Some(*name),
+            Item::Struct(StructEntry { ty }) => ty.0.get_raw_name(),
             Item::Enum(EnumEntry { ty }) => todo!(),
             Item::Variant(_) => todo!(),
             Item::Field(_) => todo!(),
@@ -143,27 +141,28 @@ impl Item {
     // }
 
     #[must_use]
-    pub fn get_ty(self) -> Option<Spanned<Ty>> {
+    pub fn get_ty(self) -> Option<Spanned<Intern<Ty>>> {
         match self {
             Self::Function(FunctionItem { sig, .. }) => sig,
             Self::Struct(StructEntry { ty, .. }) => Some(ty),
             Self::Enum(EnumEntry { ty, .. }) => Some(ty),
-            Self::Variant((v, s)) => Some((Ty::Variant(v), s)),
+            Self::Variant((v, s)) => Some((Intern::from(Ty::Variant(v)), s)),
             Self::Field((_, ty)) => Some(ty),
+            Self::Package(p) => Some((Intern::from(Ty::Package(p.name)), p.name.1)),
             _ => None,
         }
     }
 
-    pub fn get_ty_ref(&self) -> Option<&Spanned<Ty>> {
-        match &self {
-            Self::Function(FunctionItem { sig, .. }) => sig.as_ref(),
-            Self::Struct(StructEntry { ty, .. }) => Some(ty),
-            Self::Enum(EnumEntry { ty, .. }) => Some(ty),
-            Self::Variant((v, s)) => Some(Box::leak(Box::new((Ty::Variant(*v), *s)))),
-            Self::Field((_, ty)) => Some(ty),
-            _ => None,
-        }
-    }
+    // pub fn get_ty_ref(&self) -> Option<&Spanned<Intern<Ty>>> {
+    //     match &self {
+    //         Self::Function(FunctionItem { sig, .. }) => sig.as_ref(),
+    //         Self::Struct(StructEntry { ty, .. }) => Some(ty),
+    //         Self::Enum(EnumEntry { ty, .. }) => Some(ty),
+    //         Self::Variant((v, s)) => Some(&Intern::from((Ty::Variant(*v), *s))),
+    //         Self::Field((_, ty)) => Some(ty),
+    //         _ => None,
+    //     }
+    // }
 }
 
 impl Default for Item {

@@ -1,3 +1,4 @@
+use internment::Intern;
 // use petgraph::Graph;
 use petgraph::{
     graph::{DiGraph, EdgeReference, NodeIndex},
@@ -55,7 +56,7 @@ impl Environment {
             graph: g,
             root: current_node,
         };
-        let mut pack_imports: FxHashMap<QualifierFragment, Vec<Spanned<Expr>>> =
+        let mut pack_imports: FxHashMap<QualifierFragment, Vec<Spanned<Intern<Expr>>>> =
             FxHashMap::default();
 
         // Start building each package's contents
@@ -94,16 +95,19 @@ impl Environment {
                         }
                     }
                     Definition::Enum(EnumDef { the_ty, variants }) => {
-                        let parent_name = the_ty.0.get_user_name().unwrap();
-                        let ident = QualifierFragment::Type(*parent_name);
+                        // let parent_name = the_ty.0.get_user_name().unwrap();
+                        let parent_name = the_ty.0.get_raw_name().unwrap();
+                        let ident =
+                            QualifierFragment::Type(*parent_name.0.get_ident(parent_name.1)?);
                         //let the_ty = (Ty::User(name.clone(), vec![]), name.1);
                         let enum_entry = Item::Enum(EnumEntry { ty: *the_ty });
                         let enum_node = me.add(current_node, ident, enum_entry);
                         for v in variants {
-                            let variant_name = QualifierFragment::Variant(v.0.name.0);
+                            let variant_name =
+                                QualifierFragment::Variant(*v.0.name.0.get_ident(v.0.name.1)?);
                             let v = (
                                 EnumVariant {
-                                    parent_name: Some((*parent_name, the_ty.1)),
+                                    parent_name: Some(parent_name),
                                     ..v.0
                                 },
                                 v.1,
@@ -143,17 +147,18 @@ impl Environment {
             let package = me.get(&[*name][..]).unwrap();
 
             for dep in deps {
+                // dbg!(dep);
                 let path = QualifierFragment::from_expr(dep);
                 // dbg!(&path);
                 let imports: Vec<NodeIndex> = if let Some(n) = me.get(&path?) {
-                    if matches!(me.value(n).unwrap(), Item::Package(_)) {
-                        me.graph
-                            .edges_directed(n, petgraph::Direction::Outgoing)
-                            .map(|e| e.target())
-                            .collect()
-                    } else {
-                        vec![n]
-                    }
+                    // if matches!(me.value(n).unwrap(), Item::Package(_)) {
+                    //     me.graph
+                    //         .edges_directed(n, petgraph::Direction::Outgoing)
+                    //         .map(|e| e.target())
+                    //         .collect()
+                    // } else {
+                    vec![n]
+                    // }
                 } else {
                     return Err(DynamicErr::new("Import does not exist")
                         .label("this", dep.1)
@@ -178,8 +183,12 @@ impl Environment {
     fn build_impl_def(
         &mut self,
         package_quant: QualifierFragment,
-        the_ty: &Spanned<Ty>,
-        methods: &Vec<(Spanned<Expr>, Spanned<Expr>, Spanned<Ty>)>,
+        the_ty: &Spanned<Intern<Ty>>,
+        methods: &Vec<(
+            Spanned<Intern<Expr>>,
+            Spanned<Intern<Expr>>,
+            Spanned<Intern<Ty>>,
+        )>,
     ) -> CompResult<()> {
         let type_name = QualifierFragment::Type(*the_ty.0.get_user_name().unwrap());
         let type_node = self.get(&[package_quant, type_name]).unwrap();

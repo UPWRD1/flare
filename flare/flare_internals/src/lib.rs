@@ -1,4 +1,4 @@
-#[warn(clippy::pedantic)]
+// #[warn(clippy::pedantic)]
 #[forbid(unused_unsafe, clippy::fallible_impl_from)]
 #[deny(
     clippy::perf,

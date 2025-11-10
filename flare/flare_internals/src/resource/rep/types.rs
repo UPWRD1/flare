@@ -18,14 +18,14 @@ pub enum PrimitiveType {
 pub enum Ty {
     Primitive(PrimitiveType),
     // #[serde(deserialize_with = "deserialize_slice")]
-    User(Spanned<Intern<String>>, Intern<Vec<Spanned<Self>>>),
-    Tuple(Intern<Vec<Spanned<Self>>>),
-    Seq(Intern<Spanned<Self>>),
-    Arrow(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    User(Spanned<Intern<Expr>>, Intern<Vec<Spanned<Intern<Self>>>>),
+    Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
+    Seq(Spanned<Intern<Self>>),
+    Arrow(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Myself,
-    Generic(Spanned<Expr>),
+    Generic(Spanned<Intern<Expr>>),
     Variant(EnumVariant),
-    Module(Spanned<Expr>),
+    Package(Spanned<Intern<Expr>>),
 }
 
 // #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -37,14 +37,14 @@ pub enum Ty {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 // #[serde(into = "EnumVariantHelper")]
 pub struct EnumVariant {
-    pub parent_name: Option<Spanned<Intern<String>>>,
+    pub parent_name: Option<Spanned<Intern<Expr>>>,
     // pub name: Spanned<Expr>,
-    pub name: Spanned<Intern<String>>,
-    pub types: Intern<Vec<Spanned<Ty>>>,
+    pub name: Spanned<Intern<Expr>>,
+    pub types: Intern<Vec<Spanned<Intern<Ty>>>>,
 }
 
 impl Ty {
-    pub fn get_arrow(&self) -> (&Spanned<Self>, &Spanned<Self>) {
+    pub fn get_arrow(&self) -> (&Spanned<Intern<Self>>, &Spanned<Intern<Self>>) {
         if let Self::Arrow(l, r) = self {
             (l, r)
         } else {
@@ -54,15 +54,19 @@ impl Ty {
 
     pub fn get_user_name(&self) -> Option<&Intern<String>> {
         match self {
-            Self::User(name, _) => Some(&name.0),
-            Self::Variant(v) => Some(&v.name.0),
+            Self::User(name, _) => name.0.get_ident(name.1).ok(),
+            Self::Variant(v) => v.name.0.get_ident(v.name.1).ok(),
             _ => None,
         }
     }
 
-    // pub fn get_raw_name(&self) -> &'src str {
-    //     format!("{self}").leak()
-    // }
+    pub fn get_raw_name(&self) -> Option<Spanned<Intern<Expr>>> {
+        match self {
+            Self::User(name, _) => Some(name).copied(),
+            Self::Variant(v) => Some(v.name),
+            _ => None,
+        }
+    }
 
     pub fn get_variant(&self) -> Option<EnumVariant> {
         match self {
@@ -71,7 +75,7 @@ impl Ty {
         }
     }
 
-    pub fn monomorph_user(self, g: Intern<Vec<Spanned<Ty>>>) -> Self {
+    pub fn monomorph_user(self, g: Intern<Vec<Spanned<Intern<Ty>>>>) -> Self {
         match self {
             Self::User(name, _) => Self::User(name, g),
             _ => unreachable!("Cannot monomorph non-generic type"),
@@ -162,7 +166,7 @@ impl fmt::Display for Ty {
                     .unwrap_or(&Intern::<String>::from_ref("?"))
             ),
             Ty::User(n, args) => {
-                write!(f, "{}[", n.0)?;
+                write!(f, "{}[", n.0.get_ident(n.1).map_or("?", |x| x))?;
                 for a in args.iter() {
                     write!(f, "{}, ", a.0)?;
                 }
@@ -171,7 +175,7 @@ impl fmt::Display for Ty {
             Ty::Variant(t) => {
                 write!(f, "{t:?}")
             }
-            Ty::Module(n) => {
+            Ty::Package(n) => {
                 write!(f, "Module {n:?}")
             }
             Ty::Myself => {

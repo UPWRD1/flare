@@ -22,10 +22,10 @@ pub enum PatternAtom {
     Num(OrderedFloat<f64>),
 
     // #[serde(deserialize_with = "deserialize_static_str")]
-    Variable(Intern<String>),
+    Variable(Spanned<Intern<Expr>>),
 
     // #[serde(deserialize_with = "deserialize_static")]
-    Type(Intern<Spanned<Ty>>),
+    Type(Spanned<Intern<Ty>>),
 }
 
 /// Type representing a Pattern.
@@ -35,7 +35,7 @@ pub enum Pattern {
 
     Tuple(Intern<Vec<Spanned<Self>>>),
 
-    Variant(Intern<Spanned<Expr>>, Intern<Vec<Spanned<Self>>>),
+    Variant(Spanned<Intern<Expr>>, Intern<Vec<Spanned<Self>>>),
 }
 
 impl Pattern {
@@ -44,7 +44,7 @@ impl Pattern {
             Self::Variant(n, _) => n.0.get_ident(n.1).ok(),
             Self::Atom(a) => match a {
                 PatternAtom::Type(t) => Some(t.0.get_user_name()?),
-                PatternAtom::Variable(s) => Some(s),
+                PatternAtom::Variable(s) => s.0.get_ident(s.1).ok(),
                 _ => None, // errors::bad_ident(expr, s),
             },
             Self::Tuple(_) => None,
@@ -73,47 +73,48 @@ pub enum Expr {
 
     ExternFunc(Intern<Vec<QualifierFragment>>),
     Unit,
-    // Constructor(Intern<Spanned<Self>>, Vec<Spanned<Self>>),
-    Constructor(Intern<Spanned<Self>>, Intern<Vec<Spanned<Self>>>),
+    // Constructor(Spanned<Intern<Self>>, Vec<Spanned<Self>>),
+    Constructor(Spanned<Intern<Self>>, Intern<Vec<Spanned<Intern<Self>>>>),
     FieldedConstructor(
-        Intern<Spanned<Self>>,
-        Intern<Vec<(Spanned<Self>, Spanned<Self>)>>,
+        Spanned<Intern<Self>>,
+        Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>,
     ),
 
     Pat(Spanned<Pattern>),
 
-    Mul(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
-    Div(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
-    Add(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
-    Sub(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
-    Comparison(Intern<Spanned<Self>>, ComparisonOp, Intern<Spanned<Self>>),
+    Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    Sub(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    Comparison(Spanned<Intern<Self>>, ComparisonOp, Spanned<Intern<Self>>),
 
-    Access(Intern<Spanned<Self>>),
-    Call(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
-    FieldAccess(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
-    MethodAccess(Intern<Spanned<Self>>, Intern<Spanned<Self>>),
+    Access(Spanned<Intern<Self>>),
+    Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    FieldAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    MethodAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Myself,
 
     If(
-        Intern<Spanned<Self>>,
-        Intern<Spanned<Self>>,
-        Intern<Spanned<Self>>,
+        Spanned<Intern<Self>>,
+        Spanned<Intern<Self>>,
+        Spanned<Intern<Self>>,
     ),
     Match(
-        Intern<Spanned<Self>>,
-        Intern<Vec<(Spanned<Pattern>, Spanned<Self>)>>,
+        Spanned<Intern<Self>>,
+        Intern<Vec<(Spanned<Pattern>, Spanned<Intern<Self>>)>>,
     ),
-    Lambda(Intern<Spanned<Self>>, Intern<Spanned<Self>>, bool),
+    Lambda(Spanned<Intern<Self>>, Spanned<Intern<Self>>, bool),
     Let(
-        Intern<Spanned<Self>>,
-        Intern<Spanned<Self>>,
-        Intern<Spanned<Self>>,
+        Spanned<Intern<Self>>,
+        Spanned<Intern<Self>>,
+        Spanned<Intern<Self>>,
     ),
-    Struct(Intern<Vec<(Spanned<Self>, Spanned<Self>)>>),
-    Tuple(Intern<Vec<Spanned<Self>>>),
+    Struct(Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>),
+    Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
 }
 
 impl Expr {
+    #[inline]
     pub fn get_ident(&self, span: SimpleSpan<usize, u64>) -> CompResult<&Intern<String>> {
         match self {
             Expr::Ident(s) => Ok(s),
@@ -127,7 +128,7 @@ impl Expr {
             Expr::Lambda(arg, _, _) => arg.0.get_ident(arg.1),
             Expr::Pat(p) => {
                 if let Pattern::Atom(PatternAtom::Variable(s)) = &p.0 {
-                    Ok(s)
+                    Ok(s.0.get_ident(s.1)?)
                 } else {
                     Err(DynamicErr::new("cannot get ident")
                         .label(format!("{self:?}"), span)
@@ -149,16 +150,16 @@ impl Expr {
 
     pub fn inject_call_start(
         self,
-        arg: Spanned<Self>,
+        arg: Spanned<Intern<Self>>,
         span: SimpleSpan<usize, u64>,
-    ) -> Spanned<Self> {
+    ) -> Spanned<Intern<Self>> {
         match self {
             Self::Call(l, r) => (
-                Self::Call(Intern::from(l.0.inject_call_start(arg, span)), r),
+                Intern::from(Self::Call(l.0.inject_call_start(arg, span), r)),
                 span,
             ),
             Self::Ident(n) => (
-                Self::Call(Intern::from((self, span)), Intern::from(arg)),
+                Intern::from(Self::Call((Intern::from(self), span), arg)),
                 span,
             ),
             _ => panic!(),
@@ -168,41 +169,49 @@ impl Expr {
 
 #[derive(Debug, PartialEq)]
 pub struct StructDef {
-    pub the_ty: Spanned<Ty>,
-    pub fields: Vec<(Spanned<Expr>, Spanned<Ty>)>,
+    pub the_ty: Spanned<Intern<Ty>>,
+    pub fields: Vec<(Spanned<Intern<Expr>>, Spanned<Intern<Ty>>)>,
     //pub generics: Vec<Spanned<Expr>>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct EnumDef {
-    pub the_ty: Spanned<Ty>,
+    pub the_ty: Spanned<Intern<Ty>>,
     pub variants: Vec<Spanned<EnumVariant>>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ImportItem {
-    pub items: Vec<Spanned<Expr>>,
+    pub items: Vec<Spanned<Intern<Expr>>>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct ImplDef {
-    pub the_ty: Spanned<Ty>,
-    pub methods: Vec<(Spanned<Expr>, Spanned<Expr>, Spanned<Ty>)>,
+    pub the_ty: Spanned<Intern<Ty>>,
+    pub methods: Vec<(
+        Spanned<Intern<Expr>>,
+        Spanned<Intern<Expr>>,
+        Spanned<Intern<Ty>>,
+    )>,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Definition {
-    Import(Spanned<Expr>),
+    Import(Spanned<Intern<Expr>>),
     Struct(StructDef),
     Enum(EnumDef),
-    Let(Spanned<Expr>, Spanned<Expr>, Option<Spanned<Ty>>),
-    Extern(Spanned<Expr>, Spanned<Ty>),
+    Let(
+        Spanned<Intern<Expr>>,
+        Spanned<Intern<Expr>>,
+        Option<Spanned<Intern<Ty>>>,
+    ),
+    Extern(Spanned<Intern<Expr>>, Spanned<Intern<Ty>>),
     ImplDef(ImplDef),
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Package {
-    pub name: Spanned<Expr>,
+    pub name: Spanned<Intern<Expr>>,
     pub items: Vec<Definition>,
 }
 
