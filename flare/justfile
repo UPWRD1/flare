@@ -16,11 +16,10 @@ run-release:
     cargo run --release -p flarec -- -c examples/ntest.flr
 
 bench:
-    cargo bench -p flare_internals
+    cargo bench --features testing -p flare_internals
 
 test: 
-    cargo test --  --no-capture
-
+    cargo test  --features testing --  --no-capture
 
 build-profile:
     cargo build --profile bench -p flarec

@@ -349,6 +349,11 @@ impl Environment {
         paths
     }
 
+    #[cfg(feature = "testing")]
+    pub fn test_get<'graph>(&'graph self, q: &[QualifierFragment]) -> Option<NodeIndex> {
+        self.get(q)
+    }
+
     /// Gets an absolute path and verifies it
     fn get<'graph>(&'graph self, q: &[QualifierFragment]) -> Option<NodeIndex> {
         //let _ = self.graph.edges(self.root).map(|x| dbg!(x));
@@ -379,5 +384,51 @@ impl Environment {
             },
         };
         (rec.f)(&rec, self, self.root, q) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
+    }
+
+    // #[cfg(test)]
+    // #[cfg(debug_assertions)]
+    #[cfg(feature = "testing")]
+    #[allow(clippy::disallowed_names)]
+    pub fn make_graph() -> Self {
+        // if cfg!(test) {
+        let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
+        let root = graph.add_node(Item::Root);
+        let lib_foo = graph.add_node(Item::Dummy("libFoo"));
+        let foo = graph.add_node(Item::Dummy("foo"));
+        let lib_bar = graph.add_node(Item::Dummy("libBar"));
+        let bar = graph.add_node(Item::Dummy("Bar"));
+        let baz = graph.add_node(Item::Dummy("baz"));
+        let bar_foo = graph.add_node(Item::Dummy("fooooo"));
+        graph.extend_with_edges([
+            (
+                root,
+                lib_foo,
+                QualifierFragment::Package(Intern::from_ref("Foo")),
+            ),
+            (
+                lib_foo,
+                foo,
+                QualifierFragment::Func(Intern::from_ref("foo")),
+            ),
+            (
+                root,
+                lib_bar,
+                QualifierFragment::Package(Intern::from_ref("Bar")),
+            ),
+            (
+                lib_bar,
+                bar,
+                QualifierFragment::Type(Intern::from_ref("Bar")),
+            ),
+            (bar, baz, QualifierFragment::Field(Intern::from_ref("f1"))),
+            (
+                lib_bar,
+                bar_foo,
+                QualifierFragment::Func(Intern::from_ref("foo")),
+            ),
+        ]);
+
+        Self { graph, root }
     }
 }

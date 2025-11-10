@@ -6,20 +6,29 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
-chumsky = {version = "0.10.1", features = ["pratt", "memoization",  ] }
+chumsky = {version = "0.10.1", features = ["pratt", "memoization",] }
 internment = {version = "0.8.6", features = []}
 log = "0.4.28"
 ordered-float = { version = "4.5.0", features = [] }
-petgraph = {version = "0.8.3", features = ["serde-1"]}
+petgraph = {version = "0.8.3", features = ["serde-1"], default-features = false}
 qbe = "2.3.0"
 rustc-hash = "2.1.1"
 thiserror = "2.0.7"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
+iai = "0.1"
+
 
 [[bench]]
-name = "typechecker_benchmark"
+name = "master_benches"
 harness = false
+
+[[bench]]
+name = "environment_benches"
+harness = false
+
+[features]
+testing = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

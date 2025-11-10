@@ -1,3 +1,4 @@
+#![cfg(feature = "testing")]
 use petgraph::prelude::*;
 
 use flare_internals::{
@@ -11,47 +12,47 @@ use flare_internals::{
 use internment::Intern;
 use petgraph::prelude::*;
 
-#[allow(clippy::disallowed_names)]
-fn make_graph() -> Environment {
-    let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
-    let root = graph.add_node(Item::Root);
-    let lib_foo = graph.add_node(Item::Dummy("libFoo"));
-    let foo = graph.add_node(Item::Dummy("foo"));
-    let lib_bar = graph.add_node(Item::Dummy("libBar"));
-    let bar = graph.add_node(Item::Dummy("Bar"));
-    let baz = graph.add_node(Item::Dummy("baz"));
-    let bar_foo = graph.add_node(Item::Dummy("fooooo"));
-    graph.extend_with_edges([
-        (
-            root,
-            lib_foo,
-            QualifierFragment::Package(Intern::from_ref("Foo")),
-        ),
-        (
-            lib_foo,
-            foo,
-            QualifierFragment::Func(Intern::from_ref("foo")),
-        ),
-        (
-            root,
-            lib_bar,
-            QualifierFragment::Package(Intern::from_ref("Bar")),
-        ),
-        (
-            lib_bar,
-            bar,
-            QualifierFragment::Type(Intern::from_ref("Bar")),
-        ),
-        (bar, baz, QualifierFragment::Field(Intern::from_ref("f1"))),
-        (
-            lib_bar,
-            bar_foo,
-            QualifierFragment::Func(Intern::from_ref("foo")),
-        ),
-    ]);
+// #[allow(clippy::disallowed_names)]
+// pub fn make_graph() -> Environment {
+//     let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
+//     let root = graph.add_node(Item::Root);
+//     let lib_foo = graph.add_node(Item::Dummy("libFoo"));
+//     let foo = graph.add_node(Item::Dummy("foo"));
+//     let lib_bar = graph.add_node(Item::Dummy("libBar"));
+//     let bar = graph.add_node(Item::Dummy("Bar"));
+//     let baz = graph.add_node(Item::Dummy("baz"));
+//     let bar_foo = graph.add_node(Item::Dummy("fooooo"));
+//     graph.extend_with_edges([
+//         (
+//             root,
+//             lib_foo,
+//             QualifierFragment::Package(Intern::from_ref("Foo")),
+//         ),
+//         (
+//             lib_foo,
+//             foo,
+//             QualifierFragment::Func(Intern::from_ref("foo")),
+//         ),
+//         (
+//             root,
+//             lib_bar,
+//             QualifierFragment::Package(Intern::from_ref("Bar")),
+//         ),
+//         (
+//             lib_bar,
+//             bar,
+//             QualifierFragment::Type(Intern::from_ref("Bar")),
+//         ),
+//         (bar, baz, QualifierFragment::Field(Intern::from_ref("f1"))),
+//         (
+//             lib_bar,
+//             bar_foo,
+//             QualifierFragment::Func(Intern::from_ref("foo")),
+//         ),
+//     ]);
 
-    Environment { graph, root }
-}
+//     Environment { graph, root }
+// }
 
 // #[test]
 // fn exists() {
@@ -63,7 +64,7 @@ fn make_graph() -> Environment {
 
 #[test]
 fn get_node_exists() {
-    let e = make_graph();
+    let e = Environment::make_graph();
     let search1 = e.get_node(
         &QualifierFragment::Func(Intern::from_ref("foo")),
         &QualifierFragment::Package(Intern::from_ref("Foo")),
@@ -79,7 +80,7 @@ fn get_node_exists() {
 
 #[test]
 fn get_node_dne() {
-    let e = make_graph();
+    let e = Environment::make_graph();
     let found = e.get_node(
         &QualifierFragment::Func(Intern::from_ref("Bar")),
         &QualifierFragment::Package(Intern::from_ref("libFoo")),
@@ -89,7 +90,7 @@ fn get_node_dne() {
 
 #[test]
 fn get_paths() {
-    let e = make_graph();
+    let e = Environment::make_graph();
     let foo = Intern::from_ref("foo");
     let res = e.search_for_edge(&QualifierFragment::Func(foo));
     assert_eq!(
