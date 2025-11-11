@@ -8,7 +8,6 @@ use std::{
 
 mod templates {
 
-    use crate::resource::rep::ast::Expr;
     use crate::resource::{errors::DynamicErr, rep::quantifier::QualifierFragment};
     use crate::*;
     use chumsky::span::SimpleSpan;
@@ -19,9 +18,9 @@ mod templates {
             .into()
     }
 
-    pub fn bad_ident(expr: &Expr, s: &SimpleSpan<usize, u64>) -> CompilerErr {
-        DynamicErr::new("cannot get ident")
-            .label(format!("{expr:?}"), *s)
+    pub fn bad_ident(item: impl std::fmt::Debug, s: SimpleSpan<usize, u64>) -> CompilerErr {
+        DynamicErr::new("Cannot get an identifier from a")
+            .label(format!("{item:?}"), s)
             .into()
     }
 }

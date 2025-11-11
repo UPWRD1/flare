@@ -338,7 +338,10 @@ where
                 // Strings
                 select_ref! { Token::Strlit(x) => *x }.map_with(
                     |x, e: &mut MapExtra<'_, '_, _, _>| {
-                        (Intern::from(Expr::String(Intern::from_ref(x))), e.span())
+                        (
+                            Intern::from(Expr::String((Intern::from_ref(x), e.span()))),
+                            e.span(),
+                        )
                     },
                 ),
                 // True

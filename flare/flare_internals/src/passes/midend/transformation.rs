@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use petgraph::graph::NodeIndex;
 
-use crate::resource::rep::{mir::VarId, quantifier::QualifierFragment};
+use crate::resource::rep::mir::VarId;
 #[allow(dead_code)]
 use crate::{passes::midend::environment::Environment, resource::rep::mir::ANF};
 

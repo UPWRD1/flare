@@ -1,5 +1,9 @@
 // #[warn(clippy::pedantic)]
-#[forbid(unused_unsafe, clippy::fallible_impl_from)]
+#[forbid(
+    unused_unsafe,
+    clippy::fallible_impl_from,
+    clippy::undocumented_unsafe_blocks
+)]
 #[deny(
     clippy::perf,
     clippy::correctness,
@@ -148,9 +152,17 @@ impl Context {
 
         let e = Environment::build(&program)?;
         //dbg!(&e);
-        let mut s = Solver::new(&e, resource::rep::quantifier::QualifierFragment::Root);
+        // let env = &mut e;
+        let s = Solver::new(&e, resource::rep::quantifier::QualifierFragment::Root);
         s.check()?;
-        //dbg!(&e);
+        // dbg!(&e.get_node(
+        //     &resource::rep::quantifier::QualifierFragment::Func(internment::Intern::from_ref(
+        //         "main"
+        //     ),),
+        //     &resource::rep::quantifier::QualifierFragment::Package(internment::Intern::from_ref(
+        //         "Main"
+        //     ))
+        // ));
         let elapsed = now.elapsed();
 
         Ok(((), elapsed))

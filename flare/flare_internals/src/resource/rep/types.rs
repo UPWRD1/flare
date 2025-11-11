@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::resource::rep::common::{Ident, Named};
+
 // use serde::{Deserialize, Serialize};
 // use super::deserialize_slice
 use super::{ast::Expr, Spanned};
@@ -28,12 +30,6 @@ pub enum Ty {
     Package(Spanned<Intern<Expr>>),
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// pub enum EnumVariant {
-//     Simple(Spanned<Expr>),
-//     Associated(Spanned<Expr>, Vec<Spanned<Ty>>),
-// }
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 // #[serde(into = "EnumVariantHelper")]
 pub struct EnumVariant {
@@ -43,28 +39,22 @@ pub struct EnumVariant {
     pub types: Intern<Vec<Spanned<Intern<Ty>>>>,
 }
 
+impl Named for Spanned<Intern<Ty>> {
+    fn get_name(&self) -> Option<Spanned<Intern<Expr>>> {
+        match *self.0 {
+            Ty::User(name, _) => name.name().ok(),
+            Ty::Variant(v) => v.name.name().ok(),
+            _ => None,
+        }
+    }
+}
+
 impl Ty {
     pub fn get_arrow(&self) -> (&Spanned<Intern<Self>>, &Spanned<Intern<Self>>) {
         if let Self::Arrow(l, r) = self {
             (l, r)
         } else {
             panic!()
-        }
-    }
-
-    pub fn get_user_name(&self) -> Option<&Intern<String>> {
-        match self {
-            Self::User(name, _) => name.0.get_ident(name.1).ok(),
-            Self::Variant(v) => v.name.0.get_ident(v.name.1).ok(),
-            _ => None,
-        }
-    }
-
-    pub fn get_raw_name(&self) -> Option<Spanned<Intern<Expr>>> {
-        match self {
-            Self::User(name, _) => Some(name).copied(),
-            Self::Variant(v) => Some(v.name),
-            _ => None,
         }
     }
 
@@ -82,60 +72,6 @@ impl Ty {
         }
     }
 }
-// #[derive(Deserialize, Serialize)]
-// #[serde(rename = "Ty")]
-// enum TyHelper {
-//     Primitive(PrimitiveType),
-//     User(Spanned<Intern<String>>, Vec<Spanned<Ty>>),
-//     Tuple(Vec<Spanned<Ty>>),
-//     Seq(Box<Spanned<Ty>>),
-//     Arrow(Box<Spanned<Ty>>, Box<Spanned<Ty>>),
-//     Myself,
-//     Generic(Spanned<Expr>),
-//     Variant(EnumVariant),
-//     Module(Spanned<Expr>),
-// }
-
-// impl From<Ty> for TyHelper {
-//     fn from(ty: Ty) -> Self {
-//         match ty {
-//             Ty::Primitive(p) => TyHelper::Primitive(p),
-//             Ty::User(name, generics) => TyHelper::User(name, generics.to_vec()),
-//             Ty::Tuple(types) => TyHelper::Tuple(types.to_vec()),
-//             Ty::Seq(ty) => TyHelper::Seq(Box::new(*ty)),
-//             Ty::Arrow(from, to) => TyHelper::Arrow(Box::new(*from), Box::new(*to)),
-//             Ty::Myself => TyHelper::Myself,
-//             Ty::Generic(expr) => TyHelper::Generic(expr),
-//             Ty::Variant(variant) => TyHelper::Variant(variant),
-//             Ty::Module(expr) => TyHelper::Module(expr),
-//         }
-//     }
-// }
-
-// impl From<TyHelper> for Ty {
-//     fn from(helper: TyHelper) -> Self {
-//         match helper {
-//             TyHelper::Primitive(p) => Ty::Primitive(p),
-//             TyHelper::User(name, generics) => Ty::User(name, Intern::from(generics.as_slice())),
-//             TyHelper::Tuple(types) => Ty::Tuple(Intern::from(types.as_slice())),
-//             TyHelper::Seq(ty) => Ty::Seq(Intern::from(ty)),
-//             TyHelper::Arrow(from, to) => Ty::Arrow(Intern::from(from), Intern::from(to)),
-//             TyHelper::Myself => Ty::Myself,
-//             TyHelper::Generic(expr) => Ty::Generic(expr),
-//             TyHelper::Variant(variant) => Ty::Variant(variant),
-//             TyHelper::Module(expr) => Ty::Module(expr),
-//         }
-//     }
-// }
-
-// impl<'de> Deserialize<'de> for Ty {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: Deserializer<'de>,
-//     {
-//         TyHelper::deserialize(deserializer).map(Into::into)
-//     }
-// }
 
 impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -159,14 +95,9 @@ impl fmt::Display for Ty {
             }
 
             Ty::Arrow(l, r) => write!(f, "({} -> {})", l.0, r.0),
-            Ty::Generic(n) => write!(
-                f,
-                "Generic({})",
-                n.0.get_ident(n.1)
-                    .unwrap_or(&Intern::<String>::from_ref("?"))
-            ),
+            Ty::Generic(n) => write!(f, "Generic({})", n.ident().unwrap()),
             Ty::User(n, args) => {
-                write!(f, "{}[", n.0.get_ident(n.1).map_or("?", |x| x))?;
+                write!(f, "{}[", n.ident().unwrap())?;
                 for a in args.iter() {
                     write!(f, "{}, ", a.0)?;
                 }

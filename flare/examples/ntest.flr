@@ -41,6 +41,9 @@ package Main =
         age: num,
         eye_color: EyeColor,
         catchphrase: unit -> ?T
+
+    let multiply x y : num -> num -> num =
+        let _ = x * y in "bad"
     
     let main =
         let bob = Person {
@@ -48,8 +51,7 @@ package Main =
             age = 1000,
             eye_color = EyeColor.Green,
             catchphrase = fn _ => "wowzers!"
-        } in Math.factorial bob.age
-
+        } in bob.age
          # let a = id id in a
         # let o = S {f = 3} in
         # let test = 2 in

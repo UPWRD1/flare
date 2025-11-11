@@ -18,6 +18,7 @@ pub enum QualifierFragment {
     Variant(Intern<String>),
     Field(Intern<String>),
     Wildcard(Intern<String>),
+    Dummy(&'static str),
 }
 
 //
@@ -35,7 +36,7 @@ pub enum QualifierFragment {
 //         }
 //     }
 // }
-use crate::resource::rep::{ast::Expr, Spanned};
+use crate::resource::rep::{ast::Expr, common::Ident, Spanned};
 
 impl QualifierFragment {
     pub fn name(&self) -> &Intern<String> {
@@ -48,6 +49,7 @@ impl QualifierFragment {
             | Self::Variant(n)
             | Self::Field(n)
             | Self::Wildcard(n) => n,
+            Self::Dummy(_) => unreachable!("Should not be used in production"),
         }
     }
 
@@ -71,14 +73,14 @@ impl QualifierFragment {
                 //dbg!(&q);
                 match &*e.0 {
                     Expr::FieldAccess(l, r) => {
-                        accum.push(Self::Wildcard(*l.0.get_ident(l.1).unwrap()));
+                        accum.push(Self::Wildcard(l.ident()?));
 
                         (cfa.f)(cfa, r, accum)
                         //self.graph.node_weight(n).cloned()
                     }
 
-                    ex => {
-                        accum.push(Self::Wildcard(*ex.get_ident(e.1).unwrap()));
+                    _ => {
+                        accum.push(Self::Wildcard(e.ident()?));
                         Ok(accum)
                     }
                 }
@@ -98,6 +100,7 @@ impl std::fmt::Display for QualifierFragment {
             Self::Field(n) => write!(f, "Field {n}"),
             Self::Variant(n) => write!(f, "Variant {n}"),
             Self::Wildcard(n) => write!(f, "{n}"),
+            Self::Dummy(n) => write!(f, "{n}"),
         }
     }
 }

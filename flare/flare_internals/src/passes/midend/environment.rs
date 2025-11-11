@@ -1,22 +1,23 @@
 use internment::Intern;
 // use petgraph::Graph;
 use petgraph::{
-    graph::{DiGraph, EdgeReference, NodeIndex},
+    graph::{DiGraph, Edge, EdgeReference, Edges, NodeIndex},
     visit::EdgeRef,
 };
 use rustc_hash::FxHashMap;
 // use serde::{Deserialize, Serialize};
 // use std::cell::OnceCell;
 // use std::collections::HashMap;
-use std::hash::RandomState;
+use std::{cell::Cell, hash::RandomState};
 
-use crate::resource::rep::ast::ImplDef;
 use crate::resource::rep::entry::FunctionItem;
 use crate::resource::rep::types::EnumVariant;
+use crate::resource::rep::{ast::ImplDef, common::Ident};
 use crate::resource::{
     errors::CompResult,
     rep::{
         ast::{Definition, EnumDef, Expr, Program, StructDef},
+        common::Named,
         entry::{EnumEntry, Item, PackageEntry, StructEntry},
         quantifier::QualifierFragment,
         Spanned,
@@ -25,25 +26,62 @@ use crate::resource::{
 use crate::resource::{errors::DynamicErr, rep::types::Ty};
 
 #[derive(Debug)]
-// #[serde(bound = "'static: 'de")]
+/// The main environment graph structure. Holds all the objects produced by
+/// the  parser, and the index of the root.
+///
+/// Obviously, `Environment` does not implement `Copy`, but it also does not
+/// implement `Clone`, since it is ridiculously expensive, and there is no
+/// real reason to clone the environment.
 pub struct Environment {
-    //pub items: Trie<SimpleQuant, Index>,
-    //pub arena: Arena<Node>,
     pub graph: DiGraph<Item, QualifierFragment>,
-    //    pub cache: RefCell<HashMap<(SimpleQuant, SimpleQuant), NodeIndex>>,
     pub root: NodeIndex,
 }
 
 impl Environment {
-    fn add(&mut self, parent_node: NodeIndex, k: QualifierFragment, v: Item) -> NodeIndex {
-        let ix = self.graph.add_node(v);
-        self.graph.add_edge(parent_node, ix, k);
-        ix
+    /// Add an `item` to the environment as a child of a `parent_node`, accessible via a `qualifier`. Returns the `NodeIndex` of the newly-created child.
+    /// # Panics
+    /// Panics if the internal graph is full.
+    /// Panics if the root node doesn't exist.
+    ///
+    /// # Examples
+    /// ```rust
+    /// let env: Environment::new();
+    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
+    /// assert!(env.graph.contains_edge(env.root, foo))
+    /// ```
+    fn add(
+        &mut self,
+        parent_node: NodeIndex,
+        qualifier: QualifierFragment,
+        item: Item,
+    ) -> NodeIndex {
+        let child_idx = self.graph.add_node(item);
+        self.graph.add_edge(parent_node, child_idx, qualifier);
+        child_idx
     }
+
     #[must_use]
+    /// Get the item value of an index.
+    /// # Examples
+    /// ```rust   
+    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
+    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
+    /// ```
     pub fn value(&self, idx: NodeIndex) -> Option<&Item> {
         self.graph.node_weight(idx)
     }
+
+    #[must_use]
+    /// Get the item value of an index.
+    /// # Examples
+    /// ```rust   
+    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
+    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
+    /// ```
+    pub fn mut_value(&mut self, idx: NodeIndex) -> Option<&mut Item> {
+        self.graph.node_weight_mut(idx)
+    }
+
     /// Build the environment from a given `Program`
     /// # Errors
     /// - on invalid names,
@@ -61,7 +99,7 @@ impl Environment {
 
         // Start building each package's contents
         for package in &p.packages {
-            let package_name = package.0.name.0.get_ident(package.0.name.1)?;
+            let package_name = package.0.name.name()?;
 
             let mut deps = Vec::new();
             let package_entry = Item::Package(PackageEntry {
@@ -69,7 +107,7 @@ impl Environment {
                 id: package.1, // file: fsource.filename,
                                // src: fsource.src_text,
             });
-            let package_quant = QualifierFragment::Package(*package_name);
+            let package_quant = QualifierFragment::Package(package_name.ident()?);
 
             let p_id = me.add(current_node, package_quant, package_entry);
 
@@ -82,29 +120,27 @@ impl Environment {
                         deps.push(*import_item);
                     }
                     Definition::Struct(StructDef { the_ty, fields }) => {
-                        let ident = QualifierFragment::Type(*the_ty.0.get_user_name().unwrap());
+                        let ident = QualifierFragment::Type(the_ty.name()?.ident()?);
 
                         let struct_entry = Item::Struct(StructEntry { ty: *the_ty });
 
                         let struct_node = me.add(current_node, ident, struct_entry);
                         for f in fields {
-                            let field_name =
-                                QualifierFragment::Field(*f.0 .0.get_ident(f.0 .1).unwrap());
+                            let field_name = QualifierFragment::Field(f.0.name()?.ident()?);
                             let field_entry = Item::Field(*f);
                             me.add(struct_node, field_name, field_entry);
                         }
                     }
                     Definition::Enum(EnumDef { the_ty, variants }) => {
                         // let parent_name = the_ty.0.get_user_name().unwrap();
-                        let parent_name = the_ty.0.get_raw_name().unwrap();
-                        let ident =
-                            QualifierFragment::Type(*parent_name.0.get_ident(parent_name.1)?);
+                        let parent_name = the_ty.name()?;
+                        let ident = QualifierFragment::Type(parent_name.ident()?);
                         //let the_ty = (Ty::User(name.clone(), vec![]), name.1);
                         let enum_entry = Item::Enum(EnumEntry { ty: *the_ty });
                         let enum_node = me.add(current_node, ident, enum_entry);
                         for v in variants {
                             let variant_name =
-                                QualifierFragment::Variant(*v.0.name.0.get_ident(v.0.name.1)?);
+                                QualifierFragment::Variant(v.0.name.name()?.ident()?);
                             let v = (
                                 EnumVariant {
                                     parent_name: Some(parent_name),
@@ -117,16 +153,17 @@ impl Environment {
                         }
                     }
                     Definition::Let(name, body, ty) => {
-                        let ident = QualifierFragment::Func(*name.0.get_ident(name.1)?);
+                        let ident = QualifierFragment::Func(name.name()?.ident()?);
                         let entry = Item::Function(FunctionItem {
                             name: *name,
-                            sig: *ty,
+                            sig: Cell::from(*ty),
                             body: *body,
+                            checked: Cell::from(false),
                         });
                         me.add(current_node, ident, entry);
                     }
                     Definition::Extern(n, ty) => {
-                        let ident = QualifierFragment::Func(*n.0.get_ident(n.1)?);
+                        let ident = QualifierFragment::Func(n.name()?.ident()?);
                         let entry = Item::Extern {
                             //parent: current_parent.clone(),
                             name: *n,
@@ -180,6 +217,15 @@ impl Environment {
         Ok(me)
     }
 
+    /// .
+    ///
+    /// # Panics
+    ///
+    /// Panics if .
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if .
     fn build_impl_def(
         &mut self,
         package_quant: QualifierFragment,
@@ -190,16 +236,18 @@ impl Environment {
             Spanned<Intern<Ty>>,
         )>,
     ) -> CompResult<()> {
-        let type_name = QualifierFragment::Type(*the_ty.0.get_user_name().unwrap());
+        let type_name = QualifierFragment::Type(the_ty.name()?.ident()?);
+
         let type_node = self.get(&[package_quant, type_name]).unwrap();
         for (method_name, method_body, method_ty) in methods {
-            let method_qual = QualifierFragment::Method(*method_name.0.get_ident(method_name.1)?);
+            let method_qual = QualifierFragment::Method(method_name.name()?.ident()?);
             // let cell = OnceCell::from(*method_ty);
             // let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
             let the_method = Item::Function(FunctionItem {
                 name: *method_name,
-                sig: Some(*method_ty),
+                sig: Cell::from(Some(*method_ty)),
                 body: *method_body,
+                checked: Cell::from(false),
             });
             self.add(type_node, method_qual, the_method);
         }
@@ -224,6 +272,20 @@ impl Environment {
     #[must_use]
     fn raw_get_node_and_children(
         &self,
+        q: &QualifierFragment,
+        packctx: &QualifierFragment,
+    ) -> Option<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {
+        let parent = self.get_from_context(q, packctx)?;
+        let children: Vec<_> = self
+            .graph
+            .edges_directed(parent, petgraph::Direction::Outgoing)
+            .collect();
+        Some((parent, children))
+    }
+
+    #[must_use]
+    fn raw_get_mut_node_and_children(
+        &mut self,
         q: &QualifierFragment,
         packctx: &QualifierFragment,
     ) -> Option<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {

@@ -2,7 +2,10 @@ use std::hash::Hash;
 
 use crate::resource::{
     errors::{CompResult, DynamicErr},
-    rep::files::FileID,
+    rep::{
+        common::{Ident, Named},
+        files::FileID,
+    },
 };
 use chumsky::span::SimpleSpan;
 use internment::Intern;
@@ -38,16 +41,16 @@ pub enum Pattern {
     Variant(Spanned<Intern<Expr>>, Intern<Vec<Spanned<Self>>>),
 }
 
-impl Pattern {
-    pub fn get_ident(&self) -> Option<&Intern<String>> {
-        match self {
-            Self::Variant(n, _) => n.0.get_ident(n.1).ok(),
-            Self::Atom(a) => match a {
-                PatternAtom::Type(t) => Some(t.0.get_user_name()?),
-                PatternAtom::Variable(s) => s.0.get_ident(s.1).ok(),
+impl Named for Spanned<Pattern> {
+    fn get_name(&self) -> Option<Spanned<Intern<Expr>>> {
+        match self.0 {
+            Pattern::Variant(n, _) => n.name().ok(),
+            Pattern::Atom(a) => match a {
+                PatternAtom::Type(t) => t.name().ok(),
+                PatternAtom::Variable(s) => s.name().ok(),
                 _ => None, // errors::bad_ident(expr, s),
             },
-            Self::Tuple(_) => None,
+            Pattern::Tuple(_) => None,
         }
     }
 }
@@ -68,7 +71,7 @@ pub enum ComparisonOp {
 pub enum Expr {
     Ident(Intern<String>),
     Number(ordered_float::OrderedFloat<f64>),
-    String(Intern<String>),
+    String(Spanned<Intern<String>>),
     Bool(bool),
 
     ExternFunc(Intern<Vec<QualifierFragment>>),
@@ -113,33 +116,50 @@ pub enum Expr {
     Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
 }
 
-impl Expr {
-    #[inline]
-    pub fn get_ident(&self, span: SimpleSpan<usize, u64>) -> CompResult<&Intern<String>> {
-        match self {
-            Expr::Ident(s) => Ok(s),
+impl Named for Spanned<Intern<Expr>> {
+    fn get_name(&self) -> Option<Spanned<Intern<Expr>>> {
+        match *self.0 {
+            Expr::Ident(_) => Some(*self),
             Expr::FieldAccess(base, _field) => {
-                Ok(base.0.get_ident(base.1)?)
+                base.name().ok()
                 //todo!()
                 //Some(base.0.get_ident()?.append(field.0.get_ident()?))
             }
-            Expr::Access(expr) => expr.0.get_ident(expr.1),
-            Expr::Call(func, _) => func.0.get_ident(func.1),
-            Expr::Lambda(arg, _, _) => arg.0.get_ident(arg.1),
+            Expr::Access(expr) => expr.name().ok(),
+            Expr::Call(func, _) => func.name().ok(),
+            Expr::Lambda(arg, _, _) => arg.name().ok(),
             Expr::Pat(p) => {
                 if let Pattern::Atom(PatternAtom::Variable(s)) = &p.0 {
-                    Ok(s.0.get_ident(s.1)?)
+                    s.name().ok()
                 } else {
-                    Err(DynamicErr::new("cannot get ident")
-                        .label(format!("{self:?}"), span)
-                        .into())
+                    None
                 }
             }
-            _ => Err(DynamicErr::new("cannot get ident")
-                .label(format!("{self:?}"), span)
-                .into()),
+            _ => None,
         }
     }
+}
+
+impl Ident for Spanned<Intern<Expr>> {
+    fn ident(&self) -> CompResult<Intern<String>> {
+        match *self.0 {
+            Expr::Ident(s) => Ok(s),
+            _ => self.name()?.ident(), // _ => Err(DynamicErr::new("cannot get ident")
+                                       //     .label(format!("{self:?}"), self.get_span())
+                                       //     .into()),
+        }
+    }
+}
+impl Expr {
+    // #[inline]
+    // pub fn get_ident(&self, span: SimpleSpan<usize, u64>) -> CompResult<Spanned<Intern<String>>> {
+    //     match self {
+    //         Expr::Ident(s) => Ok(*s),
+    //         _ => Err(DynamicErr::new("cannot get ident")
+    //             .label(format!("{self:?}"), span)
+    //             .into()),
+    //     }
+    // }
 
     pub fn get_num(&self, span: SimpleSpan<usize, u64>) -> CompResult<OrderedFloat<f64>> {
         match self {
