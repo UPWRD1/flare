@@ -1,0 +1,23 @@
+package Lambdac = 
+enum Term = 
+    Var {str},
+    Lambda {str, Term},
+    Apply {Term, Term}
+
+   let subst me sub : Term -> Term -> Term =
+        match me 
+            | Var{x} then sub,
+            | Lambda{x, e} then Lambda{x, subst(e)},
+            | Apply{l, r} then Apply{subst(l sub), subst(r sub)},
+
+    let cbn me : Term -> Term  =
+        match me
+            | Var{x} then Var{x},
+            | Lambda{x, e} then Lambda{x, e},
+            | Apply{e1, e2} then
+                let e1_prime = cbn(e1) in
+                match e1_prime
+                    | Lambda{x, e} then cbn(subst(e1_prime e2)),
+                    | Var{_v} then Apply{e1_prime, e2},
+                    | Apply {_1, _2} then Apply {e1_prime, e2},
+

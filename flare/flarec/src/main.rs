@@ -5,6 +5,7 @@ use std::{env, io::Write, path::PathBuf};
 
 use flare_internals::{
     Context, convert_path_to_id,
+    passes::backend::c::C,
     resource::errors::{CompResult, ReportableError},
 };
 fn enable_loggin() {
@@ -33,17 +34,22 @@ fn main() -> CompResult<()> {
                 let filename = PathBuf::from(&prog_args[2]).canonicalize()?.leak();
                 let id = convert_path_to_id(filename);
 
-                let mut ctx = Context::new(filename, id);
+                let mut ctx = Context::new(filename, id, C);
                 match ctx.compile_program(id) {
                     //.inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
                     //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
-                    Ok((_code, elapsed)) => {
+                    Ok((code, elapsed)) => {
                         println!("Compiled {} in {elapsed:.2?}", filename.display());
+                        let f =
+                            PathBuf::from(filename.to_str().unwrap().split(".").next().unwrap())
+                                .with_extension(".c");
+                        dbg!(f);
+
                         Ok(())
                     }
 
                     Err(e) => {
-                        e.report(&ctx);
+                        e.report(&ctx.filectx);
                         std::process::exit(1)
                     }
                 }

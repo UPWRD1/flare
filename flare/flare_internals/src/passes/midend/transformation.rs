@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use petgraph::graph::NodeIndex;
 
-use crate::resource::rep::mir::VarId;
-#[allow(dead_code)]
+use crate::resource::rep::{ast::Variable, mir::VarId};
+#[allow(dead_code, reason = "Indev")]
 use crate::{passes::midend::environment::Environment, resource::rep::mir::ANF};
 
 pub struct Transformer<'env> {

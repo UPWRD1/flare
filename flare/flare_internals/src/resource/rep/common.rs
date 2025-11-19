@@ -2,17 +2,17 @@ use chumsky::span::SimpleSpan;
 use internment::Intern;
 
 use crate::resource::{
-    errors::{self, CompResult},
+    errors::CompResult,
     rep::{ast::Expr, Spanned},
 };
 
 pub trait SpanWrapped {
-    fn get_span(&self) -> SimpleSpan<usize, u64>
-    where
-        Self: SpanWrapped;
+    fn get_span(&self) -> SimpleSpan<usize, u64>;
+    // where
+    // Self: SpanWrapped;
 }
 
-pub trait Ident: SpanWrapped + Named {
+pub trait Ident {
     fn ident(&self) -> CompResult<Intern<String>>;
 }
 
@@ -26,14 +26,21 @@ pub trait Named {
     fn get_name(&self) -> Option<Spanned<Intern<Expr>>>;
 
     fn name(&self) -> CompResult<Spanned<Intern<Expr>>>
-    where
-        Self: std::fmt::Debug + SpanWrapped,
+// where
+        // Self: std::fmt::Debug,
     {
-        // SAFETY: This is perfectly safe, users shouldn't call it though.
         let n = self.get_name();
         match n {
             Some(d) => Ok(d),
-            None => Err(errors::bad_ident(self, self.get_span())),
+            None => todo!("Cannot get name"),
+            // None => DynamicErr::new(format!("Cannot get name of {:?}", self))
+            // .label("here", self.to_owned()),
         }
     }
 }
+
+// impl fmt::Display for dyn Named {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}", self.name().unwrap().ident().unwrap())
+//     }
+// }

@@ -1,17 +1,18 @@
 package Main = 
-    use Math    # use Option.Option
+    # use Math    # use Option.Option
+    # use Lambdac
     # use Option.unwrap
     #use Opt.Option
     #use Opt.unwrap
     #use Opt.unwrap_or
     #use Option
 
-    extern println: str -> unit
+    # extern println: str -> unit
 
     #extern concat: str -> str -> str
-    extern format: ?T -> str
-    extern tuple_to_seq: ?T -> Seq[?U]
-    extern Seq: Seq[?T]
+    # extern format: ?T -> str
+    # extern tuple_to_seq: ?T -> Seq[?U]
+    # extern Seq: Seq[?T]
     #extern exit: num -> unit
 
     #struct S =
@@ -21,37 +22,42 @@ package Main =
     let id x : ?T -> ?T =
            x
 
-    let looper limit f items : num -> Seq[?T] -> (?T -> unit) -> num =
-        let looper_helper = fn c =>
-            if c == limit then
-                limit
-            else
-                let _ = f(items.c) in looper_helper(c+1)
-         in
-            looper_helper(0)
+    # let looper limit f items : num -> Seq[?T] -> (?T -> unit) -> num =
+    #     let looper_helper = fn c =>
+    #         if c == limit then
+    #             limit
+    #         else
+    #             let _ = f(items.c) in looper_helper(c+1)
+    #      in
+    #         looper_helper(0)
 
-    enum EyeColor =
-        Blue,
-        Brown,
-        Green,
-        Other,
+    # enum EyeColor =
+    #     Blue,
+    #     Brown,
+    #     Green,
+    #     Other,
 
-    struct Person[?T] =
-        name: str,
-        age: num,
-        eye_color: EyeColor,
-        catchphrase: unit -> ?T
+    # struct Person[?T] =
+    #     name: str,
+    #     age: num,
+    #     eye_color: EyeColor,
+    #     catchphrase: unit -> ?T,
+    #     behavior: Term
 
-    let multiply x y : num -> num -> num =
-        let _ = x * y in "bad"
+    let multiply x y : num -> num -> ?T =
+        x * y  
     
     let main =
-        let bob = Person {
-            name = "bob",
-            age = 1000,
-            eye_color = EyeColor.Green,
-            catchphrase = fn _ => "wowzers!"
-        } in bob.age
+        id multiply 3 4
+            
+        # let bob = Person {
+            # name = "bob",
+            # age = 1000,
+            # eye_color = EyeColor.Green,
+            # catchphrase = fn _ => "wowzers!",
+         # let behavior = Term.Apply{Term.Lambda{"x",Term.Var{"x"}}, Term.Var{"y"}} in
+        # cbn(behavior)
+        # } in cbn(bob.behavior)
          # let a = id id in a
         # let o = S {f = 3} in
         # let test = 2 in

@@ -1,8 +1,8 @@
 use internment::Intern;
 // use petgraph::Graph;
 use petgraph::{
-    graph::{DiGraph, Edge, EdgeReference, Edges, NodeIndex},
-    visit::EdgeRef,
+    graph::{DiGraph, EdgeReference, NodeIndex},
+    visit::EdgeRef as _,
 };
 use rustc_hash::FxHashMap;
 // use serde::{Deserialize, Serialize};
@@ -10,20 +10,25 @@ use rustc_hash::FxHashMap;
 // use std::collections::HashMap;
 use std::{cell::Cell, hash::RandomState};
 
-use crate::resource::rep::entry::FunctionItem;
-use crate::resource::rep::types::EnumVariant;
-use crate::resource::rep::{ast::ImplDef, common::Ident};
 use crate::resource::{
-    errors::CompResult,
+    errors::{self, CompResult, CompilerErr, DynamicErr, FatalErr},
     rep::{
-        ast::{Definition, EnumDef, Expr, Program, StructDef},
-        common::Named,
-        entry::{EnumEntry, Item, PackageEntry, StructEntry},
+        ast::{
+            Definition,
+            EnumDef,
+            Expr,
+            ImplDef,
+            Program,
+            StructDef,
+            // Untyped, Variable
+        },
+        common::{Ident as _, Named},
+        entry::{EnumEntry, FunctionItem, Item, ItemKind, PackageEntry, StructEntry},
         quantifier::QualifierFragment,
+        types::{EnumVariant, Ty},
         Spanned,
     },
 };
-use crate::resource::{errors::DynamicErr, rep::types::Ty};
 
 #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
@@ -32,6 +37,7 @@ use crate::resource::{errors::DynamicErr, rep::types::Ty};
 /// Obviously, `Environment` does not implement `Copy`, but it also does not
 /// implement `Clone`, since it is ridiculously expensive, and there is no
 /// real reason to clone the environment.
+#[non_exhaustive]
 pub struct Environment {
     pub graph: DiGraph<Item, QualifierFragment>,
     pub root: NodeIndex,
@@ -60,53 +66,48 @@ impl Environment {
         child_idx
     }
 
-    #[must_use]
+    #[inline]
     /// Get the item value of an index.
     /// # Examples
     /// ```rust   
     /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
     /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
     /// ```
-    pub fn value(&self, idx: NodeIndex) -> Option<&Item> {
-        self.graph.node_weight(idx)
-    }
-
-    #[must_use]
-    /// Get the item value of an index.
-    /// # Examples
-    /// ```rust   
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
-    /// ```
-    pub fn mut_value(&mut self, idx: NodeIndex) -> Option<&mut Item> {
-        self.graph.node_weight_mut(idx)
+    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item> {
+        self.graph
+            .node_weight(idx)
+            .ok_or_else(|| FatalErr::new(format!("Bad node index: {:?}", idx)))
     }
 
     /// Build the environment from a given `Program`
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(p: &Program) -> CompResult<Self> {
-        let mut g = DiGraph::new();
-        let mut current_node = g.add_node(Item::Root);
+    pub fn build(program: &Program) -> CompResult<Self> {
+        use ItemKind::*;
+        let mut graph = DiGraph::new();
+        let mut current_node = graph.add_node(Item::new(ItemKind::Root, true));
 
         let mut me = Self {
-            graph: g,
+            graph,
             root: current_node,
         };
-        let mut pack_imports: FxHashMap<QualifierFragment, Vec<Spanned<Intern<Expr>>>> =
+        let mut pack_imports: FxHashMap<Spanned<QualifierFragment>, Vec<Spanned<Intern<Expr>>>> =
             FxHashMap::default();
 
         // Start building each package's contents
-        for package in &p.packages {
+        for package in &program.packages {
             let package_name = package.0.name.name()?;
 
             let mut deps = Vec::new();
-            let package_entry = Item::Package(PackageEntry {
-                name: package.0.name,
-                id: package.1, // file: fsource.filename,
-                               // src: fsource.src_text,
-            });
+            let package_entry = Item::new(
+                Package(PackageEntry {
+                    name: package.0.name,
+                    id: package.1, // file: fsource.filename,
+                                   // src: fsource.src_text,
+                }),
+                false,
+            );
             let package_quant = QualifierFragment::Package(package_name.ident()?);
 
             let p_id = me.add(current_node, package_quant, package_entry);
@@ -120,55 +121,33 @@ impl Environment {
                         deps.push(*import_item);
                     }
                     Definition::Struct(StructDef { the_ty, fields }) => {
-                        let ident = QualifierFragment::Type(the_ty.name()?.ident()?);
-
-                        let struct_entry = Item::Struct(StructEntry { ty: *the_ty });
-
-                        let struct_node = me.add(current_node, ident, struct_entry);
-                        for f in fields {
-                            let field_name = QualifierFragment::Field(f.0.name()?.ident()?);
-                            let field_entry = Item::Field(*f);
-                            me.add(struct_node, field_name, field_entry);
-                        }
+                        me.build_struct(current_node, the_ty, fields)?;
                     }
                     Definition::Enum(EnumDef { the_ty, variants }) => {
-                        // let parent_name = the_ty.0.get_user_name().unwrap();
-                        let parent_name = the_ty.name()?;
-                        let ident = QualifierFragment::Type(parent_name.ident()?);
-                        //let the_ty = (Ty::User(name.clone(), vec![]), name.1);
-                        let enum_entry = Item::Enum(EnumEntry { ty: *the_ty });
-                        let enum_node = me.add(current_node, ident, enum_entry);
-                        for v in variants {
-                            let variant_name =
-                                QualifierFragment::Variant(v.0.name.name()?.ident()?);
-                            let v = (
-                                EnumVariant {
-                                    parent_name: Some(parent_name),
-                                    ..v.0
-                                },
-                                v.1,
-                            );
-                            let variant_entry = Item::Variant(v);
-                            me.add(enum_node, variant_name, variant_entry);
-                        }
+                        me.build_enum(current_node, the_ty, variants)?;
                     }
                     Definition::Let(name, body, ty) => {
                         let ident = QualifierFragment::Func(name.name()?.ident()?);
-                        let entry = Item::Function(FunctionItem {
-                            name: *name,
-                            sig: Cell::from(*ty),
-                            body: *body,
-                            checked: Cell::from(false),
-                        });
+                        let entry = Item::new(
+                            Function(FunctionItem {
+                                name: *name,
+                                sig: Cell::from(*ty),
+                                body: *body,
+                            }),
+                            false,
+                        );
                         me.add(current_node, ident, entry);
                     }
                     Definition::Extern(n, ty) => {
                         let ident = QualifierFragment::Func(n.name()?.ident()?);
-                        let entry = Item::Extern {
-                            //parent: current_parent.clone(),
-                            name: *n,
-                            sig: *ty,
-                        };
+                        let entry = Item::new(
+                            Extern {
+                                //parent: current_parent.clone(),
+                                name: *n,
+                                sig: *ty,
+                            },
+                            true,
+                        );
                         me.add(current_node, ident, entry);
                     }
                     Definition::ImplDef(ImplDef { the_ty, methods }) => {
@@ -177,17 +156,19 @@ impl Environment {
                 }
             }
             current_node = old_current;
-            pack_imports.insert(package_quant, deps);
+            pack_imports.insert(Spanned(package_quant, package_name.1), deps);
         }
         //dbg!(&pack_imports);
         for (name, deps) in &pack_imports {
-            let package = me.get(&[*name][..]).unwrap();
+            let package = me
+                .get(&[name.0][..])
+                .map_err(|_| errors::not_defined(name.0, &name.1))?;
 
             for dep in deps {
                 // dbg!(dep);
                 let path = QualifierFragment::from_expr(dep);
                 // dbg!(&path);
-                let imports: Vec<NodeIndex> = if let Some(n) = me.get(&path?) {
+                let imports: Vec<NodeIndex> = if let Ok(n) = me.get(&path?) {
                     // if matches!(me.value(n).unwrap(), Item::Package(_)) {
                     //     me.graph
                     //         .edges_directed(n, petgraph::Direction::Outgoing)
@@ -208,7 +189,10 @@ impl Environment {
                         .map(|x| x.weight())
                         .next()
                         .copied()
-                        .unwrap();
+                        .ok_or_else(|| {
+                            DynamicErr::new("Could not locate import within graph")
+                                .label("here", dep.1)
+                        })?;
                     me.graph.add_edge(package, import, the_name);
                 }
             }
@@ -217,15 +201,9 @@ impl Environment {
         Ok(me)
     }
 
-    /// .
-    ///
-    /// # Panics
-    ///
-    /// Panics if .
-    ///
+    /// Builds an impl definition
     /// # Errors
-    ///
-    /// This function will return an error if .
+    /// On invalid names.
     fn build_impl_def(
         &mut self,
         package_quant: QualifierFragment,
@@ -236,173 +214,244 @@ impl Environment {
             Spanned<Intern<Ty>>,
         )>,
     ) -> CompResult<()> {
+        use ItemKind::Function;
         let type_name = QualifierFragment::Type(the_ty.name()?.ident()?);
 
-        let type_node = self.get(&[package_quant, type_name]).unwrap();
-        for (method_name, method_body, method_ty) in methods {
+        let type_node = self
+            .get(&[package_quant, type_name])
+            .map_err(|_| errors::not_defined(type_name, &the_ty.1))?;
+        for &(method_name, method_body, method_ty) in methods {
             let method_qual = QualifierFragment::Method(method_name.name()?.ident()?);
-            // let cell = OnceCell::from(*method_ty);
-            // let leak_cell: &'static OnceCell<_> = Box::leak(Box::new(cell));
-            let the_method = Item::Function(FunctionItem {
-                name: *method_name,
-                sig: Cell::from(Some(*method_ty)),
-                body: *method_body,
-                checked: Cell::from(false),
-            });
+            let the_method = Item::new(
+                Function(FunctionItem {
+                    name: method_name,
+                    sig: Cell::from(Some(method_ty)),
+                    body: method_body,
+                }),
+                false,
+            );
             self.add(type_node, method_qual, the_method);
         }
         Ok(())
     }
 
-    #[must_use]
+    /// Builds a struct.
+    ///
+    /// # Errors
+    ///
+    /// On invalid names
+    fn build_struct(
+        &mut self,
+        current_node: NodeIndex,
+        the_ty: &Spanned<Intern<Ty>>,
+        fields: &Vec<(Spanned<Intern<Expr>>, Spanned<Intern<Ty>>)>,
+    ) -> Result<(), CompilerErr> {
+        use ItemKind::{Field, Struct};
+        let ident = QualifierFragment::Type(the_ty.name()?.ident()?);
+        let struct_entry = Item::new(Struct(StructEntry { ty: *the_ty }), false);
+        let struct_node = self.add(current_node, ident, struct_entry);
+
+        for field in fields {
+            let field_name = QualifierFragment::Field(field.0.name()?.ident()?);
+            let field_entry = Item::new(Field(*field), false);
+            self.add(struct_node, field_name, field_entry);
+        }
+        Ok(())
+    }
+    /// Builds an enum
+    fn build_enum(
+        &mut self,
+        current_node: NodeIndex,
+        the_ty: &Spanned<Intern<Ty>>,
+        variants: &Vec<Spanned<EnumVariant>>,
+    ) -> Result<(), CompilerErr> {
+        use ItemKind::{Enum, Variant};
+        let parent_name = the_ty.name()?;
+        let ident = QualifierFragment::Type(parent_name.ident()?);
+        let enum_entry = Item::new(Enum(EnumEntry { ty: *the_ty }), false);
+        let enum_node = self.add(current_node, ident, enum_entry);
+
+        for variant in variants {
+            let variant_name = QualifierFragment::Variant(variant.0.name.name()?.ident()?);
+            let the_variant = (
+                EnumVariant {
+                    parent_name: Some(parent_name),
+                    ..variant.0
+                },
+                variant.1,
+            );
+            let variant_entry = Item::new(Variant(the_variant.into()), false);
+            self.add(enum_node, variant_name, variant_entry);
+        }
+        Ok(())
+    }
+
+    #[inline]
     pub fn get_from_context(
         &self,
-        q: &QualifierFragment,
+        frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> Option<NodeIndex> {
-        let paths = self.search_for_edge(q);
-        //dbg!(&paths);
+    ) -> CompResult<NodeIndex> {
+        let err = || FatalErr::new(format!("{} does not exist in {}", frag, packctx));
+        let paths = self.search_for_edge(frag);
         for path in &paths {
-            if path.first()?.is(packctx) {
+            if path.first().ok_or_else(err)?.is(packctx) {
                 return self.get(path);
             }
         }
-        None
+        Err(err())
     }
-    #[must_use]
+
+    /// Internal helper function for `get_node_and_children`
     fn raw_get_node_and_children(
         &self,
-        q: &QualifierFragment,
+        frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> Option<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {
-        let parent = self.get_from_context(q, packctx)?;
+    ) -> CompResult<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {
+        let parent = self.get_from_context(frag, packctx)?;
         let children: Vec<_> = self
             .graph
             .edges_directed(parent, petgraph::Direction::Outgoing)
             .collect();
-        Some((parent, children))
+        Ok((parent, children))
     }
 
-    #[must_use]
-    fn raw_get_mut_node_and_children(
-        &mut self,
-        q: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> Option<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {
-        let parent = self.get_from_context(q, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .collect();
-        Some((parent, children))
-    }
-
-    #[must_use]
+    #[inline]
     pub fn raw_get_node_and_children_indexes(
         &self,
-        q: &QualifierFragment,
+        frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> Option<(NodeIndex, Vec<NodeIndex>)> {
-        let parent = self.get_from_context(q, packctx)?;
+    ) -> CompResult<(NodeIndex, Vec<NodeIndex>)> {
+        let parent = self.get_from_context(frag, packctx)?;
         let children: Vec<_> = self
             .graph
             .edges_directed(parent, petgraph::Direction::Outgoing)
-            .map(|c| c.target())
+            .map(|edge| edge.target())
             .collect();
-        Some((parent, children))
+        Ok((parent, children))
     }
 
-    #[must_use]
+    #[inline]
     pub fn get_node_and_children(
         &self,
-        q: &QualifierFragment,
+        frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> Option<(&Item, Vec<(&QualifierFragment, &Item)>)> {
-        let (node, children) = self.raw_get_node_and_children(q, packctx)?;
+    ) -> CompResult<(&Item, Vec<(&QualifierFragment, &Item)>)> {
+        let (node, children) = self.raw_get_node_and_children(frag, packctx)?;
         let node_w = self.value(node)?;
 
-        Some((
+        Ok((
             node_w,
             children
                 .iter()
-                .map(|c| {
+                .map(|edge| {
                     (
-                        c.weight(),
+                        edge.weight(),
                         // # SAFETY: `self.value()` returns none only if the node
                         // doesn't exist. We know the node exists because we
                         // are iterating over the children of the parent.
-                        unsafe { self.value(c.target()).unwrap_unchecked() },
+                        unsafe { self.value(edge.target()).unwrap_unchecked() },
                     )
                 })
                 .collect(),
         ))
     }
 
-    #[must_use]
-    // #[allow(dead_code)]
+    /// Internal helper function for `get_children()`
     fn raw_get_children(
         &self,
-        q: &QualifierFragment,
+        frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> Option<Vec<EdgeReference<'_, QualifierFragment>>> {
-        let parent = self.get_from_context(q, packctx)?;
+    ) -> CompResult<Vec<EdgeReference<'_, QualifierFragment>>> {
+        let parent = self.get_from_context(frag, packctx)?;
         let children: Vec<_> = self
             .graph
             .edges_directed(parent, petgraph::Direction::Outgoing)
             .collect();
-        Some(children)
+        Ok(children)
     }
 
-    #[must_use]
+    #[inline]
     /// Get the children of a node given the the node's quantifier and context to search in.
     pub fn get_children(
         &self,
-        q: &QualifierFragment,
+        frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> Option<Vec<(&QualifierFragment, &Item)>> {
-        let children = self.raw_get_children(q, packctx)?;
+    ) -> CompResult<Vec<(&QualifierFragment, &Item)>> {
+        let children = self.raw_get_children(frag, packctx)?;
 
-        Some(
-            children
-                .iter()
-                .map(|c| (c.weight(), self.value(c.target()).unwrap()))
-                .collect(),
-        )
+        // children
+        //     .iter()
+        //     .map(|edge| self.value(edge.target()).map(|item| (edge.weight(), item)))
+        //     .collect()
+        Ok(children
+            .iter()
+            .map(|edge| {
+                // # SAFETY: `self.value()` returns none only if the node
+                // doesn't exist. We know the node exists because we
+                // are iterating over the children of the parent.
+                (edge.weight(), unsafe {
+                    self.value(edge.target()).unwrap_unchecked()
+                })
+            })
+            .collect())
     }
 
-    #[must_use]
-    pub fn get_node(&self, q: &QualifierFragment, packctx: &QualifierFragment) -> Option<&Item> {
-        let node = self.get_from_context(q, packctx)?;
+    #[inline]
+    /// Given a qualifier and a context to search in, get the `Item` value of the qualifier's target.
+    pub fn get_node(
+        &self,
+        target: &QualifierFragment,
+        packctx: &QualifierFragment,
+    ) -> CompResult<&Item> {
+        let node = self.get_from_context(target, packctx)?;
         let node_w = self.value(node)?;
 
-        Some(node_w)
+        Ok(node_w)
     }
 
-    fn get_all_targets_edge<'envi, 'k>(
+    /// Gets all the targets for all edges labeled `frag`
+    fn get_all_targets_edge<'envi, 'fragment>(
         &'envi self,
-        k: &'k QualifierFragment,
-    ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'k> {
-        let edges = self.graph.edge_references().filter(|x| x.weight().is(k));
+        frag: &'fragment QualifierFragment,
+    ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'fragment> {
+        let edges = self.graph.edge_references().filter(|x| x.weight().is(frag));
         edges.map(|x| x.target())
     }
 
     /// Optionally returns a vector of the possible paths to an item fragment.
     #[must_use]
-    pub fn search_for_edge(&self, k: &QualifierFragment) -> Vec<Vec<QualifierFragment>> {
+    #[inline]
+    pub fn search_for_edge(&self, fragment: &QualifierFragment) -> Vec<Vec<QualifierFragment>> {
         use petgraph::algo::all_simple_paths;
         use petgraph::prelude::*;
         let mut paths: Vec<Vec<QualifierFragment>> = vec![];
-        let targets = self.get_all_targets_edge(k);
+        let targets = self.get_all_targets_edge(fragment);
         for target in targets {
             let real_paths: Vec<Vec<NodeIndex>> =
                 all_simple_paths::<Vec<_>, _, RandomState>(&self.graph, self.root, target, 0, None)
                     .collect::<Vec<_>>();
-            for p in real_paths {
+            for frag_path in real_paths {
                 let mut path = Vec::new();
-                for node_pair in p.windows(2) {
-                    let a = node_pair[0];
-                    let b = node_pair[1];
-                    let edge = *self.graph.edges_connecting(a, b).next().unwrap().weight();
+                for node_pair in frag_path.windows(2) {
+                    debug_assert_eq!(
+                        node_pair.len(),
+                        2,
+                        "p.windows(2) failed to produce a window of size 2"
+                    );
+
+                    // SAFETY: The length of the windows is always 2, therefore
+                    // we can always index into the first two elements,
+                    // without panicking.
+                    let first = unsafe { node_pair.get_unchecked(0) };
+                    // SAFETY: Same as above
+                    let second = unsafe { node_pair.get_unchecked(1) };
+                    let edge = *self
+                        .graph
+                        .edges_connecting(*first, *second)
+                        .next()
+                        .unwrap_or_else(|| FatalErr::new(format!("Index {:?} is not a child of index {:?}; could not build dependancy graph.", first, second)))
+                        .weight();
                     path.push(edge);
                 }
                 paths.push(path);
@@ -411,13 +460,8 @@ impl Environment {
         paths
     }
 
-    #[cfg(feature = "testing")]
-    pub fn test_get<'graph>(&'graph self, q: &[QualifierFragment]) -> Option<NodeIndex> {
-        self.get(q)
-    }
-
     /// Gets an absolute path and verifies it
-    fn get<'graph>(&'graph self, q: &[QualifierFragment]) -> Option<NodeIndex> {
+    fn get<'graph>(&'graph self, qualifier_path: &[QualifierFragment]) -> CompResult<NodeIndex> {
         //let _ = self.graph.edges(self.root).map(|x| dbg!(x));
         struct Rec<'s, 'graph, T> {
             f: &'s dyn Fn(
@@ -425,27 +469,32 @@ impl Environment {
                 &'graph T,
                 NodeIndex,
                 &[QualifierFragment],
-            ) -> Option<NodeIndex>,
+            ) -> CompResult<NodeIndex>,
         }
         let rec = Rec {
             f: &|rec: &Rec<'_, 'graph, _>,
                  graph_self: &'graph Self,
                  n: NodeIndex,
                  q: &[QualifierFragment]|
-             -> Option<NodeIndex> {
+             -> CompResult<NodeIndex> {
                 //dbg!(&q);
                 match q {
-                    [] => Some(n),
+                    [] => Ok(n),
 
-                    [q, qs @ ..] => {
-                        let candidate = graph_self.graph.edges(n).find(|e| e.weight().is(q))?;
-                        (rec.f)(rec, graph_self, candidate.target(), qs)
+                    [head, tail @ ..] => {
+                        let candidate = graph_self
+                            .graph
+                            .edges(n)
+                            .find(|e| e.weight().is(head))
+                            .ok_or_else(|| DynamicErr::new("Does not Exist"))?;
+
+                        (rec.f)(rec, graph_self, candidate.target(), tail)
                         //self.graph.node_weight(n).cloned()
                     }
                 }
             },
         };
-        (rec.f)(&rec, self, self.root, q) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
+        (rec.f)(&rec, self, self.root, qualifier_path) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
     }
 
     // #[cfg(test)]
@@ -492,5 +541,12 @@ impl Environment {
         ]);
 
         Self { graph, root }
+    }
+
+    pub fn remove_unused(self) -> Self {
+        let g = self
+            .graph
+            .filter_map_owned(|_, n| n.is_checked.get().then_some(n), |_, e| Some(e));
+        Self { graph: g, ..self }
     }
 }

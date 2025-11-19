@@ -2,12 +2,14 @@
 #[forbid(
     unused_unsafe,
     clippy::fallible_impl_from,
-    clippy::undocumented_unsafe_blocks
+    // clippy::undocumented_unsafe_blocks
 )]
 #[deny(
+    // clippy::pedantic,
+    // clippy::nursery,
     clippy::perf,
     clippy::correctness,
-    clippy::suspicious,
+    // clippy::suspicious,
     clippy::complexity,
     clippy::style,
     clippy::branches_sharing_code,
@@ -16,9 +18,19 @@
     clippy::boxed_local,
     clippy::redundant_allocation,
     clippy::deref_by_slicing,
-    clippy::cloned_instead_of_copied
+    clippy::cloned_instead_of_copied,
+    clippy::used_underscore_binding,
+    // clippy::unwrap_in_result,
+    // clippy::min_ident_chars,
+    )]
+#[warn(
+    clippy::large_stack_frames,
+    clippy::panic,
+    clippy::dbg_macro,
+
+clippy::unwrap_used,
+    // clippy::restriction
 )]
-#[warn(clippy::large_stack_frames, clippy::panic, clippy::dbg_macro)]
 #[allow(
     clippy::type_complexity,
     clippy::diverging_sub_expression,
@@ -27,7 +39,9 @@
 pub mod passes;
 pub mod resource;
 
+use core::iter::Iterator;
 use std::{
+    fmt::Write,
     hash::{Hash, Hasher},
     path::Path,
     time::{Duration, Instant},
@@ -38,26 +52,36 @@ use rustc_hash::{FxHashMap, FxHasher};
 use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
+        backend::{
+            c::C,
+            target::{Generator, Target},
+        },
         midend::{environment::Environment, typechecking::Solver},
         parser,
     },
     resource::{
         errors::{CompResult, CompilerErr, ErrorCollection},
         rep::{
-            ast::{Package, Program},
+            ast::{
+                Package,
+                Program,
+                // Untyped
+            },
             files::{FileID, FileSource},
         },
     },
 };
 
-//use crate::root::resource::tk::{Tk, Token};
+pub type FileCtx = FxHashMap<FileID, FileSource<'static>>;
 #[derive(Debug)]
-pub struct Context {
-    pub filectx: FxHashMap<FileID, FileSource<'static>>,
+/// The context for a Flare bundle.
+pub struct Context<T: Target> {
+    pub filectx: FileCtx,
+    pub target: T,
 }
 
-impl Context {
-    pub fn new(src_path: &'static Path, id: FileID) -> Self {
+impl<T: Target> Context<T> {
+    pub fn new(src_path: &'static Path, id: FileID, target: T) -> Self {
         let src_text = std::fs::read_to_string(src_path).unwrap();
 
         // Leak the string to get a 'static lifetime, then cast to 'src
@@ -68,30 +92,12 @@ impl Context {
         };
         Context {
             filectx: vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>(),
+            target,
         }
     }
 
-    // pub fn to_static(self) -> Context {
-    //     Context {
-    //         filectx: self
-    //             .filectx
-    //             .into_iter()
-    //             .map(|(k, v)| {
-    //                 let k: (u64, FileSource<'static>) = (
-    //                     k,
-    //                     FileSource {
-    //                         filename: v.filename.to_path_buf().leak(),
-    //                         src_text: v.src_text.to_string().leak(),
-    //                     },
-    //                 );
-    //                 k
-    //             })
-    //             .collect(),
-    //     }
-    // }
-
     pub fn parse_file(&mut self, id: FileID) -> CompResult<Package> {
-        parser::parse(self, id)
+        parser::parse(&mut self.filectx, id)
     }
 
     pub fn parse_program(&mut self, id: FileID) -> CompResult<Program> {
@@ -113,26 +119,12 @@ impl Context {
             })
             .collect::<Vec<_>>();
         let mut processed: Vec<Result<(Package, FileID), CompilerErr>> = vec![];
-        // dir_contents
-        //     .iter()
-        //     .map(|entry: &FileSource<'src>| {
-        //         let converted_id = convert_path_to_id(entry.filename);
-        //         self.filectx.insert(converted_id, entry.clone());
-        //         let (pack, str): (Package<'src>, &str) = self.parse_file(converted_id)?;
-        //         Ok((pack, entry.filename, str))
-        //     })
-        //     .collect();
         for entry in dir_contents {
             let converted_id = convert_path_to_id(entry.filename);
             self.filectx.insert(converted_id, entry.clone());
             let pack = self.parse_file(converted_id)?;
-            // dbg!(&pack.name);
             processed.push(Ok((pack, converted_id)))
         }
-        // dbg!(&processed
-        //     .iter()
-        //     .filter(|x| x.is_ok())
-        //     .map(|x| x.as_ref().unwrap().1));
 
         let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
         let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();
@@ -145,27 +137,24 @@ impl Context {
         }
     }
 
-    pub fn compile_program(&mut self, id: FileID) -> CompResult<((), Duration)> {
+    pub fn compile_program(&mut self, id: FileID) -> CompResult<(T::Output, Duration)> {
+        // use internment::Intern;
+        // use resource::rep::quantifier::QualifierFragment::*;
         let now: Instant = Instant::now();
         let program = self.parse_program(id)?;
-        // dbg!(&program);
 
-        let e = Environment::build(&program)?;
-        //dbg!(&e);
-        // let env = &mut e;
-        let s = Solver::new(&e, resource::rep::quantifier::QualifierFragment::Root);
+        let mut e = Environment::build(&program)?;
+
+        let mut s = Solver::new(&e, resource::rep::quantifier::QualifierFragment::Root);
         s.check()?;
-        // dbg!(&e.get_node(
-        //     &resource::rep::quantifier::QualifierFragment::Func(internment::Intern::from_ref(
-        //         "main"
-        //     ),),
-        //     &resource::rep::quantifier::QualifierFragment::Package(internment::Intern::from_ref(
-        //         "Main"
-        //     ))
-        // ));
+
+        let pruned = e.remove_unused();
+        let mut g = Generator::new(self.target, pruned);
+
+        let out = g.generate();
         let elapsed = now.elapsed();
 
-        Ok(((), elapsed))
+        Ok((out, elapsed))
     }
 }
 

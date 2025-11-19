@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{fmt::Debug, hash::Hash};
 
 use crate::resource::{
     errors::{CompResult, DynamicErr},
@@ -16,6 +16,20 @@ use super::{
     types::{EnumVariant, Ty},
     Spanned,
 };
+
+pub trait Variable: Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[repr(transparent)]
+pub struct Untyped(pub Intern<String>);
+
+impl Variable for Untyped {}
+
+impl Ident for Untyped {
+    fn ident(&self) -> CompResult<Intern<String>> {
+        Ok(self.0)
+    }
+}
 
 /// Type representing an atomic value within a pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -174,12 +188,12 @@ impl Expr {
         span: SimpleSpan<usize, u64>,
     ) -> Spanned<Intern<Self>> {
         match self {
-            Self::Call(l, r) => (
+            Self::Call(l, r) => Spanned(
                 Intern::from(Self::Call(l.0.inject_call_start(arg, span), r)),
                 span,
             ),
-            Self::Ident(n) => (
-                Intern::from(Self::Call((Intern::from(self), span), arg)),
+            Self::Ident(_n) => Spanned(
+                Intern::from(Self::Call(Spanned(Intern::from(self), span), arg)),
                 span,
             ),
             _ => panic!(),

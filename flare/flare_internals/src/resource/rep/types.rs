@@ -71,6 +71,25 @@ impl Ty {
             _ => unreachable!("Cannot monomorph non-generic type"),
         }
     }
+
+    pub fn destructure_arrow(&self) -> (Vec<Spanned<Intern<Self>>>, Spanned<Intern<Self>>) {
+        let (l, r) = self.get_arrow();
+        fn worker(
+            t: &Spanned<Intern<Ty>>,
+            v: &mut Vec<Spanned<Intern<Ty>>>,
+        ) -> Vec<Spanned<Intern<Ty>>> {
+            match *t.0 {
+                Ty::Arrow(l, r) => {
+                    v.push(r);
+                    worker(&l, v);
+                }
+                _ => v.push(*t),
+            }
+            v.to_vec()
+        }
+        let mut v = vec![];
+        (worker(l, &mut v), *r)
+    }
 }
 
 impl fmt::Display for Ty {

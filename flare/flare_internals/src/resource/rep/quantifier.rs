@@ -1,5 +1,6 @@
 use super::super::errors::CompResult;
 
+// use chumsky::input::ValueInput;
 use internment::Intern;
 
 // use rkyv::with::{ArchiveWith, DeserializeWith, With};
@@ -41,7 +42,7 @@ use crate::resource::rep::{ast::Expr, common::Ident, Spanned};
 impl QualifierFragment {
     pub fn name(&self) -> &Intern<String> {
         match self {
-            Self::Root => panic!(),
+            Self::Root => Box::leak(Box::new(Intern::from_ref("ROOT"))),
             Self::Package(n)
             | Self::Type(n)
             | Self::Func(n)
