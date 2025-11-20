@@ -65,6 +65,7 @@ use crate::{
             ast::{
                 Package,
                 Program,
+                Untyped,
                 // Untyped
             },
             files::{FileID, FileSource},
@@ -96,11 +97,11 @@ impl<T: Target> Context<T> {
         }
     }
 
-    pub fn parse_file(&mut self, id: FileID) -> CompResult<Package> {
+    pub fn parse_file(&mut self, id: FileID) -> CompResult<Package<Untyped>> {
         parser::parse(&mut self.filectx, id)
     }
 
-    pub fn parse_program(&mut self, id: FileID) -> CompResult<Program> {
+    pub fn parse_program(&mut self, id: FileID) -> CompResult<Program<Untyped>> {
         let src_path = self.filectx.get(&id).unwrap().filename;
         let path = src_path.canonicalize().unwrap();
         let parent_dir = path.parent().unwrap();
@@ -118,7 +119,7 @@ impl<T: Target> Context<T> {
                 }
             })
             .collect::<Vec<_>>();
-        let mut processed: Vec<Result<(Package, FileID), CompilerErr>> = vec![];
+        let mut processed: Vec<Result<(Package<Untyped>, FileID), CompilerErr>> = vec![];
         for entry in dir_contents {
             let converted_id = convert_path_to_id(entry.filename);
             self.filectx.insert(converted_id, entry.clone());

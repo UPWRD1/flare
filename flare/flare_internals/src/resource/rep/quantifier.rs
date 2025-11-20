@@ -37,7 +37,11 @@ pub enum QualifierFragment {
 //         }
 //     }
 // }
-use crate::resource::rep::{ast::Expr, common::Ident, Spanned};
+use crate::resource::rep::{
+    ast::{Expr, Variable},
+    common::Ident,
+    Spanned,
+};
 
 impl QualifierFragment {
     pub fn name(&self) -> &Intern<String> {
@@ -58,30 +62,32 @@ impl QualifierFragment {
         self.name() == rhs.name()
     }
 
-    pub fn from_expr(expr: &Spanned<Intern<Expr>>) -> CompResult<Vec<QualifierFragment>> {
-        struct CheckFieldAccess<'s> {
+    pub fn from_expr<V: Variable>(
+        expr: &Spanned<Intern<Expr<V>>>,
+    ) -> CompResult<Vec<QualifierFragment>> {
+        struct CheckFieldAccess<'s, V: Variable> {
             f: &'s dyn Fn(
                 &'s Self,
-                &'s Spanned<Intern<Expr>>,
+                &'s Spanned<Intern<Expr<V>>>,
                 Vec<QualifierFragment>,
             ) -> CompResult<Vec<QualifierFragment>>,
         }
         let cfa = CheckFieldAccess {
-            f: &|cfa: &CheckFieldAccess<'_>,
-                 e: &Spanned<Intern<Expr>>,
+            f: &|cfa: &CheckFieldAccess<'_, V>,
+                 e: &Spanned<Intern<Expr<V>>>,
                  mut accum: Vec<QualifierFragment>|
              -> CompResult<Vec<QualifierFragment>> {
                 //dbg!(&q);
                 match &*e.0 {
                     Expr::FieldAccess(l, r) => {
-                        accum.push(Self::Wildcard(l.ident()?));
+                        accum.push(Self::Wildcard(l.ident()?.0));
 
                         (cfa.f)(cfa, r, accum)
                         //self.graph.node_weight(n).cloned()
                     }
 
                     _ => {
-                        accum.push(Self::Wildcard(e.ident()?));
+                        accum.push(Self::Wildcard(e.ident()?.0));
                         Ok(accum)
                     }
                 }

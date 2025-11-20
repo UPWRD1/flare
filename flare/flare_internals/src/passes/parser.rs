@@ -11,6 +11,7 @@ use crate::{
                 Pattern,
                 PatternAtom,
                 StructDef,
+                Untyped,
                 // Untyped,
             },
             files::FileID,
@@ -304,7 +305,7 @@ fn parser<I, M>(
 ) -> impl Parser<
     'static,
     I,
-    Package,
+    Package<Untyped>,
     extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
     // extra::Full<Rich<'static, Token<'static>, SimpleSpan<usize, FileID>>, RodeoState, ()>,
 >
@@ -316,11 +317,24 @@ where
     M: Fn(SimpleSpan<usize, FileID>, &'static [Spanned<Token>]) -> I + 'static,
 {
     // Basic tokens
-    let ident =
-        select_ref! { Token::Ident(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
-            // |x, e| {
-            Spanned(Intern::from(Expr::Ident(Intern::from_ref(x))), e.span())
-        });
+    // let ident =
+    //     select_ref! { Token::Ident(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
+    //         // |x, e| {
+    //         Spanned(
+    //             Intern::from(Expr::Ident(Untyped(Intern::from_ref(x)))),
+    //             e.span(),
+    //         )
+    //     });
+    let rname = select_ref! { Token::Ident(x) => *x };
+    let ident = rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
+        Spanned(
+            Intern::from(Expr::Ident(Untyped(Spanned(Intern::from_ref(x), e.span())))),
+            e.span(),
+        )
+    });
+
+    let raw_ident =
+        rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| Spanned(Intern::from_ref(x), e.span()));
 
     let ty = ty_parser(make_input, ident.boxed()).boxed();
 
@@ -328,10 +342,13 @@ where
 
     // Expression parser
     let expression = recursive(|expr| {
-        let rname = select_ref! { Token::Ident(x) => *x };
-        let ident = rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
-            Spanned(Intern::from(Expr::Ident(Intern::from_ref(x))), e.span())
-        });
+        // let rname = select_ref! { Token::Ident(x) => *x };
+        // let ident = rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
+        //     Spanned(
+        //         Intern::from(Expr::Ident(Untyped(Intern::from_ref(x)))),
+        //         e.span(),
+        //     )
+        // });
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
         let path = ident.pratt(vec![infix(right(9), just(Token::Dot), |x, _, y, e| {
@@ -567,8 +584,7 @@ where
         //     .as_context();
 
         // Struct definition
-        let struct_field = ident.then_ignore(just(Token::Colon)).then(ty.clone());
-
+        let struct_field = raw_ident.then_ignore(just(Token::Colon)).then(ty.clone());
         let struct_def = just(Token::Struct)
             .ignore_then(ty.clone())
             //.then(ident.separated_by(just(Token::Comma)).delimited_by(just(Token::LBracket), just(Token::RBracket)).collect::<Vec<_>>())
@@ -581,7 +597,7 @@ where
             )
             .map_with(|(the_ty, fields), _| Definition::Struct(StructDef { the_ty, fields }));
         let enum_variant = choice((
-            ident
+            raw_ident
                 .then(
                     ty.clone()
                         .separated_by(just(Token::Comma))
@@ -599,7 +615,7 @@ where
                         e.span(),
                     )
                 }),
-            ident.map_with(|name, e| {
+            raw_ident.map_with(|name, e| {
                 Spanned(
                     EnumVariant {
                         parent_name: None,
@@ -636,7 +652,7 @@ where
             .map(Definition::Import);
 
         let extern_def = just(Token::Extern)
-            .ignore_then(ident)
+            .ignore_then(raw_ident)
             .then_ignore(just(Token::Colon))
             .then(ty.clone())
             .map(|(name, ty)| Definition::Extern(name, ty));
@@ -658,7 +674,7 @@ where
     });
 
     let package = just(Token::Package)
-        .ignore_then(ident)
+        .ignore_then(raw_ident)
         .then_ignore(just(Token::Eq))
         .then(
             just(Token::Pub)
@@ -687,7 +703,7 @@ fn ty_parser<'src, I, M>(
         'src,
         'src,
         I,
-        Spanned<Intern<Expr>>,
+        Spanned<Intern<Expr<Untyped>>>,
         extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>,
     >,
 ) -> impl Parser<'src, I, Spanned<Intern<Ty>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
@@ -697,6 +713,10 @@ where
 {
     // let ident = select_ref! { Token::Ident(x) => *x }.map_with(|x, e| (Expr::Ident(x), e.span()));
 
+    let rname = select_ref! { Token::Ident(x) => *x };
+
+    let raw_ident =
+        rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| Spanned(Intern::from_ref(x), e.span()));
     // let ident_or_self = ident
     //     .or(just(Token::Myself).map_with(|_, e| (Expr::Myself, e.span())))
     //     .boxed()
@@ -741,7 +761,8 @@ where
             just(Token::Metatype).map_with(|_, e| Spanned(Intern::from(Ty::Myself), e.span())),
             just(Token::Myself).map_with(|_, e| Spanned(Intern::from(Ty::Myself), e.span())),
             // User Types
-            path.clone()
+            raw_ident
+                .clone()
                 .then(
                     type_list
                         .clone()
@@ -757,7 +778,7 @@ where
                 }),
             // Generic Type
             just(Token::Question)
-                .ignore_then(ident)
+                .ignore_then(raw_ident)
                 .map_with(|name, e| Spanned(Intern::from(Ty::Generic(name)), e.span())),
             // Tuple
             type_list
@@ -781,7 +802,7 @@ fn pattern_parser<'src, I>(
         'src,
         'src,
         I,
-        Spanned<Intern<Expr>>,
+        Spanned<Intern<Expr<Untyped>>>,
         extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
     ty: Boxed<
@@ -794,7 +815,7 @@ fn pattern_parser<'src, I>(
 ) -> impl Parser<
     'src,
     I,
-    Spanned<Pattern>,
+    Spanned<Pattern<Untyped>>,
     extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
 >
 where
@@ -815,7 +836,7 @@ where
         choice((
             pat.clone()
                 .separated_by(just(Token::Comma))
-                .collect::<Vec<Spanned<Pattern>>>()
+                .collect::<Vec<Spanned<Pattern<_>>>>()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
                 .map_with(|p, e| Spanned(Pattern::Tuple(Intern::from(p)), e.span())),
@@ -895,7 +916,7 @@ fn make_input(
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Package> {
+pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Package<Untyped>> {
     let input = ctx
         .get(&fid)
         .unwrap_or_else(|| {
@@ -919,7 +940,7 @@ pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Package> {
 
     //dbg!(&tokens);
 
-    let packg: Result<Package, CompilerErr> = match parser(&make_input)
+    let packg: Result<Package<Untyped>, CompilerErr> = match parser(&make_input)
         .parse(make_input(
             SimpleSpan::new(fid, 0..input.len()),
             tokens.leak(),

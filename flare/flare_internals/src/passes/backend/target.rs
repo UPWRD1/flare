@@ -3,11 +3,14 @@ use std::{fmt::Write, io::BufReader};
 use internment::Intern;
 
 use crate::{
-    passes::{backend::c::C, midend::environment::Environment},
+    passes::{
+        backend::c::C,
+        midend::{environment::Environment, typechecking::Typed},
+    },
     resource::{
         errors::FatalErr,
         rep::{
-            ast::Expr,
+            ast::{Expr, Variable},
             entry::{EnumEntry, FunctionItem, Item, ItemKind, StructEntry},
             types::Ty,
             Spanned,
@@ -20,7 +23,7 @@ pub trait Target: Copy {
     type Artifact: Default;
     type Output: Default;
     // fn generate(&mut self);
-    fn generate_expr(&mut self, expr: Spanned<Intern<Expr>>);
+    fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>);
     fn generate_item(&mut self, item: &Item) -> Self::Partial {
         match &item.kind {
             ItemKind::Root => Self::Partial::default(),
@@ -38,7 +41,7 @@ pub trait Target: Copy {
             _ => todo!(),
         }
     }
-    fn generate_func(&mut self, f: &FunctionItem) -> Self::Partial;
+    fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> Self::Partial;
     fn generate_struct(&mut self, s: &StructEntry) -> Self::Partial;
     fn generate_enum(&mut self, s: &EnumEntry) -> Self::Partial;
     fn finish(self, p: Vec<Self::Partial>) -> Self::Output;

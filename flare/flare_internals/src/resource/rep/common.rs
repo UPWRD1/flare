@@ -3,7 +3,10 @@ use internment::Intern;
 
 use crate::resource::{
     errors::CompResult,
-    rep::{ast::Expr, Spanned},
+    rep::{
+        ast::{Expr, Variable},
+        Spanned,
+    },
 };
 
 pub trait SpanWrapped {
@@ -13,19 +16,19 @@ pub trait SpanWrapped {
 }
 
 pub trait Ident {
-    fn ident(&self) -> CompResult<Intern<String>>;
+    fn ident(&self) -> CompResult<Spanned<Intern<String>>>;
 }
 
 /// Trait for entities that have Names. Implementing this trait is preferred
 /// over a custom name implementation. Currently the only major type that
 /// implements its own name getter is `QualifierFragment`, since it doesn't
 /// carry span information (since it is statically created within the compiler)
-pub trait Named {
+pub trait Named<V: Variable> {
     // #[clippy::deny()]
     /// Internal get_name that returns a name or `None`. Users should implement this function, but shouldn't call it.
-    fn get_name(&self) -> Option<Spanned<Intern<Expr>>>;
+    fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>>;
 
-    fn name(&self) -> CompResult<Spanned<Intern<Expr>>>
+    fn name(&self) -> CompResult<Spanned<Intern<Expr<V>>>>
 // where
         // Self: std::fmt::Debug,
     {

@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::{any::Any, cell::Cell};
 
 use chumsky::span::Span;
 use internment::Intern;
@@ -7,7 +7,8 @@ use internment::Intern;
 use crate::resource::{
     errors::{CompResult, CompilerErr, FatalErr},
     rep::{
-        common::{Named, SpanWrapped},
+        ast::{Untyped, Variable},
+        common::{Ident, Named, SpanWrapped},
         files::FileID,
     },
 };
@@ -20,7 +21,7 @@ use super::{
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PackageEntry {
-    pub name: Spanned<Intern<Expr>>,
+    pub name: Spanned<Intern<String>>,
     pub id: FileID,
     // pub file: &'static Path,
     //    pub deps: Vec<Spanned<Expr>>,
@@ -42,10 +43,10 @@ pub struct EnumEntry {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct FunctionItem {
-    pub name: Spanned<Intern<Expr>>,
+pub struct FunctionItem<V: Variable> {
+    pub name: Spanned<Intern<String>>,
     pub sig: Cell<Option<Spanned<Intern<Ty>>>>,
-    pub body: Spanned<Intern<Expr>>,
+    pub body: Spanned<Intern<Expr<V>>>,
     // pub checked: Cell<bool>,
 }
 
@@ -64,10 +65,10 @@ pub enum ItemKind {
     Enum(EnumEntry),
     Variant(Spanned<EnumVariant>),
 
-    Field((Spanned<Intern<Expr>>, Spanned<Intern<Ty>>)),
-    Function(FunctionItem),
+    Field((Spanned<Intern<String>>, Spanned<Intern<Ty>>)),
+    Function(FunctionItem<Untyped>),
     Extern {
-        name: Spanned<Intern<Expr>>,
+        name: Spanned<Intern<String>>,
         sig: Spanned<Intern<Ty>>,
     },
     Dummy(&'static str),
@@ -101,18 +102,18 @@ impl SpanWrapped for Item {
     }
 }
 
-impl Named for Item {
-    fn get_name(&self) -> Option<Spanned<Intern<Expr>>> {
-        match &self.kind {
+impl Ident for Item {
+    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
+        match self.kind {
             ItemKind::Root => todo!(),
             // Item::Filename(s) => s,
-            ItemKind::Package(PackageEntry { name, .. }) => name.name().ok(),
-            ItemKind::Struct(StructEntry { ty, .. }) => ty.name().ok(),
-            ItemKind::Enum(EnumEntry { ty, .. }) => ty.name().ok(),
+            ItemKind::Package(PackageEntry { name, .. }) => Ok(name),
+            ItemKind::Struct(StructEntry { ty, .. }) => ty.ident(),
+            ItemKind::Enum(EnumEntry { ty, .. }) => ty.ident(),
             // Item::Variant((EnumVariant { name, .. }, _)) => &name.0,
-            ItemKind::Field((name, ..)) => name.name().ok(),
-            ItemKind::Function(FunctionItem { name, .. }) => name.name().ok(),
-            ItemKind::Extern { name, .. } => name.name().ok(),
+            ItemKind::Field((name, ..)) => Ok(name),
+            ItemKind::Function(FunctionItem { name, .. }) => Ok(name),
+            ItemKind::Extern { name, .. } => Ok(name),
             _ => panic!(),
         }
     }

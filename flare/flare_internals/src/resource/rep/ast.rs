@@ -17,29 +17,32 @@ use super::{
     Spanned,
 };
 
-pub trait Variable: Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static {}
+pub trait Variable:
+    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident
+{
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 #[repr(transparent)]
-pub struct Untyped(pub Intern<String>);
+pub struct Untyped(pub Spanned<Intern<String>>);
 
 impl Variable for Untyped {}
 
 impl Ident for Untyped {
-    fn ident(&self) -> CompResult<Intern<String>> {
+    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         Ok(self.0)
     }
 }
 
 /// Type representing an atomic value within a pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum PatternAtom {
+pub enum PatternAtom<V: Variable> {
     // #[serde(deserialize_with = "deserialize_static_str")]
     Strlit(Intern<String>),
     Num(OrderedFloat<f64>),
 
     // #[serde(deserialize_with = "deserialize_static_str")]
-    Variable(Spanned<Intern<Expr>>),
+    Variable(Spanned<Intern<Expr<V>>>),
 
     // #[serde(deserialize_with = "deserialize_static")]
     Type(Spanned<Intern<Ty>>),
@@ -47,24 +50,38 @@ pub enum PatternAtom {
 
 /// Type representing a Pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum Pattern {
-    Atom(PatternAtom),
+pub enum Pattern<V: Variable> {
+    Atom(PatternAtom<V>),
 
     Tuple(Intern<Vec<Spanned<Self>>>),
 
-    Variant(Spanned<Intern<Expr>>, Intern<Vec<Spanned<Self>>>),
+    Variant(Spanned<Intern<Expr<V>>>, Intern<Vec<Spanned<Self>>>),
 }
 
-impl Named for Spanned<Pattern> {
-    fn get_name(&self) -> Option<Spanned<Intern<Expr>>> {
+// impl<V: Variable> Named for Spanned<Pattern<V>> {
+//     fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>> {
+//         match self.0 {
+//             Pattern::Variant(n, _) => n.name().ok(),
+//             Pattern::Atom(a) => match a {
+//                 PatternAtom::Type(t) => t.name().ok(),
+//                 PatternAtom::Variable(s) => s.name().ok(),
+//                 _ => None, // errors::bad_ident(expr, s),
+//             },
+//             Pattern::Tuple(_) => None,
+//         }
+//     }
+// }
+
+impl<V: Variable> Ident for Spanned<Pattern<V>> {
+    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self.0 {
-            Pattern::Variant(n, _) => n.name().ok(),
+            Pattern::Variant(n, _) => n.ident(),
             Pattern::Atom(a) => match a {
-                PatternAtom::Type(t) => t.name().ok(),
-                PatternAtom::Variable(s) => s.name().ok(),
-                _ => None, // errors::bad_ident(expr, s),
+                PatternAtom::Type(t) => t.ident(),
+                PatternAtom::Variable(s) => s.ident(),
+                _ => panic!(), // errors::bad_ident(expr, s),
             },
-            Pattern::Tuple(_) => None,
+            Pattern::Tuple(_) => panic!(),
         }
     }
 }
@@ -79,11 +96,14 @@ pub enum ComparisonOp {
     Lte,
 }
 
-/// Type representing an Expression.
-/// You will typically encounter ```Expr``` as a ```Spanned<Expr>```, which is decorated with a span for diagnostic information.
+/// Type representing an Expr<V>ession.
+/// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum Expr {
-    Ident(Intern<String>),
+pub enum Expr<V>
+where
+    V: Variable,
+{
+    Ident(V),
     Number(ordered_float::OrderedFloat<f64>),
     String(Spanned<Intern<String>>),
     Bool(bool),
@@ -97,7 +117,7 @@ pub enum Expr {
         Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>,
     ),
 
-    Pat(Spanned<Pattern>),
+    Pat(Spanned<Pattern<V>>),
 
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -118,7 +138,7 @@ pub enum Expr {
     ),
     Match(
         Spanned<Intern<Self>>,
-        Intern<Vec<(Spanned<Pattern>, Spanned<Intern<Self>>)>>,
+        Intern<Vec<(Spanned<Pattern<V>>, Spanned<Intern<Self>>)>>,
     ),
     Lambda(Spanned<Intern<Self>>, Spanned<Intern<Self>>, bool),
     Let(
@@ -130,8 +150,8 @@ pub enum Expr {
     Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
 }
 
-impl Named for Spanned<Intern<Expr>> {
-    fn get_name(&self) -> Option<Spanned<Intern<Expr>>> {
+impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
+    fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>> {
         match *self.0 {
             Expr::Ident(_) => Some(*self),
             Expr::FieldAccess(base, _field) => {
@@ -154,21 +174,21 @@ impl Named for Spanned<Intern<Expr>> {
     }
 }
 
-impl Ident for Spanned<Intern<Expr>> {
-    fn ident(&self) -> CompResult<Intern<String>> {
+impl<V: Variable> Ident for Spanned<Intern<Expr<V>>> {
+    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match *self.0 {
-            Expr::Ident(s) => Ok(s),
+            Expr::Ident(s) => s.ident(),
             _ => self.name()?.ident(), // _ => Err(DynamicErr::new("cannot get ident")
                                        //     .label(format!("{self:?}"), self.get_span())
                                        //     .into()),
         }
     }
 }
-impl Expr {
+impl<V: Variable> Expr<V> {
     // #[inline]
     // pub fn get_ident(&self, span: SimpleSpan<usize, u64>) -> CompResult<Spanned<Intern<String>>> {
     //     match self {
-    //         Expr::Ident(s) => Ok(*s),
+    //         Expr<V>::Ident(s) => Ok(*s),
     //         _ => Err(DynamicErr::new("cannot get ident")
     //             .label(format!("{self:?}"), span)
     //             .into()),
@@ -204,8 +224,8 @@ impl Expr {
 #[derive(Debug, PartialEq)]
 pub struct StructDef {
     pub the_ty: Spanned<Intern<Ty>>,
-    pub fields: Vec<(Spanned<Intern<Expr>>, Spanned<Intern<Ty>>)>,
-    //pub generics: Vec<Spanned<Expr>>,
+    pub fields: Vec<(Spanned<Intern<String>>, Spanned<Intern<Ty>>)>,
+    //pub generics: Vec<Spanned<Expr<V>>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -215,41 +235,41 @@ pub struct EnumDef {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ImportItem {
-    pub items: Vec<Spanned<Intern<Expr>>>,
+pub struct ImportItem<V: Variable> {
+    pub items: Vec<Spanned<Intern<Expr<V>>>>,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ImplDef {
+pub struct ImplDef<V: Variable> {
     pub the_ty: Spanned<Intern<Ty>>,
     pub methods: Vec<(
-        Spanned<Intern<Expr>>,
-        Spanned<Intern<Expr>>,
+        Spanned<Intern<Expr<V>>>,
+        Spanned<Intern<Expr<V>>>,
         Spanned<Intern<Ty>>,
     )>,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Definition {
-    Import(Spanned<Intern<Expr>>),
+pub enum Definition<V: Variable> {
+    Import(Spanned<Intern<Expr<V>>>),
     Struct(StructDef),
     Enum(EnumDef),
     Let(
-        Spanned<Intern<Expr>>,
-        Spanned<Intern<Expr>>,
+        Spanned<Intern<Expr<V>>>,
+        Spanned<Intern<Expr<V>>>,
         Option<Spanned<Intern<Ty>>>,
     ),
-    Extern(Spanned<Intern<Expr>>, Spanned<Intern<Ty>>),
-    ImplDef(ImplDef),
+    Extern(Spanned<Intern<String>>, Spanned<Intern<Ty>>),
+    ImplDef(ImplDef<V>),
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Package {
-    pub name: Spanned<Intern<Expr>>,
-    pub items: Vec<Definition>,
+pub struct Package<V: Variable> {
+    pub name: Spanned<Intern<String>>,
+    pub items: Vec<Definition<V>>,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Program {
-    pub packages: Vec<(Package, FileID)>,
+pub struct Program<V: Variable> {
+    pub packages: Vec<(Package<V>, FileID)>,
 }

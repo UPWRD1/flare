@@ -1,19 +1,12 @@
-use std::io::{BufWriter, Read, Write};
-
-use const_format::concatcp;
 use internment::Intern;
 
 use crate::{
-    passes::{backend::target::Target, midend::environment::Environment},
-    resource::{
-        errors::FatalErr,
-        rep::{
-            ast::Expr,
-            common::Ident,
-            entry::{EnumEntry, FunctionItem, Item, ItemKind, StructEntry},
-            types::Ty,
-            Spanned,
-        },
+    passes::{backend::target::Target, midend::typechecking::Typed},
+    resource::rep::{
+        ast::{Expr, Untyped, Variable},
+        entry::{EnumEntry, FunctionItem, StructEntry},
+        types::Ty,
+        Spanned,
     },
 };
 
@@ -32,7 +25,7 @@ impl Target for C {
                 crate::resource::rep::types::PrimitiveType::Bool => "bool".to_string(),
                 crate::resource::rep::types::PrimitiveType::Unit => "void".to_string(),
             },
-            Ty::User(spanned, intern) => format!("{}", spanned.ident().unwrap()),
+            Ty::User(spanned, intern) => format!("{}", spanned),
             Ty::Tuple(intern) => todo!(),
             Ty::Seq(spanned) => todo!(),
             Ty::Arrow(spanned, spanned1) => todo!(),
@@ -43,7 +36,7 @@ impl Target for C {
         }
     }
 
-    fn generate_expr(&mut self, expr: Spanned<Intern<Expr>>) {
+    fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>) {
         todo!()
     }
 
@@ -59,14 +52,14 @@ impl Target for C {
     //     format!("{}{}", self.decls, out)
     // }
 
-    fn generate_func(&mut self, f: &FunctionItem) -> Self::Output {
+    fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> Self::Output {
         let out_ty = f.sig.get().unwrap();
         // let mut arg_types = vec![];
         let (args, ret) = out_ty.0.destructure_arrow();
         dbg!(args, ret);
         let converted_ret = self.convert_type(*ret.0);
-        let name = f.name.ident().expect("Shouldn't fall");
-        let output = format!("{} {}()", converted_ret, name);
+
+        let output = format!("{} {}()", converted_ret, f.name);
         dbg!(output);
         todo!()
     }

@@ -1,6 +1,12 @@
 use std::fmt;
 
-use crate::resource::rep::common::{Ident, Named};
+use crate::resource::{
+    errors::{CompResult, CompilerErr, FatalErr},
+    rep::{
+        ast::Variable,
+        common::{Ident, Named},
+    },
+};
 
 // use serde::{Deserialize, Serialize};
 // use super::deserialize_slice
@@ -20,31 +26,42 @@ pub enum PrimitiveType {
 pub enum Ty {
     Primitive(PrimitiveType),
     // #[serde(deserialize_with = "deserialize_slice")]
-    User(Spanned<Intern<Expr>>, Intern<Vec<Spanned<Intern<Self>>>>),
+    User(Spanned<Intern<String>>, Intern<Vec<Spanned<Intern<Self>>>>),
     Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
     Seq(Spanned<Intern<Self>>),
     Arrow(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Myself,
-    Generic(Spanned<Intern<Expr>>),
+    Generic(Spanned<Intern<String>>),
     Variant(EnumVariant),
-    Package(Spanned<Intern<Expr>>),
+    Package(Spanned<Intern<String>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 // #[serde(into = "EnumVariantHelper")]
 pub struct EnumVariant {
-    pub parent_name: Option<Spanned<Intern<Expr>>>,
+    pub parent_name: Option<Spanned<Intern<String>>>,
     // pub name: Spanned<Expr>,
-    pub name: Spanned<Intern<Expr>>,
+    pub name: Spanned<Intern<String>>,
     pub types: Intern<Vec<Spanned<Intern<Ty>>>>,
 }
 
-impl Named for Spanned<Intern<Ty>> {
-    fn get_name(&self) -> Option<Spanned<Intern<Expr>>> {
+// impl Named for Spanned<Intern<Ty>> {
+//     fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>> {
+//         match *self.0 {
+//             Ty::User(name, _) => Ok(name).ok(),
+//             Ty::Variant(v) => Ok(v.name).ok(),
+//             _ => None,
+//         }
+//     }
+// }
+//
+impl Ident for Spanned<Intern<Ty>> {
+    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
+        // todo!()
         match *self.0 {
-            Ty::User(name, _) => name.name().ok(),
-            Ty::Variant(v) => v.name.name().ok(),
-            _ => None,
+            Ty::User(name, _) => Ok(name),
+            Ty::Variant(v) => Ok(v.name),
+            _ => FatalErr::new("Cannot get name"),
         }
     }
 }
@@ -114,9 +131,9 @@ impl fmt::Display for Ty {
             }
 
             Ty::Arrow(l, r) => write!(f, "({} -> {})", l.0, r.0),
-            Ty::Generic(n) => write!(f, "Generic({})", n.ident().unwrap()),
+            Ty::Generic(n) => write!(f, "Generic({})", n),
             Ty::User(n, args) => {
-                write!(f, "{}[", n.ident().unwrap())?;
+                write!(f, "{}[", n)?;
                 for a in args.iter() {
                     write!(f, "{}, ", a.0)?;
                 }
