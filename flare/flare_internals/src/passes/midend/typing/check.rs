@@ -87,8 +87,8 @@ impl<'env> Solver<'env> {
                 .with_typed_ast(|term| Spanned(Expr::Unlabel(term, lbl).into(), span)),
 
             (Expr::Concat(left, right), Type::Prod(goal_row)) => {
-                let left_row = Row::Open(self.fresh_row_var());
-                let right_row = Row::Open(self.fresh_row_var());
+                let left_row = Row::Unifier(self.fresh_row_var());
+                let right_row = Row::Unifier(self.fresh_row_var());
 
                 let left_out = self.check(env.clone(), left, Type::Prod(left_row));
                 let right_out = self.check(env, right, Type::Prod(right_row));
@@ -109,11 +109,11 @@ impl<'env> Solver<'env> {
             }
 
             (Expr::Project(dir, goal), Type::Prod(sub_row)) => {
-                let goal_row = Row::Open(self.fresh_row_var());
+                let goal_row = Row::Unifier(self.fresh_row_var());
 
                 let (left, right) = match dir {
-                    Direction::Left => (sub_row, Row::Open(self.fresh_row_var())),
-                    Direction::Right => (Row::Open(self.fresh_row_var()), sub_row),
+                    Direction::Left => (sub_row, Row::Unifier(self.fresh_row_var())),
+                    Direction::Right => (Row::Unifier(self.fresh_row_var()), sub_row),
                 };
 
                 let mut out = self.check(env, goal, Type::Prod(goal_row));
@@ -137,13 +137,13 @@ impl<'env> Solver<'env> {
                         constraints.push(Constraint::TypeEqual(
                             Provenance::ExpectedUnify(span),
                             *arg_ty,
-                            Type::Sum(Row::Open(goal)),
+                            Type::Sum(Row::Unifier(goal)),
                         ));
-                        Row::Open(goal)
+                        Row::Unifier(goal)
                     }
                 };
-                let left = Row::Open(self.fresh_row_var());
-                let right = Row::Open(self.fresh_row_var());
+                let left = Row::Unifier(self.fresh_row_var());
+                let right = Row::Unifier(self.fresh_row_var());
 
                 let left_out = self.check(
                     env.clone(),
@@ -171,14 +171,14 @@ impl<'env> Solver<'env> {
 
             (Expr::Inject(dir, value), Type::Sum(goal)) => {
                 let sub_row = self.fresh_row_var();
-                let mut out = self.check(env, value, Type::Sum(Row::Open(sub_row)));
+                let mut out = self.check(env, value, Type::Sum(Row::Unifier(sub_row)));
                 let (left, right) = match dir {
                     Direction::Left => (sub_row, self.fresh_row_var()),
                     Direction::Right => (self.fresh_row_var(), sub_row),
                 };
                 let row_comb = RowCombination {
-                    left: Row::Open(left),
-                    right: Row::Open(right),
+                    left: Row::Unifier(left),
+                    right: Row::Unifier(right),
                     goal,
                 };
                 out.constraints.push(Constraint::RowCombine(row_comb));

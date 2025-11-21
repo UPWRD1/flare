@@ -17,11 +17,19 @@ use internment::Intern;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::midend::{environment::Environment, typing::subst::SubstOut},
+    passes::midend::{
+        environment::Environment,
+        typing::{rows::RowVar, subst::SubstOut, types::TypeVar},
+    },
     resource::{
         errors::{CompResult, CompilerErr, TypeErr},
         rep::{
-            Spanned, ast::{Direction, Expr, NodeId, Untyped, Variable}, common::Ident, concretetypes::Ty, entry::Item, quantifier::QualifierFragment
+            ast::{Direction, Expr, ItemId, NodeId, Untyped, Variable},
+            common::Ident,
+            concretetypes::Ty,
+            entry::Item,
+            quantifier::QualifierFragment,
+            Spanned,
         },
     },
 };
@@ -94,8 +102,9 @@ impl GenOut {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct TypeScheme {
-    pub unbound_types: BTreeSet<TyUniVar>,
-    pub unbound_rows: BTreeSet<RowUniVar>,
+    pub unbound_types: BTreeSet<TypeVar>,
+
+    pub unbound_rows: BTreeSet<RowVar>,
     pub evidence: Vec<Evidence>,
     pub ty: Type,
 }
@@ -106,18 +115,39 @@ pub struct TypeInferOut {
     pub errors: FxHashMap<NodeId, CompilerErr>,
     pub row_to_ev: FxHashMap<NodeId, Evidence>,
     pub branch_to_ret_ty: FxHashMap<NodeId, Type>,
+    pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+}
+
+struct ItemWrapper {
+    types: Vec<Type>,
+    rows: Vec<Row>,
+    evidence: Vec<Evidence>,
+}
+
+#[derive(Default)]
+struct ItemSource {
+    types: FxHashMap<ItemId, TypeScheme>,
 }
 
 #[derive(Default)]
 pub struct Solver<'env> {
     unification_table: InPlaceUnificationTable<TyUniVar>,
-    // hasher: FxHasher,
-    phantom: PhantomData<&'env Environment>,
-    errors: FxHashMap<NodeId, CompilerErr>,
     row_unification_table: InPlaceUnificationTable<RowUniVar>,
+
     partial_row_combs: BTreeSet<RowCombination>,
     row_to_combo: FxHashMap<NodeId, RowCombination>,
     branch_to_ret_ty: FxHashMap<NodeId, Type>,
+
+    subst_unifiers_to_tyvars: FxHashMap<TyUniVar, TypeVar>,
+    next_tyvar: u32,
+    subst_unifiers_to_rowvars: FxHashMap<RowUniVar, RowVar>,
+    next_rowvar: u32,
+
+    item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+
+    phantom: PhantomData<&'env Environment>,
+    errors: FxHashMap<NodeId, CompilerErr>,
+    item_source: ItemSource,
 }
 
 impl<'env> Solver<'env> {
@@ -131,133 +161,180 @@ impl<'env> Solver<'env> {
 
     fn fresh_row_combination(&mut self) -> RowCombination {
         RowCombination {
-            left: Row::Open(self.fresh_row_var()),
-            right: Row::Open(self.fresh_row_var()),
-            goal: Row::Open(self.fresh_row_var()),
+            left: Row::Unifier(self.fresh_row_var()),
+            right: Row::Unifier(self.fresh_row_var()),
+            goal: Row::Unifier(self.fresh_row_var()),
         }
     }
 
-    pub fn type_infer(ast: Spanned<Intern<Expr<Untyped>>>) -> TypeInferOut {
-        let mut ctx = Solver::default();
+    fn tyvar_for_unifier(&mut self, var: TyUniVar) -> TypeVar {
+        *self.subst_unifiers_to_tyvars.entry(var).or_insert_with(|| {
+            let next = self.next_tyvar;
+            self.next_tyvar += 1;
+            TypeVar(next)
+        })
+    }
 
+    fn rowvar_for_unifier(&mut self, var: RowUniVar) -> RowVar {
+        *self
+            .subst_unifiers_to_rowvars
+            .entry(var)
+            .or_insert_with(|| {
+                let next = self.next_rowvar;
+                self.next_rowvar += 1;
+                RowVar(next)
+            })
+    }
+
+    pub fn type_infer(ast: Spanned<Intern<Expr<Untyped>>>) -> CompResult<TypeInferOut> {
+        let ctx = Self::default();
+        ctx.type_infer_logic(ast)
+    }
+
+    fn normalize_mentioned_row_combs<T>(
+        &mut self,
+        subst_out: SubstOut<T>,
+    ) -> SubstOut<(T, Vec<Evidence>)> {
+        let mut subst_out = subst_out.map(|t| (t, vec![]));
+        for norm_row_comb in std::mem::take(&mut self.partial_row_combs)
+            .into_iter()
+            .map(|row_comb| self.substitute_row_comb(row_comb))
+        {
+            if norm_row_comb
+                .unbound_tys
+                .intersection(&subst_out.unbound_tys)
+                .next()
+                .is_some()
+                || norm_row_comb
+                    .unbound_rows
+                    .intersection(&subst_out.unbound_rows)
+                    .next()
+                    .is_some()
+            {
+                subst_out = subst_out.merge(norm_row_comb, |(t, mut evidences), ev| {
+                    evidences.push(ev);
+                    (t, evidences)
+                })
+            }
+        }
+        subst_out
+    }
+
+    pub fn type_infer_with_items(
+        item_source: ItemSource,
+        ast: Spanned<Intern<Expr<Untyped>>>,
+    ) -> CompResult<TypeInferOut> {
+        let ctx = Self {
+            item_source,
+            ..Default::default()
+        };
+        ctx.type_infer_logic(ast)
+    }
+
+    pub fn type_infer_logic(
+        mut self,
+        ast: Spanned<Intern<Expr<Untyped>>>,
+    ) -> CompResult<TypeInferOut> {
         // Constraint generation
-        let (out, ty) = ctx.infer(im::HashMap::default(), ast);
+        let (out, ty) = self.infer(im::HashMap::default(), ast);
 
         // Constraint solving
-        ctx.unification(out.constraints);
+        self.unification(out.constraints)?;
 
         // Apply our substition to our inferred types
-        let subst_out = ctx
+        let subst_out = self
             .substitute_ty(ty)
-            .merge(ctx.substitute_ast(out.typed_ast), |ty, ast| (ty, ast));
-        // Return our typed ast and it's type scheme
-        let mut ev_out = SubstOut::new(());
-        let evidence = std::mem::take(&mut ctx.partial_row_combs)
+            .merge(self.substitute_ast(out.typed_ast), |ty, ast| (ty, ast));
+
+        let mut evidence_subst = self.normalize_mentioned_row_combs(subst_out);
+        let row_to_ev = std::mem::take(&mut self.row_to_combo)
             .into_iter()
-            .filter_map(|row_comb| match row_comb {
-                RowCombination {
-                    left: Row::Open(left),
-                    right,
-                    goal,
-                } if subst_out.unbound_rows.contains(&left) => Some(RowCombination {
-                    left: Row::Open(left),
-                    right,
-                    goal,
-                }),
-                RowCombination {
-                    left: Row::Closed(left),
-                    right,
-                    goal,
-                } if left.mentions(&subst_out.unbound_tys, &subst_out.unbound_rows) => {
-                    Some(RowCombination {
-                        left: Row::Closed(left),
-                        right,
-                        goal,
-                    })
-                }
-                RowCombination {
-                    left,
-                    right: Row::Open(right),
-                    goal,
-                } if subst_out.unbound_rows.contains(&right) => Some(RowCombination {
-                    left,
-                    right: Row::Open(right),
-                    goal,
-                }),
-                RowCombination {
-                    left,
-                    right: Row::Closed(right),
-                    goal,
-                } if right.mentions(&subst_out.unbound_tys, &subst_out.unbound_rows) => {
-                    Some(RowCombination {
-                        left,
-                        right: Row::Closed(right),
-                        goal,
-                    })
-                }
-                RowCombination {
-                    left,
-                    right,
-                    goal: Row::Open(goal),
-                    ..
-                } if subst_out.unbound_rows.contains(&goal) => Some(RowCombination {
-                    left,
-                    right,
-                    goal: Row::Open(goal),
-                }),
-                RowCombination {
-                    left,
-                    right,
-                    goal: Row::Closed(goal),
-                } if goal.mentions(&subst_out.unbound_tys, &subst_out.unbound_rows) => {
-                    Some(RowCombination {
-                        left,
-                        right,
-                        goal: Row::Closed(goal),
-                    })
-                }
-                _ => None,
+            .map(|(id, combo)| {
+                let out = self.substitute_row_comb(combo);
+                evidence_subst.unbound_rows.extend(out.unbound_rows);
+                evidence_subst.unbound_tys.extend(out.unbound_tys);
+                (id, out.value)
             })
-            .map(|comb| {
-                let out = ctx.substitute_row_comb(comb);
-                ev_out.unbound_rows.extend(out.unbound_rows);
-                ev_out.unbound_tys.extend(out.unbound_tys);
-                out.value
+            .collect();
+        let item_wrappers = std::mem::take(&mut self.item_wrappers)
+            .into_iter()
+            .map(|(id, wrapper)| {
+                let out = self.substitute_wrapper(wrapper);
+                evidence_subst.unbound_rows.extend(out.unbound_rows);
+                evidence_subst.unbound_tys.extend(out.unbound_tys);
+                (id, out.value)
+            })
+            .collect();
+        let branch_to_ret_ty = std::mem::take(&mut self.branch_to_ret_ty)
+            .into_iter()
+            .map(|(id, ty)| {
+                let out = self.substitute_ty(ty);
+                evidence_subst.unbound_rows.extend(out.unbound_rows);
+                evidence_subst.unbound_tys.extend(out.unbound_tys);
+                (id, out.value)
             })
             .collect();
 
-        let row_to_ev = std::mem::take(&mut ctx.row_to_combo)
-            .into_iter()
-            .map(|(id, combo)| {
-                let out = ctx.substitute_row_comb(combo);
-                ev_out.unbound_rows.extend(out.unbound_rows);
-                ev_out.unbound_tys.extend(out.unbound_tys);
-                (id, out.value)
-            })
-            .collect();
-        let branch_to_ret_ty = std::mem::take(&mut ctx.branch_to_ret_ty)
-            .into_iter()
-            .map(|(id, ty)| {
-                let out = ctx.substitute_ty(ty);
-                ev_out.unbound_rows.extend(out.unbound_rows);
-                ev_out.unbound_tys.extend(out.unbound_tys);
-                (id, out.value)
-            })
-            .collect();
-        let subst_out = subst_out.merge(ev_out, |l, _| l);
         // Return our typed ast and it's type scheme
-        TypeInferOut {
-            ast: subst_out.value.1,
+        let ((ty, ast), evidence) = evidence_subst.value;
+        Ok(TypeInferOut {
+            ast,
+            errors: self.errors,
             scheme: TypeScheme {
-                unbound_rows: subst_out.unbound_rows,
-                unbound_types: subst_out.unbound_tys,
+                unbound_rows: evidence_subst.unbound_rows,
+                unbound_types: evidence_subst.unbound_tys,
                 evidence,
-                ty: subst_out.value.0,
+                ty,
             },
-            errors: ctx.errors,
             row_to_ev,
             branch_to_ret_ty,
-        }
+            item_wrappers,
+        })
+    }
+
+    fn type_check(
+        ast: Spanned<Intern<Expr<Untyped>>>,
+        signature: TypeScheme,
+    ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
+        let mut ctx = Self::default();
+        ctx.type_check_logic(ast, signature)
+    }
+
+    fn type_check_with_items(
+        item_source: ItemSource,
+        ast: Spanned<Intern<Expr<Untyped>>>,
+        signature: TypeScheme,
+    ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
+        let mut ctx = Self {
+            item_source,
+            ..Default::default()
+        };
+        ctx.type_check_logic(ast, signature)
+    }
+
+    fn type_check_logic(
+        &mut self,
+        ast: Spanned<Intern<Expr<Untyped>>>,
+        signature: TypeScheme,
+    ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
+        // We start with `check` instead of `infer`.
+        let mut out = self.check(im::HashMap::default(), ast, signature.ty);
+
+        // Add any evidence in our type annotation to be used during solving.
+        out.constraints
+            .extend(signature.evidence.iter().map(|ev| match *ev {
+                Evidence::RowEquation { left, right, goal } => {
+                    Constraint::RowCombine(RowCombination { left, right, goal })
+                }
+            }));
+
+        self.unification(out.constraints)?;
+
+        // We still need to substitute, but only our ast.
+        let subst_ast = self.substitute_ast(out.typed_ast);
+
+        // And we're done
+        Ok(subst_ast.value)
     }
     /// Check a single item from the environment.
     fn check_item(

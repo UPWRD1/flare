@@ -11,7 +11,7 @@ use crate::{
 pub struct RowUniVar(u32);
 
 impl UnifyKey for RowUniVar {
-    type Value = Option<ClosedRow>;
+    type Value = Option<Row>;
 
     fn index(&self) -> u32 {
         self.0
@@ -27,8 +27,12 @@ impl UnifyKey for RowUniVar {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct RowVar(pub u32);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Row {
-    Open(RowUniVar),
+    Open(RowVar),
+    Unifier(RowUniVar),
     Closed(ClosedRow),
 }
 
@@ -43,7 +47,7 @@ impl Row {
     pub fn equatable(&self, other: &Self) -> bool {
         match (self, other) {
             // Open rows are equatable when their variables are equal
-            (Self::Open(a), Self::Open(b)) => a == b,
+            (Self::Unifier(a), Self::Unifier(b)) => a == b,
             // Closed rows are equatable when their fields are equal
             (Self::Closed(a), Self::Closed(b)) => a.fields == b.fields,
             // Anything else is not equatable
@@ -110,7 +114,7 @@ impl ClosedRow {
     }
 }
 
-impl EqUnifyValue for ClosedRow {}
+impl EqUnifyValue for Row {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ClosedRow {

@@ -14,8 +14,8 @@ use crate::{
                 Untyped,
                 // Untyped,
             },
-            files::FileID,
             concretetypes::{EnumVariant, PrimitiveType, Ty},
+            files::FileID,
             Spanned,
         },
     },
@@ -63,6 +63,8 @@ enum Token {
     Minus,
 
     ComparisonOp(ComparisonOp),
+
+    Ampersand,
 
     LBrace,
     RBrace,
@@ -119,6 +121,7 @@ impl std::fmt::Display for Token {
                 ComparisonOp::Gte => write!(f, ">="),
                 ComparisonOp::Lte => write!(f, "<="),
             },
+            Self::Ampersand => write!(f, "&"),
             Self::Fn => write!(f, "fn"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
@@ -249,6 +252,7 @@ where
             }),
             // Operators
             comparison_op,
+            just("&").to(Token::Ampersand),
             just("=>").to(Token::FatArrow),
             just("->").to(Token::Arrow),
             just("=").to(Token::Eq),

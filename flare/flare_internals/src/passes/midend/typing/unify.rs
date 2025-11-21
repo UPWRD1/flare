@@ -11,7 +11,7 @@ enum UnificationError {
     TypeNotEqual(Type, Type),
     InfiniteType(TyUniVar, Type),
 
-    RowsNotEqual((ClosedRow, ClosedRow)),
+    RowsNotEqual((Row, Row)),
 }
 
 impl<'env> Solver<'env> {
@@ -45,10 +45,12 @@ impl<'env> Solver<'env> {
 
     fn normalize_row(&mut self, row: Row) -> Row {
         match row {
-            Row::Open(var) => match self.row_unification_table.probe_value(var) {
-                Some(closed) => Row::Closed(self.normalize_closed_row(closed)),
+            Row::Unifier(var) => match self.row_unification_table.probe_value(var) {
+                Some(Row::Closed(closed)) => Row::Closed(self.normalize_closed_row(closed)),
+                Some(row) => row,
                 None => row,
             },
+            Row::Open(var) => Row::Open(var),
             Row::Closed(closed) => Row::Closed(self.normalize_closed_row(closed)),
         }
     }
@@ -62,6 +64,8 @@ impl<'env> Solver<'env> {
         let right = self.normalize_ty(unnorm_right);
         match (left, right) {
             (Type::Num, Type::Num) => Ok(()),
+
+            (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
             (Type::Func(a_arg, a_ret), Type::Func(b_arg, b_ret)) => {
                 self.unify_ty_ty(*a_arg, *b_arg)
                     .map_err(|kind| match kind {
@@ -106,7 +110,7 @@ impl<'env> Solver<'env> {
         self.partial_row_combs = std::mem::take(&mut self.partial_row_combs)
             .into_iter()
             .filter_map(|comb| match comb {
-                RowCombination { left, right, goal } if left == Row::Open(var) => {
+                RowCombination { left, right, goal } if left == Row::Unifier(var) => {
                     changed_combs.push(RowCombination {
                         left: Row::Closed(row),
                         right,
@@ -114,7 +118,7 @@ impl<'env> Solver<'env> {
                     });
                     None
                 }
-                RowCombination { left, right, goal } if right == Row::Open(var) => {
+                RowCombination { left, right, goal } if right == Row::Unifier(var) => {
                     changed_combs.push(RowCombination {
                         left,
                         right: Row::Closed(row),
@@ -122,7 +126,7 @@ impl<'env> Solver<'env> {
                     });
                     None
                 }
-                RowCombination { left, right, goal } if goal == Row::Open(var) => {
+                RowCombination { left, right, goal } if goal == Row::Unifier(var) => {
                     changed_combs.push(RowCombination {
                         left,
                         right,
@@ -144,30 +148,38 @@ impl<'env> Solver<'env> {
         let left = self.normalize_row(left);
         let right = self.normalize_row(right);
         match (left, right) {
-            (Row::Open(left), Row::Open(right)) => self
+            (Row::Open(left), Row::Open(right)) if left == right => Ok(()),
+            (Row::Unifier(l), Row::Unifier(r)) => self
                 .row_unification_table
-                .unify_var_var(left, right)
+                .unify_var_var(l, r)
+                .map_err(|(_, _)| UnificationError::RowsNotEqual((left, right))),
+
+            (Row::Unifier(var), Row::Open(row)) | (Row::Open(row), Row::Unifier(var)) => self
+                .row_unification_table
+                .unify_var_value(var, Some(Row::Open(row)))
                 .map_err(UnificationError::RowsNotEqual),
-            (Row::Open(var), Row::Closed(row)) | (Row::Closed(row), Row::Open(var)) => {
+            (Row::Unifier(var), Row::Closed(row)) | (Row::Closed(row), Row::Unifier(var)) => {
                 self.row_unification_table
-                    .unify_var_value(var, Some(row))
+                    .unify_var_value(var, Some(Row::Closed(row)))
                     .map_err(UnificationError::RowsNotEqual)?;
                 self.dispatch_any_solved(var, row)
             }
-            (Row::Closed(left), Row::Closed(right)) => {
-                if left.fields != right.fields {
+            (Row::Closed(l), Row::Closed(r)) => {
+                if l.fields != r.fields {
                     return Err(UnificationError::RowsNotEqual((left, right)));
                 }
 
                 // If they are, our values are already in order so we can walk them and unify each
                 // type
-                let left_tys = left.values.iter();
-                let right_tys = right.values.iter();
+                let left_tys = l.values.iter();
+                let right_tys = r.values.iter();
                 for (left_ty, right_ty) in left_tys.zip(right_tys) {
                     self.unify_ty_ty(*left_ty, *right_ty)?;
                 }
                 Ok(())
             }
+
+            (_, _) => Err(UnificationError::RowsNotEqual((left, right))),
         }
     }
 
@@ -213,10 +225,10 @@ impl<'env> Solver<'env> {
                 let calc_goal = ClosedRow::merge(left, right);
                 self.unify_row_row(Row::Closed(calc_goal), goal)
             }
-            (Row::Open(var), Row::Closed(sub), Row::Closed(goal))
-            | (Row::Closed(sub), Row::Open(var), Row::Closed(goal)) => {
+            (Row::Unifier(var), Row::Closed(sub), Row::Closed(goal))
+            | (Row::Closed(sub), Row::Unifier(var), Row::Closed(goal)) => {
                 let diff_row = self.diff_and_unify(goal, sub)?;
-                self.unify_row_row(Row::Open(var), Row::Closed(diff_row))
+                self.unify_row_row(Row::Unifier(var), Row::Closed(diff_row))
             }
 
             (left, right, goal) => {

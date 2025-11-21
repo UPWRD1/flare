@@ -1,5 +1,3 @@
-use std::{fmt::Write, io::BufReader};
-
 use internment::Intern;
 
 use crate::{
@@ -11,8 +9,8 @@ use crate::{
         errors::FatalErr,
         rep::{
             ast::{Expr, Variable},
-            entry::{EnumEntry, FunctionItem, Item, ItemKind, StructEntry},
             concretetypes::Ty,
+            entry::{EnumEntry, FunctionItem, Item, ItemKind, StructEntry},
             Spanned,
         },
     },

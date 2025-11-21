@@ -4,7 +4,7 @@ use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
 use crate::{
-    passes::midend::typing::rows::{Row, RowUniVar},
+    passes::midend::typing::rows::{Row, RowUniVar, RowVar},
     resource::{
         errors::CompResult,
         rep::{ast::Label, common::Ident, Spanned},
@@ -35,10 +35,14 @@ impl UnifyKey for TyUniVar {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TypeVar(pub u32);
+
 #[derive(Copy, Clone, Debug, Eq)]
 pub enum Type {
     Unknown,
     Unifier(TyUniVar),
+    Var(TypeVar),
     // User(Spanned<Intern<String>>, &'static [TyUniVar]),
     // Variant(TyUniVar, Spanned<Intern<String>>),
     Unit,
@@ -149,7 +153,8 @@ impl Type {
             }
             Self::Label(_, ty) => ty.mentions(unbound_tys, unbound_rows),
             Self::Prod(row) | Self::Sum(row) => match row {
-                Row::Open(var) => unbound_rows.contains(var),
+                Row::Unifier(var) => unbound_rows.contains(var),
+                Row::Open(_) => false,
                 Row::Closed(row) => row.mentions(unbound_tys, unbound_rows),
             },
             _ => todo!(),
@@ -157,7 +162,7 @@ impl Type {
     }
 
     pub fn fun(arg: Self, ret: Self) -> Self {
-        Type::Func(Intern::from(arg), Intern::from(ret))
+        Self::Func(Intern::from(arg), Intern::from(ret))
     }
 }
 

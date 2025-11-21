@@ -2,16 +2,18 @@ use std::collections::HashMap;
 
 use petgraph::graph::NodeIndex;
 
-use crate::resource::rep::{ast::Variable, mir::VarId};
+use crate::resource::rep::mir::VarId;
 #[allow(dead_code, reason = "Indev")]
 use crate::{passes::midend::environment::Environment, resource::rep::mir::ANF};
 
+#[allow(dead_code)]
 pub struct Transformer<'env> {
     env: &'env Environment,
     ir: HashMap<NodeIndex, ANF>,
     next_var: VarId,
 }
 
+#[allow(dead_code)]
 impl<'env> Transformer<'env> {
     pub fn new(env: &'env Environment) -> Self {
         Self {

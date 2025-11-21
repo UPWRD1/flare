@@ -41,7 +41,6 @@ pub mod resource;
 
 use core::iter::Iterator;
 use std::{
-    fmt::Write,
     hash::{Hash, Hasher},
     path::Path,
     time::{Duration, Instant},
@@ -53,7 +52,7 @@ use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
         backend::{
-            c::C,
+            // c::C,
             target::{Generator, Target},
         },
         midend::{environment::Environment, typing::Solver},
@@ -144,7 +143,7 @@ impl<T: Target> Context<T> {
         let now: Instant = Instant::now();
         let program = self.parse_program(id)?;
 
-        let mut e = Environment::build(&program)?;
+        let e = Environment::build(&program)?;
 
         let mut s = Solver::default();
         // s.check_item()?;

@@ -47,7 +47,7 @@ pub trait AnnotatableError: ReportableError {
 pub struct CompilerErr(Box<dyn ReportableError>);
 
 use crate::{
-    passes::midend::typing::{ClosedRow, TyUniVar, Type},
+    passes::midend::typing::{Row, TyUniVar, Type},
     resource::rep::files::FileSource,
     FileCtx, FileID,
 };
@@ -362,7 +362,7 @@ pub enum TypeErr {
         inferred: Type,
     },
     TypeNotEqual(Type, Type),
-    RowNotEqual(ClosedRow, ClosedRow),
+    RowNotEqual(Row, Row),
 }
 
 impl Display for TypeErr {

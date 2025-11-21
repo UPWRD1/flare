@@ -4,15 +4,15 @@ use crate::{
     passes::{backend::target::Target, midend::typing::Typed},
     resource::rep::{
         ast::{Expr, Variable},
-        entry::{EnumEntry, FunctionItem, StructEntry},
         concretetypes::Ty,
+        entry::{EnumEntry, FunctionItem, StructEntry},
         Spanned,
     },
 };
 
 #[derive(Copy, Clone, Default)]
 pub struct C;
-
+#[allow(unused_variables)]
 impl Target for C {
     type Output = String;
     type Partial = String;
