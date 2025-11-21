@@ -1,11 +1,11 @@
 use internment::Intern;
 
 use crate::{
-    passes::{backend::target::Target, midend::typechecking::Typed},
+    passes::{backend::target::Target, midend::typing::Typed},
     resource::rep::{
-        ast::{Expr, Untyped, Variable},
+        ast::{Expr, Variable},
         entry::{EnumEntry, FunctionItem, StructEntry},
-        types::Ty,
+        concretetypes::Ty,
         Spanned,
     },
 };
@@ -20,10 +20,10 @@ impl Target for C {
     fn convert_type(&mut self, ty: Ty) -> Self::Partial {
         match ty {
             Ty::Primitive(p) => match p {
-                crate::resource::rep::types::PrimitiveType::Num => "double".to_string(),
-                crate::resource::rep::types::PrimitiveType::Str => "char*".to_string(),
-                crate::resource::rep::types::PrimitiveType::Bool => "bool".to_string(),
-                crate::resource::rep::types::PrimitiveType::Unit => "void".to_string(),
+                crate::resource::rep::concretetypes::PrimitiveType::Num => "double".to_string(),
+                crate::resource::rep::concretetypes::PrimitiveType::Str => "char*".to_string(),
+                crate::resource::rep::concretetypes::PrimitiveType::Bool => "bool".to_string(),
+                crate::resource::rep::concretetypes::PrimitiveType::Unit => "void".to_string(),
             },
             Ty::User(spanned, intern) => format!("{}", spanned),
             Ty::Tuple(intern) => todo!(),
@@ -59,7 +59,7 @@ impl Target for C {
         dbg!(args, ret);
         let converted_ret = self.convert_type(*ret.0);
 
-        let output = format!("{} {}()", converted_ret, f.name);
+        let output = format!("{} {}()", converted_ret, f.name.ident().unwrap().0);
         dbg!(output);
         todo!()
     }

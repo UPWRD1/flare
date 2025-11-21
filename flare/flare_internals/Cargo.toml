@@ -8,6 +8,8 @@ anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
 chumsky = {version = "0.10.1", features = ["pratt", "memoization",] }
 const_format = "0.2.35"
+ena = "0.14.3"
+im = "15.1.0"
 internment = {version = "0.8.6", features = []}
 log = "0.4.28"
 ordered-float = { version = "4.5.0", features = [] }

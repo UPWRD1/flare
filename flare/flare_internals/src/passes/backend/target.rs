@@ -5,14 +5,14 @@ use internment::Intern;
 use crate::{
     passes::{
         backend::c::C,
-        midend::{environment::Environment, typechecking::Typed},
+        midend::{environment::Environment, typing::Typed},
     },
     resource::{
         errors::FatalErr,
         rep::{
             ast::{Expr, Variable},
             entry::{EnumEntry, FunctionItem, Item, ItemKind, StructEntry},
-            types::Ty,
+            concretetypes::Ty,
             Spanned,
         },
     },

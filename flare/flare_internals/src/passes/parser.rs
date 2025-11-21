@@ -15,13 +15,12 @@ use crate::{
                 // Untyped,
             },
             files::FileID,
-            types::{EnumVariant, PrimitiveType, Ty},
+            concretetypes::{EnumVariant, PrimitiveType, Ty},
             Spanned,
         },
     },
-    Context, FileCtx,
+    FileCtx,
 };
-use ariadne::FileCache;
 use chumsky::input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput};
 use chumsky::pratt::{infix, left, right, Operator};
 use chumsky::prelude::*;
@@ -430,20 +429,13 @@ where
                 // let x = y in z
                 just(Token::Let)
                     //.ignore_then(ident)
-                    .ignore_then(pattern.clone())
+                    .ignore_then(raw_ident)
                     .then_ignore(just(Token::Eq))
                     .then(expr.clone())
                     .then_ignore(just(Token::In))
                     .then(expr.clone())
                     .map_with(|((lhs, rhs), then), e| {
-                        Spanned(
-                            Intern::from(Expr::Let(
-                                Spanned(Intern::from(Expr::Pat(lhs)), lhs.1),
-                                rhs,
-                                then,
-                            )),
-                            e.span(),
-                        )
+                        Spanned(Intern::from(Expr::Let(Untyped(lhs), rhs, then)), e.span())
                     }),
                 // If expression
                 just(Token::If)
@@ -485,10 +477,15 @@ where
 
         choice((
             atom,
-            // fn x y = z
-            just(Token::Fn).ignore_then(ident.repeated().foldr_with(
+            // fn x y => z
+            just(Token::Fn).ignore_then(raw_ident.repeated().foldr_with(
                 just(Token::FatArrow).ignore_then(expr.clone()),
-                |arg, body, e| Spanned(Intern::from(Expr::Lambda(arg, body, true)), e.span()),
+                |arg, body, e| {
+                    Spanned(
+                        Intern::from(Expr::Lambda(Untyped(arg), body, true)),
+                        e.span(),
+                    )
+                },
             )),
             // ( x )
             expr.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
@@ -547,18 +544,18 @@ where
     let definition = recursive(|_| {
         // Toplevel Let binding
         let let_binding = just(Token::Let)
-            .ignore_then(ident)
-            .then(ident.repeated().collect::<Vec<_>>())
+            .ignore_then(raw_ident)
+            .then(raw_ident.repeated().collect::<Vec<_>>())
             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
             .then(just(Token::Eq).ignore_then(expression.clone()))
             .map_with(|(((name, args), ty), body), e| {
                 let value = args.into_iter().rev().fold(body, |acc, arg| {
                     Spanned(
-                        Intern::from(Expr::Lambda(Spanned(arg.0, arg.1), acc, false)),
+                        Intern::from(Expr::Lambda(Untyped(arg), acc, false)),
                         e.span(),
                     )
                 });
-                Definition::Let(name, value, ty)
+                Definition::Let(Untyped(name), value, ty)
             })
             .labelled("let-definition")
             .as_context();
@@ -762,7 +759,6 @@ where
             just(Token::Myself).map_with(|_, e| Spanned(Intern::from(Ty::Myself), e.span())),
             // User Types
             raw_ident
-                .clone()
                 .then(
                     type_list
                         .clone()

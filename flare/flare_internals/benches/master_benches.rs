@@ -36,7 +36,7 @@ pub fn typechecking_bench(c: &mut Criterion) {
         &e,
         resource::rep::quantifier::QualifierFragment::Package(main),
     );
-    c.bench_function("type_check", |b| b.iter(|| black_box(tc.check())));
+    c.bench_function("type_check", |b| b.iter(|| black_box(tc.check_item())));
     //c.bench_function("fib 20", |b| b.iter(|| flare::passes::midend::typechecking::(black_box(20))));
 }
 

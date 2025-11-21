@@ -4,7 +4,7 @@ pub mod entry;
 pub mod files;
 pub mod mir;
 pub mod quantifier;
-pub mod types;
+pub mod concretetypes;
 
 use chumsky::span::SimpleSpan;
 

@@ -47,7 +47,9 @@ pub trait AnnotatableError: ReportableError {
 pub struct CompilerErr(Box<dyn ReportableError>);
 
 use crate::{
-    passes::backend::target::Target, resource::rep::files::FileSource, Context, FileCtx, FileID,
+    passes::midend::typing::{Type, TyUniVar},
+    resource::rep::files::FileSource,
+    FileCtx, FileID,
 };
 
 impl Display for CompilerErr {
@@ -97,6 +99,8 @@ pub enum CompilerErrKind {
 
     #[error(transparent)]
     ErrorCollection(#[from] ErrorCollection),
+    #[error(transparent)]
+    Type(#[from] TypeErr),
 
     #[error(transparent)]
     Fatal(#[from] FatalErr),
@@ -135,6 +139,7 @@ impl ReportableError for CompilerErrKind {
                     e.report(ctx);
                 }
             }
+            CompilerErrKind::Type(error) => eprintln!("{error}"),
             CompilerErrKind::Fatal(_) => unreachable!(),
         }
     }
@@ -335,5 +340,44 @@ impl FatalErr {
 impl From<FatalErr> for CompilerErr {
     fn from(_value: FatalErr) -> Self {
         unreachable!("FatalErr panics on creation, this should NEVER be called. This is here to satisfy rust's typechecker.")
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Error)]
+pub enum TypeErr {
+    InfiniteType {
+        type_var: TyUniVar,
+        ty: Type,
+    },
+    UnexpectedFun {
+        expected_ty: Type,
+        fun_ty: Type,
+    },
+    AppExpectedFun {
+        inferred_ty: Type,
+        expected_fun_ty: Type,
+    },
+    ExpectedUnify {
+        checked: Type,
+        inferred: Type,
+    },
+    TypeNotEqual(Type, Type),
+}
+
+impl Display for TypeErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl ReportableError for TypeErr {
+    fn report(&self, ctx: &FileCtx) {
+        eprintln!("{self}");
+    }
+}
+
+impl From<TypeErr> for CompilerErr {
+    fn from(value: TypeErr) -> Self {
+        Self(Box::new(value))
     }
 }

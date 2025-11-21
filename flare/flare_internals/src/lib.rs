@@ -56,7 +56,7 @@ use crate::{
             c::C,
             target::{Generator, Target},
         },
-        midend::{environment::Environment, typechecking::Solver},
+        midend::{environment::Environment, typing::Solver},
         parser,
     },
     resource::{
@@ -146,8 +146,8 @@ impl<T: Target> Context<T> {
 
         let mut e = Environment::build(&program)?;
 
-        let mut s = Solver::new(&e, resource::rep::quantifier::QualifierFragment::Root);
-        s.check()?;
+        let mut s = Solver::default();
+        // s.check_item()?;
 
         let pruned = e.remove_unused();
         let mut g = Generator::new(self.target, pruned);

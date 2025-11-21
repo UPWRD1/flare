@@ -1,16 +1,13 @@
 use std::fmt;
 
 use crate::resource::{
-    errors::{CompResult, CompilerErr, FatalErr},
-    rep::{
-        ast::Variable,
-        common::{Ident, Named},
-    },
+    errors::{CompResult, FatalErr},
+    rep::common::Ident,
 };
 
 // use serde::{Deserialize, Serialize};
 // use super::deserialize_slice
-use super::{ast::Expr, Spanned};
+use super::Spanned;
 use internment::Intern;
 /// Represents a primitive type within `Ty`
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -113,10 +110,10 @@ impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Ty::Primitive(p) => match p {
-                crate::resource::rep::types::PrimitiveType::Num => write!(f, "num"),
-                crate::resource::rep::types::PrimitiveType::Bool => write!(f, "bool"),
-                crate::resource::rep::types::PrimitiveType::Str => write!(f, "str"),
-                crate::resource::rep::types::PrimitiveType::Unit => write!(f, "unit"),
+                crate::resource::rep::concretetypes::PrimitiveType::Num => write!(f, "num"),
+                crate::resource::rep::concretetypes::PrimitiveType::Bool => write!(f, "bool"),
+                crate::resource::rep::concretetypes::PrimitiveType::Str => write!(f, "str"),
+                crate::resource::rep::concretetypes::PrimitiveType::Unit => write!(f, "unit"),
             },
 
             Ty::Tuple(t) => {

@@ -7,13 +7,14 @@ use crate::resource::{
         files::FileID,
     },
 };
+
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use ordered_float::OrderedFloat;
 
 use super::{
     quantifier::QualifierFragment,
-    types::{EnumVariant, Ty},
+    concretetypes::{EnumVariant, Ty},
     Spanned,
 };
 
@@ -96,7 +97,15 @@ pub enum ComparisonOp {
     Lte,
 }
 
-/// Type representing an Expr<V>ession.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+enum Direction {
+    Left,
+    Right,
+}
+
+pub type Label = Spanned<Intern<String>>;
+
+/// Type representing an Expression.
 /// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Expr<V>
@@ -107,6 +116,17 @@ where
     Number(ordered_float::OrderedFloat<f64>),
     String(Spanned<Intern<String>>),
     Bool(bool),
+
+    Hole(V),
+
+    Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    Project(Direction, Spanned<Intern<Self>>),
+
+    Inject(Direction, Spanned<Intern<Self>>),
+    Branch(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+
+    Label(Label, Spanned<Intern<Self>>),
+    Unlabel(Spanned<Intern<Self>>, Label),
 
     ExternFunc(Intern<Vec<QualifierFragment>>),
     Unit,
@@ -140,12 +160,8 @@ where
         Spanned<Intern<Self>>,
         Intern<Vec<(Spanned<Pattern<V>>, Spanned<Intern<Self>>)>>,
     ),
-    Lambda(Spanned<Intern<Self>>, Spanned<Intern<Self>>, bool),
-    Let(
-        Spanned<Intern<Self>>,
-        Spanned<Intern<Self>>,
-        Spanned<Intern<Self>>,
-    ),
+    Lambda(V, Spanned<Intern<Self>>, bool),
+    Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Struct(Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>),
     Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
 }
@@ -161,7 +177,6 @@ impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
             }
             Expr::Access(expr) => expr.name().ok(),
             Expr::Call(func, _) => func.name().ok(),
-            Expr::Lambda(arg, _, _) => arg.name().ok(),
             Expr::Pat(p) => {
                 if let Pattern::Atom(PatternAtom::Variable(s)) = &p.0 {
                     s.name().ok()
@@ -184,6 +199,49 @@ impl<V: Variable> Ident for Spanned<Intern<Expr<V>>> {
         }
     }
 }
+
+pub type NodeId = SimpleSpan<usize, u64>;
+
+impl<V: Variable> Spanned<Intern<Expr<V>>> {
+    pub fn id(&self) -> SimpleSpan<usize, u64> {
+        self.1
+    }
+
+    pub fn parents_of(&self, id: NodeId) -> Option<Vec<Self>> {
+        match *self.0 {
+            Expr::Ident(_) | Expr::Number(_) | Expr::String(_) | Expr::Unit | Expr::Bool(_) => None,
+            Expr::Call(fun, arg) => {
+                if id == fun.id() || id == arg.id() {
+                    return Some(vec![*self]);
+                }
+                fun.parents_of(id)
+                    .or_else(|| arg.parents_of(id))
+                    .map(|mut parents| {
+                        parents.push(*self);
+                        parents
+                    })
+            }
+            Expr::Lambda(_, body, _) => {
+                if id == body.id() {
+                    return Some(vec![*self]);
+                }
+                body.parents_of(id).map(|mut parents| {
+                    parents.push(*self);
+                    parents
+                })
+            }
+            Expr::Let(_, spanned1, spanned2) => todo!(),
+            _ => todo!(),
+        }
+    }
+
+    pub fn parent_of(&self, id: NodeId) -> Option<Self> {
+        // The first element of `parents_of` will be the nearest parent to `id`
+        self.parents_of(id)
+            .and_then(|parents| parents.into_iter().next())
+    }
+}
+
 impl<V: Variable> Expr<V> {
     // #[inline]
     // pub fn get_ident(&self, span: SimpleSpan<usize, u64>) -> CompResult<Spanned<Intern<String>>> {
@@ -243,7 +301,7 @@ pub struct ImportItem<V: Variable> {
 pub struct ImplDef<V: Variable> {
     pub the_ty: Spanned<Intern<Ty>>,
     pub methods: Vec<(
-        Spanned<Intern<Expr<V>>>,
+        Spanned<Intern<String>>,
         Spanned<Intern<Expr<V>>>,
         Spanned<Intern<Ty>>,
     )>,
@@ -254,11 +312,7 @@ pub enum Definition<V: Variable> {
     Import(Spanned<Intern<Expr<V>>>),
     Struct(StructDef),
     Enum(EnumDef),
-    Let(
-        Spanned<Intern<Expr<V>>>,
-        Spanned<Intern<Expr<V>>>,
-        Option<Spanned<Intern<Ty>>>,
-    ),
+    Let(V, Spanned<Intern<Expr<V>>>, Option<Spanned<Intern<Ty>>>),
     Extern(Spanned<Intern<String>>, Spanned<Intern<Ty>>),
     ImplDef(ImplDef<V>),
 }

@@ -8,14 +8,14 @@ use crate::resource::{
     errors::{CompResult, CompilerErr, FatalErr},
     rep::{
         ast::{Untyped, Variable},
-        common::{Ident, Named, SpanWrapped},
+        common::{Ident, SpanWrapped},
         files::FileID,
     },
 };
 
 use super::{
     ast::Expr,
-    types::{EnumVariant, Ty},
+    concretetypes::{EnumVariant, Ty},
     Spanned,
 };
 
@@ -44,7 +44,7 @@ pub struct EnumEntry {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FunctionItem<V: Variable> {
-    pub name: Spanned<Intern<String>>,
+    pub name: V,
     pub sig: Cell<Option<Spanned<Intern<Ty>>>>,
     pub body: Spanned<Intern<Expr<V>>>,
     // pub checked: Cell<bool>,
@@ -88,7 +88,7 @@ impl SpanWrapped for Item {
             ItemKind::Enum(enum_entry) => enum_entry.ty.1,
             ItemKind::Variant(v) => v.1,
             ItemKind::Field(f) => f.0 .1.union(f.1 .1),
-            ItemKind::Function(function_item) => function_item.name.1.union(
+            ItemKind::Function(function_item) => function_item.name.0 .1.union(
                 function_item
                     .sig
                     .get()
@@ -112,7 +112,7 @@ impl Ident for Item {
             ItemKind::Enum(EnumEntry { ty, .. }) => ty.ident(),
             // Item::Variant((EnumVariant { name, .. }, _)) => &name.0,
             ItemKind::Field((name, ..)) => Ok(name),
-            ItemKind::Function(FunctionItem { name, .. }) => Ok(name),
+            ItemKind::Function(FunctionItem { name, .. }) => Ok(name.0),
             ItemKind::Extern { name, .. } => Ok(name),
             _ => panic!(),
         }
