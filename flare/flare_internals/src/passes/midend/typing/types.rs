@@ -1,12 +1,15 @@
-use std::{fmt, hash::Hash};
+use std::{collections::BTreeSet, fmt, hash::Hash};
 
 use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
-use crate::{passes::midend::typing::rows::Row, resource::{
-    errors::CompResult,
-    rep::{Spanned, ast::Label, common::Ident},
-}};
+use crate::{
+    passes::midend::typing::rows::{Row, RowUniVar},
+    resource::{
+        errors::CompResult,
+        rep::{ast::Label, common::Ident, Spanned},
+    },
+};
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TyUniVar(pub u32);
 
@@ -36,20 +39,59 @@ impl UnifyKey for TyUniVar {
 pub enum Type {
     Unknown,
     Unifier(TyUniVar),
-    User(Spanned<Intern<String>>, &'static [TyUniVar]),
-    Variant(TyUniVar, Spanned<Intern<String>>),
+    // User(Spanned<Intern<String>>, &'static [TyUniVar]),
+    // Variant(TyUniVar, Spanned<Intern<String>>),
     Unit,
     Num,
     Bool,
     String,
     Func(Intern<Self>, Intern<Self>),
-    Tuple(&'static [TyUniVar]),
-    Seq(&'static TyUniVar),
-    Generic(Spanned<Intern<String>>),
+    // Tuple(&'static [TyUniVar]),
+    // Seq(&'static TyUniVar),
+    // Generic(Spanned<Intern<String>>),
     Package(Spanned<Intern<String>>),
     Prod(Row),
     Sum(Row),
     Label(Label, Intern<Self>),
+}
+
+impl PartialOrd for Type {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Type {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            // Same variants - compare fields
+            (Self::Num, Self::Num) => std::cmp::Ordering::Equal,
+            (Self::Unifier(a), Self::Unifier(b)) => a.cmp(b),
+            (Self::Func(a1, a2), Self::Func(b1, b2)) => a1.cmp(b1).then_with(|| a2.cmp(b2)),
+            (Self::Prod(a), Self::Prod(b)) => a.cmp(b),
+            (Self::Sum(a), Self::Sum(b)) => a.cmp(b),
+            (Self::Label(a1, a2), Self::Label(b1, b2)) => {
+                a1.0 .0.cmp(&b1.0 .0).then_with(|| a2.cmp(b2))
+            }
+
+            // Different variants - compare discriminants
+            _ => self.discriminant().cmp(&other.discriminant()),
+        }
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unifier(l0), Self::Unifier(r0)) => l0 == r0,
+            (Self::Func(l0, l1), Self::Func(r0, r1)) => l0 == r0 && l1 == r1,
+            (Self::Package(l0), Self::Package(r0)) => l0 == r0,
+            (Self::Prod(l0), Self::Prod(r0)) => l0 == r0,
+            (Self::Sum(l0), Self::Sum(r0)) => l0 == r0,
+            (Self::Label(l0, l1), Self::Label(r0, r1)) => l0 == r0 && l1 == r1,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
 }
 
 impl EqUnifyValue for Type {}
@@ -57,8 +99,6 @@ impl EqUnifyValue for Type {}
 impl Ident for Type {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self {
-            Self::User(spanned, _) | Self::Variant(_, spanned) => Ok(*spanned),
-            Self::Generic(spanned) => Ok(*spanned),
             Self::Package(spanned) => Ok(*spanned),
             _ => panic!(),
         }
@@ -66,21 +106,17 @@ impl Ident for Type {
 }
 
 impl Type {
-    #[must_use]
-    pub const fn get_user_name(&self) -> Option<Spanned<Intern<String>>> {
+    fn discriminant(&self) -> usize {
         match self {
-            Self::User(n, _) | Self::Generic(n) => Some(*n),
-            _ => None,
+            Self::Num => 0,
+            Self::Unifier(_) => 1,
+            Self::Func(_, _) => 2,
+            Self::Prod(_) => 3,
+            Self::Sum(_) => 4,
+            Self::Label(_, _) => 5,
+            _ => todo!(),
         }
     }
-    #[must_use]
-    pub fn get_tuple_index(&self, idx: usize) -> Option<&TyUniVar> {
-        match self {
-            Self::Tuple(v) => v.get(idx),
-            _ => None,
-        }
-    }
-
     pub fn occurs_check(&self, var: TyUniVar) -> Result<(), Self> {
         match self {
             Self::Num | Self::String | Self::Bool | Self::Unit => Ok(()),
@@ -99,20 +135,29 @@ impl Type {
             _ => todo!(),
         }
     }
-}
 
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (_, Self::Generic(_)) => true,
-
-            (Self::Unifier(l0), Self::Unifier(r0)) => l0 == r0,
-            (Self::User(l0, l1), Self::User(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Variant(l0, l1), Self::Variant(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Func(l0, l1), Self::Func(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Tuple(l), Self::Tuple(r)) => l == r,
-            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+    pub fn mentions(
+        &self,
+        unbound_tys: &BTreeSet<TyUniVar>,
+        unbound_rows: &BTreeSet<RowUniVar>,
+    ) -> bool {
+        match self {
+            Self::Num => false,
+            Self::Unifier(v) => unbound_tys.contains(v),
+            Self::Func(arg, ret) => {
+                arg.mentions(unbound_tys, unbound_rows) || ret.mentions(unbound_tys, unbound_rows)
+            }
+            Self::Label(_, ty) => ty.mentions(unbound_tys, unbound_rows),
+            Self::Prod(row) | Self::Sum(row) => match row {
+                Row::Open(var) => unbound_rows.contains(var),
+                Row::Closed(row) => row.mentions(unbound_tys, unbound_rows),
+            },
+            _ => todo!(),
         }
+    }
+
+    pub fn fun(arg: Self, ret: Self) -> Self {
+        Type::Func(Intern::from(arg), Intern::from(ret))
     }
 }
 
@@ -120,20 +165,9 @@ impl Hash for Type {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             Self::Unifier(r) => r.hash(state),
-            Self::User(n, v) => {
-                n.hash(state);
-                v.hash(state);
-            }
-            Self::Variant(p, n) => {
-                p.hash(state);
-                n.hash(state);
-            }
             Self::Func(l, r) => {
                 l.hash(state);
                 r.hash(state);
-            }
-            Self::Tuple(l) => {
-                l.hash(state);
             }
             _ => core::mem::discriminant(self).hash(state),
         }

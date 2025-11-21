@@ -11,10 +11,11 @@ use crate::resource::{
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use ordered_float::OrderedFloat;
+use petgraph::Direction::Outgoing;
 
 use super::{
-    quantifier::QualifierFragment,
     concretetypes::{EnumVariant, Ty},
+    quantifier::QualifierFragment,
     Spanned,
 };
 
@@ -98,12 +99,25 @@ pub enum ComparisonOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-enum Direction {
+pub enum Direction {
     Left,
     Right,
 }
 
-pub type Label = Spanned<Intern<String>>;
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub struct Label(pub Spanned<Intern<String>>);
+
+impl PartialOrd for Label {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Label {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0 .0.cmp(&other.0 .0)
+    }
+}
 
 /// Type representing an Expression.
 /// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
