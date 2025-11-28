@@ -10,24 +10,27 @@ use rustc_hash::FxHashMap;
 // use std::collections::HashMap;
 use std::{cell::Cell, hash::RandomState};
 
-use crate::resource::{
-    errors::{self, CompResult, CompilerErr, DynamicErr, FatalErr},
-    rep::{
-        ast::{
-            Definition,
-            EnumDef,
-            Expr,
-            ImplDef,
-            Program,
-            StructDef,
-            Untyped,
-            // Untyped, Variable
+use crate::{
+    passes::midend::typing::Type,
+    resource::{
+        errors::{self, CompResult, CompilerErr, DynamicErr, FatalErr},
+        rep::{
+            ast::{
+                Definition,
+                // EnumDef,
+                Expr,
+                ImplDef,
+                Program,
+                // StructDef,
+                Untyped,
+                // Untyped, Variable
+            },
+            common::{Ident as _, Named},
+            entry::{FunctionItem, Item, ItemKind, PackageEntry},
+            quantifier::QualifierFragment,
+            // concretetypes::{EnumVariant, Ty},
+            Spanned,
         },
-        common::{Ident as _, Named},
-        entry::{EnumEntry, FunctionItem, Item, ItemKind, PackageEntry, StructEntry},
-        quantifier::QualifierFragment,
-        concretetypes::{EnumVariant, Ty},
-        Spanned,
     },
 };
 
@@ -123,18 +126,22 @@ impl Environment {
                     Definition::Import(import_item) => {
                         deps.push(*import_item);
                     }
-                    Definition::Struct(StructDef { the_ty, fields }) => {
-                        me.build_struct(current_node, the_ty, fields)?;
+                    // Definition::Struct(StructDef { the_ty, fields }) => {
+                    // me.build_struct(current_node, the_ty, fields)?;
+                    // }
+                    // Definition::Enum(EnumDef { the_ty, variants }) => {
+                    // me.build_enum(current_node, the_ty, variants)?;
+                    // }
+                    Definition::Type(t) => {
+                        todo!()
                     }
-                    Definition::Enum(EnumDef { the_ty, variants }) => {
-                        me.build_enum(current_node, the_ty, variants)?;
-                    }
-                    Definition::Let(name, body, ty) => {
+
+                    Definition::Let(name, body, sig) => {
                         let ident = QualifierFragment::Func(name.0 .0);
                         let entry = Item::new(
                             Function(FunctionItem {
                                 name: *name,
-                                sig: Cell::from(*ty),
+                                sig: *sig,
                                 body: *body,
                             }),
                             false,
@@ -210,15 +217,15 @@ impl Environment {
     fn build_impl_def(
         &mut self,
         package_quant: QualifierFragment,
-        the_ty: &Spanned<Intern<Ty>>,
+        the_ty: &Spanned<Intern<String>>,
         methods: &Vec<(
             Spanned<Intern<String>>,
             Spanned<Intern<Expr<Untyped>>>,
-            Spanned<Intern<Ty>>,
+            Spanned<Intern<Type>>,
         )>,
     ) -> CompResult<()> {
         use ItemKind::Function;
-        let type_name = QualifierFragment::Type(the_ty.ident()?.0);
+        let type_name = QualifierFragment::Type(the_ty.0);
 
         let type_node = self
             .get(&[package_quant, type_name])
@@ -228,7 +235,7 @@ impl Environment {
             let the_method = Item::new(
                 Function(FunctionItem {
                     name: Untyped(method_name),
-                    sig: Cell::from(Some(method_ty)),
+                    sig: method_ty,
                     body: method_body,
                 }),
                 false,
@@ -238,56 +245,56 @@ impl Environment {
         Ok(())
     }
 
-    /// Builds a struct.
-    ///
-    /// # Errors
-    ///
-    /// On invalid names
-    fn build_struct(
-        &mut self,
-        current_node: NodeIndex,
-        the_ty: &Spanned<Intern<Ty>>,
-        fields: &Vec<(Spanned<Intern<String>>, Spanned<Intern<Ty>>)>,
-    ) -> Result<(), CompilerErr> {
-        use ItemKind::{Field, Struct};
-        let ident = QualifierFragment::Type(the_ty.ident()?.0);
-        let struct_entry = Item::new(Struct(StructEntry { ty: *the_ty }), false);
-        let struct_node = self.add(current_node, ident, struct_entry);
+    // /// Builds a struct.
+    // ///
+    // /// # Errors
+    // ///
+    // /// On invalid names
+    // fn build_struct(
+    //     &mut self,
+    //     current_node: NodeIndex,
+    //     the_ty: &Spanned<Intern<Typ>>,
+    //     fields: &Vec<(Spanned<Intern<String>>, Spanned<Intern<Ty>>)>,
+    // ) -> Result<(), CompilerErr> {
+    //     use ItemKind::{Field, Struct};
+    //     let ident = QualifierFragment::Type(the_ty.ident()?.0);
+    //     let struct_entry = Item::new(Struct(StructEntry { ty: *the_ty }), false);
+    //     let struct_node = self.add(current_node, ident, struct_entry);
 
-        for field in fields {
-            let field_name = QualifierFragment::Field(field.0 .0);
-            let field_entry = Item::new(Field(*field), false);
-            self.add(struct_node, field_name, field_entry);
-        }
-        Ok(())
-    }
-    /// Builds an enum
-    fn build_enum(
-        &mut self,
-        current_node: NodeIndex,
-        the_ty: &Spanned<Intern<Ty>>,
-        variants: &Vec<Spanned<EnumVariant>>,
-    ) -> Result<(), CompilerErr> {
-        use ItemKind::{Enum, Variant};
-        let parent_name = the_ty.ident()?;
-        let ident = QualifierFragment::Type(parent_name.0);
-        let enum_entry = Item::new(Enum(EnumEntry { ty: *the_ty }), false);
-        let enum_node = self.add(current_node, ident, enum_entry);
+    //     for field in fields {
+    //         let field_name = QualifierFragment::Field(field.0 .0);
+    //         let field_entry = Item::new(Field(*field), false);
+    //         self.add(struct_node, field_name, field_entry);
+    //     }
+    //     Ok(())
+    // }
+    // /// Builds an enum
+    // fn build_enum(
+    //     &mut self,
+    //     current_node: NodeIndex,
+    //     the_ty: &Spanned<Intern<Ty>>,
+    //     variants: &Vec<Spanned<EnumVariant>>,
+    // ) -> Result<(), CompilerErr> {
+    //     use ItemKind::{Enum, Variant};
+    //     let parent_name = the_ty.ident()?;
+    //     let ident = QualifierFragment::Type(parent_name.0);
+    //     let enum_entry = Item::new(Enum(EnumEntry { ty: *the_ty }), false);
+    //     let enum_node = self.add(current_node, ident, enum_entry);
 
-        for variant in variants {
-            let variant_name = QualifierFragment::Variant(variant.0.name.0);
-            let the_variant = (
-                EnumVariant {
-                    parent_name: Some(parent_name),
-                    ..variant.0
-                },
-                variant.1,
-            );
-            let variant_entry = Item::new(Variant(the_variant.into()), false);
-            self.add(enum_node, variant_name, variant_entry);
-        }
-        Ok(())
-    }
+    //     for variant in variants {
+    //         let variant_name = QualifierFragment::Variant(variant.0.name.0);
+    //         let the_variant = (
+    //             EnumVariant {
+    //                 parent_name: Some(parent_name),
+    //                 ..variant.0
+    //             },
+    //             variant.1,
+    //         );
+    //         let variant_entry = Item::new(Variant(the_variant.into()), false);
+    //         self.add(enum_node, variant_name, variant_entry);
+    //     }
+    //     Ok(())
+    // }
 
     #[inline]
     pub fn get_from_context(

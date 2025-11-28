@@ -36,7 +36,7 @@ impl UnifyKey for TyUniVar {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TypeVar(pub u32);
+pub struct TypeVar(pub Intern<String>);
 
 #[derive(Copy, Clone, Debug, Eq)]
 pub enum Type {
@@ -54,6 +54,8 @@ pub enum Type {
     // Seq(&'static TyUniVar),
     // Generic(Spanned<Intern<String>>),
     Package(Spanned<Intern<String>>),
+
+    User(Spanned<Intern<String>>),
     Prod(Row),
     Sum(Row),
     Label(Label, Intern<Self>),
@@ -159,6 +161,29 @@ impl Type {
             },
             _ => todo!(),
         }
+    }
+
+    pub fn split_func(&self) -> (&Intern<Self>, &Intern<Self>) {
+        if let Self::Func(l, r) = self {
+            (l, r)
+        } else {
+            panic!()
+        }
+    }
+    pub fn destructure_arrow(&self) -> (Vec<Intern<Self>>, Intern<Self>) {
+        let (l, r) = self.split_func();
+        fn worker(t: &Intern<Type>, v: &mut Vec<Intern<Type>>) -> Vec<Intern<Type>> {
+            match **t {
+                Type::Func(l, r) => {
+                    v.push(r);
+                    worker(&l, v);
+                }
+                _ => v.push(*t),
+            }
+            v.to_vec()
+        }
+        let mut v = vec![];
+        (worker(l, &mut v), *r)
     }
 
     pub fn fun(arg: Self, ret: Self) -> Self {

@@ -27,6 +27,7 @@
     clippy::large_stack_frames,
     clippy::panic,
     clippy::dbg_macro,
+   
 
 clippy::unwrap_used,
     // clippy::restriction

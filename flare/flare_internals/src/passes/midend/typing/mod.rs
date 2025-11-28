@@ -7,26 +7,29 @@ mod unify;
 
 pub use rows::{ClosedRow, Row};
 use rows::{RowCombination, RowUniVar};
-pub use types::{TyUniVar, Type};
+pub use types::{TyUniVar, Type, TypeVar};
 
-use std::{collections::BTreeSet, hash::Hash, marker::PhantomData};
+use std::{
+    collections::BTreeSet,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 
 use ena::unify::InPlaceUnificationTable;
 use internment::Intern;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
     passes::midend::{
         environment::Environment,
-        typing::{rows::RowVar, subst::SubstOut, types::TypeVar},
+        typing::{rows::RowVar, subst::SubstOut},
     },
     resource::{
         errors::{CompResult, CompilerErr, TypeErr},
         rep::{
             ast::{Direction, Expr, ItemId, NodeId, Untyped, Variable},
             common::Ident,
-            concretetypes::Ty,
             entry::Item,
             quantifier::QualifierFragment,
             Spanned,
@@ -134,6 +137,8 @@ pub struct Solver<'env> {
     unification_table: InPlaceUnificationTable<TyUniVar>,
     row_unification_table: InPlaceUnificationTable<RowUniVar>,
 
+    hasher: FxHasher,
+
     partial_row_combs: BTreeSet<RowCombination>,
     row_to_combo: FxHashMap<NodeId, RowCombination>,
     branch_to_ret_ty: FxHashMap<NodeId, Type>,
@@ -171,7 +176,9 @@ impl<'env> Solver<'env> {
         *self.subst_unifiers_to_tyvars.entry(var).or_insert_with(|| {
             let next = self.next_tyvar;
             self.next_tyvar += 1;
-            TypeVar(next)
+            self.hasher.write_u32(next);
+            let out = self.hasher.finish().to_string().into();
+            TypeVar(out)
         })
     }
 

@@ -1,21 +1,24 @@
-use std::{any::Any, cell::Cell};
+use std::cell::Cell;
 
-use chumsky::span::Span;
+use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 // use lasso::Spur;
 
-use crate::resource::{
-    errors::{CompResult, CompilerErr, FatalErr},
-    rep::{
-        ast::{Untyped, Variable},
-        common::{Ident, SpanWrapped},
-        files::FileID,
+use crate::{
+    passes::midend::typing::Type,
+    resource::{
+        errors::{CompResult, CompilerErr, FatalErr},
+        rep::{
+            ast::{Untyped, Variable},
+            common::{Ident, SpanWrapped},
+            files::FileID,
+        },
     },
 };
 
 use super::{
     ast::Expr,
-    concretetypes::{EnumVariant, Ty},
+    // concretetypes::{EnumVariant, Ty},
     Spanned,
 };
 
@@ -30,22 +33,23 @@ pub struct PackageEntry {
     // pub src: &'static str,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-/// Wrapper type denoting a type as a Struct
-pub struct StructEntry {
-    pub ty: Spanned<Intern<Ty>>,
-}
+// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+// /// Wrapper type denoting a type as a Struct
+// pub struct StructEntry {
+//     pub ty: Spanned<Intern<Type>>,
+// }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-/// Wrapper type denoting a type as an Enum
-pub struct EnumEntry {
-    pub ty: Spanned<Intern<Ty>>,
-}
+// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+// /// Wrapper type denoting a type as an Enum
+// pub struct EnumEntry {
+//     pub ty: Spanned<Intern<Ty>>,
+// }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FunctionItem<V: Variable> {
     pub name: V,
-    pub sig: Cell<Option<Spanned<Intern<Ty>>>>,
+    // pub sig: Cell<Option<Spanned<Intern<Type>>>>,
+    pub sig: Spanned<Intern<Type>>,
     pub body: Spanned<Intern<Expr<V>>>,
     // pub checked: Cell<bool>,
 }
@@ -61,15 +65,11 @@ pub enum ItemKind {
     Root,
     Filename(Intern<String>),
     Package(PackageEntry),
-    Struct(StructEntry),
-    Enum(EnumEntry),
-    Variant(Spanned<EnumVariant>),
-
-    Field((Spanned<Intern<String>>, Spanned<Intern<Ty>>)),
     Function(FunctionItem<Untyped>),
+    Type(Type, SimpleSpan<usize, u64>),
     Extern {
         name: Spanned<Intern<String>>,
-        sig: Spanned<Intern<Ty>>,
+        sig: Spanned<Intern<Type>>,
     },
     Dummy(&'static str),
 }
@@ -84,18 +84,15 @@ impl SpanWrapped for Item {
             ItemKind::Root => panic!(), // SimpleSpan::new(0, 0..0)
             ItemKind::Filename(_intern) => panic!(),
             ItemKind::Package(package_entry) => package_entry.name.1,
-            ItemKind::Struct(struct_entry) => struct_entry.ty.1,
-            ItemKind::Enum(enum_entry) => enum_entry.ty.1,
-            ItemKind::Variant(v) => v.1,
-            ItemKind::Field(f) => f.0 .1.union(f.1 .1),
             ItemKind::Function(function_item) => function_item.name.0 .1.union(
                 function_item
                     .sig
-                    .get()
-                    .unwrap()
+                    // .get()
+                    // .unwrap()
                     .1
                     .union(function_item.body.1),
             ),
+            ItemKind::Type(_, s) => *s,
             ItemKind::Extern { name, sig } => name.1.union(sig.1),
             ItemKind::Dummy(_) => panic!(),
         }
@@ -108,10 +105,10 @@ impl Ident for Item {
             ItemKind::Root => todo!(),
             // Item::Filename(s) => s,
             ItemKind::Package(PackageEntry { name, .. }) => Ok(name),
-            ItemKind::Struct(StructEntry { ty, .. }) => ty.ident(),
-            ItemKind::Enum(EnumEntry { ty, .. }) => ty.ident(),
+            // ItemKind::Struct(StructEntry { ty, .. }) => ty.ident(),
+            // ItemKind::Enum(EnumEntry { ty, .. }) => ty.ident(),
             // Item::Variant((EnumVariant { name, .. }, _)) => &name.0,
-            ItemKind::Field((name, ..)) => Ok(name),
+            // ItemKind::Field((name, ..)) => Ok(name),
             ItemKind::Function(FunctionItem { name, .. }) => Ok(name.0),
             ItemKind::Extern { name, .. } => Ok(name),
             _ => panic!(),
@@ -129,9 +126,9 @@ impl Item {
 
     #[must_use]
     /// Get the signature of functions
-    pub fn get_sig(&self) -> Option<Spanned<Intern<Ty>>> {
+    pub fn get_sig(&self) -> Option<Spanned<Intern<Type>>> {
         match &self.kind {
-            ItemKind::Function(FunctionItem { sig, .. }) => sig.get(),
+            ItemKind::Function(FunctionItem { sig, .. }) => Some(*sig),
             ItemKind::Extern { sig, .. } => Some(*sig),
             _ => None,
         }
@@ -142,17 +139,17 @@ impl Item {
     }
 
     /// Get the type of the `Item`.
-    pub fn get_ty(&self) -> CompResult<Spanned<Intern<Ty>>> {
+    pub fn get_ty(&self) -> CompResult<Spanned<Intern<Type>>> {
         fn err(t: &Item) -> CompilerErr {
             FatalErr::new(format!("Could not get the type from {:?}", t))
         }
         match &self.kind {
-            ItemKind::Function(FunctionItem { sig, .. }) => sig.get().ok_or(err(self)),
-            ItemKind::Struct(StructEntry { ty, .. }) => Ok(*ty),
-            ItemKind::Enum(EnumEntry { ty, .. }) => Ok(*ty),
-            ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
-            ItemKind::Field((_, ty)) => Ok(*ty),
-            ItemKind::Package(p) => Ok(Spanned(Intern::from(Ty::Package(p.name)), p.name.1)),
+            ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
+            // ItemKind::Struct(StructEntry { ty, .. }) => Ok(*ty),
+            // ItemKind::Enum(EnumEntry { ty, .. }) => Ok(*ty),
+            // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
+            // ItemKind::Field((_, ty)) => Ok(*ty),
+            ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
             _ => Err(err(self)),
         }
     }

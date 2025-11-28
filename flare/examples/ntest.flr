@@ -19,7 +19,7 @@ package Main =
     #    d: str,
     #    f: str -> num -> str
 
-    let id x : ?T -> ?T =
+    let id x : num -> num =
            x
 
     # let looper limit f items : num -> Seq[?T] -> (?T -> unit) -> num =
@@ -45,10 +45,11 @@ package Main =
     #     behavior: Term
 
     let multiply x y : num -> num -> ?T =
-        x * y  
-    
-    let main =
-        id multiply 3 4
+        let ret = x * y in ret
+     
+    let main : num =
+        multiply (3 4)
+        # id multiply 3 4
             
         # let bob = Person {
             # name = "bob",

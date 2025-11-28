@@ -1,11 +1,13 @@
 use internment::Intern;
 
 use crate::{
-    passes::{backend::target::Target, midend::typing::Typed},
+    passes::{
+        backend::target::Target,
+        midend::typing::{Type, Typed},
+    },
     resource::rep::{
         ast::{Expr, Variable},
-        concretetypes::Ty,
-        entry::{EnumEntry, FunctionItem, StructEntry},
+        entry::FunctionItem,
         Spanned,
     },
 };
@@ -17,22 +19,10 @@ impl Target for C {
     type Output = String;
     type Partial = String;
     type Artifact = Vec<String>;
-    fn convert_type(&mut self, ty: Ty) -> Self::Partial {
+    fn convert_type(&mut self, ty: Type) -> Self::Partial {
         match ty {
-            Ty::Primitive(p) => match p {
-                crate::resource::rep::concretetypes::PrimitiveType::Num => "double".to_string(),
-                crate::resource::rep::concretetypes::PrimitiveType::Str => "char*".to_string(),
-                crate::resource::rep::concretetypes::PrimitiveType::Bool => "bool".to_string(),
-                crate::resource::rep::concretetypes::PrimitiveType::Unit => "void".to_string(),
-            },
-            Ty::User(spanned, intern) => format!("{}", spanned),
-            Ty::Tuple(intern) => todo!(),
-            Ty::Seq(spanned) => todo!(),
-            Ty::Arrow(spanned, spanned1) => todo!(),
-            Ty::Myself => todo!(),
-            Ty::Generic(spanned) => "void*".to_string(),
-            Ty::Variant(enum_variant) => todo!(),
-            Ty::Package(spanned) => todo!(),
+            Type::Num => "double".to_string(),
+            _ => todo!(),
         }
     }
 
@@ -53,24 +43,28 @@ impl Target for C {
     // }
 
     fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> Self::Output {
-        let out_ty = f.sig.get().unwrap();
+        let out_ty = f.sig;
         // let mut arg_types = vec![];
         let (args, ret) = out_ty.0.destructure_arrow();
         dbg!(args, ret);
-        let converted_ret = self.convert_type(*ret.0);
+        let converted_ret = self.convert_type(*ret);
 
         let output = format!("{} {}()", converted_ret, f.name.ident().unwrap().0);
         dbg!(output);
         todo!()
     }
 
-    fn generate_struct(&mut self, s: &StructEntry) -> Self::Output {
+    fn generate_type(&mut self, t: Type) -> Self::Partial {
         todo!()
     }
 
-    fn generate_enum(&mut self, s: &EnumEntry) -> Self::Output {
-        todo!()
-    }
+    // fn generate_struct(&mut self, s: &StructEntry) -> Self::Output {
+    // todo!()
+    // }
+
+    // fn generate_enum(&mut self, s: &EnumEntry) -> Self::Output {
+    // todo!()
+    // }
 
     fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
         p.join("")

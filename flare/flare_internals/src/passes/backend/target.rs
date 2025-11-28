@@ -3,14 +3,16 @@ use internment::Intern;
 use crate::{
     passes::{
         backend::c::C,
-        midend::{environment::Environment, typing::Typed},
+        midend::{
+            environment::Environment,
+            typing::{Type, Typed},
+        },
     },
     resource::{
         errors::FatalErr,
         rep::{
             ast::{Expr, Variable},
-            concretetypes::Ty,
-            entry::{EnumEntry, FunctionItem, Item, ItemKind, StructEntry},
+            entry::{FunctionItem, Item, ItemKind},
             Spanned,
         },
     },
@@ -29,10 +31,10 @@ pub trait Target: Copy {
                 //do nothing
                 todo!()
             }
-            ItemKind::Struct(struct_entry) => self.generate_struct(struct_entry),
-            ItemKind::Enum(enum_entry) => self.generate_enum(enum_entry),
-            ItemKind::Variant(spanned) => todo!(),
-            ItemKind::Field(_) => todo!(),
+            // ItemKind::Struct(struct_entry) => self.generate_struct(struct_entry),
+            // ItemKind::Enum(enum_entry) => self.generate_enum(enum_entry),
+            // ItemKind::Variant(spanned) => todo!(),
+            // ItemKind::Field(_) => todo!(),
             ItemKind::Function(function_item) => self.generate_func(function_item),
             ItemKind::Extern { name, sig } => todo!(),
             ItemKind::Dummy(_) => FatalErr::new("Cannot generate Dummy"),
@@ -40,10 +42,9 @@ pub trait Target: Copy {
         }
     }
     fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> Self::Partial;
-    fn generate_struct(&mut self, s: &StructEntry) -> Self::Partial;
-    fn generate_enum(&mut self, s: &EnumEntry) -> Self::Partial;
+    fn generate_type(&mut self, t: Type) -> Self::Partial;
     fn finish(self, p: Vec<Self::Partial>) -> Self::Output;
-    fn convert_type(&mut self, ty: Ty) -> Self::Partial;
+    fn convert_type(&mut self, ty: Type) -> Self::Partial;
 }
 
 pub struct Generator<T: Target> {

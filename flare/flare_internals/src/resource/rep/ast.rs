@@ -1,20 +1,22 @@
 use std::{fmt::Debug, hash::Hash};
 
-use crate::resource::{
-    errors::{CompResult, DynamicErr},
-    rep::{
-        common::{Ident, Named},
-        files::FileID,
+use crate::{
+    passes::midend::typing::{Row, Type},
+    resource::{
+        errors::{CompResult, DynamicErr},
+        rep::{
+            common::{Ident, Named},
+            files::FileID,
+        },
     },
 };
 
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use ordered_float::OrderedFloat;
-use petgraph::Direction::Outgoing;
 
 use super::{
-    concretetypes::{EnumVariant, Ty},
+    // concretetypes::{EnumVariant, Ty},
     quantifier::QualifierFragment,
     Spanned,
 };
@@ -47,7 +49,7 @@ pub enum PatternAtom<V: Variable> {
     Variable(Spanned<Intern<Expr<V>>>),
 
     // #[serde(deserialize_with = "deserialize_static")]
-    Type(Spanned<Intern<Ty>>),
+    Type(Spanned<Intern<Type>>),
 }
 
 /// Type representing a Pattern.
@@ -79,7 +81,6 @@ impl<V: Variable> Ident for Spanned<Pattern<V>> {
         match self.0 {
             Pattern::Variant(n, _) => n.ident(),
             Pattern::Atom(a) => match a {
-                PatternAtom::Type(t) => t.ident(),
                 PatternAtom::Variable(s) => s.ident(),
                 _ => panic!(), // errors::bad_ident(expr, s),
             },
@@ -150,12 +151,11 @@ where
     ExternFunc(Intern<Vec<QualifierFragment>>),
     Unit,
     // Constructor(Spanned<Intern<Self>>, Vec<Spanned<Self>>),
-    Constructor(Spanned<Intern<Self>>, Intern<Vec<Spanned<Intern<Self>>>>),
-    FieldedConstructor(
-        Spanned<Intern<Self>>,
-        Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>,
-    ),
-
+    // Constructor(Spanned<Intern<Self>>, Intern<Vec<Spanned<Intern<Self>>>>),
+    // FieldedConstructor(
+    // Spanned<Intern<Self>>,
+    // Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>,
+    // ),
     Pat(Spanned<Pattern<V>>),
 
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -298,18 +298,23 @@ impl<V: Variable> Expr<V> {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct StructDef {
-    pub the_ty: Spanned<Intern<Ty>>,
-    pub fields: Vec<(Spanned<Intern<String>>, Spanned<Intern<Ty>>)>,
-    //pub generics: Vec<Spanned<Expr<V>>>,
-}
+// #[derive(Debug, PartialEq)]
+// pub struct StructDef {
+//     // pub the_ty: Row,
+//     //pub generics: Vec<Spanned<Expr<V>>>,
+// }
 
 #[derive(Debug, PartialEq)]
-pub struct EnumDef {
-    pub the_ty: Spanned<Intern<Ty>>,
-    pub variants: Vec<Spanned<EnumVariant>>,
+pub struct TypeDecl {
+    pub name: Spanned<Intern<String>>,
+    pub ty: Type,
 }
+
+// #[derive(Debug, PartialEq)]
+// pub struct EnumDef {
+//     pub the_ty: Spanned<Intern<Ty>>,
+//     pub variants: Vec<Spanned<EnumVariant>>,
+// }
 
 #[derive(Debug, PartialEq)]
 pub struct ImportItem<V: Variable> {
@@ -318,21 +323,20 @@ pub struct ImportItem<V: Variable> {
 
 #[derive(Debug, PartialEq)]
 pub struct ImplDef<V: Variable> {
-    pub the_ty: Spanned<Intern<Ty>>,
+    pub the_ty: Spanned<Intern<String>>,
     pub methods: Vec<(
         Spanned<Intern<String>>,
         Spanned<Intern<Expr<V>>>,
-        Spanned<Intern<Ty>>,
+        Spanned<Intern<Type>>,
     )>,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Definition<V: Variable> {
     Import(Spanned<Intern<Expr<V>>>),
-    Struct(StructDef),
-    Enum(EnumDef),
-    Let(V, Spanned<Intern<Expr<V>>>, Option<Spanned<Intern<Ty>>>),
-    Extern(Spanned<Intern<String>>, Spanned<Intern<Ty>>),
+    Type(Type),
+    Let(V, Spanned<Intern<Expr<V>>>, Spanned<Intern<Type>>),
+    Extern(Spanned<Intern<String>>, Spanned<Intern<Type>>),
     ImplDef(ImplDef<V>),
 }
 
