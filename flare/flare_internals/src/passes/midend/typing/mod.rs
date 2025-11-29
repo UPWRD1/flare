@@ -1,5 +1,6 @@
 mod check;
 mod infer;
+mod inst;
 mod rows;
 mod subst;
 mod types;
@@ -48,7 +49,7 @@ impl Ident for Typed {
     }
 }
 
-// #[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum Constraint {
     TypeEqual(Provenance, Type, Type),
     RowCombine(RowCombination),
@@ -121,15 +122,21 @@ pub struct TypeInferOut {
     pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
 }
 
-struct ItemWrapper {
+pub struct ItemWrapper {
     types: Vec<Type>,
     rows: Vec<Row>,
     evidence: Vec<Evidence>,
 }
 
 #[derive(Default)]
-struct ItemSource {
+pub struct ItemSource {
     types: FxHashMap<ItemId, TypeScheme>,
+}
+
+impl ItemSource {
+    fn type_of_item(&self, item_id: ItemId) -> TypeScheme {
+        self.types[&item_id].clone()
+    }
 }
 
 #[derive(Default)]

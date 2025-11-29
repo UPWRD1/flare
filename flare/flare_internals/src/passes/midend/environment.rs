@@ -133,7 +133,8 @@ impl Environment {
                     // me.build_enum(current_node, the_ty, variants)?;
                     // }
                     Definition::Type(t) => {
-                        todo!()
+                        me.build_type(current_node, t)?;
+                        // todo!()
                     }
 
                     Definition::Let(name, body, sig) => {
@@ -295,6 +296,15 @@ impl Environment {
     //     }
     //     Ok(())
     // }
+
+    fn build_type(&mut self, current_node: NodeIndex, the_ty: &Type) -> CompResult<()> {
+        use ItemKind::Type;
+        let type_name = the_ty.ident()?;
+        let qual = QualifierFragment::Type(type_name.0);
+        let entry = Item::new(Type(*the_ty, type_name.1), false);
+        self.add(current_node, qual, entry);
+        Ok(())
+    }
 
     #[inline]
     pub fn get_from_context(

@@ -52,11 +52,8 @@ use rustc_hash::{FxHashMap, FxHasher};
 use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
-        backend::{
-            // c::C,
-            target::{Generator, Target},
-        },
-        midend::{environment::Environment, typing::Solver},
+        backend::target::{Generator, Target},
+        midend::{environment::Environment, resolution::Resolver, typing::Solver},
         parser,
     },
     resource::{
@@ -145,7 +142,9 @@ impl<T: Target> Context<T> {
         let program = self.parse_program(id)?;
 
         let e = Environment::build(&program)?;
-
+        let resolver = Resolver::new(e);
+        let e = resolver.finish();
+            
         let mut s = Solver::default();
         // s.check_item()?;
 

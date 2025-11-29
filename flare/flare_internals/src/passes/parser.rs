@@ -404,10 +404,11 @@ where
                     .then(
                         atom.clone()
                             .separated_by(just(Token::Comma))
-                            // .at_least(1)
+                            .at_least(1)
                             .collect::<Vec<_>>()
                             .delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not(),
-                    ).validate(|o, _, _| dbg!(o))
+                    )
+                    // .validate(|o, _, _| dbg!(o))
                     .map_with(|(name, args): (_, Option<Vec<_>>), e| {
                         if let Some(args) = args {
                             

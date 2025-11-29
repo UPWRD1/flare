@@ -106,6 +106,7 @@ impl Ident for Type {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self {
             Self::Package(spanned) => Ok(*spanned),
+            Self::Label(l, _) => Ok(l.0),
             _ => panic!(),
         }
     }

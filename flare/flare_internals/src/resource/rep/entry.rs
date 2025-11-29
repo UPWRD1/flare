@@ -45,7 +45,7 @@ pub struct PackageEntry {
 //     pub ty: Spanned<Intern<Ty>>,
 // }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct FunctionItem<V: Variable> {
     pub name: V,
     // pub sig: Cell<Option<Spanned<Intern<Type>>>>,

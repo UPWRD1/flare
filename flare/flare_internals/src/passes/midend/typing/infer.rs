@@ -1,7 +1,11 @@
 use internment::Intern;
+use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::midend::typing::{Constraint, GenOut, Provenance, Solver, Type, Typed},
+    passes::midend::typing::{
+        inst::Instantiate, Constraint, Evidence, GenOut, ItemWrapper, Provenance, Row, Solver,
+        Type, Typed,
+    },
     resource::rep::{
         ast::{Direction, Expr, Untyped},
         Spanned,
@@ -199,6 +203,59 @@ impl<'env> Solver<'env> {
                     out.with_typed_ast(|ast| Spanned(Expr::Inject(dir, ast).into(), ast.1)),
                     // Our goal row is the type of our output
                     out_ty,
+                )
+            }
+            Expr::Item(item_id) => {
+                let ty_scheme = self.item_source.type_of_item(item_id);
+
+                // Create fresh unifiers for each type and row variable in our type scheme.
+                let mut wrapper_tyvars = vec![];
+                let tyvar_to_unifiers = ty_scheme
+                    .unbound_types
+                    .iter()
+                    .map(|ty_var| {
+                        let unifier = self.fresh_ty_var();
+                        wrapper_tyvars.push(Type::Unifier(unifier));
+                        (*ty_var, unifier)
+                    })
+                    .collect::<FxHashMap<_, _>>();
+                let mut wrapper_rowvars = vec![];
+                let rowvar_to_unifiers = ty_scheme
+                    .unbound_rows
+                    .iter()
+                    .map(|row_var| {
+                        let unifier = self.fresh_row_var();
+                        wrapper_rowvars.push(Row::Unifier(unifier));
+                        (*row_var, unifier)
+                    })
+                    .collect::<FxHashMap<_, _>>();
+
+                // Instantiate our scheme mapping it's variables to the fresh unifiers we just generated.
+                // After this we'll have a list of constraints and a type that only reference the fresh
+                // unfiers.
+                let (constraints, ty) =
+                    Instantiate::new(ast.1, &tyvar_to_unifiers, &rowvar_to_unifiers)
+                        .type_scheme(ty_scheme);
+                let wrapper = ItemWrapper {
+                    types: wrapper_tyvars,
+                    rows: wrapper_rowvars,
+                    evidence: constraints
+                        .clone()
+                        .into_iter()
+                        .filter_map(|c| match c {
+                            Constraint::RowCombine(row_combo) => Some(Evidence::RowEquation {
+                                left: row_combo.left,
+                                right: row_combo.right,
+                                goal: row_combo.goal,
+                            }),
+                            _ => None,
+                        })
+                        .collect(),
+                };
+                self.item_wrappers.insert(ast.1, wrapper);
+                (
+                    GenOut::new(constraints, Spanned(Expr::Item(item_id).into(), ast.1)),
+                    ty,
                 )
             }
             _ => todo!(),

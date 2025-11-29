@@ -31,11 +31,11 @@ package Main =
     #      in
     #         looper_helper(0)
 
-    # enum EyeColor =
-    #     Blue,
-    #     Brown,
-    #     Green,
-    #     Other,
+    enum EyeColor =
+        Blue,
+        Brown,
+        Green,
+        Other,
 
     # struct Person[?T] =
     #     name: str,
@@ -46,10 +46,10 @@ package Main =
 
     let multiply x y : num -> num -> ?T =
         let ret = x * y in ret
-     
-    let main : num =
-        multiply (3 4)
-        # id multiply 3 4
+
+    let main : unit -> EyeColor =
+        EyeColor.Blue
+                # id multiply 3 4
             
         # let bob = Person {
             # name = "bob",
