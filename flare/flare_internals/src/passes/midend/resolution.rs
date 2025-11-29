@@ -1,5 +1,8 @@
 use internment::Intern;
-use petgraph::graph::{DiGraph, NodeIndex};
+use petgraph::{
+    graph::{DiGraph, NodeIndex},
+    visit::{EdgeRef, NodeRef, Visitable},
+};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
@@ -9,8 +12,9 @@ use crate::{
         rep::{
             ast::{Expr, NodeId, Untyped},
             common::Ident,
-            entry::{FunctionItem, ItemKind},
+            entry::{FunctionItem, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
+            Spanned,
         },
     },
 };
@@ -61,33 +65,61 @@ impl Resolver {
     }
 
     fn analyze(&mut self) -> CompResult<()> {
-        let main_idx = self
-            .env
-            .get_from_context(
-                &QualifierFragment::Func(Intern::from_ref("main")),
-                &QualifierFragment::Package(Intern::from_ref("Main")),
-            )
-            .unwrap();
-        let main = self.env.value(main_idx)?;
-        if let ItemKind::Function(f) = main.kind {
-            self.analyze_func(&f)
-        } else {
-            panic!()
-        }
+        // let main_idx = self.env.get_from_context(
+        //     &QualifierFragment::Func(Intern::from_ref("main")),
+        //     &QualifierFragment::Package(Intern::from_ref("Main")),
+        // )?;
+        // let main = self.env.value(main_idx)?;
+        // if let ItemKind::Function(f) = main.kind {
+        //     self.analyze_func(&f)?
+        // } else {
+        //     panic!()
+        // }
 
-        for item in self.env.graph.node_weights() {
-            match item.kind {
-                ItemKind::Filename(intern) => todo!(),
-                ItemKind::Package(package_entry) => todo!(),
-                ItemKind::Function(function_item) => todo!(),
-                ItemKind::Type(_, simple_span) => todo!(),
-                ItemKind::Extern { name, sig } => todo!(),
-                ItemKind::Dummy(_) => todo!(),
+        let filtered: FxHashSet<(NodeIndex, Spanned<Intern<String>>)> = self
+            .env
+            .graph
+            .node_indices()
+            .filter_map(|idx| {
+                let t = self
+                    .env
+                    .value(idx)
+                    .map(|x| {
+                        if let ItemKind::Package(p) = x.kind {
+                            Some((idx, p.name))
+                        } else {
+                            None
+                        }
+                    })
+                    .ok()
+                    .flatten();
+                t
+            })
+            // .map(|x| if let Some(x) = x { x } else { unreachable!() })
+            .collect();
+        for (idx, name) in filtered {
+            let children = self
+                .env
+                .graph
+                .edges_directed(idx, petgraph::Direction::Outgoing);
+            for child in children {
+                let target_idx = child.target();
+                let item = self.env.value(target_idx)?;
+                match item.kind {
+                    ItemKind::Root => todo!(),
+                    ItemKind::Filename(intern) => todo!(),
+                    ItemKind::Package(package_entry) => todo!(),
+                    ItemKind::Function(f) => self.analyze_func(&f)?,
+                    ItemKind::Type(_, simple_span) => todo!(),
+                    ItemKind::Extern { name, sig } => todo!(),
+                    ItemKind::Dummy(_) => todo!(),
+                }
             }
         }
+        todo!()
     }
 
-    fn analyze_type(&mut self, t: Intern<Type>) -> CompResult<Intern<Type>> {
+    fn analyze_type(&self, t: Intern<Type>) -> CompResult<Intern<Type>> {
         match *t {
             Type::Func(l, r) => {
                 let l = self.analyze_type(l)?;
@@ -111,8 +143,9 @@ impl Resolver {
         }
     }
 
-    fn analyze_func(&mut self, f: &FunctionItem<Untyped>) -> CompResult<()> {
-        self.analyze_type(f.sig.0)?;
+    fn analyze_func(&self, f: &FunctionItem<Untyped>) -> CompResult<()> {
+        let t = self.analyze_type(f.sig.0)?;
+        // dbg!(t);
         todo!()
     }
 

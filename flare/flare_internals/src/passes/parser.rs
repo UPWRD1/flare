@@ -398,55 +398,127 @@ where
                 // False
                 just(Token::False)
                     .map_with(|_, e| Spanned(Intern::from(Expr::Bool(false)), e.span())),
-                // Plain old idents
-                raw_ident
-                 
-                    .then(
-                        atom.clone()
-                            .separated_by(just(Token::Comma))
-                            .at_least(1)
-                            .collect::<Vec<_>>()
-                            .delimited_by(just(Token::LBrace), just(Token::RBrace)).or_not(),
-                    )
-                    // .validate(|o, _, _| dbg!(o))
-                    .map_with(|(name, args): (_, Option<Vec<_>>), e| {
-                        if let Some(args) = args {
+                // Identifiers
+//                 raw_ident.rewind().then(choice((
+//                     //enums
+//                     raw_ident.then(
+//                         expr.clone()
+//                             .separated_by(just(Token::Comma))
+//                             .at_least(1)
+//                             .collect::<Vec<_>>()
+//                             .delimited_by(
+//                                 just(Token::LBrace),
+//                                  just(Token::RBrace))
+//                             .or_not()
+//                             .labelled("enum variant field")
+//                             .as_context(),
+//                     )
+//                     // .validate(|o, _, _| dbg!(o))
+//                     .map_with(|(name, args):
+//                                (_, Option<Vec<_>>), e| {
+//                         if let Some(args) = args {
+//                             let args = unsafe {
+//                                 args
+//                                 .into_iter()
+//                                 .enumerate()
+//                                 .map(|(i, arg ):
+//                                     (_, Spanned<Intern<Expr<Untyped>>>)| {
+//                                     Spanned(
+//                                         Expr::Label(
+//                                             Label(Spanned(
+//                                                 i.to_string().into(), arg.1)),
+//                                             arg
+//                                         ).into(),
+//                                         arg.1)
+//                                 })
+//                                 .reduce(|l, r| Spanned(Expr::Inject(Direction::Left, l).into(), l.1.union(r.1))).unwrap_unchecked()}
+//                                 ;
+//                             let ex = Expr::Label(Label(name), args);
+
+//                             Spanned(Intern::from(ex), e.span())
+//                         } else {
                             
-let args = unsafe {args
+// Spanned(Expr::Ident(Untyped(name)).into(), e.span())
+//                         }
+//                                            })
+//                     .labelled("enum constructor")
+//                     .as_context(),
+
+//                     // structs
+//                     raw_ident
+//                      .then(
+//                         raw_ident
+//                             .then_ignore(just(Token::Eq))
+//                             .then(expr.clone())
+//                             .separated_by(just(Token::Comma))
+//                             .at_least(1)
+//                             .collect::<Vec<(Spanned<Intern<String>>, Spanned<Intern<Expr<Untyped>>>)>>()
+//                             .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+//                     )
+//                     .map_with(|(name, args), e| {
+//                         if args.is_empty() {
+//                             unreachable!()
+//                                                     } else {
+//                             let args = unsafe {args
+//                                 .into_iter()
+//                                 .map(|(field_name, arg)| -> Spanned<Intern<Expr<Untyped>>> {
+//                                     Spanned(
+//                                         Expr::Label(Label(Spanned(field_name.0, arg.1)), arg).into(),
+//                                         field_name.1.union(arg.1),
+//                                     )
+//                                 })
+//                                 .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()};
+//                             let ex = Expr::Label(Label(name), args);
+//                            Spanned(Intern::from(ex), e.span())
+//                         }
+//                     })
+//                     .labelled("struct constructor")
+//                     .as_context(),
+
+//                 // plain old idents
+//                 raw_ident.then(empty()).map_with(
+//                     |(name, _), e|
+//                     Spanned(Expr::Ident(Untyped(name)).into(), e.span())),
+//                 ))).map(|x| x.1),
+
+                          
+                                              
+                // Tuple Constructors
+                expr.clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing().at_least(1)
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                    .map_with(|args,
+                                e| {
+                                                   unsafe {
+                                args
                                 .into_iter()
                                 .enumerate()
-                                .map(|(i, arg ): (_, Spanned<Intern<Expr<Untyped>>>)| {
-                                    Spanned(Expr::Label(Label(Spanned(i.to_string().into(), arg.1)), arg).into(), arg.1)
+                                .map(|(i, arg ):
+                                    (_, Spanned<Intern<Expr<Untyped>>>)| {
+                                    Spanned(
+                                        Expr::Label(
+                                            Label(Spanned(
+                                                i.to_string().into(), arg.1)),
+                                            arg
+                                        ).into(),
+                                        arg.1)
                                 })
                                 .reduce(|l, r| Spanned(Expr::Inject(Direction::Left, l).into(), l.1.union(r.1))).unwrap_unchecked()}
-                                ;
-                            let ex = Expr::Label(Label(name), args);
-
-                            Spanned(Intern::from(ex), e.span())
-                        } else {
-                            
-Spanned(Expr::Ident(Untyped(name)).into(), e.span())
-                        }
-                                           })
-                    .labelled("enum constructor")
+                    })
+                    .labelled("tuple")
                     .as_context(),
 
-                raw_ident
-                     .then(
-                        raw_ident
-                            .then_ignore(just(Token::Eq))
-                            .then(expr.clone())
-                            .separated_by(just(Token::Comma))
-                            // .at_least(1)
-                            .collect::<Vec<(Spanned<Intern<String>>, Spanned<Intern<Expr<Untyped>>>)>>()
-                            .delimited_by(just(Token::LBrace), just(Token::RBrace)),
-                    )
-                    .map_with(|(name, args), e| {
+                raw_ident.then_ignore(just(Token::Eq)).then(expr.clone()).separated_by(just(Token::Comma))
+.allow_trailing().at_least(1)
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+.map_with(|args, e| {
                         if args.is_empty() {
-                            // unreachable!()
-                            Spanned(Expr::Ident(Untyped(name)).into(), e.span())
-                        } else {
-                            let args = unsafe {args
+                            unreachable!()
+                                                    } else {
+                            unsafe {args
                                 .into_iter()
                                 .map(|(field_name, arg)| -> Spanned<Intern<Expr<Untyped>>> {
                                     Spanned(
@@ -454,27 +526,15 @@ Spanned(Expr::Ident(Untyped(name)).into(), e.span())
                                         field_name.1.union(arg.1),
                                     )
                                 })
-                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()};
-                            let ex = Expr::Label(Label(name), args);
-                           Spanned(Intern::from(ex), e.span())
-                        }
+                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()}
+                                                    }
                     })
-                    .labelled("struct constructor")
+.labelled("table")
                     .as_context(),
 
-                // ident,
-                
-                // Enum Constructors
-                expr.clone()
-                    .separated_by(just(Token::Comma))
-                    .allow_trailing()
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|items, e| {
-                        Spanned(Intern::from(Expr::Tuple(Intern::from(items))), e.span())
-                    })
-                    .labelled("tuple")
-                    .as_context(),
+                // idents
+                ident,
+
                 // let x = y in z
                 just(Token::Let)
                     //.ignore_then(ident)
@@ -655,7 +715,8 @@ Spanned(Expr::Ident(Untyped(name)).into(), e.span())
                 let (fields, values): (Vec<Spanned<_>>, Vec<_>) = fields.into_iter().unzip();
                 let fields = fields.iter().map(|x| Label(*x)).collect::<Vec<_>>().leak();
                 let values = values.iter().map(|x| *x.0).collect::<Vec<_>>().leak();
-                let ty = Type::Prod(Row::Closed(ClosedRow { fields, values }));
+                let ty_body = Type::Prod(Row::Closed(ClosedRow { fields, values }));
+                let ty = Type::Label(Label(name), ty_body.into());
                 Definition::Type(ty)
             });
         let enum_variant = choice((
