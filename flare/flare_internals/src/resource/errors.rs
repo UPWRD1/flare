@@ -333,7 +333,7 @@ impl FatalErr {
         eprintln!("Error details:");
         eprintln!("\t{msg}");
         eprintln!("flarec will now exit.");
-        exit(1)
+        panic!()
     }
 }
 

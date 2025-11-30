@@ -11,19 +11,17 @@ use rustc_hash::FxHashMap;
 use std::{cell::Cell, hash::RandomState};
 
 use crate::{
-    passes::midend::typing::Type,
+    passes::midend::typing::{ClosedRow, Row, Type},
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, FatalErr},
         rep::{
             ast::{
                 Definition,
-                // EnumDef,
                 Expr,
                 ImplDef,
+                Label,
                 Program,
-                // StructDef,
-                Untyped,
-                // Untyped, Variable
+                Untyped, // Untyped, Variable
             },
             common::{Ident as _, Named},
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
@@ -297,12 +295,40 @@ impl Environment {
     //     Ok(())
     // }
 
+    fn build_row(&mut self, current_node: NodeIndex, the_row: ClosedRow) -> CompResult<()> {
+        for (name, value) in the_row.fields.iter().zip(the_row.values) {
+            // dbg!(name);
+            let entry = Item::new(
+                ItemKind::Field {
+                    name: *name,
+                    value: *value,
+                },
+                false,
+            );
+            let val_idx = self.add(current_node, QualifierFragment::Field(name.0 .0), entry);
+            self.build_type(val_idx, value)?;
+        }
+        Ok(())
+    }
+
     fn build_type(&mut self, current_node: NodeIndex, the_ty: &Type) -> CompResult<()> {
-        use ItemKind::Type;
-        let type_name = the_ty.ident()?;
-        let qual = QualifierFragment::Type(type_name.0);
-        let entry = Item::new(Type(*the_ty, type_name.1), false);
-        self.add(current_node, qual, entry);
+        // dbg!(the_ty);
+        match the_ty {
+            Type::Prod(row) | Type::Sum(row) => match row {
+                crate::passes::midend::typing::Row::Closed(the_row) => {
+                    self.build_row(current_node, *the_row)?;
+                }
+                _ => panic!(),
+            },
+            Type::Label(l, r) => {
+                let type_name = l.0;
+                let qual = QualifierFragment::Type(type_name.0);
+                let entry = Item::new(ItemKind::Type(*the_ty, type_name.1), false);
+                let ty_node_idx = self.add(current_node, qual, entry);
+                self.build_type(ty_node_idx, r)?;
+            }
+            _ => (),
+        };
         Ok(())
     }
 
@@ -312,14 +338,14 @@ impl Environment {
         frag: &QualifierFragment,
         packctx: &QualifierFragment,
     ) -> CompResult<NodeIndex> {
-        let err = || FatalErr::new(format!("{} does not exist in {}", frag, packctx));
+        let err = || DynamicErr::new(format!("{} does not exist in {}", frag, packctx));
         let paths = self.search_for_edge(frag);
         for path in &paths {
             if path.first().ok_or_else(err)?.is(packctx) {
                 return self.get(path);
             }
         }
-        Err(err())
+        Err(err().into())
     }
 
     /// Internal helper function for `get_node_and_children`

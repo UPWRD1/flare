@@ -123,6 +123,12 @@ impl Ord for Label {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct ItemId(pub usize);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum Kind {
+    Ty,
+    Func,
+}
+
 /// Type representing an Expression.
 /// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -137,7 +143,7 @@ where
 
     Hole(V),
 
-    Item(ItemId),
+    Item(ItemId, Kind),
 
     Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Project(Direction, Spanned<Intern<Self>>),

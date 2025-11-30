@@ -107,7 +107,7 @@ impl Ident for Type {
         match self {
             Self::Package(spanned) => Ok(*spanned),
             Self::Label(l, _) => Ok(l.0),
-            _ => panic!(),
+            _ => panic!("{:?}", self),
         }
     }
 }

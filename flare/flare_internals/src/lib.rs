@@ -142,7 +142,8 @@ impl<T: Target> Context<T> {
         let program = self.parse_program(id)?;
 
         let e = Environment::build(&program)?;
-        let resolver = Resolver::new(e);
+        let mut resolver = Resolver::new(e);
+        resolver.build()?;
         let e = resolver.finish();
             
         let mut s = Solver::default();

@@ -19,14 +19,11 @@ impl<'env> Solver<'env> {
         ast: Spanned<Intern<Expr<Untyped>>>,
     ) -> (GenOut, Type) {
         match *ast.0 {
-            Expr::Number(n) => (
-                GenOut::new(vec![], Spanned(Expr::Number(n).into(), ast.1)),
-                Type::Num,
-            ),
+            Expr::Number(n) => (GenOut::new(vec![], ast.update(Expr::Number(n))), Type::Num),
             Expr::Ident(v) => {
                 let ty = env[&v];
                 (
-                    GenOut::new(vec![], Spanned(Expr::Ident(Typed(v, ty)).into(), ast.1)),
+                    GenOut::new(vec![], ast.update(Expr::Ident(Typed(v, ty)))),
                     ty,
                 )
             }
@@ -37,15 +34,11 @@ impl<'env> Solver<'env> {
                 let (body_out, body_ty) = self.infer(env, body);
                 (
                     GenOut {
-                        typed_ast: Spanned(
-                            Expr::Lambda(
-                                Typed(arg, Type::Unifier(arg_tyvar)),
-                                body_out.typed_ast,
-                                is_anon,
-                            )
-                            .into(),
-                            ast.1,
-                        ),
+                        typed_ast: ast.update(Expr::Lambda(
+                            Typed(arg, Type::Unifier(arg_tyvar)),
+                            body_out.typed_ast,
+                            is_anon,
+                        )),
                         ..body_out
                     },
                     Type::Func(Type::Unifier(arg_tyvar).into(), body_ty.into()),
@@ -74,10 +67,7 @@ impl<'env> Solver<'env> {
                 (
                     GenOut::new(
                         constraint,
-                        Spanned(
-                            Expr::Call(fun_out.typed_ast, arg_out.typed_ast).into(),
-                            ast.1,
-                        ),
+                        ast.update(Expr::Call(fun_out.typed_ast, arg_out.typed_ast)),
                     ),
                     ret_ty,
                 )
@@ -85,10 +75,7 @@ impl<'env> Solver<'env> {
             Expr::Hole(v) => {
                 let var = self.fresh_ty_var();
                 (
-                    GenOut::new(
-                        vec![],
-                        Spanned(Expr::Hole(Typed(v, Type::Unifier(var))).into(), ast.1),
-                    ),
+                    GenOut::new(vec![], ast.update(Expr::Hole(Typed(v, Type::Unifier(var))))),
                     Type::Unifier(var),
                 )
             }
@@ -96,7 +83,7 @@ impl<'env> Solver<'env> {
             Expr::Label(label, value) => {
                 let (out, value_ty) = self.infer(env, value);
                 (
-                    out.with_typed_ast(|ast| Spanned(Expr::Label(label, ast).into(), ast.1)),
+                    out.with_typed_ast(|ast| ast.update(Expr::Label(label, ast))),
                     Type::Label(label, value_ty.into()),
                 )
             }
@@ -105,7 +92,7 @@ impl<'env> Solver<'env> {
                 let expected_ty = Type::Label(label, Type::Unifier(value_var).into());
                 let out = self.check(env, value, expected_ty);
                 (
-                    out.with_typed_ast(|ast| Spanned(Expr::Unlabel(ast, label).into(), ast.1)),
+                    out.with_typed_ast(|ast| ast.update(Expr::Unlabel(ast, label))),
                     Type::Unifier(value_var),
                 )
             }
@@ -121,10 +108,7 @@ impl<'env> Solver<'env> {
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(row_comb));
                 self.row_to_combo.insert(ast.1, row_comb);
-                let typed_ast = Spanned(
-                    Expr::Concat(left_out.typed_ast, right_out.typed_ast).into(),
-                    ast.1,
-                );
+                let typed_ast = ast.update(Expr::Concat(left_out.typed_ast, right_out.typed_ast));
                 (
                     GenOut {
                         constraints,
@@ -144,7 +128,7 @@ impl<'env> Solver<'env> {
 
                 out.constraints.push(Constraint::RowCombine(row_comb));
                 (
-                    out.with_typed_ast(|ast| Spanned(Expr::Project(dir, ast).into(), ast.1)),
+                    out.with_typed_ast(|ast| ast.update(Expr::Project(dir, ast))),
                     Type::Prod(sub_row),
                 )
             }
@@ -181,10 +165,7 @@ impl<'env> Solver<'env> {
                 self.row_to_combo.insert(ast.1, row_comb);
                 self.branch_to_ret_ty.insert(ast.1, Type::Unifier(ret_ty));
                 let typed_ast = Expr::Branch(left_out.typed_ast, right_out.typed_ast);
-                (
-                    GenOut::new(constraints, Spanned(typed_ast.into(), ast.1)),
-                    out_ty,
-                )
+                (GenOut::new(constraints, ast.update(typed_ast)), out_ty)
             }
             Expr::Inject(dir, value) => {
                 let row_comb = self.fresh_row_combination();
@@ -200,12 +181,12 @@ impl<'env> Solver<'env> {
                 out.constraints.push(Constraint::RowCombine(row_comb));
                 self.row_to_combo.insert(ast.1, row_comb);
                 (
-                    out.with_typed_ast(|ast| Spanned(Expr::Inject(dir, ast).into(), ast.1)),
+                    out.with_typed_ast(|ast| ast.update(Expr::Inject(dir, ast))),
                     // Our goal row is the type of our output
                     out_ty,
                 )
             }
-            Expr::Item(item_id) => {
+            Expr::Item(item_id, kind) => {
                 let ty_scheme = self.item_source.type_of_item(item_id);
 
                 // Create fresh unifiers for each type and row variable in our type scheme.
@@ -254,7 +235,7 @@ impl<'env> Solver<'env> {
                 };
                 self.item_wrappers.insert(ast.1, wrapper);
                 (
-                    GenOut::new(constraints, Spanned(Expr::Item(item_id).into(), ast.1)),
+                    GenOut::new(constraints, ast.update(Expr::Item(item_id, kind))),
                     ty,
                 )
             }

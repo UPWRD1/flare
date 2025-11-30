@@ -18,6 +18,16 @@ use crate::resource::rep::common::SpanWrapped;
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Spanned<T>(pub T, pub SimpleSpan<usize, FileID>);
 
+impl<T> Spanned<T> {
+    pub fn replace(self, value: impl Into<T>) -> Self {
+        Self(value.into(), self.1)
+    }
+
+    pub fn update<U>(self, value: impl Into<U>) -> Spanned<U> {
+        Spanned(value.into(), self.1)
+    }
+}
+
 impl<T> From<(T, SimpleSpan<usize, u64>)> for Spanned<T> {
     fn from(value: (T, SimpleSpan<usize, u64>)) -> Self {
         Self(value.0, value.1)

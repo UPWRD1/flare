@@ -1,6 +1,6 @@
 package Main = 
     # use Math    # use Option.Option
-    # use Lambdac
+    use Lambdac
     # use Option.unwrap
     #use Opt.Option
     #use Opt.unwrap
@@ -37,7 +37,8 @@ package Main =
         # Green,
         # Other,
     struct Wrapper =
-        value: ?T
+        value: ?T,
+        meta: unit
 
     # struct Person[?T] =
     #     name: str,
@@ -50,7 +51,8 @@ package Main =
         let ret = x * y in ret
 
     let main : unit -> Wrapper =
-        Wrapper {value = 3}
+        # Wrapper {value = 3, meta = Unit}
+
                 # id multiply 3 4
             
         # let bob = Person {
@@ -58,8 +60,8 @@ package Main =
             # age = 1000,
             # eye_color = EyeColor.Green,
             # catchphrase = fn _ => "wowzers!",
-         # let behavior = Term.Apply{Term.Lambda{"x",Term.Var{"x"}}, Term.Var{"y"}} in
-        # cbn(behavior)
+         let behavior = Term.Apply{Term.Lambda{"x",Term.Var{"x"}}, Term.Var{"y"}} in
+        cbn(behavior)
         # } in cbn(bob.behavior)
          # let a = id id in a
         # let o = S {f = 3} in

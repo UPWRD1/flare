@@ -1,4 +1,5 @@
 package Lambdac = 
+
 enum Term = 
     Var {str},
     Lambda {str, Term},

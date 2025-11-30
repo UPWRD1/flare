@@ -9,7 +9,7 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, FatalErr},
         rep::{
-            ast::{Untyped, Variable},
+            ast::{Label, Untyped, Variable},
             common::{Ident, SpanWrapped},
             files::FileID,
         },
@@ -22,7 +22,7 @@ use super::{
     Spanned,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct PackageEntry {
     pub name: Spanned<Intern<String>>,
     pub id: FileID,
@@ -71,6 +71,10 @@ pub enum ItemKind {
         name: Spanned<Intern<String>>,
         sig: Spanned<Intern<Type>>,
     },
+    Field {
+        name: Label,
+        value: Type,
+    },
     Dummy(&'static str),
 }
 
@@ -94,6 +98,8 @@ impl SpanWrapped for Item {
             ),
             ItemKind::Type(_, s) => *s,
             ItemKind::Extern { name, sig } => name.1.union(sig.1),
+            ItemKind::Field { name, value } => name.0 .1,
+
             ItemKind::Dummy(_) => panic!(),
         }
     }
@@ -111,6 +117,8 @@ impl Ident for Item {
             // ItemKind::Field((name, ..)) => Ok(name),
             ItemKind::Function(FunctionItem { name, .. }) => Ok(name.0),
             ItemKind::Extern { name, .. } => Ok(name),
+            ItemKind::Type(t, _) => t.ident(),
+            ItemKind::Field { name, value } => Ok(name.0),
             _ => panic!(),
         }
     }
