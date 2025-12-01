@@ -19,7 +19,7 @@ use std::{
 use ena::unify::InPlaceUnificationTable;
 use internment::Intern;
 
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHasher};
 
 use crate::{
     passes::midend::{
@@ -39,7 +39,7 @@ use crate::{
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Typed(pub Untyped, pub Type);
+pub struct Typed(pub Untyped, pub Intern<Type>);
 
 impl Variable for Typed {}
 
@@ -51,7 +51,7 @@ impl Ident for Typed {
 
 #[derive(Debug, Clone, Copy)]
 enum Constraint {
-    TypeEqual(Provenance, Type, Type),
+    TypeEqual(Provenance, Intern<Type>, Intern<Type>),
     RowCombine(RowCombination),
 }
 
@@ -110,31 +110,39 @@ pub struct TypeScheme {
 
     pub unbound_rows: BTreeSet<RowVar>,
     pub evidence: Vec<Evidence>,
-    pub ty: Type,
+    pub ty: Intern<Type>,
 }
 
+#[derive(Debug)]
 pub struct TypeInferOut {
     pub ast: Spanned<Intern<Expr<Typed>>>,
     pub scheme: TypeScheme,
     pub errors: FxHashMap<NodeId, CompilerErr>,
     pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Type>,
+    pub branch_to_ret_ty: FxHashMap<NodeId, Intern<Type>>,
     pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
 }
 
+#[derive(Debug)]
 pub struct ItemWrapper {
-    types: Vec<Type>,
+    types: Vec<Intern<Type>>,
     rows: Vec<Row>,
     evidence: Vec<Evidence>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ItemSource {
     types: FxHashMap<ItemId, TypeScheme>,
 }
 
 impl ItemSource {
+    pub fn new(types: FxHashMap<ItemId, TypeScheme>) -> Self {
+        Self { types }
+    }
+
     fn type_of_item(&self, item_id: ItemId) -> TypeScheme {
+        dbg!(item_id);
+        dbg!(self);
         self.types[&item_id].clone()
     }
 }
@@ -148,7 +156,7 @@ pub struct Solver<'env> {
 
     partial_row_combs: BTreeSet<RowCombination>,
     row_to_combo: FxHashMap<NodeId, RowCombination>,
-    branch_to_ret_ty: FxHashMap<NodeId, Type>,
+    branch_to_ret_ty: FxHashMap<NodeId, Intern<Type>>,
 
     subst_unifiers_to_tyvars: FxHashMap<TyUniVar, TypeVar>,
     next_tyvar: u32,
@@ -250,7 +258,7 @@ impl<'env> Solver<'env> {
         ast: Spanned<Intern<Expr<Untyped>>>,
     ) -> CompResult<TypeInferOut> {
         // Constraint generation
-        let (out, ty) = self.infer(im::HashMap::default(), ast);
+        let (out, ty) = self.infer(im::HashMap::with_hasher(FxBuildHasher), ast);
 
         // Constraint solving
         self.unification(out.constraints)?;

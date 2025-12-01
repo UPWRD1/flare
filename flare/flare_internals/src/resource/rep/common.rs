@@ -19,6 +19,12 @@ pub trait Ident {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>>;
 }
 
+impl Ident for Spanned<Intern<String>> {
+    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
+        Ok(*self)
+    }
+}
+
 /// Trait for entities that have Names. Implementing this trait is preferred
 /// over a custom name implementation. Currently the only major type that
 /// implements its own name getter is `QualifierFragment`, since it doesn't

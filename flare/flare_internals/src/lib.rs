@@ -53,7 +53,7 @@ use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
         backend::target::{Generator, Target},
-        midend::{environment::Environment, resolution::Resolver, typing::Solver},
+        midend::{environment::Environment, resolution::Resolver, typechecker::Typechecker, typing::Solver},
         parser,
     },
     resource::{
@@ -143,11 +143,14 @@ impl<T: Target> Context<T> {
 
         let e = Environment::build(&program)?;
         let mut resolver = Resolver::new(e);
-        resolver.build()?;
-        let e = resolver.finish();
-            
-        let mut s = Solver::default();
-        // s.check_item()?;
+        let order = resolver.build()?;
+        let resolved_e = resolver.finish();
+
+        let mut tc = Typechecker::new(order.leak(), resolved_e);
+        tc.check()?;
+        let e = tc.finish();
+        // dbg!(&e);
+                // s.check_item()?;
 
         let pruned = e.remove_unused();
         let mut g = Generator::new(self.target, pruned);

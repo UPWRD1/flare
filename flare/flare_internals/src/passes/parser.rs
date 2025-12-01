@@ -12,7 +12,7 @@ use crate::{
                 Package,
                 Pattern,
                 PatternAtom,
-                TypeDecl,
+                
                 Untyped, // Untyped,
             },
             // concretetypes::{EnumVariant, PrimitiveType, Ty},
@@ -22,7 +22,7 @@ use crate::{
     },
     FileCtx,
 };
-use chumsky::{input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput}, pratt::Associativity};
+use chumsky::{input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput}};
 use chumsky::pratt::{infix, left, right, Operator};
 use chumsky::prelude::*;
 use internment::Intern;
@@ -714,7 +714,7 @@ where
             .map_with(|(name, fields), _| {
                 let (fields, values): (Vec<Spanned<_>>, Vec<_>) = fields.into_iter().unzip();
                 let fields = fields.iter().map(|x| Label(*x)).collect::<Vec<_>>().leak();
-                let values = values.iter().map(|x| *x.0).collect::<Vec<_>>().leak();
+                let values = values.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak();
                 let ty_body = Type::Prod(Row::Closed(ClosedRow { fields, values }));
                 let ty = Type::Label(Label(name), ty_body.into());
                 Definition::Type(ty)
@@ -736,16 +736,16 @@ where
                             .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
                             .collect::<Vec<_>>()
                             .leak(),
-                        values: types.iter().map(|x| *x.0).collect::<Vec<_>>().leak(),
+                        values: types.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak(),
                     }));
                     let n = Label(name);
                     let variant_ty = Type::Label(Label(name), fields.into());
-                    (n, variant_ty)
+                    (n, Intern::from(variant_ty))
                 }),
             raw_ident.map_with(|name, e| {
                 let n = Label(name);
                 let ty = Type::Label(n, Type::Unit.into());
-                (n, ty)
+                (n, Intern::from(ty))
             }),
         )).boxed();
 
@@ -758,10 +758,10 @@ where
                     .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
-                    .collect::<Vec<(Label, Type)>>(),
+                    .collect::<Vec<(Label, Intern<Type>)>>(),
             )
             .map_with(|(name, variants), _| {
-                let (fields, values): (Vec<Label>, Vec<Type>) = variants.into_iter().unzip();
+                let (fields, values): (Vec<Label>, Vec<Intern<Type>>) = variants.into_iter().unzip();
 
                 let (fields, values) = (fields.leak(), values.leak());
                 Definition::Type(Type::Label(
@@ -890,7 +890,7 @@ where
                                 .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
                                 .collect::<Vec<_>>()
                                 .leak(),
-                            values: types.iter().map(|x| *x.0).collect::<Vec<_>>().leak(),
+                            values: types.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak(),
                         }));
                         Spanned(Intern::from(ty), e.span())
                     }),

@@ -23,6 +23,10 @@ impl<T> Spanned<T> {
         Self(value.into(), self.1)
     }
 
+    pub fn inplace(&mut self, value: impl Into<T>) {
+        self.0 = value.into();
+    }
+
     pub fn update<U>(self, value: impl Into<U>) -> Spanned<U> {
         Spanned(value.into(), self.1)
     }

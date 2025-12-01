@@ -20,7 +20,7 @@ impl fmt::Display for TyUniVar {
 }
 
 impl UnifyKey for TyUniVar {
-    type Value = Option<Type>;
+    type Value = Option<InternType>;
 
     fn index(&self) -> u32 {
         self.0
@@ -99,8 +99,10 @@ impl PartialEq for Type {
         }
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct InternType(pub Intern<Type>);
 
-impl EqUnifyValue for Type {}
+impl EqUnifyValue for InternType {}
 
 impl Ident for Type {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {

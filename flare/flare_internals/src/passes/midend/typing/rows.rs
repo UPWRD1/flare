@@ -1,10 +1,11 @@
 use std::collections::BTreeSet;
 
 use ena::unify::{EqUnifyValue, UnifyKey};
+use internment::Intern;
 
 use crate::{
     passes::midend::typing::{types::Type, Evidence, TyUniVar},
-    resource::rep::ast::Label,
+    resource::rep::{ast::Label, Spanned},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -37,7 +38,7 @@ pub enum Row {
 }
 
 impl Row {
-    pub fn single(lbl: Label, ty: Type) -> Self {
+    pub fn single(lbl: Label, ty: Intern<Type>) -> Self {
         Self::Closed(ClosedRow {
             fields: vec![lbl].leak(),
             values: vec![ty].leak(),
@@ -64,7 +65,7 @@ impl ClosedRow {
         let mut right_values = right.values.iter();
 
         let mut fields: Vec<Label> = vec![];
-        let mut values: Vec<Type> = vec![];
+        let mut values: Vec<Intern<Type>> = vec![];
 
         // Since our input rows are already sorted we can explit that and not worry about resorting
         // them here, we just have to merge our two sorted rows.
@@ -119,7 +120,7 @@ impl EqUnifyValue for Row {}
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ClosedRow {
     pub fields: &'static [Label],
-    pub values: &'static [Type],
+    pub values: &'static [Intern<Type>],
 }
 
 impl Ord for ClosedRow {

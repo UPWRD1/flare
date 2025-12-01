@@ -1,4 +1,5 @@
 use internment::Intern;
+use rustc_hash::{FxBuildHasher, FxSeededState};
 
 use crate::{
     passes::midend::typing::{
@@ -14,12 +15,13 @@ use crate::{
 impl<'env> Solver<'env> {
     pub fn check(
         &mut self,
-        env: im::HashMap<Untyped, Type>,
+        env: im::HashMap<Intern<String>, Intern<Type>, FxBuildHasher>,
         the_ast: Spanned<Intern<Expr<Untyped>>>,
-        ty: Type,
+        ty: impl Into<Intern<Type>>,
     ) -> GenOut {
+        let ty = ty.into();
         let span = the_ast.1;
-        match (*the_ast.0, ty) {
+        match (*the_ast.0, *ty) {
             // Primitives
             (Expr::Number(n), Type::Num) => {
                 GenOut::new(vec![], Spanned(Expr::Number(n).into(), span))
@@ -43,18 +45,18 @@ impl<'env> Solver<'env> {
 
                         constraints.push(Constraint::TypeEqual(
                             Provenance::UnexpectedFun(span),
-                            ty,
-                            Type::Func(Type::Unifier(arg).into(), Type::Unifier(ret).into()),
+                            ty.into(),
+                            Type::Func(Type::Unifier(arg).into(), Type::Unifier(ret).into()).into(),
                         ));
                         (Type::Unifier(arg), Type::Unifier(ret))
                     }
                 };
-                let env = env.update(arg, arg_ty);
+                let env = env.update(arg.0 .0, arg_ty.into());
                 let body_out = self.check(env, body, ret_ty);
                 constraints.extend(body_out.constraints);
                 GenOut {
                     typed_ast: Spanned(
-                        Expr::Lambda(Typed(arg, arg_ty), body_out.typed_ast, is_anon).into(),
+                        Expr::Lambda(Typed(arg, arg_ty.into()), body_out.typed_ast, is_anon).into(),
                         span,
                     ),
                     constraints,
@@ -63,7 +65,7 @@ impl<'env> Solver<'env> {
 
             // Row Types
             (Expr::Label(ast_lbl, val), Type::Label(ty_lbl, ty)) if ast_lbl == ty_lbl => self
-                .check(env, val, *ty)
+                .check(env, val, ty)
                 .with_typed_ast(|term| Spanned(Expr::Label(ast_lbl, term).into(), span)),
 
             (ast @ Expr::Concat(_, _), Type::Label(lbl, ty))
@@ -72,14 +74,14 @@ impl<'env> Solver<'env> {
                 self.check(
                     env,
                     Spanned(ast.into(), span),
-                    Type::Prod(Row::single(lbl, *ty)),
+                    Type::Prod(Row::single(lbl, ty)),
                 )
             }
             (ast @ Expr::Branch(_, _), Type::Label(lbl, ty))
             | (ast @ Expr::Inject(_, _), Type::Label(lbl, ty)) => self.check(
                 env,
                 Spanned(ast.into(), span),
-                Type::Sum(Row::single(lbl, *ty)),
+                Type::Sum(Row::single(lbl, ty)),
             ),
 
             (Expr::Unlabel(term, lbl), ty) => self
@@ -136,8 +138,8 @@ impl<'env> Solver<'env> {
                         let goal = self.fresh_row_var();
                         constraints.push(Constraint::TypeEqual(
                             Provenance::ExpectedUnify(span),
-                            *arg_ty,
-                            Type::Sum(Row::Unifier(goal)),
+                            arg_ty,
+                            Type::Sum(Row::Unifier(goal)).into(),
                         ));
                         Row::Unifier(goal)
                     }
@@ -158,7 +160,7 @@ impl<'env> Solver<'env> {
                 let row_comb = RowCombination { left, right, goal };
                 constraints.push(Constraint::RowCombine(row_comb));
                 self.row_to_combo.insert(span, row_comb);
-                self.branch_to_ret_ty.insert(span, *ret_ty);
+                self.branch_to_ret_ty.insert(span, ret_ty);
 
                 GenOut {
                     constraints,
@@ -190,7 +192,7 @@ impl<'env> Solver<'env> {
                 let (mut out, actual_ty) = self.infer(env, the_ast);
                 out.constraints.push(Constraint::TypeEqual(
                     Provenance::ExpectedUnify(span),
-                    expected_ty,
+                    expected_ty.into(),
                     actual_ty,
                 ));
                 out

@@ -101,30 +101,30 @@ impl<'env> Solver<'env> {
         }
     }
 
-    pub fn substitute_ty(&mut self, ty: Type) -> SubstOut<Type> {
-        match ty {
-            Type::Num => SubstOut::new(Type::Num),
-            Type::Var(v) => SubstOut::new(Type::Var(v)),
+    pub fn substitute_ty(&mut self, ty: Intern<Type>) -> SubstOut<Intern<Type>> {
+        match *ty {
+            Type::Num => SubstOut::new(Type::Num.into()),
+            Type::Var(v) => SubstOut::new(Type::Var(v).into()),
             Type::Unifier(v) => {
                 let root = self.unification_table.find(v);
                 match self.unification_table.probe_value(root) {
-                    Some(ty) => self.substitute_ty(ty),
+                    Some(ty) => self.substitute_ty(ty.0),
                     None => {
                         let ty_var = self.tyvar_for_unifier(root);
-                        SubstOut::new(Type::Var(ty_var)).with_unbound_ty(ty_var)
+                        SubstOut::new(Type::Var(ty_var).into()).with_unbound_ty(ty_var)
                     }
                 }
             }
             Type::Func(arg, ret) => {
-                let arg_out = self.substitute_ty(*arg);
-                let ret_out = self.substitute_ty(*ret);
-                arg_out.merge(ret_out, |arg, ret| Type::Func(arg.into(), ret.into()))
+                let arg_out = self.substitute_ty(arg);
+                let ret_out = self.substitute_ty(ret);
+                arg_out.merge(ret_out, |arg, ret| Type::Func(arg, ret).into())
             }
             Type::Label(field, value) => self
-                .substitute_ty(*value)
-                .map(|ty| Type::Label(field, ty.into())),
-            Type::Prod(row) => self.substitute_row(row).map(Type::Prod),
-            Type::Sum(row) => self.substitute_row(row).map(Type::Sum),
+                .substitute_ty(value)
+                .map(|ty| Type::Label(field, ty).into()),
+            Type::Prod(row) => self.substitute_row(row).map(Type::Prod).map(Into::into),
+            Type::Sum(row) => self.substitute_row(row).map(Type::Sum).map(Into::into),
 
             _ => todo!(),
         }

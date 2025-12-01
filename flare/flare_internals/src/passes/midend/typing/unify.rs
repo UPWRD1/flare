@@ -1,6 +1,9 @@
+use internment::Intern;
+
 use crate::{
     passes::midend::typing::{
         rows::{ClosedRow, Row, RowCombination, RowUniVar},
+        types::InternType,
         Constraint, Provenance, Solver, TyUniVar, Type,
     },
     resource::errors::{CompResult, TypeErr},
@@ -15,17 +18,17 @@ enum UnificationError {
 }
 
 impl<'env> Solver<'env> {
-    pub fn normalize_ty(&mut self, ty: Type) -> Type {
-        match ty {
+    pub fn normalize_ty(&mut self, ty: Intern<Type>) -> Intern<Type> {
+        match *ty {
             Type::Num => ty,
             Type::Func(arg, ret) => {
-                let arg = self.normalize_ty(*arg);
-                let ret = self.normalize_ty(*ret);
-                Type::Func(arg.into(), ret.into())
+                let arg = self.normalize_ty(arg);
+                let ret = self.normalize_ty(ret);
+                Type::Func(arg, ret).into()
             }
             Type::Unifier(v) => match self.unification_table.probe_value(v) {
-                Some(ty) => self.normalize_ty(ty),
-                None => Type::Unifier(self.unification_table.find(v)),
+                Some(ty) => self.normalize_ty(ty.0),
+                None => Type::Unifier(self.unification_table.find(v)).into(),
             },
             _ => todo!("{ty:?}"),
         }
@@ -57,27 +60,24 @@ impl<'env> Solver<'env> {
 
     fn unify_ty_ty(
         &mut self,
-        unnorm_left: Type,
-        unnorm_right: Type,
+        unnorm_left: Intern<Type>,
+        unnorm_right: Intern<Type>,
     ) -> Result<(), UnificationError> {
         let left = self.normalize_ty(unnorm_left);
         let right = self.normalize_ty(unnorm_right);
-        match (left, right) {
+        match (*left, *right) {
             (Type::Num, Type::Num) => Ok(()),
 
             (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
             (Type::Func(a_arg, a_ret), Type::Func(b_arg, b_ret)) => {
-                self.unify_ty_ty(*a_arg, *b_arg)
-                    .map_err(|kind| match kind {
-                        UnificationError::TypeNotEqual(a_arg, b_arg) => {
-                            UnificationError::TypeNotEqual(
-                                Type::Func(a_arg.into(), a_ret),
-                                Type::Func(b_arg.into(), b_ret),
-                            )
-                        }
-                        kind => kind,
-                    })?;
-                self.unify_ty_ty(*a_ret, *b_ret).map_err(|kind| match kind {
+                self.unify_ty_ty(a_arg, b_arg).map_err(|kind| match kind {
+                    UnificationError::TypeNotEqual(a_arg, b_arg) => UnificationError::TypeNotEqual(
+                        Type::Func(a_arg.into(), a_ret),
+                        Type::Func(b_arg.into(), b_ret),
+                    ),
+                    kind => kind,
+                })?;
+                self.unify_ty_ty(a_ret, b_ret).map_err(|kind| match kind {
                     UnificationError::TypeNotEqual(a_ret, b_ret) => UnificationError::TypeNotEqual(
                         Type::Func(a_arg, a_ret.into()),
                         Type::Func(b_arg, b_ret.into()),
@@ -88,14 +88,14 @@ impl<'env> Solver<'env> {
             (Type::Unifier(a), Type::Unifier(b)) => self
                 .unification_table
                 .unify_var_var(a, b)
-                .map_err(|(l, r)| UnificationError::TypeNotEqual(l, r)),
+                .map_err(|(l, r)| UnificationError::TypeNotEqual(*l.0, *r.0)),
 
             (Type::Unifier(v), ty) | (ty, Type::Unifier(v)) => {
                 ty.occurs_check(v)
                     .map_err(|ty| UnificationError::InfiniteType(v, ty))?;
                 self.unification_table
-                    .unify_var_value(v, Some(ty))
-                    .map_err(|(l, r)| UnificationError::TypeNotEqual(l, r))
+                    .unify_var_value(v, Some(InternType(ty.into())))
+                    .map_err(|(l, r)| UnificationError::TypeNotEqual(*l.0, *r.0))
             }
             (left, right) => Err(UnificationError::TypeNotEqual(left, right)),
         }

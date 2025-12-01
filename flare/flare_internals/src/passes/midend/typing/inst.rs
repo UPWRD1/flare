@@ -1,3 +1,4 @@
+use internment::Intern;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -66,7 +67,7 @@ impl<'a> Instantiate<'a> {
                 row.values = row
                     .values
                     .iter()
-                    .map(|ty| self.ty(*ty))
+                    .map(|ty| self.ty(*ty).into())
                     .collect::<Vec<_>>()
                     .leak();
                 Row::Closed(row)
@@ -74,8 +75,8 @@ impl<'a> Instantiate<'a> {
         }
     }
 
-    fn ty(&self, ty: Type) -> Type {
-        match ty {
+    fn ty(&self, ty: Intern<Type>) -> Type {
+        match *ty {
             Type::Var(var) => self
                 .tyvar_to_unifiers
                 .get(&var)
@@ -93,8 +94,8 @@ impl<'a> Instantiate<'a> {
             | ty @ Type::Unit
             | ty @ Type::Unifier(_) => ty,
             Type::Func(arg, ret) => {
-                let arg = self.ty(*arg);
-                let ret = self.ty(*ret);
+                let arg = self.ty(arg);
+                let ret = self.ty(ret);
                 Type::fun(arg, ret)
             }
             Type::Prod(row) => Type::Prod(self.row(row)),

@@ -60,20 +60,20 @@ pub struct Item {
     pub is_checked: Cell<bool>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ItemKind {
     Root,
     Filename(Intern<String>),
     Package(PackageEntry),
     Function(FunctionItem<Untyped>),
-    Type(Type, SimpleSpan<usize, u64>),
+    Type(Intern<Type>, SimpleSpan<usize, u64>),
     Extern {
         name: Spanned<Intern<String>>,
         sig: Spanned<Intern<Type>>,
     },
     Field {
         name: Label,
-        value: Type,
+        value: Intern<Type>,
     },
     Dummy(&'static str),
 }
@@ -85,7 +85,7 @@ impl SpanWrapped for Item {
         Self: SpanWrapped,
     {
         match &self.kind {
-            ItemKind::Root => panic!(), // SimpleSpan::new(0, 0..0)
+            ItemKind::Root => SimpleSpan::new(0, 0..0),
             ItemKind::Filename(_intern) => panic!(),
             ItemKind::Package(package_entry) => package_entry.name.1,
             ItemKind::Function(function_item) => function_item.name.0 .1.union(
@@ -108,7 +108,10 @@ impl SpanWrapped for Item {
 impl Ident for Item {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self.kind {
-            ItemKind::Root => todo!(),
+            ItemKind::Root => {
+                let s = SimpleSpan::new(0, 0..0);
+                Ok(Spanned(Intern::from_ref("ROOT"), s))
+            }
             // Item::Filename(s) => s,
             ItemKind::Package(PackageEntry { name, .. }) => Ok(name),
             // ItemKind::Struct(StructEntry { ty, .. }) => ty.ident(),
@@ -158,6 +161,7 @@ impl Item {
             // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
             // ItemKind::Field((_, ty)) => Ok(*ty),
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
+            ItemKind::Field { name, value } => Ok(Spanned(*value, name.0 .1)),
             _ => Err(err(self)),
         }
     }

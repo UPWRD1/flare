@@ -170,7 +170,7 @@ where
     Sub(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Comparison(Spanned<Intern<Self>>, ComparisonOp, Spanned<Intern<Self>>),
 
-    Access(Spanned<Intern<Self>>),
+    // Access(Spanned<Intern<Self>>),
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     FieldAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     MethodAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -187,8 +187,8 @@ where
     ),
     Lambda(V, Spanned<Intern<Self>>, bool),
     Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Struct(Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>),
-    Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
+    // Struct(Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>),
+    // Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
 }
 
 impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
@@ -200,7 +200,7 @@ impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
                 //todo!()
                 //Some(base.0.get_ident()?.append(field.0.get_ident()?))
             }
-            Expr::Access(expr) => expr.name().ok(),
+            // Expr::Access(expr) => expr.name().ok(),
             Expr::Call(func, _) => func.name().ok(),
             Expr::Pat(p) => {
                 if let Pattern::Atom(PatternAtom::Variable(s)) = &p.0 {

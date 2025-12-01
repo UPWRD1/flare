@@ -323,7 +323,7 @@ impl Environment {
             Type::Label(l, r) => {
                 let type_name = l.0;
                 let qual = QualifierFragment::Type(type_name.0);
-                let entry = Item::new(ItemKind::Type(*the_ty, type_name.1), false);
+                let entry = Item::new(ItemKind::Type(Intern::from(*the_ty), type_name.1), false);
                 let ty_node_idx = self.add(current_node, qual, entry);
                 self.build_type(ty_node_idx, r)?;
             }
