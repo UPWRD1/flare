@@ -26,6 +26,7 @@ mod templates {
     }
 }
 
+use anyhow::Error;
 use rustc_hash::FxHashMap;
 pub(crate) use templates::*;
 
@@ -66,21 +67,33 @@ impl ReportableError for CompilerErr {
 
 impl From<DynamicErr> for CompilerErr {
     fn from(value: DynamicErr) -> Self {
-        Self(Box::new(CompilerErrKind::Dynamic(value)))
+        Self(Box::new(value))
     }
 }
 
 impl From<ErrorCollection> for CompilerErr {
     fn from(value: ErrorCollection) -> Self {
-        Self(Box::new(CompilerErrKind::ErrorCollection(value)))
+        Self(Box::new(value))
     }
 }
 
 impl From<std::io::Error> for CompilerErr {
     fn from(value: std::io::Error) -> Self {
-        Self(Box::new(CompilerErrKind::Other(value.into())))
+        Self(Box::new(value))
     }
 }
+
+impl ReportableError for std::io::Error {
+    fn report(&self, ctx: &FileCtx) {
+        eprintln!("{self}")
+    }
+}
+
+// impl From<CompilerErrKind> for CompilerErr {
+//     fn from(value: CompilerErrKind) -> Self {
+//         Self(Box::new(value))
+//     }
+// }
 
 impl Deref for CompilerErr {
     type Target = dyn Any;
@@ -89,67 +102,67 @@ impl Deref for CompilerErr {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum CompilerErrKind {
-    #[error(transparent)]
-    General(#[from] GeneralErr),
+// #[derive(Debug, Error)]
+// pub enum CompilerErrKind {
+//     #[error(transparent)]
+//     General(#[from] GeneralErr),
 
-    #[error(transparent)]
-    Dynamic(#[from] DynamicErr),
+//     #[error(transparent)]
+//     Dynamic(#[from] DynamicErr),
 
-    #[error(transparent)]
-    ErrorCollection(#[from] ErrorCollection),
-    #[error(transparent)]
-    Type(#[from] TypeErr),
+//     #[error(transparent)]
+//     ErrorCollection(#[from] ErrorCollection),
+//     #[error(transparent)]
+//     Type(#[from] TypeErr),
 
-    #[error(transparent)]
-    Fatal(#[from] FatalErr),
+//     #[error(transparent)]
+//     Fatal(#[from] FatalErr),
 
-    //#[error(transparent)]
-    //Typecheck(#[from] TypecheckingError),
-    // #[error(transparent)]
-    // Environment(#[from] EnvironmentError),
+//     //#[error(transparent)]
+//     //Typecheck(#[from] TypecheckingError),
+//     // #[error(transparent)]
+//     // Environment(#[from] EnvironmentError),
 
-    // Other error types...
-    #[error(transparent)]
-    Other(#[from] anyhow::Error), // Catch-all for unexpected errors
-}
+//     // Other error types...
+//     #[error(transparent)]
+//     Other(#[from] anyhow::Error), // Catch-all for unexpected errors
+// }
 
-impl CompilerErrKind {
-    pub fn get_dyn(self) -> DynamicErr {
-        //panic!();
+// impl CompilerErrKind {
+//     pub fn get_dyn(self) -> DynamicErr {
+//         //panic!();
 
-        match self {
-            CompilerErrKind::Dynamic(dynamic_err) => dynamic_err,
-            _ => panic!("Cannot get dynamic err from {:?}", self),
-        }
-    }
-}
+//         match self {
+//             CompilerErrKind::Dynamic(dynamic_err) => dynamic_err,
+//             _ => panic!("Cannot get dynamic err from {:?}", self),
+//         }
+//     }
+// }
 
-impl ReportableError for CompilerErrKind {
-    fn report<'src>(&self, ctx: &FileCtx) {
-        match self {
-            CompilerErrKind::General(error) => eprintln!("{error}"),
-            CompilerErrKind::Other(error) => eprintln!("{error}"),
-            CompilerErrKind::Dynamic(e) => {
-                CompilerErrKind::General(e.clone().get_gen(ctx)).report(ctx)
-            }
-            CompilerErrKind::ErrorCollection(errs) => {
-                for e in &errs.0 {
-                    e.report(ctx);
-                }
-            }
-            CompilerErrKind::Type(error) => eprintln!("{error}"),
-            CompilerErrKind::Fatal(_) => unreachable!(),
-        }
-    }
-}
+// impl ReportableError for CompilerErrKind {
+//     fn report<'src>(&self, ctx: &FileCtx) {
+//         match self {
+// CompilerErrKind::General(error) => eprintln!("{error}"),
+//             CompilerErrKind::Other(error) => eprintln!("{error}"),
+//             CompilerErrKind::Dynamic(e) => {
+//                 CompilerErrKind::General(e.clone().get_gen(ctx)).report(ctx)
+//             }
+//             CompilerErrKind::ErrorCollection(errs) => {
+//                 for e in &errs.0 {
+//                     e.report(ctx);
+//                 }
+//             }
+//             CompilerErrKind::Type(error) => eprintln!("{error}"),
+//             CompilerErrKind::Fatal(_) => unreachable!(),
+//         }
+//     }
+// }
 
-impl From<std::io::Error> for CompilerErrKind {
-    fn from(value: std::io::Error) -> Self {
-        Self::Other(value.into())
-    }
-}
+// impl From<std::io::Error> for CompilerErrKind {
+//     fn from(value: std::io::Error) -> Self {
+//         Self::Other(value.into())
+//     }
+// }
 
 #[derive(Debug, Error)]
 pub struct ErrorCollection(Vec<CompilerErr>);
@@ -166,6 +179,12 @@ impl Display for ErrorCollection {
 impl ErrorCollection {
     pub fn new(errs: Vec<CompilerErr>) -> Self {
         Self(errs)
+    }
+}
+
+impl ReportableError for ErrorCollection {
+    fn report(&self, ctx: &FileCtx) {
+        eprintln!("{self}")
     }
 }
 
@@ -232,6 +251,13 @@ impl DynamicErr {
     }
 }
 
+impl ReportableError for DynamicErr {
+    fn report(&self, ctx: &FileCtx) {
+        let e = self.clone().get_gen(ctx);
+        e.report(ctx)
+    }
+}
+
 impl std::fmt::Display for DynamicErr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> fmt::Result {
         write!(f, "Dynamic Error: {:?}", self)
@@ -245,6 +271,12 @@ pub struct GeneralErr {
     extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
     context: FxHashMap<FileID, FileSource<'static>>,
     sources: Vec<(&'static str, &'static str)>,
+}
+
+impl ReportableError for GeneralErr {
+    fn report(&self, ctx: &FileCtx) {
+        eprintln!("{self}")
+    }
 }
 
 impl std::fmt::Display for GeneralErr {

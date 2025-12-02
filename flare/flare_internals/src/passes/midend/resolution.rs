@@ -3,7 +3,7 @@ use internment::Intern;
 use petgraph::{
     dot::Config,
     graph::NodeIndex,
-    visit::{IntoNodeReferences, Topo, Walker},
+    visit::{EdgeRef, IntoNodeReferences, Topo, Walker},
 };
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
@@ -14,9 +14,9 @@ use crate::{
         typing::{ClosedRow, Type},
     },
     resource::{
-        errors::{self, CompResult, CompilerErr, DynamicErr},
+        errors::{self, not_defined, CompResult, CompilerErr, DynamicErr},
         rep::{
-            ast::{Expr, ItemId, Kind, Label, Untyped},
+            ast::{Direction, Expr, ItemId, Kind, Label, Untyped},
             common::Ident,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
@@ -107,7 +107,9 @@ impl Resolver {
             .into_iter()
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
-        // dbg!(&flat);
+        self.env.debug();
+        self.debug();
+        dbg!(&flat);
         Ok(flat)
     }
 
@@ -156,7 +158,7 @@ impl Resolver {
                     }
                     Ok(())
                 }
-                ItemKind::Type(t, meta) => {
+                ItemKind::Type(n, t, _) => {
                     // Analyze the type
                     let t = self.in_context(|me| me.analyze_type(t), dag_idx)?;
 
@@ -166,12 +168,13 @@ impl Resolver {
                         .graph
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
-                    if let ItemKind::Type(ref mut ty, _) = item.kind {
+                    if let ItemKind::Type(_, ref mut ty, _) = item.kind {
                         *ty = t;
                     }
                     Ok(())
                 }
-                _ => unreachable!("{child:?}"),
+                ItemKind::Field { name, value } => Ok(()),
+                _ => unreachable!("{child:?}, {item_kind:?}"),
             }?
         }
 
@@ -231,7 +234,7 @@ impl Resolver {
             }
             Type::User(name) => {
                 let the_item = self.resolve_name_generic(&name)?;
-                if let ItemKind::Type(new_t, _) = the_item.kind {
+                if let ItemKind::Type(_, new_t, _) = the_item.kind {
                     Ok(new_t)
                 } else {
                     Err(DynamicErr::new(format!("{} is not a type", name.0))
@@ -240,7 +243,7 @@ impl Resolver {
                 }
             }
             Type::Prod(r) => {
-                let r = match r {
+                let new_r = match r {
                     super::typing::Row::Closed(closed_row) => {
                         let new_values: CompResult<Vec<Intern<Type>>> = closed_row
                             .fields
@@ -259,24 +262,27 @@ impl Resolver {
                     }
                     _ => unreachable!("All rows should be closed"),
                 };
-                Ok(Type::Prod(r).into())
+                Ok(Type::Prod(new_r).into())
             }
             _ => Ok(t),
         }
+        // .inspect(|x| {
+        //     dbg!(x);
+        // })
     }
 
     #[allow(unused_variables)]
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<Expr<Untyped>>>,
-        vars: &[Intern<String>],
+        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
         let ex = match *expr.0 {
             Expr::Ident(name) => {
                 if vars
                     .iter()
                     .rev()
-                    .any(|n| name.ident().is_ok_and(|name| *n == name.0))
+                    .any(|n| name.ident().is_ok_and(|name| *n.0 == *name.0))
                 {
                     Ok(expr)
                 } else {
@@ -295,7 +301,7 @@ impl Resolver {
             }
             Expr::Branch(spanned, spanned1) => todo!(),
             Expr::Label(l, v) => {
-                let new_vars = [vars, &[l.0 .0]].concat();
+                let new_vars = [vars, &[(l.0 .0, v)]].concat();
 
                 let v = self.analyze_expr(v, &new_vars)?;
                 Ok(expr.update(Expr::Label(l, v)))
@@ -314,27 +320,62 @@ impl Resolver {
             Expr::Comparison(spanned, comparison_op, spanned1) => todo!(),
             Expr::Call(func, arg) => {
                 let func = self.analyze_expr(func, vars)?;
-                let arg = self.analyze_expr(arg, vars)?;
-                Ok(expr.update(Expr::Call(func, arg)))
+                if let Expr::Item(id, Kind::Func) = *func.0 {
+                    let ty = self.env.value(NodeIndex::new(id.0))?;
+                    let name = ty.ident()?;
+                    if let Ok(the_type) = ty.get_ty() {
+                        // dbg!(the_type);
+                        let arg = self.analyze_expr(arg, vars)?;
+                        let lambda_var = Untyped(func.update("x".to_string()));
+                        let lambda =
+                            Expr::Lambda(lambda_var, func.replace(Expr::Ident(lambda_var)), false);
+                        let ty = self.analyze_type(Type::Func(the_type.0, the_type.0).into())?;
+                        let f = FunctionItem {
+                            name: Untyped(name),
+                            sig: func.update(ty),
+                            body: func.replace(lambda),
+                        };
+                        let item = Item::new(ItemKind::Function(f), false);
+                        Ok(expr.update(Expr::Label(Label(name), arg)))
+                    } else {
+                        panic!()
+                    }
+                } else {
+                    let arg = self.analyze_expr(arg, vars)?;
+                    Ok(expr.update(Expr::Call(func, arg)))
+                }
             }
             Expr::FieldAccess(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
-                let r = self.analyze_expr(r, vars)?;
-                Ok(expr.update(Expr::FieldAccess(l, r)))
+                if let Expr::Item(id, k) = *l.0 {
+                    let res = self.resolve_name_expr_no_add(r)?;
+                    Ok(res)
+                } else {
+                    let l_ident = l.ident()?;
+                    if let Some((l, val)) = vars.iter().find(|x| x.0 == l_ident.0) {
+                        let projection = self.find_row_address(*val, r)?;
+                        Ok(expr.update(projection.0))
+                    } else {
+                        todo!()
+                    }
+                }
+                // Ok(expr.update(Expr::Project(Direction::Left, l))?;
+                // if matches!(*l.0, Expr::Con) {}
+                // Ok(expr.update(Expr::FieldAccess(l, r)))
             }
             Expr::If(spanned, spanned1, spanned2) => todo!(),
             Expr::Match(spanned, intern) => {
                 todo!()
             }
             Expr::Lambda(arg, body, is_anon) => {
-                let new_vars = [vars, &[arg.0 .0]].concat();
+                let new_vars = [vars, &[(arg.0 .0, body)]].concat();
                 let body = self.analyze_expr(body, &new_vars)?;
                 Ok(expr.update(Expr::Lambda(arg, body, is_anon)))
             }
             Expr::Let(id, body, and_in) => {
                 let body = self.analyze_expr(body, vars)?;
 
-                let new_vars = [vars, &[id.0 .0]].concat();
+                let new_vars = [vars, &[(id.0 .0, body)]].concat();
                 let and_in = self.analyze_expr(and_in, &new_vars)?;
                 let lambda = Spanned(Expr::Lambda(id, and_in, true).into(), expr.1);
 
@@ -346,9 +387,75 @@ impl Resolver {
             _ => Ok(expr),
         };
         ex
-        // .inspect(|x| {
+        //.inspect(|x| {
+
         // dbg!(x);
         // })
+    }
+
+    fn find_row_address(
+        &mut self,
+        combo: Spanned<Intern<Expr<Untyped>>>,
+        id: Spanned<Intern<Expr<Untyped>>>,
+    ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
+        let accum = vec![];
+        fn helper(
+            // me: &mut Resolver,
+            combo: &Spanned<Intern<Expr<Untyped>>>,
+            id: Spanned<Intern<Expr<Untyped>>>,
+            accum: &[Direction],
+        ) -> CompResult<Vec<Direction>> {
+            // dbg!(combo);
+            match *combo.0 {
+                Expr::Concat(l, r) => {
+                    // let name = me.resolve_name_expr(id)?;
+
+                    if matches!(*r.0, Expr::Label(a, _) if a.0.0 == id.ident().unwrap().0) {
+                        Ok([accum, &[Direction::Right]].concat().to_vec())
+                    } else {
+                        let accum = [accum, &[Direction::Left]].concat();
+                        helper(&l, id, &accum)
+                    }
+                }
+                Expr::Branch(l, r) => todo!(),
+                Expr::Label(a, r) => {
+                    if a.0 .0 == id.ident()?.0 {
+                        Ok([accum, &[Direction::Left]].concat().to_vec())
+                    } else {
+                        helper(&r, id, accum)
+                    }
+                }
+                Expr::Call(l, r) => {
+                    if let Expr::Item(_, Kind::Func) = *l.0 {
+                        // dbg!(combo);
+                        helper(&r, id, accum)
+                    } else {
+                        panic!()
+                    }
+                }
+
+                _ => Err(DynamicErr::new(format!(
+                    "The field {} is not available here",
+                    id.ident()?.0
+                ))
+                .label("this", id.1)
+                .into()),
+            }
+        }
+        let path = helper(&combo, id, &accum);
+        let ex = path
+            .map_err(|e| {
+                if let Some(err) = e.downcast_ref::<DynamicErr>() {
+                    err.clone()
+                        .extra_labels(vec![("in this object".to_string(), combo.1)])
+                        .into()
+                } else {
+                    e
+                }
+            })?
+            .into_iter()
+            .fold(combo, |prev, x| combo.replace(Expr::Project(x, prev)));
+        Ok(ex.replace(Expr::Unlabel(ex, Label(id.ident()?))))
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
@@ -391,17 +498,34 @@ impl Resolver {
             }
         }
     }
+
     fn search_masterenv(
         &mut self,
         q: &QualifierFragment,
         s: &SimpleSpan<usize, u64>,
     ) -> CompResult<ItemId> {
-        // self.debug(dag);
+        // self.env.debug();
         let search = self.env.get_from_context(q, &self.current_parent);
         search.map_or_else(
             |_| Err(errors::not_defined(q, s)),
             |node| {
                 self.dag_add(node.index());
+                Ok(ItemId(node.index()))
+            },
+        )
+    }
+
+    fn search_masterenv_no_add(
+        &mut self,
+        q: &QualifierFragment,
+        s: &SimpleSpan<usize, u64>,
+    ) -> CompResult<ItemId> {
+        // self.env.debug();
+        let search = self.env.get_from_context(q, &self.current_parent);
+        search.map_or_else(
+            |_| Err(errors::not_defined(q, s)),
+            |node| {
+                // self.dag_add(node.index());
                 Ok(ItemId(node.index()))
             },
         )
@@ -416,6 +540,26 @@ impl Resolver {
         if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name.0), &expr.1) {
             Ok(expr.update(Expr::Item(e, Kind::Func)))
         } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &expr.1) {
+            Ok(expr.update(Expr::Item(e, Kind::Ty)))
+        } else {
+            Err(errors::not_defined(
+                QualifierFragment::Wildcard(name.0),
+                &expr.1,
+            ))
+        }
+    }
+
+    fn resolve_name_expr_no_add(
+        &mut self,
+        expr: Spanned<Intern<Expr<Untyped>>>,
+    ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
+        let name = expr.ident()?;
+
+        if let Ok(e) = self.search_masterenv_no_add(&QualifierFragment::Func(name.0), &expr.1) {
+            Ok(expr.update(Expr::Item(e, Kind::Func)))
+        } else if let Ok(e) =
+            self.search_masterenv_no_add(&QualifierFragment::Type(name.0), &expr.1)
+        {
             Ok(expr.update(Expr::Item(e, Kind::Ty)))
         } else {
             Err(errors::not_defined(

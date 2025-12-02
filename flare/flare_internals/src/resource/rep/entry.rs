@@ -66,7 +66,11 @@ pub enum ItemKind {
     Filename(Intern<String>),
     Package(PackageEntry),
     Function(FunctionItem<Untyped>),
-    Type(Intern<Type>, SimpleSpan<usize, u64>),
+    Type(
+        Spanned<Intern<String>>,
+        Intern<Type>,
+        SimpleSpan<usize, u64>,
+    ),
     Extern {
         name: Spanned<Intern<String>>,
         sig: Spanned<Intern<Type>>,
@@ -96,7 +100,7 @@ impl SpanWrapped for Item {
                     .1
                     .union(function_item.body.1),
             ),
-            ItemKind::Type(_, s) => *s,
+            ItemKind::Type(_, _, s) => *s,
             ItemKind::Extern { name, sig } => name.1.union(sig.1),
             ItemKind::Field { name, value } => name.0 .1,
 
@@ -120,7 +124,7 @@ impl Ident for Item {
             // ItemKind::Field((name, ..)) => Ok(name),
             ItemKind::Function(FunctionItem { name, .. }) => Ok(name.0),
             ItemKind::Extern { name, .. } => Ok(name),
-            ItemKind::Type(t, _) => t.ident(),
+            ItemKind::Type(name, _, _) => Ok(name),
             ItemKind::Field { name, value } => Ok(name.0),
             _ => panic!(),
         }
@@ -155,13 +159,14 @@ impl Item {
             FatalErr::new(format!("Could not get the type from {:?}", t))
         }
         match &self.kind {
-            ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
+            // ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
             // ItemKind::Struct(StructEntry { ty, .. }) => Ok(*ty),
             // ItemKind::Enum(EnumEntry { ty, .. }) => Ok(*ty),
             // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
             // ItemKind::Field((_, ty)) => Ok(*ty),
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
             ItemKind::Field { name, value } => Ok(Spanned(*value, name.0 .1)),
+            ItemKind::Type(_, t, s) => Ok(Spanned(*t, *s)),
             _ => Err(err(self)),
         }
     }

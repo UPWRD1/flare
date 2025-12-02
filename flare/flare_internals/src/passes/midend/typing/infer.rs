@@ -30,8 +30,8 @@ impl<'env> Solver<'env> {
                 Type::String.into(),
             ),
             Expr::Ident(v) => {
-                dbg!(v);
-                dbg!(env.keys().collect::<Vec<_>>());
+                // dbg!(v);
+                // dbg!(env.keys().collect::<Vec<_>>());
                 let ty = env[&v.0 .0];
                 (
                     GenOut::new(vec![], ast.update(Expr::Ident(Typed(v, ty)))),

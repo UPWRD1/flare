@@ -1,6 +1,7 @@
 use internment::Intern;
 // use petgraph::Graph;
 use petgraph::{
+    dot::Config,
     graph::{DiGraph, EdgeReference, NodeIndex},
     visit::EdgeRef as _,
 };
@@ -8,22 +9,21 @@ use rustc_hash::FxHashMap;
 // use serde::{Deserialize, Serialize};
 // use std::cell::OnceCell;
 // use std::collections::HashMap;
-use std::{cell::Cell, hash::RandomState};
+use std::hash::RandomState;
 
 use crate::{
-    passes::midend::typing::{ClosedRow, Row, Type},
+    passes::midend::typing::{ClosedRow, Type},
     resource::{
-        errors::{self, CompResult, CompilerErr, DynamicErr, FatalErr},
+        errors::{self, CompResult, DynamicErr, FatalErr},
         rep::{
             ast::{
                 Definition,
                 Expr,
                 ImplDef,
-                Label,
                 Program,
                 Untyped, // Untyped, Variable
             },
-            common::{Ident as _, Named},
+            common::{Ident, Named},
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
             // concretetypes::{EnumVariant, Ty},
@@ -68,6 +68,24 @@ impl Environment {
         child_idx
     }
 
+    #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
+    #[deprecated]
+    pub fn debug(&self) {
+        let render =
+            |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
+        let dot = petgraph::dot::Dot::with_attr_getters(
+            &self.graph,
+            &[
+                Config::EdgeNoLabel,
+                Config::NodeNoLabel,
+                Config::RankDir(petgraph::dot::RankDir::LR),
+            ],
+            // &|_, _| String::new(),
+            &render,
+            &|_, _| String::new(),
+        );
+        dbg!(dot);
+    }
     #[inline]
     /// Get the item value of an index.
     /// # Examples
@@ -130,8 +148,8 @@ impl Environment {
                     // Definition::Enum(EnumDef { the_ty, variants }) => {
                     // me.build_enum(current_node, the_ty, variants)?;
                     // }
-                    Definition::Type(t) => {
-                        me.build_type(current_node, t)?;
+                    Definition::Type(name, t) => {
+                        me.build_type(current_node, t, *name)?;
                         // todo!()
                     }
 
@@ -167,7 +185,7 @@ impl Environment {
             current_node = old_current;
             pack_imports.insert(Spanned(package_quant, package_name.1), deps);
         }
-        //dbg!(&pack_imports);
+
         for (name, deps) in &pack_imports {
             let package = me
                 .get(&[name.0][..])
@@ -296,6 +314,7 @@ impl Environment {
     // }
 
     fn build_row(&mut self, current_node: NodeIndex, the_row: ClosedRow) -> CompResult<()> {
+        dbg!(current_node);
         for (name, value) in the_row.fields.iter().zip(the_row.values) {
             // dbg!(name);
             let entry = Item::new(
@@ -306,26 +325,39 @@ impl Environment {
                 false,
             );
             let val_idx = self.add(current_node, QualifierFragment::Field(name.0 .0), entry);
-            self.build_type(val_idx, value)?;
+            self.build_type(val_idx, value, name.0)?;
         }
         Ok(())
     }
 
-    fn build_type(&mut self, current_node: NodeIndex, the_ty: &Type) -> CompResult<()> {
+    fn build_type(
+        &mut self,
+        current_node: NodeIndex,
+        the_ty: &Type,
+        name: Spanned<Intern<String>>,
+    ) -> CompResult<()> {
         // dbg!(the_ty);
         match the_ty {
             Type::Prod(row) | Type::Sum(row) => match row {
                 crate::passes::midend::typing::Row::Closed(the_row) => {
-                    self.build_row(current_node, *the_row)?;
+                    // let type_name = l.0;
+                    let qual = QualifierFragment::Type(name.0);
+                    let entry =
+                        Item::new(ItemKind::Type(name, Intern::from(*the_ty), name.1), false);
+                    let ty_node_idx = self.add(current_node, qual, entry);
+                    self.build_row(ty_node_idx, *the_row)?;
                 }
                 _ => panic!(),
             },
             Type::Label(l, r) => {
                 let type_name = l.0;
                 let qual = QualifierFragment::Type(type_name.0);
-                let entry = Item::new(ItemKind::Type(Intern::from(*the_ty), type_name.1), false);
+                let entry = Item::new(
+                    ItemKind::Type(name, Intern::from(*the_ty), type_name.1),
+                    false,
+                );
                 let ty_node_idx = self.add(current_node, qual, entry);
-                self.build_type(ty_node_idx, r)?;
+                self.build_type(ty_node_idx, r, l.0)?;
             }
             _ => (),
         };

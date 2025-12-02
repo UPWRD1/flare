@@ -32,19 +32,26 @@ package Main =
     #      in
     #         looper_helper(0)
 
-    # enum EyeColor =
-        # Blue,
-        # Brown,
-        # Green,
-        # Other,
-    struct Wrapper =
-        value: Person,
-        meta: str
-
+    enum EyeColor =
+      Blue,
+      Brown,
+      Green,
+      Other
+        
+    # struct Extra =
+        # stuff: str,
+        # more: str,
+    
+    
     struct Person =
         name: str,
         age: num,
-    #     eye_color: EyeColor,
+        eye_color: EyeColor,
+
+    struct Wrapper =
+        value: Person,
+        meta: str,
+        # extra: Extra,
     #     catchphrase: unit -> ?T,
     #     behavior: Term
 
@@ -52,9 +59,9 @@ package Main =
         let ret = x * y in ret
 
     let main : unit -> Wrapper =
-        let p = Person {name = "bob", age = 3000} in
-        let w = Wrapper {value = p, meta = "asdf"} in
-            id w.value
+        let p = Person {name = "bob", age = 3000, eye_color = EyeColor.Blue} in
+        let w = Wrapper {value = p, meta = "asdf", } in
+            let m = w.meta in w.value
 
                 # id multiply 3 4
             

@@ -40,7 +40,9 @@ impl Typechecker {
                 crate::resource::rep::entry::ItemKind::Function(f) => {
                     self.check_function(*item_idx, f)?
                 }
-                crate::resource::rep::entry::ItemKind::Type(t, _) => self.check_type(*item_idx, t),
+                crate::resource::rep::entry::ItemKind::Type(_, t, _) => {
+                    self.check_type(*item_idx, t)
+                }
                 crate::resource::rep::entry::ItemKind::Extern { name, sig } => todo!(),
                 crate::resource::rep::entry::ItemKind::Field { name, value } => {}
                 _ => unreachable!(),
@@ -67,11 +69,13 @@ impl Typechecker {
             evidence: Vec::new(),
             ty: f.sig.0,
         };
-        self.context.insert(ItemId(item_idx.index()), scheme);
+        self.context
+            .insert(ItemId(item_idx.index()), scheme.clone());
         let source = ItemSource::new(self.context.clone());
 
-        let infer = Solver::type_infer_with_items(source, f.body)?;
-        dbg!(infer.scheme);
+        let check = Solver::check_with_items(source, f.body, scheme)?;
+        // let infer = Solver::type_infer_with_items(source, f.body)?;
+        // dbg!(infer.scheme);
         Ok(())
     }
 

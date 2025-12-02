@@ -716,8 +716,9 @@ where
                 let fields = fields.iter().map(|x| Label(*x)).collect::<Vec<_>>().leak();
                 let values = values.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak();
                 let ty_body = Type::Prod(Row::Closed(ClosedRow { fields, values }));
-                let ty = Type::Label(Label(name), ty_body.into());
-                Definition::Type(ty)
+                // let ty = Type::Label(Label(name), ty_body.into());
+                let ty = ty_body;
+                Definition::Type(name, ty)
             });
         let enum_variant = choice((
             raw_ident
@@ -764,10 +765,14 @@ where
                 let (fields, values): (Vec<Label>, Vec<Intern<Type>>) = variants.into_iter().unzip();
 
                 let (fields, values) = (fields.leak(), values.leak());
-                Definition::Type(Type::Label(
-                    Label(name),
-                    Type::Sum(Row::Closed(ClosedRow { fields, values })).into(),
-                ))
+
+                let ty_body = Type::Sum(Row::Closed(ClosedRow { fields, values }));
+                // let ty = Definition::Type(Type::Label(
+                //     Label(name),
+                //     ty_body.into(),
+                // ));
+                let ty = ty_body;
+                Definition::Type(name, ty)
             });
 
         // Import

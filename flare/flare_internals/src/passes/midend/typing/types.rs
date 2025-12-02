@@ -91,7 +91,7 @@ impl PartialEq for Type {
         match (self, other) {
             (Self::Unifier(l0), Self::Unifier(r0)) => l0 == r0,
             (Self::Func(l0, l1), Self::Func(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Package(l0), Self::Package(r0)) => l0 == r0,
+            (Self::Package(l0), Self::Package(r0)) => l0.0 == r0.0,
             (Self::Prod(l0), Self::Prod(r0)) => l0 == r0,
             (Self::Sum(l0), Self::Sum(r0)) => l0 == r0,
             (Self::Label(l0, l1), Self::Label(r0, r1)) => l0 == r0 && l1 == r1,
@@ -141,7 +141,18 @@ impl Type {
                 ret.occurs_check(var).map_err(|_| *self)
             }
 
-            _ => todo!(),
+            Self::Label(_, ty) => ty.occurs_check(var).map_err(|_| *self),
+            Self::Prod(row) | Self::Sum(row) => match row {
+                Row::Open(_) => Ok(()),
+                Row::Unifier(_) => Ok(()),
+                Row::Closed(closed_row) => {
+                    for ty in closed_row.values.iter() {
+                        ty.occurs_check(var).map_err(|_| *self)?
+                    }
+                    Ok(())
+                }
+            },
+            _ => todo!("{self:?}"),
         }
     }
 

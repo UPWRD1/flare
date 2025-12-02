@@ -48,8 +48,8 @@ impl<T> SpanWrapped for Spanned<T> {
     }
 }
 
-impl<T> std::fmt::Display for Spanned<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
+// impl<T> std::fmt::Display for Spanned<T> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{self}")
+//     }
+// }

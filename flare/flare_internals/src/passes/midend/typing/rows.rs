@@ -73,11 +73,16 @@ impl ClosedRow {
             match (left_fields.peek(), right_fields.peek()) {
                 (Some(left), Some(right)) => {
                     if left.0 .0 <= right.0 .0 {
-                        fields.push(*left_fields.next().unwrap());
-                        values.push(*left_values.next().unwrap());
+                        // SAFETY: We know the next item exists because we are matching against it.
+                        unsafe { fields.push(*left_fields.next().unwrap_unchecked()) };
+
+                        // SAFETY: Ditto ^^^
+                        unsafe {
+                            values.push(*left_values.next().unwrap_unchecked());
+                        }
                     } else {
-                        fields.push(*right_fields.next().unwrap());
-                        values.push(*right_values.next().unwrap());
+                        unsafe { fields.push(*right_fields.next().unwrap_unchecked()) };
+                        unsafe { values.push(*right_values.next().unwrap_unchecked()) };
                     }
                 }
                 (Some(_), None) => {

@@ -53,7 +53,7 @@ use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
         backend::target::{Generator, Target},
-        midend::{environment::Environment, resolution::Resolver, typechecker::Typechecker, typing::Solver},
+        midend::{environment::Environment, resolution::Resolver, typechecker::Typechecker, },
         parser,
     },
     resource::{

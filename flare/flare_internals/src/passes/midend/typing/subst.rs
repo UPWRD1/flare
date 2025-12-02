@@ -139,22 +139,52 @@ impl<'env> Solver<'env> {
             Expr::Ident(v) => self
                 .substitute_ty(v.1)
                 .map(|ty| Spanned(Expr::Ident(Typed(v.0, ty)).into(), id)),
-            Expr::Number(i) => SubstOut::new(Spanned(Expr::Number(i).into(), id)),
+
+            Expr::Number(i) => SubstOut::new(ast.replace(Expr::Number(i))),
+            Expr::String(s) => SubstOut::new(ast.replace(Expr::String(s))),
+
             Expr::Hole(v) => self
                 .substitute_ty(v.1)
-                .map(|ty| Spanned(Expr::Hole(Typed(v.0, ty)).into(), id)),
+                .map(|ty| ast.replace(Expr::Hole(Typed(v.0, ty)))),
             Expr::Lambda(arg, body, is_anon) => self
                 .substitute_ty(arg.1)
                 .map(|ty| Typed(arg.0, ty))
                 .merge(self.substitute_ast(body), |arg, body| {
-                    Spanned(Expr::Lambda(arg, body, is_anon).into(), id)
+                    ast.replace(Expr::Lambda(arg, body, is_anon))
                 }),
             Expr::Call(fun, arg) => self
                 .substitute_ast(fun)
                 .merge(self.substitute_ast(arg), |fun, arg| {
-                    Spanned(Expr::Call(fun, arg).into(), id)
+                    ast.replace(Expr::Call(fun, arg))
                 }),
-            _ => todo!(),
+
+            // Label constructor and destructor
+            Expr::Label(label, ast) => self
+                .substitute_ast(ast)
+                .map(|nast| ast.replace(Expr::Label(label, nast))),
+            Expr::Unlabel(ast, label) => self
+                .substitute_ast(ast)
+                .map(|nast| ast.replace(Expr::Label(label, nast))),
+            // Products constructor and destructor
+            Expr::Concat(left, right) => self
+                .substitute_ast(left)
+                .merge(self.substitute_ast(right), |left, right| {
+                    ast.replace(Expr::Concat(left, right))
+                }),
+            Expr::Project(dir, ast) => self
+                .substitute_ast(ast)
+                .map(|nast| ast.replace(Expr::Project(dir, nast))),
+            // Sums constructor and destructor
+            Expr::Branch(left, right) => self
+                .substitute_ast(left)
+                .merge(self.substitute_ast(right), |left, right| {
+                    ast.replace(Expr::Branch(left, right))
+                }),
+            Expr::Inject(dir, ast) => self
+                .substitute_ast(ast)
+                .map(|nast| ast.replace(Expr::Inject(dir, ast))),
+            Expr::Item(id, item) => SubstOut::new(ast.replace(Expr::Item(id, item))),
+            _ => todo!("{ast:?}"),
         }
     }
 

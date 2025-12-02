@@ -142,7 +142,7 @@ impl ItemSource {
 
     fn type_of_item(&self, item_id: ItemId) -> TypeScheme {
         dbg!(item_id);
-        dbg!(self);
+        // dbg!(self);
         self.types[&item_id].clone()
     }
 }
@@ -314,7 +314,7 @@ impl<'env> Solver<'env> {
         })
     }
 
-    fn type_check(
+    pub fn type_check(
         ast: Spanned<Intern<Expr<Untyped>>>,
         signature: TypeScheme,
     ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
@@ -322,7 +322,7 @@ impl<'env> Solver<'env> {
         ctx.type_check_logic(ast, signature)
     }
 
-    fn type_check_with_items(
+    pub fn check_with_items(
         item_source: ItemSource,
         ast: Spanned<Intern<Expr<Untyped>>>,
         signature: TypeScheme,
@@ -357,13 +357,5 @@ impl<'env> Solver<'env> {
 
         // And we're done
         Ok(subst_ast.value)
-    }
-    /// Check a single item from the environment.
-    fn check_item(
-        &mut self,
-        item: &'env Item,
-        packctx: QualifierFragment,
-    ) -> CompResult<&'env Item> {
-        todo!()
     }
 }

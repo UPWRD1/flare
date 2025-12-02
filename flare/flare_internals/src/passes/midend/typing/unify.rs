@@ -20,7 +20,7 @@ enum UnificationError {
 impl<'env> Solver<'env> {
     pub fn normalize_ty(&mut self, ty: Intern<Type>) -> Intern<Type> {
         match *ty {
-            Type::Num => ty,
+            Type::Num | Type::String | Type::Bool | Type::Unit => ty,
             Type::Func(arg, ret) => {
                 let arg = self.normalize_ty(arg);
                 let ret = self.normalize_ty(ret);
@@ -30,6 +30,13 @@ impl<'env> Solver<'env> {
                 Some(ty) => self.normalize_ty(ty.0),
                 None => Type::Unifier(self.unification_table.find(v)).into(),
             },
+
+            Type::Label(label, ty) => {
+                let ty = self.normalize_ty(ty);
+                Type::Label(label, ty).into()
+            }
+            Type::Prod(row) => Type::Prod(self.normalize_row(row)).into(),
+            Type::Sum(row) => Type::Sum(self.normalize_row(row)).into(),
             _ => todo!("{ty:?}"),
         }
     }
