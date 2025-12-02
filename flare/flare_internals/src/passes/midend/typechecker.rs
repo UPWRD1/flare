@@ -122,7 +122,7 @@ impl Typechecker {
 
         let check = Solver::check_with_items(source, f.body, scheme)?;
         // let infer = Solver::type_infer_with_items(source, f.body)?;
-        info!("{:?}", check);
+        // info!("{}\n", check);
         // info!(infer.scheme);
         Ok(())
     }

@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use internment::Intern;
 
 use crate::{
@@ -21,7 +23,7 @@ use crate::{
 pub trait Target: Copy {
     type Partial: Default;
     type Artifact: Default;
-    type Output: Default;
+    type Output: Default + Debug;
     // fn generate(&mut self);
     fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>);
     fn generate_item(&mut self, item: &Item) -> Self::Partial {

@@ -156,6 +156,7 @@ impl<T: Target> Context<T> {
         let mut g = Generator::new(self.target, pruned);
 
         let out = g.generate();
+        dbg!(&out);
         let elapsed = now.elapsed();
 
         Ok((out, elapsed))

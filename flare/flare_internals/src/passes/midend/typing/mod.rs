@@ -12,6 +12,7 @@ pub use types::{TyUniVar, Type, TypeVar};
 
 use std::{
     collections::BTreeSet,
+    fmt::Display,
     hash::{Hash, Hasher},
     marker::PhantomData,
 };
@@ -27,12 +28,10 @@ use crate::{
         typing::{rows::RowVar, subst::SubstOut},
     },
     resource::{
-        errors::{CompResult, CompilerErr, TypeErr},
+        errors::{CompResult, CompilerErr},
         rep::{
-            ast::{Direction, Expr, ItemId, NodeId, Untyped, Variable},
+            ast::{Expr, ItemId, NodeId, Untyped, Variable},
             common::Ident,
-            entry::Item,
-            quantifier::QualifierFragment,
             Spanned,
         },
     },
@@ -42,6 +41,12 @@ use crate::{
 pub struct Typed(pub Untyped, pub Intern<Type>);
 
 impl Variable for Typed {}
+
+impl Display for Typed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.0, self.1)
+    }
+}
 
 impl Ident for Typed {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {

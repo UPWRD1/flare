@@ -6,6 +6,8 @@ pub mod mir;
 pub mod quantifier;
 // pub mod concretetypes;
 
+use std::fmt;
+
 use chumsky::span::SimpleSpan;
 
 use files::FileID;
@@ -48,8 +50,8 @@ impl<T> SpanWrapped for Spanned<T> {
     }
 }
 
-// impl<T> std::fmt::Display for Spanned<T> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "{self}")
-//     }
-// }
+impl<T: fmt::Display> fmt::Display for Spanned<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}

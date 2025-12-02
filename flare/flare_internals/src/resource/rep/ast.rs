@@ -1,7 +1,10 @@
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt::{self, Debug, Display},
+    hash::Hash,
+};
 
 use crate::{
-    passes::midend::typing::{Row, Type},
+    passes::midend::typing::Type,
     resource::{
         errors::{CompResult, DynamicErr},
         rep::{
@@ -22,7 +25,7 @@ use super::{
 };
 
 pub trait Variable:
-    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident
+    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display
 {
 }
 
@@ -35,6 +38,12 @@ impl Variable for Untyped {}
 impl Ident for Untyped {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         Ok(self.0)
+    }
+}
+
+impl Display for Untyped {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0 .0)
     }
 }
 
@@ -61,20 +70,6 @@ pub enum Pattern<V: Variable> {
 
     Variant(Spanned<Intern<Expr<V>>>, Intern<Vec<Spanned<Self>>>),
 }
-
-// impl<V: Variable> Named for Spanned<Pattern<V>> {
-//     fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>> {
-//         match self.0 {
-//             Pattern::Variant(n, _) => n.name().ok(),
-//             Pattern::Atom(a) => match a {
-//                 PatternAtom::Type(t) => t.name().ok(),
-//                 PatternAtom::Variable(s) => s.name().ok(),
-//                 _ => None, // errors::bad_ident(expr, s),
-//             },
-//             Pattern::Tuple(_) => None,
-//         }
-//     }
-// }
 
 impl<V: Variable> Ident for Spanned<Pattern<V>> {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
@@ -156,12 +151,7 @@ where
 
     ExternFunc(Intern<Vec<QualifierFragment>>),
     Unit,
-    // Constructor(Spanned<Intern<Self>>, Vec<Spanned<Self>>),
-    // Constructor(Spanned<Intern<Self>>, Intern<Vec<Spanned<Intern<Self>>>>),
-    // FieldedConstructor(
-    // Spanned<Intern<Self>>,
-    // Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>,
-    // ),
+
     Pat(Spanned<Pattern<V>>),
 
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -187,8 +177,6 @@ where
     ),
     Lambda(V, Spanned<Intern<Self>>, bool),
     Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    // Struct(Intern<Vec<(Spanned<Intern<Self>>, Spanned<Intern<Self>>)>>),
-    // Tuple(Intern<Vec<Spanned<Intern<Self>>>>),
 }
 
 impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
@@ -304,6 +292,27 @@ impl<V: Variable> Expr<V> {
     }
 }
 
+impl<V: Variable> fmt::Display for Expr<V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expr::Ident(n) => write!(f, "{}", n),
+            Expr::Number(ordered_float) => write!(f, "{ordered_float}"),
+            Expr::String(s) => write!(f, "\"{s}\""),
+            Expr::Bool(v) => todo!(),
+            Expr::Hole(_) => todo!(),
+
+            Expr::Lambda(v, b, _) => write!(f, "|{v}| {b}"),
+            Expr::Call(l, r) => write!(f, "{l}({r})"),
+
+            Expr::Add(l, r) => write!(f, "{l} + {r}"),
+            Expr::Sub(l, r) => write!(f, "{l} - {r}"),
+            Expr::Mul(l, r) => write!(f, "{l} * {r}"),
+            Expr::Div(l, r) => write!(f, "{l} / {r}"),
+            _ => write!(f, "{self:?}"),
+        }
+    }
+}
+
 // #[derive(Debug, PartialEq)]
 // pub struct StructDef {
 //     // pub the_ty: Row,
@@ -315,12 +324,6 @@ pub struct TypeDecl {
     pub name: Spanned<Intern<String>>,
     pub ty: Type,
 }
-
-// #[derive(Debug, PartialEq)]
-// pub struct EnumDef {
-//     pub the_ty: Spanned<Intern<Ty>>,
-//     pub variants: Vec<Spanned<EnumVariant>>,
-// }
 
 #[derive(Debug, PartialEq)]
 pub struct ImportItem<V: Variable> {

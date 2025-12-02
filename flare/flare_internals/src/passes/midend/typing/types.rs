@@ -205,6 +205,16 @@ impl Type {
     }
 }
 
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unifier(u) => write!(f, "%var{}", u.0),
+            Self::Var(v) => write!(f, "?{}", v.0),
+            _ => write!(f, "{self:#?}"),
+        }
+    }
+}
+
 impl Hash for Type {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
