@@ -31,6 +31,10 @@ harness = false
 name = "environment_benches"
 harness = false
 
+[[bench]]
+name = "typechecker_benchmark"
+harness = false
+
 [features]
 testing = []
 

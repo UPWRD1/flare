@@ -56,24 +56,70 @@ impl<'env> Solver<'env> {
                 )
             }
 
-            // Expr::Let(name, body, and_in) => {
-            //     let name_tyvar = self.fresh_ty_var();
-            //     let env = env.update(name.0 .0, Type::Unifier(name_tyvar).into());
+            Expr::Add(l, r) => {
+                let left_out = self.check(env.clone(), l, Type::Num);
+                let right_out = self.check(env.clone(), r, Type::Num);
 
-            //     let (body_out, body_ty) = self.infer(env.clone(), body);
-            //     let (and_int_out, and_in_ty) = self.infer(env, and_in);
-            //     (
-            //         GenOut {
-            //             typed_ast: ast.update(Expr::Let(
-            //                 Typed(name, Type::Unifier(name_tyvar).into()),
-            //                 body_out.typed_ast,
-            //                 and_int_out.typed_ast,
-            //             )),
-            //             ..body_out
-            //         },
-            //         and_in_ty,
-            //     )
-            // }
+                let mut constraints = left_out.constraints;
+                constraints.extend(right_out.constraints);
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.update(Expr::Add(left_out.typed_ast, right_out.typed_ast)),
+                    ),
+                    Type::Num.into(),
+                )
+            }
+
+            Expr::Sub(l, r) => {
+                let left_out = self.check(env.clone(), l, Type::Num);
+                let right_out = self.check(env.clone(), r, Type::Num);
+
+                let mut constraints = left_out.constraints;
+                constraints.extend(right_out.constraints);
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.update(Expr::Sub(left_out.typed_ast, right_out.typed_ast)),
+                    ),
+                    Type::Num.into(),
+                )
+            }
+
+            Expr::Mul(l, r) => {
+                let left_out = self.check(env.clone(), l, Type::Num);
+                let right_out = self.check(env.clone(), r, Type::Num);
+
+                let mut constraints = left_out.constraints;
+                constraints.extend(right_out.constraints);
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.update(Expr::Mul(left_out.typed_ast, right_out.typed_ast)),
+                    ),
+                    Type::Num.into(),
+                )
+            }
+
+            Expr::Div(l, r) => {
+                let left_out = self.check(env.clone(), l, Type::Num);
+                let right_out = self.check(env.clone(), r, Type::Num);
+
+                let mut constraints = left_out.constraints;
+                constraints.extend(right_out.constraints);
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.update(Expr::Div(left_out.typed_ast, right_out.typed_ast)),
+                    ),
+                    Type::Num.into(),
+                )
+            }
+
             Expr::Call(fun, arg) => {
                 let (fun_out, supposed_fun_ty) = self.infer(env.clone(), fun);
                 let mut constraint = fun_out.constraints;

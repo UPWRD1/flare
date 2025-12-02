@@ -36,7 +36,7 @@ pub trait Target: Copy {
             // ItemKind::Variant(spanned) => todo!(),
             // ItemKind::Field(_) => todo!(),
             ItemKind::Function(function_item) => self.generate_func(function_item),
-            ItemKind::Extern { name, sig } => todo!(),
+            ItemKind::Extern { name, sig } => Self::Partial::default(),
             ItemKind::Dummy(_) => FatalErr::new("Cannot generate Dummy"),
             _ => todo!(),
         }

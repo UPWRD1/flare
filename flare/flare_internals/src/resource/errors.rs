@@ -59,8 +59,8 @@ impl Display for CompilerErr {
     }
 }
 
-impl ReportableError for CompilerErr {
-    fn report(&self, ctx: &FileCtx) {
+impl CompilerErr {
+    pub fn report(&self, ctx: &FileCtx) {
         self.0.report(ctx)
     }
 }
@@ -184,7 +184,9 @@ impl ErrorCollection {
 
 impl ReportableError for ErrorCollection {
     fn report(&self, ctx: &FileCtx) {
-        eprintln!("{self}")
+        for e in &self.0 {
+            e.report(ctx);
+        }
     }
 }
 

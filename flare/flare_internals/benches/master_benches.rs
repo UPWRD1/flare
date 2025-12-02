@@ -1,14 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use flare_internals::passes::midend::typing::Solver;
-use flare_internals::*;
-use flare_internals::{
-    passes::backend::c::C, passes::midend::environment::Environment, resource::rep::ast::Program,
-};
-use internment::Intern;
-
 static TEST_FILE: LazyLock<&'static Path> = LazyLock::new(|| {
     let relative_path = PathBuf::from("benches/bench_code/bench1.flr");
     let mut absolute_path = std::env::current_dir().unwrap();
@@ -17,7 +9,7 @@ static TEST_FILE: LazyLock<&'static Path> = LazyLock::new(|| {
 });
 
 pub fn main() {
-    todo!()
+    ()
 }
 
 // pub fn typechecking_bench(c: &mut Criterion) {

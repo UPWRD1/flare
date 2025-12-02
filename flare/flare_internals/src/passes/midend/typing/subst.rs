@@ -104,6 +104,8 @@ impl<'env> Solver<'env> {
     pub fn substitute_ty(&mut self, ty: Intern<Type>) -> SubstOut<Intern<Type>> {
         match *ty {
             Type::Num => SubstOut::new(Type::Num.into()),
+            Type::String => SubstOut::new(Type::Num.into()),
+
             Type::Var(v) => SubstOut::new(Type::Var(v).into()),
             Type::Unifier(v) => {
                 let root = self.unification_table.find(v);
@@ -126,7 +128,7 @@ impl<'env> Solver<'env> {
             Type::Prod(row) => self.substitute_row(row).map(Type::Prod).map(Into::into),
             Type::Sum(row) => self.substitute_row(row).map(Type::Sum).map(Into::into),
 
-            _ => todo!(),
+            _ => todo!("{ty:?}"),
         }
     }
 
@@ -140,50 +142,57 @@ impl<'env> Solver<'env> {
                 .substitute_ty(v.1)
                 .map(|ty| Spanned(Expr::Ident(Typed(v.0, ty)).into(), id)),
 
-            Expr::Number(i) => SubstOut::new(ast.replace(Expr::Number(i))),
-            Expr::String(s) => SubstOut::new(ast.replace(Expr::String(s))),
+            Expr::Number(i) => SubstOut::new(ast.update(Expr::Number(i))),
+            Expr::String(s) => SubstOut::new(ast.update(Expr::String(s))),
+
+            Expr::Add(l, r) => SubstOut::new(ast.update(Expr::Add(l, r))),
+
+            Expr::Sub(l, r) => SubstOut::new(ast.update(Expr::Sub(l, r))),
+            Expr::Mul(l, r) => SubstOut::new(ast.update(Expr::Mul(l, r))),
+            Expr::Div(l, r) => SubstOut::new(ast.update(Expr::Div(l, r))),
 
             Expr::Hole(v) => self
                 .substitute_ty(v.1)
-                .map(|ty| ast.replace(Expr::Hole(Typed(v.0, ty)))),
+                .map(|ty| ast.update(Expr::Hole(Typed(v.0, ty)))),
             Expr::Lambda(arg, body, is_anon) => self
                 .substitute_ty(arg.1)
                 .map(|ty| Typed(arg.0, ty))
                 .merge(self.substitute_ast(body), |arg, body| {
-                    ast.replace(Expr::Lambda(arg, body, is_anon))
+                    ast.update(Expr::Lambda(arg, body, is_anon))
                 }),
             Expr::Call(fun, arg) => self
                 .substitute_ast(fun)
                 .merge(self.substitute_ast(arg), |fun, arg| {
-                    ast.replace(Expr::Call(fun, arg))
+                    ast.update(Expr::Call(fun, arg))
                 }),
 
             // Label constructor and destructor
             Expr::Label(label, ast) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.replace(Expr::Label(label, nast))),
+                .map(|nast| ast.update(Expr::Label(label, nast))),
             Expr::Unlabel(ast, label) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.replace(Expr::Label(label, nast))),
+                .map(|nast| ast.update(Expr::Label(label, nast))),
             // Products constructor and destructor
             Expr::Concat(left, right) => self
                 .substitute_ast(left)
                 .merge(self.substitute_ast(right), |left, right| {
-                    ast.replace(Expr::Concat(left, right))
+                    ast.update(Expr::Concat(left, right))
                 }),
             Expr::Project(dir, ast) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.replace(Expr::Project(dir, nast))),
+                .map(|nast| ast.update(Expr::Project(dir, nast))),
             // Sums constructor and destructor
             Expr::Branch(left, right) => self
                 .substitute_ast(left)
                 .merge(self.substitute_ast(right), |left, right| {
-                    ast.replace(Expr::Branch(left, right))
+                    ast.update(Expr::Branch(left, right))
                 }),
             Expr::Inject(dir, ast) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.replace(Expr::Inject(dir, ast))),
-            Expr::Item(id, item) => SubstOut::new(ast.replace(Expr::Item(id, item))),
+                .map(|nast| ast.update(Expr::Inject(dir, ast))),
+            Expr::Item(id, item) => SubstOut::new(ast.update(Expr::Item(id, item))),
+
             _ => todo!("{ast:?}"),
         }
     }

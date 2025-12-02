@@ -7,7 +7,7 @@ use internment::Intern;
 use crate::{
     passes::midend::typing::Type,
     resource::{
-        errors::{CompResult, CompilerErr, FatalErr},
+        errors::{CompResult, CompilerErr, DynamicErr, FatalErr},
         rep::{
             ast::{Label, Untyped, Variable},
             common::{Ident, SpanWrapped},
@@ -156,7 +156,7 @@ impl Item {
     /// Get the type of the `Item`.
     pub fn get_ty(&self) -> CompResult<Spanned<Intern<Type>>> {
         fn err(t: &Item) -> CompilerErr {
-            FatalErr::new(format!("Could not get the type from {:?}", t))
+            DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
         }
         match &self.kind {
             // ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),

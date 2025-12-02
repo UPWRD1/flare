@@ -314,7 +314,7 @@ impl Environment {
     // }
 
     fn build_row(&mut self, current_node: NodeIndex, the_row: ClosedRow) -> CompResult<()> {
-        dbg!(current_node);
+        // dbg!(current_node);
         for (name, value) in the_row.fields.iter().zip(the_row.values) {
             // dbg!(name);
             let entry = Item::new(
@@ -577,49 +577,49 @@ impl Environment {
 
     // #[cfg(test)]
     // #[cfg(debug_assertions)]
-    #[cfg(feature = "testing")]
-    #[allow(clippy::disallowed_names)]
-    pub fn make_graph() -> Self {
-        // if cfg!(test) {
-        let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
-        let root = graph.add_node(Item::Root);
-        let lib_foo = graph.add_node(Item::Dummy("libFoo"));
-        let foo = graph.add_node(Item::Dummy("foo"));
-        let lib_bar = graph.add_node(Item::Dummy("libBar"));
-        let bar = graph.add_node(Item::Dummy("Bar"));
-        let baz = graph.add_node(Item::Dummy("baz"));
-        let bar_foo = graph.add_node(Item::Dummy("fooooo"));
-        graph.extend_with_edges([
-            (
-                root,
-                lib_foo,
-                QualifierFragment::Package(Intern::from_ref("Foo")),
-            ),
-            (
-                lib_foo,
-                foo,
-                QualifierFragment::Func(Intern::from_ref("foo")),
-            ),
-            (
-                root,
-                lib_bar,
-                QualifierFragment::Package(Intern::from_ref("Bar")),
-            ),
-            (
-                lib_bar,
-                bar,
-                QualifierFragment::Type(Intern::from_ref("Bar")),
-            ),
-            (bar, baz, QualifierFragment::Field(Intern::from_ref("f1"))),
-            (
-                lib_bar,
-                bar_foo,
-                QualifierFragment::Func(Intern::from_ref("foo")),
-            ),
-        ]);
+    // #[cfg(feature = "testing")]
+    // #[allow(clippy::disallowed_names)]
+    // pub fn make_graph() -> Self {
+    //     // if cfg!(test) {
+    //     let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
+    //     let root = graph.add_node(Item::Root);
+    //     let lib_foo = graph.add_node(Item::Dummy("libFoo"));
+    //     let foo = graph.add_node(Item::Dummy("foo"));
+    //     let lib_bar = graph.add_node(Item::Dummy("libBar"));
+    //     let bar = graph.add_node(Item::Dummy("Bar"));
+    //     let baz = graph.add_node(Item::Dummy("baz"));
+    //     let bar_foo = graph.add_node(Item::Dummy("fooooo"));
+    //     graph.extend_with_edges([
+    //         (
+    //             root,
+    //             lib_foo,
+    //             QualifierFragment::Package(Intern::from_ref("Foo")),
+    //         ),
+    //         (
+    //             lib_foo,
+    //             foo,
+    //             QualifierFragment::Func(Intern::from_ref("foo")),
+    //         ),
+    //         (
+    //             root,
+    //             lib_bar,
+    //             QualifierFragment::Package(Intern::from_ref("Bar")),
+    //         ),
+    //         (
+    //             lib_bar,
+    //             bar,
+    //             QualifierFragment::Type(Intern::from_ref("Bar")),
+    //         ),
+    //         (bar, baz, QualifierFragment::Field(Intern::from_ref("f1"))),
+    //         (
+    //             lib_bar,
+    //             bar_foo,
+    //             QualifierFragment::Func(Intern::from_ref("foo")),
+    //         ),
+    //     ]);
 
-        Self { graph, root }
-    }
+    //     Self { graph, root }
+    // }
 
     pub fn remove_unused(self) -> Self {
         let g = self

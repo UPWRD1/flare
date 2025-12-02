@@ -141,7 +141,7 @@ impl ItemSource {
     }
 
     fn type_of_item(&self, item_id: ItemId) -> TypeScheme {
-        dbg!(item_id);
+        // dbg!(item_id);
         // dbg!(self);
         self.types[&item_id].clone()
     }

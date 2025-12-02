@@ -21,6 +21,8 @@ impl<'env> Solver<'env> {
     pub fn normalize_ty(&mut self, ty: Intern<Type>) -> Intern<Type> {
         match *ty {
             Type::Num | Type::String | Type::Bool | Type::Unit => ty,
+
+            Type::Var(var) => Type::Var(var).into(),
             Type::Func(arg, ret) => {
                 let arg = self.normalize_ty(arg);
                 let ret = self.normalize_ty(ret);

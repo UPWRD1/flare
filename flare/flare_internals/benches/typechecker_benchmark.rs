@@ -3,7 +3,8 @@ use std::sync::LazyLock;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use flare_internals::passes::backend::c::C;
-use flare_internals::passes::midend::typechecking::Solver;
+use flare_internals::passes::midend::resolution::Resolver;
+use flare_internals::passes::midend::typechecker::Typechecker;
 use flare_internals::*;
 use flare_internals::{passes::midend::environment::Environment, resource::rep::ast::Program};
 use internment::Intern;
@@ -29,13 +30,14 @@ pub fn typechecking_bench(c: &mut Criterion) {
     //dbg!(program.clone());
     //dbg!(program.clone());
 
-    let main = Intern::from_ref("Main");
     let e = Environment::build(&program).unwrap();
-    let mut tc = Solver::new(
-        &e,
-        resource::rep::quantifier::QualifierFragment::Package(main),
-    );
-    c.bench_function("type_check", |b| b.iter(|| black_box(tc.check_item())));
+    let mut resolver = Resolver::new(e);
+    let order = resolver.build().unwrap();
+    let resolved_e = resolver.finish();
+
+    let mut tc = Typechecker::new(order.leak(), resolved_e);
+
+    c.bench_function("type_check", |b| b.iter(|| black_box(tc.check())));
     //c.bench_function("fib 20", |b| b.iter(|| flare::passes::midend::typechecking::(black_box(20))));
 }
 
