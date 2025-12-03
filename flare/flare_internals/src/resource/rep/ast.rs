@@ -243,7 +243,6 @@ impl<V: Variable> Spanned<Intern<Expr<V>>> {
                     parents
                 })
             }
-            Expr::Let(_, spanned1, spanned2) => todo!(),
             _ => todo!(),
         }
     }

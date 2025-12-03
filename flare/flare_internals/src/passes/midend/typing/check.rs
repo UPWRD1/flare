@@ -102,7 +102,7 @@ impl<'env> Solver<'env> {
                     goal: goal_row,
                 };
                 constraints.push(Constraint::RowCombine(row_comb));
-                self.row_to_combo.insert(span, row_comb);
+                self.tables.row_to_combo.insert(span, row_comb);
                 let typed_ast = Expr::Concat(left_out.typed_ast, right_out.typed_ast);
                 GenOut {
                     constraints,
@@ -126,7 +126,7 @@ impl<'env> Solver<'env> {
                 };
                 out.constraints.push(Constraint::RowCombine(row_comb));
 
-                self.row_to_combo.insert(span, row_comb);
+                self.tables.row_to_combo.insert(span, row_comb);
                 out.with_typed_ast(|ast| Spanned(Expr::Project(dir, ast).into(), span))
             }
 
@@ -159,8 +159,8 @@ impl<'env> Solver<'env> {
                 constraints.extend(right_out.constraints);
                 let row_comb = RowCombination { left, right, goal };
                 constraints.push(Constraint::RowCombine(row_comb));
-                self.row_to_combo.insert(span, row_comb);
-                self.branch_to_ret_ty.insert(span, ret_ty);
+                self.tables.row_to_combo.insert(span, row_comb);
+                self.tables.branch_to_ret_ty.insert(span, ret_ty);
 
                 GenOut {
                     constraints,
@@ -184,7 +184,7 @@ impl<'env> Solver<'env> {
                     goal,
                 };
                 out.constraints.push(Constraint::RowCombine(row_comb));
-                self.row_to_combo.insert(span, row_comb);
+                self.tables.row_to_combo.insert(span, row_comb);
                 out.with_typed_ast(|ast| Spanned(Expr::Inject(dir, ast).into(), span))
             }
             // Wildcard

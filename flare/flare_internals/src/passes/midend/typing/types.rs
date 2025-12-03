@@ -4,7 +4,7 @@ use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
 use crate::{
-    passes::midend::typing::rows::{Row, RowUniVar, RowVar},
+    passes::midend::typing::rows::{Row, RowUniVar},
     resource::{
         errors::CompResult,
         rep::{ast::Label, common::Ident, Spanned},
@@ -185,19 +185,20 @@ impl Type {
         }
     }
     pub fn destructure_arrow(&self) -> (Vec<Intern<Self>>, Intern<Self>) {
-        let (l, r) = self.split_func();
-        fn worker(t: &Intern<Type>, v: &mut Vec<Intern<Type>>) -> Vec<Intern<Type>> {
-            match **t {
+        fn worker(t: &Type, v: &mut Vec<Intern<Type>>) -> Vec<Intern<Type>> {
+            match *t {
                 Type::Func(l, r) => {
-                    v.push(r);
-                    worker(&l, v);
+                    v.push(l);
+                    worker(&r, v);
                 }
-                _ => v.push(*t),
+                _ => v.push((*t).into()),
             }
             v.to_vec()
         }
         let mut v = vec![];
-        (worker(l, &mut v), *r)
+        let v = worker(self, &mut v);
+        let (ret, args) = v.split_last().unwrap();
+        (args.to_vec(), *ret)
     }
 
     pub fn fun(arg: Self, ret: Self) -> Self {

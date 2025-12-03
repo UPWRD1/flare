@@ -3,7 +3,6 @@ use std::{
     fmt::{self, Display},
     io::Cursor,
     ops::Deref,
-    process::exit,
 };
 
 mod templates {
@@ -26,7 +25,6 @@ mod templates {
     }
 }
 
-use anyhow::Error;
 use rustc_hash::FxHashMap;
 pub(crate) use templates::*;
 
@@ -84,7 +82,7 @@ impl From<std::io::Error> for CompilerErr {
 }
 
 impl ReportableError for std::io::Error {
-    fn report(&self, ctx: &FileCtx) {
+    fn report(&self, _ctx: &FileCtx) {
         eprintln!("{self}")
     }
 }
@@ -276,7 +274,7 @@ pub struct GeneralErr {
 }
 
 impl ReportableError for GeneralErr {
-    fn report(&self, ctx: &FileCtx) {
+    fn report(&self, _ctx: &FileCtx) {
         eprintln!("{self}")
     }
 }
@@ -358,22 +356,23 @@ impl FatalErr {
     #[inline]
     #[allow(clippy::new_ret_no_self)]
     pub fn new(msg: impl Display) -> ! {
-        eprintln!("Uh oh!");
-        eprintln!("flarec encountered a fatal error during compilation.");
-        eprintln!("This is likely a bug within flarec.");
+        eprintln!("Brrrrrrrr!");
+        eprintln!("Your code was so cool, flarec ICE-d out!\n");
+        eprintln!("flarec encountered a fatal internal compiler error during compilation.");
+        eprintln!("This is a bug within flarec.");
+        eprintln!("Your code may also be bugged.\n");
         eprintln!("Please file an issue here:");
         eprintln!("\thttps://github.com/UPWRD1/flare/issues/new/choose");
-
-        eprintln!("Error details:");
-        eprintln!("\t{msg}");
-        eprintln!("flarec will now exit.");
+        eprintln!("\nError details:");
+        eprintln!("\t{msg}\n");
+        eprintln!("flarec will now panic. Goodbye.");
         panic!()
     }
 }
 
 impl From<FatalErr> for CompilerErr {
     fn from(_value: FatalErr) -> Self {
-        unreachable!("FatalErr panics on creation, this should NEVER be called. This is here to satisfy rust's typechecker.")
+        unreachable!("FatalErr panics on creation, this should NEVER be called. This is here to satisfy Rust's typechecker.")
     }
 }
 
@@ -406,7 +405,7 @@ impl Display for TypeErr {
 }
 
 impl ReportableError for TypeErr {
-    fn report(&self, ctx: &FileCtx) {
+    fn report(&self, _ctx: &FileCtx) {
         eprintln!("{self}");
     }
 }

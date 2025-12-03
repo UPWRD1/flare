@@ -22,7 +22,9 @@ impl Target for C {
     fn convert_type(&mut self, ty: Type) -> Self::Partial {
         match ty {
             Type::Num => "double".to_string(),
-            _ => todo!(),
+            Type::String => "char*".to_string(),
+            Type::Var(_) => "void*".to_string(),
+            _ => todo!("{ty:?}"),
         }
     }
 

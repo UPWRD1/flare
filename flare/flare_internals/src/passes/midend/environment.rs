@@ -21,7 +21,8 @@ use crate::{
                 Expr,
                 ImplDef,
                 Program,
-                Untyped, // Untyped, Variable
+                Untyped,
+                Variable, // Untyped, Variable
             },
             common::{Ident, Named},
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
@@ -41,7 +42,7 @@ use crate::{
 /// real reason to clone the environment.
 #[non_exhaustive]
 pub struct Environment {
-    pub graph: DiGraph<Item, QualifierFragment>,
+    pub graph: DiGraph<Item<Untyped>, QualifierFragment>,
     pub root: NodeIndex,
 }
 
@@ -61,7 +62,7 @@ impl Environment {
         &mut self,
         parent_node: NodeIndex,
         qualifier: QualifierFragment,
-        item: Item,
+        item: Item<Untyped>,
     ) -> NodeIndex {
         let child_idx = self.graph.add_node(item);
         self.graph.add_edge(parent_node, child_idx, qualifier);
@@ -93,7 +94,7 @@ impl Environment {
     /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
     /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
     /// ```
-    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item> {
+    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<Untyped>> {
         self.graph
             .node_weight(idx)
             .ok_or_else(|| FatalErr::new(format!("Bad node index: {:?}", idx)))
@@ -414,7 +415,7 @@ impl Environment {
         &self,
         frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> CompResult<(&Item, Vec<(&QualifierFragment, &Item)>)> {
+    ) -> CompResult<(&Item<Untyped>, Vec<(&QualifierFragment, &Item<Untyped>)>)> {
         let (node, children) = self.raw_get_node_and_children(frag, packctx)?;
         let node_w = self.value(node)?;
 
@@ -455,7 +456,7 @@ impl Environment {
         &self,
         frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> CompResult<Vec<(&QualifierFragment, &Item)>> {
+    ) -> CompResult<Vec<(&QualifierFragment, &Item<Untyped>)>> {
         let children = self.raw_get_children(frag, packctx)?;
 
         // children
@@ -481,7 +482,7 @@ impl Environment {
         &self,
         target: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> CompResult<&Item> {
+    ) -> CompResult<&Item<Untyped>> {
         let node = self.get_from_context(target, packctx)?;
         let node_w = self.value(node)?;
 

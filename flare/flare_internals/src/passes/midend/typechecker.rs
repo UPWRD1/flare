@@ -8,20 +8,21 @@ use rustc_hash::FxHashMap;
 use crate::{
     passes::midend::{
         environment::Environment,
-        typing::{ItemSource, Solver, Type, TypeScheme, TypeVar},
+        typing::{ItemSource, Solver, Type, TypeScheme, TypeVar, Typed},
     },
     resource::{
         errors::CompResult,
         rep::{
-            ast::{ItemId, Untyped},
-            entry::FunctionItem,
+            ast::{Expr, ItemId, Untyped},
+            entry::{FunctionItem, ItemKind},
+            Spanned,
         },
     },
 };
 
 pub struct Typechecker {
     item_order: &'static [NodeIndex],
-    context: FxHashMap<ItemId, TypeScheme>,
+    context: ItemSource,
     env: Environment,
 }
 
@@ -30,21 +31,29 @@ impl Typechecker {
         Self {
             item_order,
             env,
-            context: FxHashMap::default(),
+            context: ItemSource::new(FxHashMap::default()),
         }
     }
 
-    pub fn check(&mut self) -> CompResult<()> {
+    pub fn check(&mut self) -> CompResult<Vec<ItemKind<Typed>>> {
+        let mut accum: Vec<ItemKind<Typed>> = vec![];
         for item_idx in self.item_order {
             let item = self.env.value(*item_idx)?;
-            match item.kind {
-                crate::resource::rep::entry::ItemKind::Function(f) => {
-                    self.check_function(*item_idx, f)?
+            let new_item = match item.kind {
+                ItemKind::Function(f) => {
+                    let (ty, ast) = self.check_function(*item_idx, f)?;
+                    let name = Typed(f.name, ty);
+                    ItemKind::Function(FunctionItem {
+                        name,
+                        sig: f.sig.update(ty),
+                        body: ast,
+                    })
                 }
-                crate::resource::rep::entry::ItemKind::Type(_, t, _) => {
-                    self.check_type(*item_idx, t)
+                ItemKind::Type(n, t, s) => {
+                    self.check_type(*item_idx, t)?;
+                    ItemKind::Type(n, t, s)
                 }
-                crate::resource::rep::entry::ItemKind::Extern { name, sig } => {
+                ItemKind::Extern { name, sig } => {
                     let unbound_types = self.extract_generics(sig.0);
                     let scheme = TypeScheme {
                         unbound_types,
@@ -54,18 +63,21 @@ impl Typechecker {
                     };
                     self.context
                         .insert(ItemId(item_idx.index()), scheme.clone());
+                    ItemKind::Extern { name, sig }
                 }
-                crate::resource::rep::entry::ItemKind::Field { name, value } => {
-                    self.check_type(*item_idx, value)
+                ItemKind::Field { name, value } => {
+                    self.check_type(*item_idx, value)?;
+                    ItemKind::Field { name, value }
                 }
 
                 _ => unreachable!(),
-            }
+            };
+            accum.push(new_item)
         }
-        Ok(())
+        Ok(accum)
     }
 
-    fn check_type(&mut self, item_idx: NodeIndex, t: Intern<Type>) {
+    fn check_type(&mut self, item_idx: NodeIndex, t: Intern<Type>) -> CompResult<()> {
         let unbound_types = self.extract_generics(t);
         // TODO: Add support for rows and generics
         let scheme = TypeScheme {
@@ -75,6 +87,7 @@ impl Typechecker {
             ty: t,
         };
         self.context.insert(ItemId(item_idx.index()), scheme);
+        Ok(())
     }
 
     fn extract_generics(&mut self, t: Intern<Type>) -> BTreeSet<TypeVar> {
@@ -89,7 +102,6 @@ impl Typechecker {
                     helper(l, accum);
                     helper(r, accum);
                 }
-                Type::Package(spanned) => todo!(),
 
                 Type::Prod(row) => match row {
                     crate::passes::midend::typing::Row::Closed(closed_row) => {
@@ -108,7 +120,11 @@ impl Typechecker {
         accum
     }
 
-    fn check_function(&mut self, item_idx: NodeIndex, f: FunctionItem<Untyped>) -> CompResult<()> {
+    fn check_function(
+        &mut self,
+        item_idx: NodeIndex,
+        f: FunctionItem<Untyped>,
+    ) -> CompResult<(Intern<Type>, Spanned<Intern<Expr<Typed>>>)> {
         let unbound_types = self.extract_generics(f.sig.0);
         let scheme = TypeScheme {
             unbound_types,
@@ -118,13 +134,19 @@ impl Typechecker {
         };
         self.context
             .insert(ItemId(item_idx.index()), scheme.clone());
-        let source = ItemSource::new(self.context.clone());
 
-        let check = Solver::check_with_items(source, f.body, scheme)?;
-        // let infer = Solver::type_infer_with_items(source, f.body)?;
+        let checked_ast = Solver::check_with_items(&self.context, f.body, scheme)?;
+        let infer = Solver::type_infer_with_items(&self.context, f.body)?;
+        // let name = Typed(f.name, infer.scheme.ty);
+        Ok((infer.scheme.ty, checked_ast))
+        // Ok(ItemKind::Function( FunctionItem {
+        //     name,
+        //     sig: f.sig,
+        //     body: checked_ast,
+        // }))
+        // let infer = Solver::type_infer_with_items(&self.context, f.body)?;
         // info!("{}\n", check);
-        // info!(infer.scheme);
-        Ok(())
+        // info!("{:#?}", infer.scheme);
     }
 
     pub fn finish(self) -> Environment {

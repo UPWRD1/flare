@@ -85,9 +85,9 @@ impl<'env> Solver<'env> {
         match row {
             Row::Open(v) => SubstOut::new(Row::Open(v)),
             Row::Unifier(var) => {
-                let root = self.row_unification_table.find(var);
+                let root = self.tables.row_unification_table.find(var);
 
-                match self.row_unification_table.probe_value(root) {
+                match self.tables.row_unification_table.probe_value(root) {
           Some(Row::Unifier(_)) => panic!("Unexpected open row found as value of row unification table. This variable should've been `unify_var_var()`, not `unify_var_value()`"),
           Some(Row::Open(v)) => SubstOut::new(Row::Open(v)),
           Some(Row::Closed(row)) => self.substitute_closedrow(row).map(Row::Closed),
@@ -108,8 +108,8 @@ impl<'env> Solver<'env> {
 
             Type::Var(v) => SubstOut::new(Type::Var(v).into()),
             Type::Unifier(v) => {
-                let root = self.unification_table.find(v);
-                match self.unification_table.probe_value(root) {
+                let root = self.tables.unification_table.find(v);
+                match self.tables.unification_table.probe_value(root) {
                     Some(ty) => self.substitute_ty(ty.0),
                     None => {
                         let ty_var = self.tyvar_for_unifier(root);

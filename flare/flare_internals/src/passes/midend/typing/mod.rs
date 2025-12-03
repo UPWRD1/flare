@@ -6,7 +6,7 @@ mod subst;
 mod types;
 mod unify;
 
-pub use rows::{ClosedRow, Row};
+pub use rows::{ClosedRow, Row, RowVar};
 use rows::{RowCombination, RowUniVar};
 pub use types::{TyUniVar, Type, TypeVar};
 
@@ -14,7 +14,6 @@ use std::{
     collections::BTreeSet,
     fmt::Display,
     hash::{Hash, Hasher},
-    marker::PhantomData,
 };
 
 use ena::unify::InPlaceUnificationTable;
@@ -23,10 +22,7 @@ use internment::Intern;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHasher};
 
 use crate::{
-    passes::midend::{
-        environment::Environment,
-        typing::{rows::RowVar, subst::SubstOut},
-    },
+    passes::midend::typing::subst::SubstOut,
     resource::{
         errors::{CompResult, CompilerErr},
         rep::{
@@ -150,10 +146,19 @@ impl ItemSource {
         // dbg!(self);
         self.types[&item_id].clone()
     }
+
+    pub fn insert(&mut self, k: ItemId, v: TypeScheme) -> Option<TypeScheme> {
+        self.types.insert(k, v)
+    }
+}
+
+pub struct Solver<'env> {
+    tables: SolverTables,
+    item_source: &'env ItemSource,
 }
 
 #[derive(Default)]
-pub struct Solver<'env> {
+struct SolverTables {
     unification_table: InPlaceUnificationTable<TyUniVar>,
     row_unification_table: InPlaceUnificationTable<RowUniVar>,
 
@@ -170,18 +175,16 @@ pub struct Solver<'env> {
 
     item_wrappers: FxHashMap<NodeId, ItemWrapper>,
 
-    phantom: PhantomData<&'env Environment>,
     errors: FxHashMap<NodeId, CompilerErr>,
-    item_source: ItemSource,
 }
 
 impl<'env> Solver<'env> {
     fn fresh_ty_var(&mut self) -> TyUniVar {
-        self.unification_table.new_key(None)
+        self.tables.unification_table.new_key(None)
     }
 
     fn fresh_row_var(&mut self) -> RowUniVar {
-        self.row_unification_table.new_key(None)
+        self.tables.row_unification_table.new_key(None)
     }
 
     fn fresh_row_combination(&mut self) -> RowCombination {
@@ -193,37 +196,42 @@ impl<'env> Solver<'env> {
     }
 
     fn tyvar_for_unifier(&mut self, var: TyUniVar) -> TypeVar {
-        *self.subst_unifiers_to_tyvars.entry(var).or_insert_with(|| {
-            let next = self.next_tyvar;
-            self.next_tyvar += 1;
-            self.hasher.write_u32(next);
-            let out = self.hasher.finish().to_string().into();
-            TypeVar(out)
-        })
+        *self
+            .tables
+            .subst_unifiers_to_tyvars
+            .entry(var)
+            .or_insert_with(|| {
+                let next = self.tables.next_tyvar;
+                self.tables.next_tyvar += 1;
+                self.tables.hasher.write_u32(next);
+                let out = self.tables.hasher.finish().to_string().into();
+                TypeVar(out)
+            })
     }
 
     fn rowvar_for_unifier(&mut self, var: RowUniVar) -> RowVar {
         *self
+            .tables
             .subst_unifiers_to_rowvars
             .entry(var)
             .or_insert_with(|| {
-                let next = self.next_rowvar;
-                self.next_rowvar += 1;
+                let next = self.tables.next_rowvar;
+                self.tables.next_rowvar += 1;
                 RowVar(next)
             })
     }
 
-    pub fn type_infer(ast: Spanned<Intern<Expr<Untyped>>>) -> CompResult<TypeInferOut> {
-        let ctx = Self::default();
-        ctx.type_infer_logic(ast)
-    }
+    // pub fn type_infer(ast: Spanned<Intern<Expr<Untyped>>>) -> CompResult<TypeInferOut> {
+    //     let ctx = Self{ default();
+    //     ctx.type_infer_logic(ast)
+    // }
 
     fn normalize_mentioned_row_combs<T>(
         &mut self,
         subst_out: SubstOut<T>,
     ) -> SubstOut<(T, Vec<Evidence>)> {
         let mut subst_out = subst_out.map(|t| (t, vec![]));
-        for norm_row_comb in std::mem::take(&mut self.partial_row_combs)
+        for norm_row_comb in std::mem::take(&mut self.tables.partial_row_combs)
             .into_iter()
             .map(|row_comb| self.substitute_row_comb(row_comb))
         {
@@ -248,12 +256,12 @@ impl<'env> Solver<'env> {
     }
 
     pub fn type_infer_with_items(
-        item_source: ItemSource,
+        item_source: &'env ItemSource,
         ast: Spanned<Intern<Expr<Untyped>>>,
     ) -> CompResult<TypeInferOut> {
         let ctx = Self {
             item_source,
-            ..Default::default()
+            tables: Default::default(),
         };
         ctx.type_infer_logic(ast)
     }
@@ -274,7 +282,7 @@ impl<'env> Solver<'env> {
             .merge(self.substitute_ast(out.typed_ast), |ty, ast| (ty, ast));
 
         let mut evidence_subst = self.normalize_mentioned_row_combs(subst_out);
-        let row_to_ev = std::mem::take(&mut self.row_to_combo)
+        let row_to_ev = std::mem::take(&mut self.tables.row_to_combo)
             .into_iter()
             .map(|(id, combo)| {
                 let out = self.substitute_row_comb(combo);
@@ -283,7 +291,7 @@ impl<'env> Solver<'env> {
                 (id, out.value)
             })
             .collect();
-        let item_wrappers = std::mem::take(&mut self.item_wrappers)
+        let item_wrappers = std::mem::take(&mut self.tables.item_wrappers)
             .into_iter()
             .map(|(id, wrapper)| {
                 let out = self.substitute_wrapper(wrapper);
@@ -292,7 +300,7 @@ impl<'env> Solver<'env> {
                 (id, out.value)
             })
             .collect();
-        let branch_to_ret_ty = std::mem::take(&mut self.branch_to_ret_ty)
+        let branch_to_ret_ty = std::mem::take(&mut self.tables.branch_to_ret_ty)
             .into_iter()
             .map(|(id, ty)| {
                 let out = self.substitute_ty(ty);
@@ -306,7 +314,7 @@ impl<'env> Solver<'env> {
         let ((ty, ast), evidence) = evidence_subst.value;
         Ok(TypeInferOut {
             ast,
-            errors: self.errors,
+            errors: self.tables.errors,
             scheme: TypeScheme {
                 unbound_rows: evidence_subst.unbound_rows,
                 unbound_types: evidence_subst.unbound_tys,
@@ -319,22 +327,22 @@ impl<'env> Solver<'env> {
         })
     }
 
-    pub fn type_check(
-        ast: Spanned<Intern<Expr<Untyped>>>,
-        signature: TypeScheme,
-    ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
-        let mut ctx = Self::default();
-        ctx.type_check_logic(ast, signature)
-    }
+    // pub fn type_check(
+    //     ast: Spanned<Intern<Expr<Untyped>>>,
+    //     signature: TypeScheme,
+    // ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
+    //     let mut ctx = Self::default();
+    //     ctx.type_check_logic(ast, signature)
+    // }
 
     pub fn check_with_items(
-        item_source: ItemSource,
+        item_source: &'env ItemSource,
         ast: Spanned<Intern<Expr<Untyped>>>,
         signature: TypeScheme,
     ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
         let mut ctx = Self {
             item_source,
-            ..Default::default()
+            tables: Default::default(),
         };
         ctx.type_check_logic(ast, signature)
     }

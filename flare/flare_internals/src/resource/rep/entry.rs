@@ -55,17 +55,17 @@ pub struct FunctionItem<V: Variable> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Item {
-    pub kind: ItemKind,
+pub struct Item<V: Variable> {
+    pub kind: ItemKind<V>,
     pub is_checked: Cell<bool>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ItemKind {
+pub enum ItemKind<V: Variable> {
     Root,
     Filename(Intern<String>),
     Package(PackageEntry),
-    Function(FunctionItem<Untyped>),
+    Function(FunctionItem<V>),
     Type(
         Spanned<Intern<String>>,
         Intern<Type>,
@@ -82,7 +82,7 @@ pub enum ItemKind {
     Dummy(&'static str),
 }
 
-impl SpanWrapped for Item {
+impl<V: Variable> SpanWrapped for Item<V> {
     // TODO: Remove panicking code
     fn get_span(&self) -> chumsky::prelude::SimpleSpan<usize, u64>
     where
@@ -92,7 +92,7 @@ impl SpanWrapped for Item {
             ItemKind::Root => SimpleSpan::new(0, 0..0),
             ItemKind::Filename(_intern) => panic!(),
             ItemKind::Package(package_entry) => package_entry.name.1,
-            ItemKind::Function(function_item) => function_item.name.0 .1.union(
+            ItemKind::Function(function_item) => function_item.name.ident().unwrap().1.union(
                 function_item
                     .sig
                     // .get()
@@ -109,7 +109,7 @@ impl SpanWrapped for Item {
     }
 }
 
-impl Ident for Item {
+impl<V: Variable> Ident for Item<V> {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self.kind {
             ItemKind::Root => {
@@ -122,7 +122,7 @@ impl Ident for Item {
             // ItemKind::Enum(EnumEntry { ty, .. }) => ty.ident(),
             // Item::Variant((EnumVariant { name, .. }, _)) => &name.0,
             // ItemKind::Field((name, ..)) => Ok(name),
-            ItemKind::Function(FunctionItem { name, .. }) => Ok(name.0),
+            ItemKind::Function(FunctionItem { name, .. }) => Ok(name.ident()?),
             ItemKind::Extern { name, .. } => Ok(name),
             ItemKind::Type(name, _, _) => Ok(name),
             ItemKind::Field { name, value } => Ok(name.0),
@@ -131,8 +131,8 @@ impl Ident for Item {
     }
 }
 
-impl Item {
-    pub fn new(kind: ItemKind, is_checked: bool) -> Self {
+impl<V: Variable> Item<V> {
+    pub fn new(kind: ItemKind<V>, is_checked: bool) -> Self {
         Self {
             kind,
             is_checked: is_checked.into(),
@@ -155,7 +155,7 @@ impl Item {
 
     /// Get the type of the `Item`.
     pub fn get_ty(&self) -> CompResult<Spanned<Intern<Type>>> {
-        fn err(t: &Item) -> CompilerErr {
+        fn err<V: Variable>(t: &Item<V>) -> CompilerErr {
             DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
         }
         match &self.kind {
@@ -172,7 +172,7 @@ impl Item {
     }
 }
 
-impl Default for Item {
+impl<V: Variable> Default for Item<V> {
     fn default() -> Self {
         Self {
             kind: ItemKind::Dummy(""),

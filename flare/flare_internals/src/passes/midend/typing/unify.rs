@@ -28,9 +28,9 @@ impl<'env> Solver<'env> {
                 let ret = self.normalize_ty(ret);
                 Type::Func(arg, ret).into()
             }
-            Type::Unifier(v) => match self.unification_table.probe_value(v) {
+            Type::Unifier(v) => match self.tables.unification_table.probe_value(v) {
                 Some(ty) => self.normalize_ty(ty.0),
-                None => Type::Unifier(self.unification_table.find(v)).into(),
+                None => Type::Unifier(self.tables.unification_table.find(v)).into(),
             },
 
             Type::Label(label, ty) => {
@@ -57,7 +57,7 @@ impl<'env> Solver<'env> {
 
     fn normalize_row(&mut self, row: Row) -> Row {
         match row {
-            Row::Unifier(var) => match self.row_unification_table.probe_value(var) {
+            Row::Unifier(var) => match self.tables.row_unification_table.probe_value(var) {
                 Some(Row::Closed(closed)) => Row::Closed(self.normalize_closed_row(closed)),
                 Some(row) => row,
                 None => row,
@@ -95,6 +95,7 @@ impl<'env> Solver<'env> {
                 })
             }
             (Type::Unifier(a), Type::Unifier(b)) => self
+                .tables
                 .unification_table
                 .unify_var_var(a, b)
                 .map_err(|(l, r)| UnificationError::TypeNotEqual(*l.0, *r.0)),
@@ -102,7 +103,8 @@ impl<'env> Solver<'env> {
             (Type::Unifier(v), ty) | (ty, Type::Unifier(v)) => {
                 ty.occurs_check(v)
                     .map_err(|ty| UnificationError::InfiniteType(v, ty))?;
-                self.unification_table
+                self.tables
+                    .unification_table
                     .unify_var_value(v, Some(InternType(ty.into())))
                     .map_err(|(l, r)| UnificationError::TypeNotEqual(*l.0, *r.0))
             }
@@ -116,7 +118,7 @@ impl<'env> Solver<'env> {
         row: ClosedRow,
     ) -> Result<(), UnificationError> {
         let mut changed_combs = vec![];
-        self.partial_row_combs = std::mem::take(&mut self.partial_row_combs)
+        self.tables.partial_row_combs = std::mem::take(&mut self.tables.partial_row_combs)
             .into_iter()
             .filter_map(|comb| match comb {
                 RowCombination { left, right, goal } if left == Row::Unifier(var) => {
@@ -159,16 +161,19 @@ impl<'env> Solver<'env> {
         match (left, right) {
             (Row::Open(left), Row::Open(right)) if left == right => Ok(()),
             (Row::Unifier(l), Row::Unifier(r)) => self
+                .tables
                 .row_unification_table
                 .unify_var_var(l, r)
                 .map_err(|(_, _)| UnificationError::RowsNotEqual((left, right))),
 
             (Row::Unifier(var), Row::Open(row)) | (Row::Open(row), Row::Unifier(var)) => self
+                .tables
                 .row_unification_table
                 .unify_var_value(var, Some(Row::Open(row)))
                 .map_err(UnificationError::RowsNotEqual),
             (Row::Unifier(var), Row::Closed(row)) | (Row::Closed(row), Row::Unifier(var)) => {
-                self.row_unification_table
+                self.tables
+                    .row_unification_table
                     .unify_var_value(var, Some(Row::Closed(row)))
                     .map_err(UnificationError::RowsNotEqual)?;
                 self.dispatch_any_solved(var, row)
@@ -243,7 +248,7 @@ impl<'env> Solver<'env> {
             (left, right, goal) => {
                 let new_comb = RowCombination { left, right, goal };
                 // Check if we've already seen an combination that we can unify against
-                let poss_uni = self.partial_row_combs.iter().find_map(|comb| {
+                let poss_uni = self.tables.partial_row_combs.iter().find_map(|comb| {
                     if comb.is_unifiable(&new_comb) {
                         Some(*comb)
                     // Check the commuted row combination
@@ -269,7 +274,7 @@ impl<'env> Solver<'env> {
                     // Otherwise add our combination to our list of
                     // partial combinations
                     None => {
-                        self.partial_row_combs.insert(new_comb);
+                        self.tables.partial_row_combs.insert(new_comb);
                     }
                 }
                 Ok(())
@@ -313,7 +318,7 @@ impl<'env> Solver<'env> {
                                 (provenance.id(), TypeErr::RowNotEqual(l, r))
                             }
                         };
-                        self.errors.insert(node_id, mark.into());
+                        self.tables.errors.insert(node_id, mark.into());
                     }
                 }
                 Constraint::RowCombine(row_comb) => {

@@ -186,7 +186,7 @@ impl<'env> Solver<'env> {
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(row_comb));
-                self.row_to_combo.insert(ast.1, row_comb);
+                self.tables.row_to_combo.insert(ast.1, row_comb);
                 let typed_ast = ast.update(Expr::Concat(left_out.typed_ast, right_out.typed_ast));
                 (
                     GenOut {
@@ -241,8 +241,9 @@ impl<'env> Solver<'env> {
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(row_comb));
-                self.row_to_combo.insert(ast.1, row_comb);
-                self.branch_to_ret_ty
+                self.tables.row_to_combo.insert(ast.1, row_comb);
+                self.tables
+                    .branch_to_ret_ty
                     .insert(ast.1, Type::Unifier(ret_ty).into());
                 let typed_ast = Expr::Branch(left_out.typed_ast, right_out.typed_ast);
                 (
@@ -262,7 +263,7 @@ impl<'env> Solver<'env> {
 
                 let mut out = self.check(env, value, Type::Sum(sub_row));
                 out.constraints.push(Constraint::RowCombine(row_comb));
-                self.row_to_combo.insert(ast.1, row_comb);
+                self.tables.row_to_combo.insert(ast.1, row_comb);
                 (
                     out.with_typed_ast(|ast| ast.update(Expr::Inject(dir, ast))),
                     // Our goal row is the type of our output
@@ -316,7 +317,7 @@ impl<'env> Solver<'env> {
                         })
                         .collect(),
                 };
-                self.item_wrappers.insert(ast.1, wrapper);
+                self.tables.item_wrappers.insert(ast.1, wrapper);
                 (
                     GenOut::new(constraints, ast.update(Expr::Item(item_id, kind))),
                     ty.into(),

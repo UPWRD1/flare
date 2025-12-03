@@ -3,12 +3,9 @@ use std::fmt::Debug;
 use internment::Intern;
 
 use crate::{
-    passes::{
-        backend::c::C,
-        midend::{
-            environment::Environment,
-            typing::{Type, Typed},
-        },
+    passes::midend::{
+        environment::Environment,
+        typing::{Type, Typed},
     },
     resource::{
         errors::FatalErr,
@@ -26,8 +23,8 @@ pub trait Target: Copy {
     type Output: Default + Debug;
     // fn generate(&mut self);
     fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>);
-    fn generate_item(&mut self, item: &Item) -> Self::Partial {
-        match &item.kind {
+    fn generate_item(&mut self, item: &ItemKind<Typed>) -> Self::Partial {
+        match &item {
             ItemKind::Root => Self::Partial::default(),
             ItemKind::Package(package_entry) => {
                 //do nothing
@@ -51,7 +48,7 @@ pub trait Target: Copy {
 
 pub struct Generator<T: Target> {
     target: T,
-    env: Environment,
+    items: Vec<ItemKind<Typed>>,
     output: T::Output,
     artifact: T::Artifact,
 }
@@ -76,14 +73,8 @@ pub struct Generator<T: Target> {
 impl<T: Target> Generator<T> {
     pub fn generate(mut self) -> T::Output {
         let mut v: Vec<T::Partial> = vec![];
-        for idx in self.env.graph.node_indices() {
-            let item = self.env.graph.node_weight(idx).unwrap();
-            assert!(
-                item.is_checked(),
-                "Items should have been reduced before generation"
-            );
-
-            v.push(self.target.generate_item(item))
+        for item in self.items {
+            v.push(self.target.generate_item(&item))
         }
         self.target.finish(v)
         // self.target.finish()
@@ -91,10 +82,10 @@ impl<T: Target> Generator<T> {
     }
 }
 impl<T: Target> Generator<T> {
-    pub fn new(target: T, env: Environment) -> Self {
+    pub fn new(target: T, items: Vec<ItemKind<Typed>>) -> Self {
         Self {
             target,
-            env,
+            items,
             output: T::Output::default(),
             artifact: T::Artifact::default(),
         }

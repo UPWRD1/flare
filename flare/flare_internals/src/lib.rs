@@ -147,13 +147,12 @@ impl<T: Target> Context<T> {
         let resolved_e = resolver.finish();
 
         let mut tc = Typechecker::new(order.leak(), resolved_e);
-        tc.check()?;
-        let e = tc.finish();
+        let items = tc.check()?;
+        
         // dbg!(&e);
                 // s.check_item()?;
 
-        let pruned = e.remove_unused();
-        let mut g = Generator::new(self.target, pruned);
+        let g = Generator::new(self.target, items);
 
         let out = g.generate();
         dbg!(&out);

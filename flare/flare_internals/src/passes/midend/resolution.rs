@@ -660,7 +660,7 @@ impl Resolver {
         }
     }
 
-    fn resolve_name_generic(&mut self, name: &impl Ident) -> CompResult<&Item> {
+    fn resolve_name_generic(&mut self, name: &impl Ident) -> CompResult<&Item<Untyped>> {
         let name = name.ident()?;
 
         if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name.0), &name.1) {
