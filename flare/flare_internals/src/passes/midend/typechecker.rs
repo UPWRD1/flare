@@ -8,12 +8,13 @@ use rustc_hash::FxHashMap;
 use crate::{
     passes::midend::{
         environment::Environment,
-        typing::{ItemSource, Solver, Type, TypeScheme, TypeVar, Typed},
+        typing::{ItemSource, RowVar, Solver, Type, TypeScheme, TypeVar, Typed, TypesOutput},
     },
     resource::{
-        errors::CompResult,
+        errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
             ast::{Expr, ItemId, Untyped},
+            common::Ident,
             entry::{FunctionItem, ItemKind},
             Spanned,
         },
@@ -35,54 +36,46 @@ impl Typechecker {
         }
     }
 
-    pub fn check(&mut self) -> CompResult<Vec<ItemKind<Typed>>> {
-        let mut accum: Vec<ItemKind<Typed>> = vec![];
+    pub fn check(mut self) -> CompResult<(Vec<TypesOutput>, ItemSource)> {
+        let mut accum: Vec<TypesOutput> = vec![];
         for item_idx in self.item_order {
             let item = self.env.value(*item_idx)?;
-            let new_item = match item.kind {
+            match item.kind {
                 ItemKind::Function(f) => {
-                    let (ty, ast) = self.check_function(*item_idx, f)?;
-                    let name = Typed(f.name, ty);
-                    ItemKind::Function(FunctionItem {
-                        name,
-                        sig: f.sig.update(ty),
-                        body: ast,
-                    })
+                    let o = self.check_function(*item_idx, f)?;
+                    accum.push(o);
                 }
                 ItemKind::Type(n, t, s) => {
                     self.check_type(*item_idx, t)?;
-                    ItemKind::Type(n, t, s)
                 }
                 ItemKind::Extern { name, sig } => {
-                    let unbound_types = self.extract_generics(sig.0);
+                    let (unbound_types, unbound_rows) = Self::extract_generics(sig.0);
                     let scheme = TypeScheme {
                         unbound_types,
-                        unbound_rows: BTreeSet::new(),
+                        unbound_rows,
                         evidence: Vec::new(),
                         ty: sig.0,
                     };
                     self.context
                         .insert(ItemId(item_idx.index()), scheme.clone());
-                    ItemKind::Extern { name, sig }
                 }
                 ItemKind::Field { name, value } => {
                     self.check_type(*item_idx, value)?;
-                    ItemKind::Field { name, value }
                 }
 
                 _ => unreachable!(),
             };
-            accum.push(new_item)
         }
-        Ok(accum)
+
+        Ok((accum, self.context))
     }
 
     fn check_type(&mut self, item_idx: NodeIndex, t: Intern<Type>) -> CompResult<()> {
-        let unbound_types = self.extract_generics(t);
+        let (unbound_types, unbound_rows) = Self::extract_generics(t);
         // TODO: Add support for rows and generics
         let scheme = TypeScheme {
             unbound_types,
-            unbound_rows: BTreeSet::new(),
+            unbound_rows,
             evidence: Vec::new(),
             ty: t,
         };
@@ -90,55 +83,84 @@ impl Typechecker {
         Ok(())
     }
 
-    fn extract_generics(&mut self, t: Intern<Type>) -> BTreeSet<TypeVar> {
+    pub fn extract_generics(t: Intern<Type>) -> (BTreeSet<TypeVar>, BTreeSet<RowVar>) {
+        let mut rowcount = 0;
         let mut accum = BTreeSet::new();
-        fn helper(t: Intern<Type>, accum: &mut BTreeSet<TypeVar>) {
+        let row_accum = BTreeSet::new();
+        fn helper(
+            t: Intern<Type>,
+            accum: &mut BTreeSet<TypeVar>,
+            // _rowaccum: &mut BTreeSet<RowVar>,
+            row_count: &mut u32,
+        ) {
             match *t {
                 Type::Var(type_var) => {
                     accum.insert(type_var);
                 }
 
                 Type::Func(l, r) => {
-                    helper(l, accum);
-                    helper(r, accum);
+                    helper(l, accum, row_count);
+                    helper(r, accum, row_count);
                 }
 
-                Type::Prod(row) => match row {
+                Type::Prod(row) | Type::Sum(row) => match row {
                     crate::passes::midend::typing::Row::Closed(closed_row) => {
+                        *row_count += 1;
                         for t in closed_row.values {
-                            helper(*t, accum);
+                            helper(*t, accum, row_count);
                         }
                     }
+                    // crate::passes::midend::typing::Row::Open(o) => {
+                    // row_accum.insert(o);
+                    // *row_count += 1;
+                    // }
                     _ => panic!("Should be closed? todo"),
                 },
-                Type::Sum(row) => todo!(),
+                // Type::Sum(row) => todo!(),
                 Type::Label(label, intern) => todo!(),
+                Type::User(t) => {
+                    panic!("{t}")
+                }
                 _ => (),
             };
         }
-        helper(t, &mut accum);
-        accum
+        helper(t, &mut accum, &mut rowcount);
+        dbg!(rowcount);
+        (accum, row_accum)
     }
 
     fn check_function(
         &mut self,
         item_idx: NodeIndex,
         f: FunctionItem<Untyped>,
-    ) -> CompResult<(Intern<Type>, Spanned<Intern<Expr<Typed>>>)> {
-        let unbound_types = self.extract_generics(f.sig.0);
+    ) -> CompResult<TypesOutput> {
+        let (unbound_types, unbound_rows) = Self::extract_generics(f.sig.0);
+
         let scheme = TypeScheme {
             unbound_types,
-            unbound_rows: BTreeSet::new(),
+            unbound_rows,
             evidence: Vec::new(),
             ty: f.sig.0,
         };
+        // dbg!(&scheme);
         self.context
             .insert(ItemId(item_idx.index()), scheme.clone());
-
-        let checked_ast = Solver::check_with_items(&self.context, f.body, scheme)?;
-        let infer = Solver::type_infer_with_items(&self.context, f.body)?;
-        // let name = Typed(f.name, infer.scheme.ty);
-        Ok((infer.scheme.ty, checked_ast))
+        // dbg!(&self.context);
+        let checked =
+            Solver::check_with_items(&self.context, f.body, scheme).map_err(|e: CompilerErr| {
+                if let Some(e) = e.downcast_ref::<DynamicErr>() {
+                    e.clone()
+                        .label("this_func", f.name.ident().unwrap().1)
+                        .into()
+                } else {
+                    e
+                }
+            })?;
+        // dbg!(&checked);
+        self.context
+            .insert(ItemId(item_idx.index()), checked.scheme.clone());
+        Ok(checked)
+        // Ok(infer.scheme)
         // Ok(ItemKind::Function( FunctionItem {
         //     name,
         //     sig: f.sig,

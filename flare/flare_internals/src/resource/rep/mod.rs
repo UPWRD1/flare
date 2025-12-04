@@ -20,6 +20,22 @@ use crate::resource::rep::common::SpanWrapped;
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Spanned<T>(pub T, pub SimpleSpan<usize, FileID>);
 
+impl<T: PartialOrd> PartialOrd for Spanned<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.0.partial_cmp(&other.0) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.1.partial_cmp(&other.1)
+    }
+}
+
+impl<T: Ord> Ord for Spanned<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
 impl<T> Spanned<T> {
     pub fn replace(self, value: impl Into<T>) -> Self {
         Self(value.into(), self.1)

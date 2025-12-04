@@ -505,7 +505,7 @@ where
                                         ).into(),
                                         arg.1)
                                 })
-                                .reduce(|l, r| Spanned(Expr::Inject(Direction::Left, l).into(), l.1.union(r.1))).unwrap_unchecked()}
+                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()}
                     })
                     .labelled("tuple")
                     .as_context(),

@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    passes::midend::typing::Type,
+    passes::midend::typing::{Type, TypeScheme},
     resource::{
         errors::{CompResult, DynamicErr},
         rep::{
@@ -115,7 +115,7 @@ impl Ord for Label {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub struct ItemId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -139,6 +139,7 @@ where
     Hole(V),
 
     Item(ItemId, Kind),
+    ItemInstance(V, Intern<TypeScheme>, Spanned<Intern<Self>>),
 
     Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Project(Direction, Spanned<Intern<Self>>),
@@ -188,6 +189,7 @@ impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
                 //todo!()
                 //Some(base.0.get_ident()?.append(field.0.get_ident()?))
             }
+
             // Expr::Access(expr) => expr.name().ok(),
             Expr::Call(func, _) => func.name().ok(),
             Expr::Pat(p) => {
@@ -206,6 +208,17 @@ impl<V: Variable> Ident for Spanned<Intern<Expr<V>>> {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match *self.0 {
             Expr::Ident(s) => s.ident(),
+            Expr::Number(n) => {
+                let n: usize = if n.fract() > 0.0 {
+                    Err(DynamicErr::new(
+                        "Cannot use a floating point value as an index",
+                    ))
+                } else {
+                    Ok(n.trunc() as usize)
+                }?;
+
+                Ok(self.update(n.to_string()))
+            }
             _ => self.name()?.ident(), // _ => Err(DynamicErr::new("cannot get ident")
                                        //     .label(format!("{self:?}"), self.get_span())
                                        //     .into()),

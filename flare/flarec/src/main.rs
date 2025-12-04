@@ -13,7 +13,7 @@ fn enable_loggin() {
         if cfg!(debug_assertions) {
             std::env::set_var("RUST_LOG", "trace");
             pretty_env_logger::formatted_builder()
-                .filter_level(log::LevelFilter::Info)
+                .filter_level(log::LevelFilter::Debug)
                 //.format_module_path(false)
                 .format(|f, r| writeln!(f, "{}", r.args()))
                 .init();

@@ -19,12 +19,12 @@ use std::{
 use ena::unify::InPlaceUnificationTable;
 use internment::Intern;
 
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHasher};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet, FxHasher};
 
 use crate::{
     passes::midend::typing::subst::SubstOut,
     resource::{
-        errors::{CompResult, CompilerErr},
+        errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
             ast::{Expr, ItemId, NodeId, Untyped, Variable},
             common::Ident,
@@ -105,7 +105,7 @@ impl GenOut {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct TypeScheme {
     pub unbound_types: BTreeSet<TypeVar>,
 
@@ -125,15 +125,24 @@ pub struct TypeInferOut {
 }
 
 #[derive(Debug)]
+pub struct TypesOutput {
+    pub typed_ast: Spanned<Intern<Expr<Typed>>>,
+    pub scheme: TypeScheme,
+    pub row_to_ev: FxHashMap<NodeId, Evidence>,
+    pub branch_to_ret_ty: FxHashMap<NodeId, Intern<Type>>,
+    pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ItemWrapper {
-    types: Vec<Intern<Type>>,
-    rows: Vec<Row>,
-    evidence: Vec<Evidence>,
+    pub types: Vec<Intern<Type>>,
+    pub rows: Vec<Row>,
+    pub evidence: Vec<Evidence>,
 }
 
 #[derive(Default, Debug)]
 pub struct ItemSource {
-    types: FxHashMap<ItemId, TypeScheme>,
+    pub types: FxHashMap<ItemId, TypeScheme>,
 }
 
 impl ItemSource {
@@ -291,6 +300,7 @@ impl<'env> Solver<'env> {
                 (id, out.value)
             })
             .collect();
+
         let item_wrappers = std::mem::take(&mut self.tables.item_wrappers)
             .into_iter()
             .map(|(id, wrapper)| {
@@ -300,6 +310,7 @@ impl<'env> Solver<'env> {
                 (id, out.value)
             })
             .collect();
+
         let branch_to_ret_ty = std::mem::take(&mut self.tables.branch_to_ret_ty)
             .into_iter()
             .map(|(id, ty)| {
@@ -327,22 +338,24 @@ impl<'env> Solver<'env> {
         })
     }
 
-    // pub fn type_check(
-    //     ast: Spanned<Intern<Expr<Untyped>>>,
-    //     signature: TypeScheme,
-    // ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
-    //     let mut ctx = Self::default();
-    //     ctx.type_check_logic(ast, signature)
-    // }
-
     pub fn check_with_items(
         item_source: &'env ItemSource,
         ast: Spanned<Intern<Expr<Untyped>>>,
         signature: TypeScheme,
-    ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
+    ) -> CompResult<TypesOutput> {
         let mut ctx = Self {
             item_source,
-            tables: Default::default(),
+
+            tables: SolverTables {
+                next_tyvar: (signature.unbound_types.iter().len() + 1) as u32,
+                next_rowvar: signature
+                    .unbound_rows
+                    .iter()
+                    .max()
+                    .map(|rv| rv.0 + 1)
+                    .unwrap_or(0),
+                ..Default::default()
+            },
         };
         ctx.type_check_logic(ast, signature)
     }
@@ -351,7 +364,7 @@ impl<'env> Solver<'env> {
         &mut self,
         ast: Spanned<Intern<Expr<Untyped>>>,
         signature: TypeScheme,
-    ) -> CompResult<Spanned<Intern<Expr<Typed>>>> {
+    ) -> CompResult<TypesOutput> {
         // We start with `check` instead of `infer`.
         let mut out = self.check(im::HashMap::default(), ast, signature.ty);
 
@@ -362,13 +375,79 @@ impl<'env> Solver<'env> {
                     Constraint::RowCombine(RowCombination { left, right, goal })
                 }
             }));
-
+        // dbg!(&out.constraints);
         self.unification(out.constraints)?;
 
         // We still need to substitute, but only our ast.
-        let subst_ast = self.substitute_ast(out.typed_ast);
+        let subst_out = self.substitute_ast(out.typed_ast);
 
-        // And we're done
-        Ok(subst_ast.value)
+        // Here we have to make sure we didn't invent new constraints or types
+        // during unification, and if we did that's an error.
+        let mut evidence_subst = self.normalize_mentioned_row_combs(subst_out);
+        let row_to_ev = std::mem::take(&mut self.tables.row_to_combo)
+            .into_iter()
+            .map(|(id, combo)| {
+                let out = self.substitute_row_comb(combo);
+                evidence_subst.unbound_rows.extend(out.unbound_rows);
+                evidence_subst.unbound_tys.extend(out.unbound_tys);
+                (id, out.value)
+            })
+            .collect();
+        let item_wrappers = std::mem::take(&mut self.tables.item_wrappers)
+            .into_iter()
+            .map(|(id, wrapper)| {
+                let out = self.substitute_wrapper(wrapper);
+                evidence_subst.unbound_rows.extend(out.unbound_rows);
+                evidence_subst.unbound_tys.extend(out.unbound_tys);
+                (id, out.value)
+            })
+            .collect();
+        let branch_to_ret_ty = std::mem::take(&mut self.tables.branch_to_ret_ty)
+            .into_iter()
+            .map(|(id, ty)| {
+                let out = self.substitute_ty(ty);
+                evidence_subst.unbound_rows.extend(out.unbound_rows);
+                evidence_subst.unbound_tys.extend(out.unbound_tys);
+                (id, out.value)
+            })
+            .collect();
+        let (typed_ast, evs) = evidence_subst.value;
+
+        let extra_types = evidence_subst
+            .unbound_tys
+            .difference(&signature.unbound_types)
+            .copied()
+            .collect::<Vec<_>>();
+
+        let extra_row = evidence_subst
+            .unbound_rows
+            .difference(&signature.unbound_rows)
+            .copied()
+            .collect::<Vec<_>>();
+
+        let sig_evs = signature.evidence.iter().cloned().collect::<FxHashSet<_>>();
+        let extra_evidence = evs
+            .into_iter()
+            .collect::<FxHashSet<_>>()
+            .difference(&sig_evs)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !extra_types.is_empty() || !extra_row.is_empty() || !extra_evidence.is_empty() {
+            return Err(
+                DynamicErr::new("Checking introduced new constraints".to_string())
+                    .help(format!("extra types: {extra_types:?}"))
+                    .help(format!("extra rows: {extra_row:?}"))
+                    .help(format!("extra evidence: {extra_evidence:#?}"))
+                    .into(),
+            );
+        }
+
+        Ok(TypesOutput {
+            typed_ast,
+            scheme: signature,
+            row_to_ev,
+            branch_to_ret_ty,
+            item_wrappers,
+        })
     }
 }

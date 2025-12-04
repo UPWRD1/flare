@@ -7,7 +7,11 @@ use crate::{
     passes::midend::typing::rows::{Row, RowUniVar},
     resource::{
         errors::CompResult,
-        rep::{ast::Label, common::Ident, Spanned},
+        rep::{
+            ast::{ItemId, Label},
+            common::Ident,
+            Spanned,
+        },
     },
 };
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -20,7 +24,7 @@ impl fmt::Display for TyUniVar {
 }
 
 impl UnifyKey for TyUniVar {
-    type Value = Option<InternType>;
+    type Value = Option<Type>;
 
     fn index(&self) -> u32 {
         self.0
@@ -31,14 +35,14 @@ impl UnifyKey for TyUniVar {
     }
 
     fn tag() -> &'static str {
-        ""
+        "TypeUniVar"
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeVar(pub Intern<String>);
 
-#[derive(Copy, Clone, Debug, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
     Unknown,
     Unifier(TyUniVar),
@@ -54,6 +58,7 @@ pub enum Type {
     // Seq(&'static TyUniVar),
     // Generic(Spanned<Intern<String>>),
     Package(Spanned<Intern<String>>),
+    Item(ItemId),
 
     User(Spanned<Intern<String>>),
     Prod(Row),
@@ -61,48 +66,10 @@ pub enum Type {
     Label(Label, Intern<Self>),
 }
 
-impl PartialOrd for Type {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
+// #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+// pub struct InternType(pub Intern<Type>);
 
-impl Ord for Type {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            // Same variants - compare fields
-            (Self::Num, Self::Num) => std::cmp::Ordering::Equal,
-            (Self::Unifier(a), Self::Unifier(b)) => a.cmp(b),
-            (Self::Func(a1, a2), Self::Func(b1, b2)) => a1.cmp(b1).then_with(|| a2.cmp(b2)),
-            (Self::Prod(a), Self::Prod(b)) => a.cmp(b),
-            (Self::Sum(a), Self::Sum(b)) => a.cmp(b),
-            (Self::Label(a1, a2), Self::Label(b1, b2)) => {
-                a1.0 .0.cmp(&b1.0 .0).then_with(|| a2.cmp(b2))
-            }
-
-            // Different variants - compare discriminants
-            _ => self.discriminant().cmp(&other.discriminant()),
-        }
-    }
-}
-
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Unifier(l0), Self::Unifier(r0)) => l0 == r0,
-            (Self::Func(l0, l1), Self::Func(r0, r1)) => l0 == r0 && l1 == r1,
-            (Self::Package(l0), Self::Package(r0)) => l0.0 == r0.0,
-            (Self::Prod(l0), Self::Prod(r0)) => l0 == r0,
-            (Self::Sum(l0), Self::Sum(r0)) => l0 == r0,
-            (Self::Label(l0, l1), Self::Label(r0, r1)) => l0 == r0 && l1 == r1,
-            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
-        }
-    }
-}
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct InternType(pub Intern<Type>);
-
-impl EqUnifyValue for InternType {}
+impl EqUnifyValue for Type {}
 
 impl Ident for Type {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
@@ -115,17 +82,6 @@ impl Ident for Type {
 }
 
 impl Type {
-    fn discriminant(&self) -> usize {
-        match self {
-            Self::Num => 0,
-            Self::Unifier(_) => 1,
-            Self::Func(_, _) => 2,
-            Self::Prod(_) => 3,
-            Self::Sum(_) => 4,
-            Self::Label(_, _) => 5,
-            _ => todo!(),
-        }
-    }
     pub fn occurs_check(&self, var: TyUniVar) -> Result<(), Self> {
         match self {
             Self::Num | Self::String | Self::Bool | Self::Unit => Ok(()),
@@ -136,6 +92,7 @@ impl Type {
                     Ok(())
                 }
             }
+            Self::Var(_) => Ok(()),
             Self::Func(arg, ret) => {
                 arg.occurs_check(var).map_err(|_| *self)?;
                 ret.occurs_check(var).map_err(|_| *self)
@@ -164,6 +121,7 @@ impl Type {
         match self {
             Self::Num => false,
             Self::Unifier(v) => unbound_tys.contains(v),
+            Self::Var(_) => false,
             Self::Func(arg, ret) => {
                 arg.mentions(unbound_tys, unbound_rows) || ret.mentions(unbound_tys, unbound_rows)
             }

@@ -1,5 +1,5 @@
 use internment::Intern;
-use rustc_hash::{FxBuildHasher, FxSeededState};
+use rustc_hash::FxBuildHasher;
 
 use crate::{
     passes::midend::typing::{
@@ -19,6 +19,7 @@ impl<'env> Solver<'env> {
         the_ast: Spanned<Intern<Expr<Untyped>>>,
         ty: impl Into<Intern<Type>>,
     ) -> GenOut {
+        // dbg!(&env);
         let ty = ty.into();
         let span = the_ast.1;
         match (*the_ast.0, *ty) {
@@ -35,37 +36,17 @@ impl<'env> Solver<'env> {
             (Expr::Unit, Type::Unit) => GenOut::new(vec![], Spanned(Expr::Unit.into(), span)),
 
             // Lambdas
-            (Expr::Lambda(arg, body, is_anon), ty) => {
-                let mut constraints = vec![];
-                let (arg_ty, ret_ty) = match ty {
-                    Type::Func(arg, ret) => (*arg, *ret),
-                    ty => {
-                        let arg = self.fresh_ty_var();
-                        let ret = self.fresh_ty_var();
-
-                        constraints.push(Constraint::TypeEqual(
-                            Provenance::UnexpectedFun(span),
-                            ty.into(),
-                            Type::Func(Type::Unifier(arg).into(), Type::Unifier(ret).into()).into(),
-                        ));
-                        (Type::Unifier(arg), Type::Unifier(ret))
-                    }
-                };
-                let env = env.update(arg.0 .0, arg_ty.into());
-                let body_out = self.check(env, body, ret_ty);
-                constraints.extend(body_out.constraints);
-                GenOut {
-                    typed_ast: Spanned(
-                        Expr::Lambda(Typed(arg, arg_ty.into()), body_out.typed_ast, is_anon).into(),
-                        span,
-                    ),
-                    constraints,
-                }
+            (Expr::Lambda(arg, body, is_anon), Type::Func(arg_ty, ret_ty)) => {
+                // dbg!(arg, arg_ty);
+                let env = env.update(arg.0 .0, arg_ty);
+                self.check(env, body, ret_ty).with_typed_ast(|body| {
+                    body.replace(Expr::Lambda(Typed(arg, arg_ty), body, is_anon))
+                })
             }
 
             // Row Types
-            (Expr::Label(ast_lbl, val), Type::Label(ty_lbl, ty)) if ast_lbl == ty_lbl => self
-                .check(env, val, ty)
+            (Expr::Label(ast_lbl, term), Type::Label(ty_lbl, ty)) if ast_lbl == ty_lbl => self
+                .check(env, term, ty)
                 .with_typed_ast(|term| Spanned(Expr::Label(ast_lbl, term).into(), span)),
 
             (ast @ Expr::Concat(_, _), Type::Label(lbl, ty))

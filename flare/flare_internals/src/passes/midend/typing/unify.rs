@@ -3,10 +3,17 @@ use internment::Intern;
 use crate::{
     passes::midend::typing::{
         rows::{ClosedRow, Row, RowCombination, RowUniVar},
-        types::InternType,
-        Constraint, Provenance, Solver, TyUniVar, Type,
+        // types::InternType,
+        Constraint,
+        Provenance,
+        Solver,
+        TyUniVar,
+        Type,
     },
-    resource::errors::{CompResult, TypeErr},
+    resource::{
+        errors::{CompResult, TypeErr},
+        rep::ast::Label,
+    },
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -29,7 +36,8 @@ impl<'env> Solver<'env> {
                 Type::Func(arg, ret).into()
             }
             Type::Unifier(v) => match self.tables.unification_table.probe_value(v) {
-                Some(ty) => self.normalize_ty(ty.0),
+                Some(ty) => self.normalize_ty(ty.into()),
+                // None => Type::Unifier(self.tables.unification_table.find(v)).into(),
                 None => Type::Unifier(self.tables.unification_table.find(v)).into(),
             },
 
@@ -79,13 +87,7 @@ impl<'env> Solver<'env> {
 
             (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
             (Type::Func(a_arg, a_ret), Type::Func(b_arg, b_ret)) => {
-                self.unify_ty_ty(a_arg, b_arg).map_err(|kind| match kind {
-                    UnificationError::TypeNotEqual(a_arg, b_arg) => UnificationError::TypeNotEqual(
-                        Type::Func(a_arg.into(), a_ret),
-                        Type::Func(b_arg.into(), b_ret),
-                    ),
-                    kind => kind,
-                })?;
+                self.unify_ty_ty(a_arg, b_arg)?;
                 self.unify_ty_ty(a_ret, b_ret).map_err(|kind| match kind {
                     UnificationError::TypeNotEqual(a_ret, b_ret) => UnificationError::TypeNotEqual(
                         Type::Func(a_arg, a_ret.into()),
@@ -98,16 +100,30 @@ impl<'env> Solver<'env> {
                 .tables
                 .unification_table
                 .unify_var_var(a, b)
-                .map_err(|(l, r)| UnificationError::TypeNotEqual(*l.0, *r.0)),
+                .map_err(|(l, r)| UnificationError::TypeNotEqual(l, r)),
 
             (Type::Unifier(v), ty) | (ty, Type::Unifier(v)) => {
                 ty.occurs_check(v)
                     .map_err(|ty| UnificationError::InfiniteType(v, ty))?;
                 self.tables
                     .unification_table
-                    .unify_var_value(v, Some(InternType(ty.into())))
-                    .map_err(|(l, r)| UnificationError::TypeNotEqual(*l.0, *r.0))
+                    .unify_var_value(v, Some(ty))
+                    .map_err(|(l, r)| UnificationError::TypeNotEqual(l, r))
             }
+
+            (Type::Prod(left), Type::Prod(right)) | (Type::Sum(left), Type::Sum(right)) => {
+                self.unify_row_row(left, right)
+            }
+            (Type::Label(field, ty), Type::Prod(row))
+            | (Type::Prod(row), Type::Label(field, ty))
+            | (Type::Label(field, ty), Type::Sum(row))
+            | (Type::Sum(row), Type::Label(field, ty)) => self.unify_row_row(
+                Row::Closed(ClosedRow {
+                    fields: vec![field].leak(),
+                    values: vec![ty].leak(),
+                }),
+                row,
+            ),
             (left, right) => Err(UnificationError::TypeNotEqual(left, right)),
         }
     }
@@ -204,7 +220,7 @@ impl<'env> Solver<'env> {
         goal: ClosedRow,
         sub: ClosedRow,
     ) -> Result<ClosedRow, UnificationError> {
-        let mut diff_fields = vec![];
+        let mut diff_fields: Vec<Label> = vec![];
         let mut diff_values = vec![];
         for (field, value) in goal.fields.iter().zip(goal.values.iter()) {
             match sub.fields.binary_search(field) {
@@ -212,21 +228,21 @@ impl<'env> Solver<'env> {
                     self.unify_ty_ty(*value, sub.values[indx])?;
                 }
                 Err(_) => {
-                    diff_fields.push(field);
-                    diff_values.push(value);
+                    diff_fields.push(*field);
+                    diff_values.push(*value);
                 }
             }
         }
         Ok(ClosedRow {
             fields: diff_fields
-                .into_iter()
-                .map(|x| x.to_owned())
-                .collect::<Vec<_>>()
+                // .into_iter()
+                // .map(|x| x.to_owned())
+                // .collect::<Vec<_>>()
                 .leak(),
             values: diff_values
-                .into_iter()
-                .map(|x| x.to_owned())
-                .collect::<Vec<_>>()
+                // .into_iter()
+                // .map(|x| x.to_owned())
+                // .collect::<Vec<_>>()
                 .leak(),
         })
     }
@@ -248,21 +264,46 @@ impl<'env> Solver<'env> {
             (left, right, goal) => {
                 let new_comb = RowCombination { left, right, goal };
                 // Check if we've already seen an combination that we can unify against
-                let poss_uni = self.tables.partial_row_combs.iter().find_map(|comb| {
-                    if comb.is_unifiable(&new_comb) {
-                        Some(*comb)
-                    // Check the commuted row combination
-                    } else if comb.is_comm_unifiable(&new_comb) {
-                        // Commute our combination so we unify the correct rows later
-                        Some(RowCombination {
-                            left: comb.right,
-                            right: comb.left,
-                            goal: comb.goal,
-                        })
-                    } else {
-                        None
-                    }
-                });
+                // let poss_uni = self.tables.partial_row_combs.iter().find_map(|comb| {
+                //     if comb.is_unifiable(&new_comb) {
+                //         Some(*comb)
+                //     // Check the commuted row combination
+                //     } else if comb.is_comm_unifiable(&new_comb) {
+                //         // Commute our combination so we unify the correct rows later
+                //         Some(RowCombination {
+                //             left: comb.right,
+                //             right: comb.left,
+                //             goal: comb.goal,
+                //         })
+                //     } else {
+                //         None
+                //     }
+                // });
+
+                // Check if we've already seen an combination that we can unify against
+                let mut poss_uni = None;
+                self.tables.partial_row_combs = std::mem::take(&mut self.tables.partial_row_combs)
+                    .into_iter()
+                    .map(|comb| {
+                        let comb = RowCombination {
+                            left: self.normalize_row(comb.left),
+                            right: self.normalize_row(comb.right),
+                            goal: self.normalize_row(comb.goal),
+                        };
+                        if comb.is_unifiable(&new_comb) {
+                            poss_uni = Some(comb);
+                        //Row combinations commute so we have to check for that possible unification
+                        } else if comb.is_comm_unifiable(&new_comb) {
+                            // We commute our combination so we unify the correct rows later
+                            poss_uni = Some(RowCombination {
+                                left: comb.right,
+                                right: comb.left,
+                                goal: comb.goal,
+                            });
+                        }
+                        comb
+                    })
+                    .collect();
 
                 match poss_uni {
                     // Unify if we have a match
@@ -284,6 +325,7 @@ impl<'env> Solver<'env> {
 
     pub fn unification(&mut self, constraints: Vec<Constraint>) -> CompResult<()> {
         for constr in constraints {
+            // dbg!(&constr);
             match constr {
                 Constraint::TypeEqual(provenance, left, right) => {
                     if let Err(kind) = self.unify_ty_ty(left, right) {
@@ -329,7 +371,7 @@ impl<'env> Solver<'env> {
                 _ => todo!(),
             }
         }
-
+        // dbg!()
         Ok(())
     }
 }

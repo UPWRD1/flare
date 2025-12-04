@@ -6,15 +6,12 @@ use crate::{
     passes::{
         backend::lowering::{
             ir::{Kind, Var, IR},
-            lower_ast::{LowerAst, VarSupply},
+            lower_ast::{ItemSupply, LowerAst, VarSupply},
             lower_types::{AstTypeVar, LowerTypes},
         },
-        midend::typing::{self, Evidence, TypeScheme, Typed},
+        midend::typing::{self, Evidence, TypesOutput},
     },
-    resource::rep::{
-        ast::{Expr, NodeId},
-        entry::ItemKind,
-    },
+    resource::rep::ast::{self},
 };
 
 pub mod ir;
@@ -70,52 +67,87 @@ fn lower_ty_scheme(scheme: typing::TypeScheme) -> LoweredTyScheme {
         ev_to_ty,
     }
 }
+#[derive(Debug)]
+pub struct ItemSource {
+    items: FxHashMap<ast::ItemId, Type>,
+}
 
-pub struct TypesOutput {
-    typed_ast: Expr<Typed>,
-    scheme: TypeScheme,
-    row_to_ev: FxHashMap<NodeId, Evidence>,
-    branch_to_ret_ty: FxHashMap<NodeId, typing::Type>,
+impl ItemSource {
+    pub fn lookup_item(&self, item: ast::ItemId) -> Type {
+        self.items[&item].clone()
+    }
 }
 
 pub struct Lowerer {
-    items: Vec<ItemKind<Typed>>,
+    items: Vec<TypesOutput>,
+    // source: typing::ItemSource,
 }
-
 impl Lowerer {
-    fn new(items: Vec<ItemKind<Typed>>) -> Self {
+    pub fn new(items: Vec<TypesOutput>) -> Self {
         Self { items }
     }
 
-    fn lower(&mut self) -> Vec<IR> {
-        for item in &self.items {}
-        todo!()
+    pub fn lower(&mut self, source: typing::ItemSource) -> Vec<(IR, Type)> {
+        // dbg!(&source);
+        let source = Self::lower_item_source(source);
+        self.items
+            .iter()
+            .map(|item| Self::lower_logic(&source, item))
+            .collect()
     }
 
-    fn lower_logic(out: TypesOutput) -> (IR, Type) {
-        let lowered_scheme = lower_ty_scheme(out.scheme);
+    fn lower_item_source(items: typing::ItemSource) -> ItemSource {
+        ItemSource {
+            items: items
+                .types
+                .into_iter()
+                .map(|(item_id, ty_scheme)| {
+                    let LoweredTyScheme { scheme, .. } = lower_ty_scheme(ty_scheme);
+                    (item_id, scheme)
+                })
+                .collect(),
+        }
+    }
 
-        let mut supply = VarSupply::default();
+    fn lower_logic(item_source: &ItemSource, out: &TypesOutput) -> (IR, Type) {
+        let lowered_scheme = lower_ty_scheme(out.scheme.clone());
+
+        let mut var_supply = VarSupply::default();
         let mut params = vec![];
         let ev_to_var = lowered_scheme
             .ev_to_ty
             .into_iter()
             .map(|(ev, ty)| {
-                let param = supply.supply();
+                let param = var_supply.supply();
                 let var = Var::new(param, ty);
                 params.push(var.clone());
                 (ev, var)
             })
             .collect();
-
+        let mut item_supply = ItemSupply::default();
         let mut lower_ast = LowerAst::new(
-            supply,
+            var_supply,
             lowered_scheme.lower_types,
             ev_to_var,
-            out.row_to_ev,
-            out.branch_to_ret_ty,
+            &out.row_to_ev,
+            &out.branch_to_ret_ty,
+            &out.item_wrappers,
+            item_source,
+            &mut item_supply,
         );
         let ir = lower_ast.lower_ast(out.typed_ast);
-        todo!()
+        let solved_ir = lower_ast
+            .solved
+            .into_iter()
+            .fold(ir, |ir, (var, solved)| IR::local(var, solved, ir));
+        let param_ir = params
+            .into_iter()
+            .rfold(solved_ir, |ir, var| IR::fun(var, ir));
+
+        let bound_ir = lowered_scheme
+            .kinds
+            .into_iter()
+            .fold(param_ir, |ir, kind| IR::ty_fun(kind, ir));
+        (bound_ir, lowered_scheme.scheme)
     }
 }

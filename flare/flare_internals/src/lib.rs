@@ -52,7 +52,7 @@ use rustc_hash::{FxHashMap, FxHasher};
 use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
-        backend::target::{Generator, Target},
+        backend::{lowering::Lowerer, target::{Generator, Target}},
         midend::{environment::Environment, resolution::Resolver, typechecker::Typechecker, },
         parser,
     },
@@ -146,16 +146,18 @@ impl<T: Target> Context<T> {
         let order = resolver.build()?;
         let resolved_e = resolver.finish();
 
-        let mut tc = Typechecker::new(order.leak(), resolved_e);
-        let items = tc.check()?;
+        let tc = Typechecker::new(order.leak(), resolved_e);
+        let (items, source) = tc.check()?;
         
-        // dbg!(&e);
+        let mut lowerer = Lowerer::new(items);
+        let out = lowerer.lower(source);
+        dbg!(&out);
                 // s.check_item()?;
 
-        let g = Generator::new(self.target, items);
+        let g = Generator::new(self.target, vec![]);
 
         let out = g.generate();
-        dbg!(&out);
+        // dbg!(&out);
         let elapsed = now.elapsed();
 
         Ok((out, elapsed))

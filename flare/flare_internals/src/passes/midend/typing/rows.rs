@@ -23,7 +23,7 @@ impl UnifyKey for RowUniVar {
     }
 
     fn tag() -> &'static str {
-        "RowVar"
+        "RowUniVar"
     }
 }
 
@@ -47,10 +47,15 @@ impl Row {
 
     pub fn equatable(&self, other: &Self) -> bool {
         match (self, other) {
-            // Open rows are equatable when their variables are equal
+            // Unifier rows are equatable when their variables are equal
             (Self::Unifier(a), Self::Unifier(b)) => a == b,
+
+            // Open rows are equatable when their variables are equal
+            (Self::Open(a), Self::Open(b)) => a == b,
+
             // Closed rows are equatable when their fields are equal
             (Self::Closed(a), Self::Closed(b)) => a.fields == b.fields,
+
             // Anything else is not equatable
             _ => false,
         }
@@ -143,6 +148,8 @@ impl PartialOrd for ClosedRow {
         Some(self.cmp(other))
     }
 }
+
+impl EqUnifyValue for ClosedRow {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RowCombination {

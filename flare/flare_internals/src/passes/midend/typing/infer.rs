@@ -1,5 +1,5 @@
 use internment::Intern;
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHasher, FxSeededState};
+use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     passes::midend::typing::{
@@ -18,7 +18,7 @@ impl<'env> Solver<'env> {
         env: im::HashMap<Intern<String>, Intern<Type>, FxBuildHasher>,
         ast: Spanned<Intern<Expr<Untyped>>>,
     ) -> (GenOut, Intern<Type>) {
-        // dbg!(ast.0);
+        // dbg!(&env);
         match *ast.0 {
             Expr::Number(n) => (
                 GenOut::new(vec![], ast.update(Expr::Number(n))),
@@ -32,10 +32,10 @@ impl<'env> Solver<'env> {
             Expr::Ident(v) => {
                 // dbg!(v);
                 // dbg!(env.keys().collect::<Vec<_>>());
-                let ty = env[&v.0 .0];
+                let ty = &env[&v.0 .0];
                 (
-                    GenOut::new(vec![], ast.update(Expr::Ident(Typed(v, ty)))),
-                    ty,
+                    GenOut::new(vec![], ast.update(Expr::Ident(Typed(v, *ty)))),
+                    *ty,
                 )
             }
             Expr::Lambda(arg, body, is_anon) => {
@@ -121,28 +121,20 @@ impl<'env> Solver<'env> {
             }
 
             Expr::Call(fun, arg) => {
-                let (fun_out, supposed_fun_ty) = self.infer(env.clone(), fun);
-                let mut constraint = fun_out.constraints;
-                let (arg_ty, ret_ty) = match *supposed_fun_ty {
-                    Type::Func(arg, ret) => (*arg, *ret),
-                    ty => {
-                        let arg = self.fresh_ty_var();
-                        let ret = self.fresh_ty_var();
+                let (arg_out, arg_ty) = self.infer(env.clone(), arg);
 
-                        constraint.push(Constraint::TypeEqual(
-                            Provenance::AppExpectedFun(ast.1),
-                            ty.into(),
-                            Type::Func(Type::Unifier(arg).into(), Type::Unifier(ret).into()).into(),
-                        ));
+                let ret_ty = Type::Unifier(self.fresh_ty_var());
+                let fun_ty = Type::Func(arg_ty, ret_ty.into());
 
-                        (Type::Unifier(arg), Type::Unifier(ret))
-                    }
-                };
-                let arg_out = self.check(env, arg, arg_ty);
-                constraint.extend(arg_out.constraints);
+                let fun_out = self.check(env, fun, fun_ty);
+
                 (
                     GenOut::new(
-                        constraint,
+                        arg_out
+                            .constraints
+                            .into_iter()
+                            .chain(fun_out.constraints)
+                            .collect(),
                         ast.update(Expr::Call(fun_out.typed_ast, arg_out.typed_ast)),
                     ),
                     ret_ty.into(),
@@ -322,6 +314,10 @@ impl<'env> Solver<'env> {
                     GenOut::new(constraints, ast.update(Expr::Item(item_id, kind))),
                     ty.into(),
                 )
+            }
+
+            Expr::ItemInstance(n, t, v) => {
+                todo!()
             }
             _ => todo!("{:?}", ast.0),
         }

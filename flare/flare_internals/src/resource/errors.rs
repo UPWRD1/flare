@@ -193,7 +193,8 @@ pub struct DynamicErr {
     //context: Option<Context>,
     msg: String,
     label: Option<(String, SimpleSpan<usize, FileID>)>,
-    extra_labels: Option<Vec<(String, SimpleSpan<usize, FileID>)>>,
+    extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
+    help: Vec<String>,
 }
 
 impl DynamicErr {
@@ -201,7 +202,8 @@ impl DynamicErr {
         Self {
             msg: msg.into(),
             label: None,
-            extra_labels: None,
+            extra_labels: vec![],
+            help: vec![],
         }
     }
 
@@ -214,19 +216,30 @@ impl DynamicErr {
 
     pub fn extra_labels(self, extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>) -> Self {
         Self {
-            extra_labels: Some(extra_labels),
+            extra_labels,
             ..self
         }
     }
 
+    pub fn help(self, text: impl Into<String>) -> Self {
+        Self {
+            help: [self.help, vec![text.into()]].concat(),
+            ..self
+        }
+    }
+
+    pub fn extra(self, text: impl Into<String>, span: SimpleSpan<usize, FileID>) -> Self {
+        Self {
+            extra_labels: [self.extra_labels, vec![(text.into(), span)]].concat(),
+            ..self
+        }
+    }
     pub fn generate_sources(&self, context: &FileCtx) -> Vec<(&'static str, &'static str)> {
         let mut source_ids: Vec<u64> = vec![];
         let label_origin = self.label.as_ref().unwrap().1.context;
         source_ids.push(label_origin);
-        let mut extra_labels_origin: Vec<u64> = self
-            .extra_labels
-            .as_ref()
-            .map_or_else(Vec::new, |v| v.iter().map(|x| x.1.context).collect());
+        let mut extra_labels_origin: Vec<u64> =
+            self.extra_labels.iter().map(|x| x.1.context).collect();
         source_ids.append(&mut extra_labels_origin);
         let mut new_sources = vec![];
         for k in source_ids {
@@ -244,7 +257,8 @@ impl DynamicErr {
             label: self
                 .label
                 .unwrap_or(("here".to_string(), SimpleSpan::new(0, 0..0))),
-            extra_labels: self.extra_labels.unwrap_or_default(),
+            extra_labels: self.extra_labels,
+            help: self.help,
             context: context.clone(),
             sources: s,
         }
@@ -269,6 +283,7 @@ pub struct GeneralErr {
     msg: String,
     label: (String, SimpleSpan<usize, FileID>),
     extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
+    help: Vec<String>,
     context: FxHashMap<FileID, FileSource<'static>>,
     sources: Vec<(&'static str, &'static str)>,
 }
@@ -282,7 +297,7 @@ impl ReportableError for GeneralErr {
 impl std::fmt::Display for GeneralErr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut buf = Cursor::new(vec![]);
-        let rep = Report::build(
+        let mut rep = Report::build(
             ReportKind::Error,
             (self.sources.first().unwrap().0, self.label.1.into_range()),
         )
@@ -320,6 +335,7 @@ impl std::fmt::Display for GeneralErr {
             .with_message(label2.0.as_str())
             .with_color(Color::Yellow)
         }));
+        rep.with_helps(self.help.clone());
 
         rep.finish()
             .write(sources(self.sources.clone()), &mut buf)

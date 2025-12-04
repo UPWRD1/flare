@@ -30,7 +30,7 @@ pub struct LowerTypes {
 }
 
 impl LowerTypes {
-    fn lower_row_ty(&self, row: typing::Row) -> Row {
+    pub fn lower_row_ty(&self, row: typing::Row) -> Row {
         match row {
             typing::Row::Open(var) => Row::Open(self.env[&AstTypeVar::Row(var)]),
             typing::Row::Closed(closed_row) => Row::Closed(self.lower_closed_row_ty(closed_row)),
@@ -49,6 +49,7 @@ impl LowerTypes {
     pub fn lower_ty(&self, ty: typing::Type) -> Type {
         match ty {
             typing::Type::Num => Type::Num,
+            typing::Type::Unit => Type::Unit,
             typing::Type::Var(v) => Type::Var(self.env[&AstTypeVar::Ty(v)]),
             typing::Type::Func(arg, ret) => {
                 let arg = self.lower_ty(*arg);

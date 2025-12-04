@@ -8,6 +8,10 @@ pub struct TypeVar(pub usize);
 #[derive(PartialEq, Eq, PartialOrd, Clone, Debug, Hash)]
 pub enum Type {
     Num,
+    Unit,
+    Str,
+    Bool,
+
     Var(TypeVar),
 
     Fun(Box<Self>, Box<Self>),
@@ -56,6 +60,9 @@ impl Type {
 #[repr(transparent)]
 pub struct VarId(pub usize);
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
+pub struct ItemId(pub u32);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Var {
     id: VarId,
@@ -100,6 +107,11 @@ pub enum IR {
     Fun(Var, Box<Self>),
     App(Box<Self>, Box<Self>),
 
+    Add(Box<Self>, Box<Self>),
+    Sub(Box<Self>, Box<Self>),
+    Mul(Box<Self>, Box<Self>),
+    Div(Box<Self>, Box<Self>),
+
     TyFun(Kind, Box<Self>),
     TyApp(Box<Self>, TyApp),
     Local(Var, Box<Self>, Box<Self>),
@@ -108,19 +120,36 @@ pub enum IR {
     Field(Box<Self>, usize),
     Tag(Type, usize, Box<Self>),
     Case(Type, Box<Self>, Vec<Branch>),
-}
 
+    Item(Type, ItemId),
+}
+#[allow(clippy::should_implement_trait)]
 impl IR {
+    pub fn add(l: Self, r: Self) -> Self {
+        Self::Add(Box::new(l), Box::new(r))
+    }
+
+    pub fn sub(l: Self, r: Self) -> Self {
+        Self::Sub(Box::new(l), Box::new(r))
+    }
+    pub fn mul(l: Self, r: Self) -> Self {
+        Self::Mul(Box::new(l), Box::new(r))
+    }
+    pub fn div(l: Self, r: Self) -> Self {
+        Self::Div(Box::new(l), Box::new(r))
+    }
+
     pub fn fun(v: Var, b: Self) -> Self {
         Self::Fun(v, Box::new(b))
     }
 
-    pub fn funs<I>(vars: I, body: IR) -> IR
+    pub fn funs<I>(vars: I, body: Self) -> Self
     where
         I: IntoIterator<Item = Var>,
         I::IntoIter: DoubleEndedIterator,
     {
-        vars.into_iter().rfold(body, |body, var| IR::fun(var, body))
+        vars.into_iter()
+            .rfold(body, |body, var| Self::fun(var, body))
     }
 
     pub fn app(l: Self, r: Self) -> Self {
@@ -129,6 +158,10 @@ impl IR {
 
     pub fn ty_fun(k: Kind, b: Self) -> Self {
         Self::TyFun(k, Box::new(b))
+    }
+
+    pub fn ty_app(b: Self, t: TyApp) -> Self {
+        Self::TyApp(Box::new(b), t)
     }
 
     pub fn field(f: Self, i: usize) -> Self {
@@ -151,7 +184,7 @@ impl IR {
         Self::Local(var, Box::new(defn), Box::new(body))
     }
 
-    pub fn branch(param: Var, body: IR) -> Branch {
+    pub fn branch(param: Var, body: Self) -> Branch {
         Branch { param, body }
     }
     pub fn type_of(&self) -> Type {
@@ -215,24 +248,36 @@ impl IR {
             }
             Self::Case(ty, elem, branches) => {
                 let Type::Sum(Row::Closed(elems)) = elem.type_of() else {
-                    panic!("ICE: Case scrutinee does not have sum type")
+                    FatalErr::new("Case scrutinee does not have sum type")
                 };
 
                 for (branch, elem) in branches.iter().zip(elems.iter()) {
                     if elem != &branch.param.ty {
-                        panic!(
-                            "ICE: Branch has unexpected parameter type {:?} != {:?}",
+                        FatalErr::new(format!(
+                            "Branch has unexpected parameter type {:?} != {:?}",
                             elem.clone(),
                             branch.param.ty.clone()
-                        )
+                        ))
                     }
 
                     if ty != &branch.body.type_of() {
-                        panic!("ICE: Branch body has unexpected type")
+                        FatalErr::new("ICE: Branch body has unexpected type")
                     }
                 }
 
                 ty.clone()
+            }
+            Self::Item(t, _) => t.clone(),
+            // These should all be numbers
+            Self::Add(l, r) | Self::Sub(l, r) | Self::Mul(l, r) | Self::Div(l, r) => {
+                let lty = l.type_of();
+                let rty = r.type_of();
+                if lty != rty || lty != Type::Num {
+                    FatalErr::new(
+                        "Expected number type in arithmatic operation while generating IR",
+                    )
+                }
+                Type::Num
             }
         }
     }

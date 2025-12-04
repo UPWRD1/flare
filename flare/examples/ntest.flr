@@ -46,23 +46,27 @@ package Main =
     struct Person =
         name: str,
         age: num,
-        # eye_color: EyeColor,
+    #     # eye_color: EyeColor,
 
-    struct Wrapper =
-        value: Person,
-        meta: str,
+    # struct Wrapper =
+        # value: Person,
+        # meta: str,
         # extra: Extra,
     #     catchphrase: unit -> ?T,
     #     behavior: Term
 
     let multiply x y : ?T -> ?T =
-        let ret = x * y in ret
+        x * y
 
-    let main : unit -> Wrapper =
-        let p = Person {name = "joe", age = 3000, } in
+    let main : unit -> num =
+        let p = Person {name = "joe", age = 3000 } in
+        # let tuple = {1, 2, 3} in
         # let p2 = Person {name = "joe", age = 4000} in
-        let w = Wrapper {value = p, meta = "asdf", } in
-            let m = multiply p.age (1/2) in w.value.age
+        # let w = {value = p, meta = "asdf" } in
+            # let m = multiply p.age (1/2) in
+            # w.value
+            p.name
+            # tuple.0
 
                 # id multiply 3 4
             

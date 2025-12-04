@@ -4,12 +4,14 @@ use internment::Intern;
 
 use crate::{
     passes::midend::typing::{
-        rows::{RowCombination, RowUniVar, RowVar},
+        rows::{RowCombination, RowVar},
         types::TypeVar,
-        ClosedRow, Evidence, ItemWrapper, Row, Solver, TyUniVar, Type, Typed,
+        ClosedRow, Evidence, ItemWrapper, Row, Solver, Type, Typed,
     },
     resource::rep::{ast::Expr, Spanned},
 };
+
+#[derive(Debug)]
 pub struct SubstOut<T> {
     pub unbound_tys: BTreeSet<TypeVar>,
     pub unbound_rows: BTreeSet<RowVar>,
@@ -25,11 +27,8 @@ impl<T> SubstOut<T> {
         }
     }
 
-    fn insert_unbound_ty(&mut self, ty_var: TypeVar) {
-        self.unbound_tys.insert(ty_var);
-    }
     fn with_unbound_ty(mut self, ty_var: TypeVar) -> Self {
-        self.insert_unbound_ty(ty_var);
+        self.unbound_tys.insert(ty_var);
         self
     }
 
@@ -106,11 +105,13 @@ impl<'env> Solver<'env> {
             Type::Num => SubstOut::new(Type::Num.into()),
             Type::String => SubstOut::new(Type::Num.into()),
 
+            Type::Unit => SubstOut::new(Type::Unit.into()),
+
             Type::Var(v) => SubstOut::new(Type::Var(v).into()),
             Type::Unifier(v) => {
                 let root = self.tables.unification_table.find(v);
                 match self.tables.unification_table.probe_value(root) {
-                    Some(ty) => self.substitute_ty(ty.0),
+                    Some(ty) => self.substitute_ty(ty.into()),
                     None => {
                         let ty_var = self.tyvar_for_unifier(root);
                         SubstOut::new(Type::Var(ty_var).into()).with_unbound_ty(ty_var)
@@ -190,7 +191,7 @@ impl<'env> Solver<'env> {
                 }),
             Expr::Inject(dir, ast) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.update(Expr::Inject(dir, ast))),
+                .map(|nast| ast.update(Expr::Inject(dir, nast))),
             Expr::Item(id, item) => SubstOut::new(ast.update(Expr::Item(id, item))),
 
             _ => todo!("{ast:?}"),

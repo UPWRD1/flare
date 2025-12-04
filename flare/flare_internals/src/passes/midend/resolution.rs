@@ -5,13 +5,15 @@ use petgraph::{
     graph::NodeIndex,
     visit::{EdgeRef, IntoNodeReferences, Topo, Walker},
 };
+use rustc_hash::FxHashSet;
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 
 use crate::{
     passes::midend::{
         environment::Environment,
-        typing::{ClosedRow, Type},
+        typechecker::Typechecker,
+        typing::{ClosedRow, Solver, Type, TypeScheme},
     },
     resource::{
         errors::{self, not_defined, CompResult, CompilerErr, DynamicErr},
@@ -44,6 +46,8 @@ pub struct Resolver {
     current_parent: QualifierFragment,
     current_dag_node: Option<NodeIndex>,
     pub dag: DiGraph<usize, ()>,
+    main_dag_idx: Option<usize>,
+    // new_rows: FxHashSet,
 }
 
 impl Resolver {
@@ -53,6 +57,7 @@ impl Resolver {
             current_parent: QualifierFragment::Root,
             current_dag_node: None,
             dag: DiGraph::new(),
+            main_dag_idx: None,
         }
     }
 
@@ -88,11 +93,12 @@ impl Resolver {
             // dbg!(&name);
             self.analyze_package(idx, p)?
         }
+
         self.dag = self.dag.clone().filter_map_owned(
             |idx, n| {
                 let var_name = self.dag.neighbors_undirected(idx).count();
-                // dbg!(self.env.value(NodeIndex::from(n as u32)), var_name);
-                if var_name > 0 {
+                // dbg!(n); // dbg!(self.env.value(NodeIndex::from(n as u32)), var_name);
+                if var_name > 0 || Some(n) == self.main_dag_idx {
                     Some(n)
                 } else {
                     None
@@ -100,7 +106,7 @@ impl Resolver {
             },
             |_, e| Some(e),
         );
-        // self.debug();
+        self.debug();
 
         let flat: Vec<NodeIndex> = Topo::new(&self.dag).iter(&self.dag).collect();
         let flat: Vec<NodeIndex> = flat
@@ -144,6 +150,9 @@ impl Resolver {
             match item_kind {
                 ItemKind::Package(_) => Ok::<(), CompilerErr>(()),
                 ItemKind::Function(mut f) => {
+                    if *f.name.0 .0 == "main" {
+                        self.main_dag_idx = Some(child);
+                    }
                     // Analyze the function (doesn't touch the graph)
                     self.analyze_func(&mut f, dag_idx)?;
 
@@ -174,9 +183,9 @@ impl Resolver {
                     Ok(())
                 }
                 ItemKind::Field { name, value } => {
-                    let t = self.in_context(|me| me.analyze_type(value), dag_idx)?;
-
-                    // Write back the result
+                    // let t = self.in_context(|me| me.analyze_type(value), dag_idx)?;
+                    let t = self.analyze_type(value)?;
+                    dbg!(value, t); // Write back the result
                     let item = self
                         .env
                         .graph
@@ -193,6 +202,7 @@ impl Resolver {
                     }
                     Ok(())
                 }
+
                 ItemKind::Extern { name, sig } => {
                     let old_sig = sig;
                     let t = self.in_context(|me| me.analyze_type(sig.0), dag_idx)?;
@@ -221,7 +231,6 @@ impl Resolver {
         dag_idx: NodeIndex,
         // dag: &mut DiGraph<usize, ()>,
     ) -> T {
-        // dbg!(idx);
         let old = self.current_dag_node;
         self.current_dag_node = Some(dag_idx);
 
@@ -270,7 +279,7 @@ impl Resolver {
             Type::User(name) => {
                 let the_item = self.resolve_name_generic(&name)?;
                 if let ItemKind::Type(_, new_t, _) = the_item.kind {
-                    Ok(new_t)
+                    self.analyze_type(new_t)
                 } else {
                     Err(DynamicErr::new(format!("{} is not a type", name.0))
                         .label("", name.1)
@@ -278,6 +287,35 @@ impl Resolver {
                 }
             }
             Type::Prod(r) => {
+                let new_r = match r {
+                    super::typing::Row::Closed(closed_row) => {
+                        let new_values: CompResult<Vec<Intern<Type>>> = closed_row
+                            .fields
+                            .iter()
+                            .map(|n| -> CompResult<Intern<Type>> {
+                                let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                                self.analyze_type(t)
+                            })
+                            .collect();
+
+                        // let new_values: CompResult<Vec<Intern<Type>>> = closed_row
+                        //     .values
+                        //     .iter()
+                        //     .map(|t| -> CompResult<Intern<Type>> { self.analyze_type(*t) })
+                        //     .collect();
+                        let values = new_values?.leak();
+                        let cr = ClosedRow {
+                            values,
+                            ..closed_row
+                        };
+                        crate::passes::midend::typing::Row::Closed(cr)
+                    }
+                    _ => unreachable!("All rows should be closed"),
+                };
+                Ok(Type::Prod(new_r).into())
+            }
+
+            Type::Sum(r) => {
                 let new_r = match r {
                     super::typing::Row::Closed(closed_row) => {
                         let new_values: CompResult<Vec<Intern<Type>>> = closed_row
@@ -297,12 +335,12 @@ impl Resolver {
                     }
                     _ => unreachable!("All rows should be closed"),
                 };
-                Ok(Type::Prod(new_r).into())
+                Ok(Type::Sum(new_r).into())
             }
             _ => Ok(t),
         }
         // .inspect(|x| {
-        //     dbg!(x);
+        //     dbg!(t, x);
         // })
     }
 
@@ -317,7 +355,7 @@ impl Resolver {
                 if vars
                     .iter()
                     .rev()
-                    .any(|n| name.ident().is_ok_and(|name| *n.0 == *name.0))
+                    .any(|n| name.ident().is_ok_and(|name| n.0 == name.0))
                 {
                     Ok(expr)
                 } else {
@@ -327,21 +365,22 @@ impl Resolver {
             Expr::Concat(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
+                // let t = Type::Prod(crate::passes::midend::typing::Row::Closed(());
                 Ok(expr.update(Expr::Concat(l, r)))
             }
-            Expr::Project(direction, spanned) => todo!(),
+            // Expr::Project(direction, spanned) => todo!(),
             Expr::Inject(direction, ex) => {
                 let ex = self.analyze_expr(ex, vars)?;
                 Ok(expr.update(Expr::Inject(direction, ex)))
             }
-            Expr::Branch(spanned, spanned1) => todo!(),
-            Expr::Label(l, v) => {
-                let new_vars = [vars, &[(l.0 .0, v)]].concat();
+            // Expr::Branch(spanned, spanned1) => todo!(),
+            // Expr::Label(l, v) => {
+            //     let new_vars = [vars, &[(l.0 .0, v)]].concat();
 
-                let v = self.analyze_expr(v, &new_vars)?;
-                Ok(expr.update(Expr::Label(l, v)))
-            }
-            Expr::Unlabel(spanned, label) => todo!(),
+            //     let v = self.analyze_expr(v, &new_vars)?;
+            //     Ok(expr.update(Expr::Label(l, v)))
+            // }
+            // Expr::Unlabel(spanned, label) => todo!(),
             Expr::ExternFunc(intern) => todo!(),
             Expr::Pat(spanned) => todo!(),
             Expr::Mul(l, r) => {
@@ -372,35 +411,44 @@ impl Resolver {
                 if let Expr::Item(id, Kind::Func) = *func.0 {
                     let ty = self.env.value(NodeIndex::new(id.0))?;
                     let name = ty.ident()?;
-                    if let Ok(the_type) = ty.get_ty() {
+                    if let ItemKind::Type(name, the_type, s) = ty.kind {
                         // dbg!(the_type);
-                        let lambda_var = Untyped(func.update("x".to_string()));
-                        let lambda =
-                            Expr::Lambda(lambda_var, func.replace(Expr::Ident(lambda_var)), false);
-                        let ty = self.analyze_type(Type::Func(the_type.0, the_type.0).into())?;
-                        let f = FunctionItem {
-                            name: Untyped(name),
-                            sig: func.update(ty),
-                            body: func.replace(lambda),
-                        };
-                        let item = Item::new(ItemKind::Function(f), false);
-                        Ok(expr.update(Expr::Label(Label(name), arg)))
+                        // let lambda_var = Untyped(func.update("x".to_string()));
+                        // let lambda =
+                        // Expr::Lambda(lambda_var, func.replace(Expr::Ident(lambda_var)), false);
+                        let newty = self.analyze_type(the_type)?;
+                        dbg!(newty);
+
+                        let (unbound_types, unbound_rows) = Typechecker::extract_generics(newty);
+                        let scheme = TypeScheme {
+                            unbound_types,
+                            unbound_rows,
+                            evidence: vec![],
+                            ty: newty,
+                        }
+
+                        let ex: Expr<Untyped> = Expr::ItemInstance(Untyped(name), scheme.into(), arg);
+                        Ok(expr.update(ex))
                     } else {
-                        Ok(expr.update(Expr::Call(func, arg)))
+                        Ok(expr.update(arg.0))
                     }
                 } else {
                     Ok(expr.update(Expr::Call(func, arg)))
-                    // panic!("{:?}", func)
                 }
             }
             Expr::FieldAccess(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
+                // dbg!(l);
                 if let Expr::Item(id, k) = *l.0 {
                     let res = self.resolve_name_expr(r)?;
+
                     Ok(res)
                 } else if let Expr::Ident(n) = *l.0 {
                     if let Some((l, val)) = vars.iter().find(|x| x.0 == n.0 .0) {
-                        let projection = self.find_row_address(*val, r)?;
+                        // dbg! val);
+                        // self.analyze_expr(expr, vars)
+                        let projection = self.find_row_address(*val, r, vars)?;
+                        // dbg!(projection);
                         Ok(expr.update(projection.0))
                     } else {
                         todo!()
@@ -432,8 +480,10 @@ impl Resolver {
                 todo!()
             }
             Expr::Lambda(arg, body, is_anon) => {
-                let new_vars = [vars, &[(arg.0 .0, body)]].concat();
+                let new_vars =
+                    [vars, &[(arg.0 .0, arg.ident()?.update(Expr::Ident(arg)))]].concat();
                 let body = self.analyze_expr(body, &new_vars)?;
+                // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
                 Ok(expr.update(Expr::Lambda(arg, body, is_anon)))
             }
             Expr::Let(id, body, and_in) => {
@@ -526,11 +576,15 @@ impl Resolver {
         &mut self,
         combo: Spanned<Intern<Expr<Untyped>>>,
         id: Spanned<Intern<Expr<Untyped>>>,
+        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
         let id = id.ident()?;
+        // dbg!(combo);
         fn helper(
+            me: &mut Resolver,
             combo: &Spanned<Intern<Expr<Untyped>>>,
             id: Spanned<Intern<String>>,
+            vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
             accum: &mut Vec<Direction>,
         ) -> CompResult<()> {
             match *combo.0 {
@@ -540,25 +594,28 @@ impl Resolver {
                         Ok(())
                     } else {
                         accum.push(Direction::Left);
-                        helper(&l, id, accum)
+                        let l = me.analyze_expr(l, vars)?;
+                        helper(me, &l, id, vars, accum)
                     }
                 }
+
                 Expr::Branch(l, r) => todo!(),
                 Expr::Label(a, r) => {
                     if a.0 .0 == id.0 {
-                        accum.push(Direction::Left);
                         Ok(())
                     } else {
-                        helper(&r, id, accum)
+                        let r = me.analyze_expr(r, vars)?;
+                        helper(me, &r, id, vars, accum)
                     }
                 }
-                Expr::Call(l, r) => {
-                    if matches!(*l.0, Expr::Item(_, Kind::Func)) {
-                        helper(&r, id, accum)
-                    } else {
-                        todo!()
-                    }
-                }
+                // Expr::Call(l, r) => {
+                //     if matches!(*l.0, Expr::Item(_, Kind::Func)) {
+                //         helper(me, &r, id, vars, accum)
+                //     } else {
+                //         todo!()
+                //     }
+                // }
+                Expr::ItemInstance(n, t, v) => helper(me, &v, id, vars, accum),
                 _ => Err(
                     DynamicErr::new(format!("The field {} is not available here", id.0))
                         .label("this", id.1)
@@ -566,9 +623,9 @@ impl Resolver {
                 ),
             }
         }
-
+        // dbg!(combo);
         let mut path = Vec::new();
-        helper(&combo, id, &mut path).map_err(|e| {
+        helper(self, &combo, id, vars, &mut path).map_err(|e| {
             if let Some(err) = e.downcast_ref::<DynamicErr>() {
                 err.clone()
                     .extra_labels(vec![("in this object".to_string(), combo.1)])
@@ -577,6 +634,7 @@ impl Resolver {
                 e
             }
         })?;
+        // dbg!(&path);
 
         let ex = path
             .into_iter()
