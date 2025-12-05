@@ -49,7 +49,11 @@ impl LowerTypes {
     pub fn lower_ty(&self, ty: typing::Type) -> Type {
         match ty {
             typing::Type::Num => Type::Num,
+            typing::Type::String => Type::Str,
             typing::Type::Unit => Type::Unit,
+            typing::Type::Bool => Type::Bool,
+
+            typing::Type::Particle(p) => Type::Particle(p.0),
             typing::Type::Var(v) => Type::Var(self.env[&AstTypeVar::Ty(v)]),
             typing::Type::Func(arg, ret) => {
                 let arg = self.lower_ty(*arg);

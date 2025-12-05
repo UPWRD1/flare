@@ -37,7 +37,7 @@ package Main =
     #   Brown,
     #   Green,
     #   Other
-        
+ 
     # struct Extra =
         # stuff: str,
         # more: str,
@@ -48,6 +48,9 @@ package Main =
         age: num,
     #     # eye_color: EyeColor,
 
+    let person_age p : {name: str, age: num} -> num =
+        p.age
+
     # struct Wrapper =
         # value: Person,
         # meta: str,
@@ -55,17 +58,21 @@ package Main =
     #     catchphrase: unit -> ?T,
     #     behavior: Term
 
-    let multiply x y : ?T -> ?T =
+    let multiply x y : ?T -> ?T -> ?T =
         x * y
 
-    let main : unit -> num =
-        let p = Person {name = "joe", age = 3000 } in
+    let main : str =
+        let yes = @yes in
+        let p = {name = "joe", age = 3000, iscool = yes} in
+       
+        # let colors = {@red | @blue | @green}
+        
         # let tuple = {1, 2, 3} in
         # let p2 = Person {name = "joe", age = 4000} in
         # let w = {value = p, meta = "asdf" } in
             # let m = multiply p.age (1/2) in
             # w.value
-            p.name
+            person_age p
             # tuple.0
 
                 # id multiply 3 4

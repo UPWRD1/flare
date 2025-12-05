@@ -53,7 +53,7 @@ impl Subst {
 
     fn subst_ty(self, haystack: Type, needle: usize) -> Type {
         match haystack {
-            Type::Num | Type::Unit | Type::Str | Type::Bool => haystack,
+            Type::Num | Type::Unit | Type::Str | Type::Bool | Type::Particle(_) => haystack,
             Type::Var(type_var) => match type_var.0.cmp(&needle) {
                 Ordering::Equal => self.subst_ty_var(),
                 Ordering::Less => Type::Var(type_var),
@@ -108,7 +108,7 @@ impl Type {
 
     fn adjust(&mut self, cutoff: usize) {
         match self {
-            Self::Num | Self::Unit | Self::Str | Self::Bool => {}
+            Self::Num | Self::Unit | Self::Str | Self::Bool | Self::Particle(_) => {}
             Self::Var(type_var) => type_var.adjust(cutoff),
             Self::Fun(arg, ret) => {
                 arg.adjust(cutoff);

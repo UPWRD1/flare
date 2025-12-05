@@ -5,7 +5,7 @@ use internment::Intern;
 
 use crate::{
     passes::midend::typing::{types::Type, Evidence, TyUniVar},
-    resource::rep::ast::Label,
+    resource::rep::ast::{Expr, Label, Untyped},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

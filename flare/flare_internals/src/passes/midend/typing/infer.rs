@@ -19,6 +19,7 @@ impl<'env> Solver<'env> {
         ast: Spanned<Intern<Expr<Untyped>>>,
     ) -> (GenOut, Intern<Type>) {
         // dbg!(&env);
+        let id = ast.id();
         match *ast.0 {
             Expr::Number(n) => (
                 GenOut::new(vec![], ast.update(Expr::Number(n))),
@@ -29,9 +30,14 @@ impl<'env> Solver<'env> {
                 GenOut::new(vec![], ast.update(Expr::String(s))),
                 Type::String.into(),
             ),
+            Expr::Particle(p) => (
+                GenOut::new(vec![], ast.update(Expr::Particle(p))),
+                Type::Particle(p).into(),
+            ),
+
             Expr::Ident(v) => {
-                // dbg!(v);
-                // dbg!(env.keys().collect::<Vec<_>>());
+                dbg!(v);
+                dbg!(env.keys().collect::<Vec<_>>());
                 let ty = &env[&v.0 .0];
                 (
                     GenOut::new(vec![], ast.update(Expr::Ident(Typed(v, *ty)))),
@@ -177,7 +183,10 @@ impl<'env> Solver<'env> {
                 let out_ty = Type::Prod(row_comb.goal);
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
-                constraints.push(Constraint::RowCombine(row_comb));
+                constraints.push(Constraint::RowCombine(
+                    Provenance::ExpectedCombine(id),
+                    row_comb,
+                ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
                 let typed_ast = ast.update(Expr::Concat(left_out.typed_ast, right_out.typed_ast));
                 (
@@ -197,7 +206,10 @@ impl<'env> Solver<'env> {
 
                 let mut out = self.check(env, goal, Type::Prod(row_comb.goal));
 
-                out.constraints.push(Constraint::RowCombine(row_comb));
+                out.constraints.push(Constraint::RowCombine(
+                    Provenance::ExpectedCombine(id),
+                    row_comb,
+                ));
                 (
                     out.with_typed_ast(|ast| ast.update(Expr::Project(dir, ast))),
                     Type::Prod(sub_row).into(),
@@ -232,7 +244,10 @@ impl<'env> Solver<'env> {
 
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
-                constraints.push(Constraint::RowCombine(row_comb));
+                constraints.push(Constraint::RowCombine(
+                    Provenance::ExpectedCombine(id),
+                    row_comb,
+                ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
                 self.tables
                     .branch_to_ret_ty
@@ -254,7 +269,10 @@ impl<'env> Solver<'env> {
                 let out_ty = Type::Sum(row_comb.goal);
 
                 let mut out = self.check(env, value, Type::Sum(sub_row));
-                out.constraints.push(Constraint::RowCombine(row_comb));
+                out.constraints.push(Constraint::RowCombine(
+                    Provenance::ExpectedCombine(id),
+                    row_comb,
+                ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
                 (
                     out.with_typed_ast(|ast| ast.update(Expr::Inject(dir, ast))),
@@ -300,7 +318,7 @@ impl<'env> Solver<'env> {
                         .clone()
                         .into_iter()
                         .filter_map(|c| match c {
-                            Constraint::RowCombine(row_combo) => Some(Evidence::RowEquation {
+                            Constraint::RowCombine(_, row_combo) => Some(Evidence::RowEquation {
                                 left: row_combo.left,
                                 right: row_combo.right,
                                 goal: row_combo.goal,
@@ -315,10 +333,15 @@ impl<'env> Solver<'env> {
                     ty.into(),
                 )
             }
+            Expr::FieldAccess(left, right) => {
+                let l = self.infer(env.clone(), left);
+                // self.item_source.type_of_item(item_id)
+                let r = self.infer(env, right);
+                dbg!(l, r);
 
-            Expr::ItemInstance(n, t, v) => {
                 todo!()
             }
+
             _ => todo!("{:?}", ast.0),
         }
     }

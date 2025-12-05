@@ -47,16 +47,14 @@ pub enum Type {
     Unknown,
     Unifier(TyUniVar),
     Var(TypeVar),
-    // User(Spanned<Intern<String>>, &'static [TyUniVar]),
-    // Variant(TyUniVar, Spanned<Intern<String>>),
+    Particle(Spanned<Intern<String>>),
+
     Unit,
     Num,
     Bool,
     String,
     Func(Intern<Self>, Intern<Self>),
-    // Tuple(&'static [TyUniVar]),
-    // Seq(&'static TyUniVar),
-    // Generic(Spanned<Intern<String>>),
+
     Package(Spanned<Intern<String>>),
     Item(ItemId),
 
@@ -84,7 +82,7 @@ impl Ident for Type {
 impl Type {
     pub fn occurs_check(&self, var: TyUniVar) -> Result<(), Self> {
         match self {
-            Self::Num | Self::String | Self::Bool | Self::Unit => Ok(()),
+            Self::Num | Self::String | Self::Bool | Self::Unit | Self::Particle(_) => Ok(()),
             Self::Unifier(v) => {
                 if *v == var {
                     Err(Self::Unifier(*v))
@@ -143,7 +141,7 @@ impl Type {
         }
     }
     pub fn destructure_arrow(&self) -> (Vec<Intern<Self>>, Intern<Self>) {
-        fn worker(t: &Type, v: &mut Vec<Intern<Type>>) -> Vec<Intern<Type>> {
+        fn worker(t: &Type, v: &mut Vec<Intern<Type>>) {
             match *t {
                 Type::Func(l, r) => {
                     v.push(l);
@@ -151,10 +149,9 @@ impl Type {
                 }
                 _ => v.push((*t).into()),
             }
-            v.to_vec()
         }
         let mut v = vec![];
-        let v = worker(self, &mut v);
+        worker(self, &mut v);
         let (ret, args) = v.split_last().unwrap();
         (args.to_vec(), *ret)
     }

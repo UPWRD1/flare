@@ -385,9 +385,9 @@ impl<'source> LowerAst<'source> {
                     })
                     .collect::<Vec<_>>();
 
-                let left_values = self.types.lower_closed_row_ty(left.clone());
-                let right_values = self.types.lower_closed_row_ty(right.clone());
-                let goal_values = self.types.lower_closed_row_ty(goal.clone());
+                let left_values = self.types.lower_closed_row_ty(*left);
+                let right_values = self.types.lower_closed_row_ty(*right);
+                let goal_values = self.types.lower_closed_row_ty(*goal);
 
                 let lower_solved_ev = LowerSolvedEv {
                     supply: &mut self.var_supply,
@@ -419,6 +419,8 @@ impl<'source> LowerAst<'source> {
                 self.types.lower_ty(*ty),
             )),
             Expr::Number(n) => IR::Num(n),
+            Expr::String(n) => IR::Str(n.0),
+            Expr::Particle(p) => IR::Particle(p.0),
             Expr::Lambda(Typed(var, ty), body, _) => {
                 let ir_ty = self.types.lower_ty(*ty);
                 let ir_var = self.var_supply.supply_for(var);

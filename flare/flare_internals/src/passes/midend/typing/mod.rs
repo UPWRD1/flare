@@ -53,7 +53,7 @@ impl Ident for Typed {
 #[derive(Debug, Clone, Copy)]
 enum Constraint {
     TypeEqual(Provenance, Intern<Type>, Intern<Type>),
-    RowCombine(RowCombination),
+    RowCombine(Provenance, RowCombination),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -69,6 +69,7 @@ enum Provenance {
     AppExpectedFun(NodeId),
     // Constraint produced by subsumption.
     ExpectedUnify(NodeId),
+    ExpectedCombine(NodeId),
 }
 
 impl Provenance {
@@ -76,11 +77,13 @@ impl Provenance {
         match self {
             Self::UnexpectedFun(node_id)
             | Self::AppExpectedFun(node_id)
+            | Self::ExpectedCombine(node_id)
             | Self::ExpectedUnify(node_id) => *node_id,
         }
     }
 }
 
+#[derive(Debug)]
 pub struct GenOut {
     constraints: Vec<Constraint>,
     typed_ast: Spanned<Intern<Expr<Typed>>>,
@@ -212,9 +215,10 @@ impl<'env> Solver<'env> {
             .or_insert_with(|| {
                 let next = self.tables.next_tyvar;
                 self.tables.next_tyvar += 1;
-                self.tables.hasher.write_u32(next);
-                let out = self.tables.hasher.finish().to_string().into();
-                TypeVar(out)
+
+                // self.tables.hasher.write_u32(next);
+                // let out = self.tables.hasher.finish().to_string().into();
+                TypeVar(next.to_string().into())
             })
     }
 
@@ -353,7 +357,8 @@ impl<'env> Solver<'env> {
                     .iter()
                     .max()
                     .map(|rv| rv.0 + 1)
-                    .unwrap_or(0),
+                    .unwrap_or(2),
+
                 ..Default::default()
             },
         };
@@ -365,17 +370,19 @@ impl<'env> Solver<'env> {
         ast: Spanned<Intern<Expr<Untyped>>>,
         signature: TypeScheme,
     ) -> CompResult<TypesOutput> {
+        let id = ast.id();
         // We start with `check` instead of `infer`.
         let mut out = self.check(im::HashMap::default(), ast, signature.ty);
 
         // Add any evidence in our type annotation to be used during solving.
         out.constraints
             .extend(signature.evidence.iter().map(|ev| match *ev {
-                Evidence::RowEquation { left, right, goal } => {
-                    Constraint::RowCombine(RowCombination { left, right, goal })
-                }
+                Evidence::RowEquation { left, right, goal } => Constraint::RowCombine(
+                    Provenance::ExpectedCombine(id),
+                    RowCombination { left, right, goal },
+                ),
             }));
-        // dbg!(&out.constraints);
+        dbg!(&out.constraints);
         self.unification(out.constraints)?;
 
         // We still need to substitute, but only our ast.

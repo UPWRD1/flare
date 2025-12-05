@@ -1,11 +1,16 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
 
-use std::{env, io::Write, path::PathBuf};
+use std::{
+    env,
+    fs::{self, File},
+    io::Write,
+    path::PathBuf,
+};
 
 use flare_internals::{
     Context, convert_path_to_id,
-    passes::backend::c::C,
+    passes::backend::{c::C, lowering::ir::IRTarget, target::Target},
     resource::errors::{CompResult, ReportableError},
 };
 fn enable_loggin() {
@@ -33,8 +38,8 @@ fn main() -> CompResult<()> {
             "-c" | "--compile" => {
                 let filename = PathBuf::from(&prog_args[2]).canonicalize()?.leak();
                 let id = convert_path_to_id(filename);
-
-                let mut ctx = Context::new(filename, id, C);
+                let target = IRTarget;
+                let mut ctx = Context::new(filename, id, target);
                 match ctx.compile_program(id) {
                     //.inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
                     //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
@@ -42,8 +47,9 @@ fn main() -> CompResult<()> {
                         println!("Compiled {} in {elapsed:.2?}", filename.display());
                         let f =
                             PathBuf::from(filename.to_str().unwrap().split(".").next().unwrap())
-                                .with_extension(".c");
-                        dbg!(f);
+                                .with_extension(target.ext().into());
+                        let mut f = File::create(f).unwrap();
+                        f.write(code.as_bytes());
 
                         Ok(())
                     }

@@ -107,6 +107,7 @@ impl<'env> Solver<'env> {
 
             Type::Unit => SubstOut::new(Type::Unit.into()),
 
+            Type::Particle(p) => SubstOut::new(Type::Particle(p).into()),
             Type::Var(v) => SubstOut::new(Type::Var(v).into()),
             Type::Unifier(v) => {
                 let root = self.tables.unification_table.find(v);
@@ -145,6 +146,8 @@ impl<'env> Solver<'env> {
 
             Expr::Number(i) => SubstOut::new(ast.update(Expr::Number(i))),
             Expr::String(s) => SubstOut::new(ast.update(Expr::String(s))),
+
+            Expr::Particle(p) => SubstOut::new(ast.update(Expr::Particle(p))),
 
             Expr::Add(l, r) => SubstOut::new(ast.update(Expr::Add(l, r))),
 
@@ -193,7 +196,6 @@ impl<'env> Solver<'env> {
                 .substitute_ast(ast)
                 .map(|nast| ast.update(Expr::Inject(dir, nast))),
             Expr::Item(id, item) => SubstOut::new(ast.update(Expr::Item(id, item))),
-
             _ => todo!("{ast:?}"),
         }
     }

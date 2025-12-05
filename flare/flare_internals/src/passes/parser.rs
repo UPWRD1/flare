@@ -4,16 +4,7 @@ use crate::{
         errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection, FatalErr},
         rep::{
             ast::{
-                ComparisonOp,
-                Definition,
-                Direction,
-                Expr,
-                Label,
-                Package,
-                Pattern,
-                PatternAtom,
-                
-                Untyped, // Untyped,
+                ComparisonOp, Definition, Expr, Label, LambdaInfo, Package, Pattern, PatternAtom, Untyped // Untyped,
             },
             // concretetypes::{EnumVariant, PrimitiveType, Ty},
             files::FileID,
@@ -67,6 +58,7 @@ enum Token {
 
     ComparisonOp(ComparisonOp),
     Ampersand,
+    At,
     
     LBrace,
     RBrace,
@@ -124,6 +116,7 @@ impl std::fmt::Display for Token {
                 ComparisonOp::Lte => write!(f, "<="),
             },
             Self::Ampersand => write!(f, "&"),
+            Self::At => write!(f, "@"),
             Self::Fn => write!(f, "fn"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),
@@ -257,6 +250,7 @@ where
             // Operators
             comparison_op,
             just("&").to(Token::Ampersand),
+            just("@").to(Token::At),
             just("=>").to(Token::FatArrow),
             just("->").to(Token::Arrow),
             just("=").to(Token::Eq),
@@ -378,7 +372,56 @@ where
         )
         .boxed()]);
 
-        let atom = recursive(|atom| {
+    let tuple = expr.clone()
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing().at_least(1)
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                    .map_with(|args,
+                                e| {
+                                                   unsafe {
+                                args
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, arg ):
+                                    (_, Spanned<Intern<Expr<Untyped>>>)| {
+                                    Spanned(
+                                        Expr::Label(
+                                            Label(Spanned(
+                                                i.to_string().into(), arg.1)),
+                                            arg
+                                        ).into(),
+                                        arg.1)
+                                })
+                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()}
+                    })
+                    .labelled("tuple")
+                    .as_context();
+
+    let table = raw_ident.then_ignore(just(Token::Eq)).then(expr.clone()).separated_by(just(Token::Comma))
+.allow_trailing().at_least(1)
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+.map_with(|args, e| {
+                        if args.is_empty() {
+                            unreachable!()
+                                                    } else {
+                            unsafe {args
+                                .into_iter()
+                                .map(|(field_name, arg)| -> Spanned<Intern<Expr<Untyped>>> {
+                                    Spanned(
+                                        Expr::Label(Label(Spanned(field_name.0, arg.1)), arg).into(),
+                                        field_name.1.union(arg.1),
+                                    )
+                                })
+                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()}
+                                                    }
+                    })
+.labelled("table")
+                    .as_context();
+                      let atom = recursive(|atom| {
+
+                    
             choice((
                 // Numbers
                 select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
@@ -484,56 +527,14 @@ where
                           
                                               
                 // Tuple Constructors
-                expr.clone()
-                    .separated_by(just(Token::Comma))
-                    .allow_trailing().at_least(1)
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|args,
-                                e| {
-                                                   unsafe {
-                                args
-                                .into_iter()
-                                .enumerate()
-                                .map(|(i, arg ):
-                                    (_, Spanned<Intern<Expr<Untyped>>>)| {
-                                    Spanned(
-                                        Expr::Label(
-                                            Label(Spanned(
-                                                i.to_string().into(), arg.1)),
-                                            arg
-                                        ).into(),
-                                        arg.1)
-                                })
-                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()}
-                    })
-                    .labelled("tuple")
-                    .as_context(),
+                tuple,
 
-                raw_ident.then_ignore(just(Token::Eq)).then(expr.clone()).separated_by(just(Token::Comma))
-.allow_trailing().at_least(1)
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-.map_with(|args, e| {
-                        if args.is_empty() {
-                            unreachable!()
-                                                    } else {
-                            unsafe {args
-                                .into_iter()
-                                .map(|(field_name, arg)| -> Spanned<Intern<Expr<Untyped>>> {
-                                    Spanned(
-                                        Expr::Label(Label(Spanned(field_name.0, arg.1)), arg).into(),
-                                        field_name.1.union(arg.1),
-                                    )
-                                })
-                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()}
-                                                    }
-                    })
-.labelled("table")
-                    .as_context(),
+                table,
 
                 // idents
                 ident,
+
+                just(Token::At).ignore_then(raw_ident).map_with(|id, e| Spanned(Intern::from(Expr::Particle(id)), e.span())),
 
                 // let x = y in z
                 just(Token::Let)
@@ -591,7 +592,7 @@ where
                 just(Token::FatArrow).ignore_then(expr.clone()),
                 |arg, body, e| {
                     Spanned(
-                        Intern::from(Expr::Lambda(Untyped(arg), body, true)),
+                        Intern::from(Expr::Lambda(Untyped(arg), body, LambdaInfo::Anon)),
                         e.span(),
                     )
                 },
@@ -667,15 +668,26 @@ where
             .then_ignore(just(Token::Eq))
             // .validate(|o, e, m| { dbg!(o)})
             .then(expression.clone())
-            .map_with(|(((name, args), ty), body), e| {
-                let value = args.into_iter().rev().fold(body, |acc, arg| {
+            .try_map_with(|(((name, args), ty), body), e| {
+                // let arg_types = ty.0.destructure_arrow().0;
+                // if arg_types.len() == args.len() {
+                    
+// dbg!(&args, &arg_types);
+                let value = args.iter().rev()
+                    // .zip(arg_types)
+                    .fold(body, |acc, arg| {
                     Spanned(
-                        Intern::from(Expr::Lambda(Untyped(arg), acc, false)),
+                        Expr::Lambda(Untyped(*arg), acc, LambdaInfo::Curried).into(),
                         e.span(),
                     )
                 });
-                Definition::Let(Untyped(name), value, ty)
-            })
+                Ok(Definition::Let(Untyped(name),  value, ty))
+                
+                // } else {
+  
+                    // Err(Rich::custom(name.1, format!("{} expected {} arguments, but its signature implies {}", name.0, args.len(), arg_types.len())))
+                // }
+                            })
             .labelled("let-definition")
             .as_context();
 
@@ -896,6 +908,22 @@ where
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: types.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak(),
+                        }));
+                        Spanned(Intern::from(ty), e.span())
+                    }),
+// Table
+raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comma)).collect::<Vec<_>>()
+                    .clone()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                    .map_with(|types, e| {
+                        let ty = Type::Prod(Row::Closed(ClosedRow {
+                            fields: types
+                                .iter()
+                                
+                                .map(|(name, _)| Label(*name))
+                                .collect::<Vec<_>>()
+                                .leak(),
+                            values: types.iter().map(|(_, value)| value.0).collect::<Vec<_>>().leak(),
                         }));
                         Spanned(Intern::from(ty), e.span())
                     }),

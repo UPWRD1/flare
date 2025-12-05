@@ -2,55 +2,22 @@ use std::fmt::Debug;
 
 use internment::Intern;
 
-use crate::{
-    passes::midend::{
-        environment::Environment,
-        typing::{Type, Typed},
-    },
-    resource::{
-        errors::FatalErr,
-        rep::{
-            ast::{Expr, Variable},
-            entry::{FunctionItem, Item, ItemKind},
-            Spanned,
-        },
-    },
-};
+use crate::passes::backend::lowering::ir::{Type, IR};
 
 pub trait Target: Copy {
     type Partial: Default;
-    type Artifact: Default;
     type Output: Default + Debug;
     // fn generate(&mut self);
-    fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>);
-    fn generate_item(&mut self, item: &ItemKind<Typed>) -> Self::Partial {
-        match &item {
-            ItemKind::Root => Self::Partial::default(),
-            ItemKind::Package(package_entry) => {
-                //do nothing
-                todo!()
-            }
-            // ItemKind::Struct(struct_entry) => self.generate_struct(struct_entry),
-            // ItemKind::Enum(enum_entry) => self.generate_enum(enum_entry),
-            // ItemKind::Variant(spanned) => todo!(),
-            // ItemKind::Field(_) => todo!(),
-            ItemKind::Function(function_item) => self.generate_func(function_item),
-            ItemKind::Extern { name, sig } => Self::Partial::default(),
-            ItemKind::Dummy(_) => FatalErr::new("Cannot generate Dummy"),
-            _ => todo!(),
-        }
-    }
-    fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> Self::Partial;
-    fn generate_type(&mut self, t: Type) -> Self::Partial;
+    // fn generate_item(&mut self, Type)
+    fn generate(&mut self, ir: IR) -> Self::Partial;
     fn finish(self, p: Vec<Self::Partial>) -> Self::Output;
-    fn convert_type(&mut self, ty: Type) -> Self::Partial;
+    fn ext(&self) -> impl Into<String>;
 }
 
 pub struct Generator<T: Target> {
     target: T,
-    items: Vec<ItemKind<Typed>>,
+    items: Vec<(IR, Type)>,
     output: T::Output,
-    artifact: T::Artifact,
 }
 
 // impl Generator<C> {
@@ -73,8 +40,8 @@ pub struct Generator<T: Target> {
 impl<T: Target> Generator<T> {
     pub fn generate(mut self) -> T::Output {
         let mut v: Vec<T::Partial> = vec![];
-        for item in self.items {
-            v.push(self.target.generate_item(&item))
+        for ir in self.items {
+            v.push(self.target.generate(ir.0))
         }
         self.target.finish(v)
         // self.target.finish()
@@ -82,12 +49,11 @@ impl<T: Target> Generator<T> {
     }
 }
 impl<T: Target> Generator<T> {
-    pub fn new(target: T, items: Vec<ItemKind<Typed>>) -> Self {
+    pub fn new(target: T, items: Vec<(IR, Type)>) -> Self {
         Self {
             target,
             items,
             output: T::Output::default(),
-            artifact: T::Artifact::default(),
         }
     }
 }

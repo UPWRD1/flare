@@ -1,6 +1,32 @@
+use std::fmt::Display;
+
+use internment::Intern;
 use ordered_float::OrderedFloat;
 
-use crate::resource::errors::FatalErr;
+use crate::{passes::backend::target::Target, resource::errors::FatalErr};
+
+#[derive(Clone, Copy)]
+pub struct IRTarget;
+
+impl Target for IRTarget {
+    type Partial = IR;
+
+    type Output = String;
+
+    fn generate(&mut self, ir: IR) -> Self::Partial {
+        ir
+    }
+
+    fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
+        p.iter()
+            .map(|x| format!("{x}"))
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
+    fn ext(&self) -> impl Into<String> {
+        "ir"
+    }
+}
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
 pub struct TypeVar(pub usize);
@@ -12,6 +38,8 @@ pub enum Type {
     Str,
     Bool,
 
+    Particle(Intern<String>),
+
     Var(TypeVar),
 
     Fun(Box<Self>, Box<Self>),
@@ -21,10 +49,44 @@ pub enum Type {
     Sum(Row),
 }
 
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Num => write!(f, "num"),
+            Self::Unit => write!(f, "unit"),
+            Self::Str => write!(f, "str"),
+            Self::Bool => write!(f, "bool"),
+            Self::Particle(p) => write!(f, "@{p}"),
+            Self::Var(type_var) => write!(f, "TypeVar({type_var:?})"),
+            Self::Fun(l, r) => write!(f, "{l} -> {r}"),
+            Self::TyFun(kind, t) => write!(f, "{kind:?} -> t"),
+            Self::Prod(row) => write!(f, "pro {{\n{row}}}"),
+            Self::Sum(row) => write!(f, "sum {{\n{row}}}"),
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Clone, Debug, Hash)]
 pub enum Row {
     Open(TypeVar),
     Closed(Vec<Type>),
+}
+
+impl Display for Row {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Open(type_var) => write!(f, "{type_var:?}"),
+            Self::Closed(items) => write!(
+                f,
+                "{}",
+                items
+                    .iter()
+                    .map(|item| format!("{item}"))
+                    .collect::<Vec<_>>()
+                    .join(",\n")
+            ),
+        }
+    }
 }
 
 impl Type {
@@ -69,6 +131,12 @@ pub struct Var {
     ty: Type,
 }
 
+impl Display for Var {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.id.0)
+    }
+}
+
 impl Var {
     pub fn new(id: VarId, ty: Type) -> Self {
         Self { id, ty }
@@ -99,10 +167,15 @@ pub enum TyApp {
     Row(Row),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum IR {
     Var(Var),
     Num(OrderedFloat<f64>),
+    Str(Intern<String>),
+    #[default]
+    Unit,
+
+    Particle(Intern<String>),
 
     Fun(Var, Box<Self>),
     App(Box<Self>, Box<Self>),
@@ -123,6 +196,7 @@ pub enum IR {
 
     Item(Type, ItemId),
 }
+
 #[allow(clippy::should_implement_trait)]
 impl IR {
     pub fn add(l: Self, r: Self) -> Self {
@@ -191,7 +265,13 @@ impl IR {
         match self {
             Self::Var(v) => v.ty.clone(),
             Self::Num(_) => Type::Num,
+            Self::Str(_) => Type::Str,
+            Self::Unit => Type::Unit,
+
+            Self::Particle(p) => Type::Particle(*p),
+
             Self::Fun(arg, body) => Type::fun(arg.ty.clone(), body.type_of()),
+
             Self::App(fun, arg) => {
                 let Type::Fun(fun_arg_ty, ret_ty) = fun.type_of() else {
                     FatalErr::new("IR used non-function type as a function")
@@ -279,6 +359,46 @@ impl IR {
                 }
                 Type::Num
             }
+        }
+    }
+}
+
+impl Display for IR {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Var(var) => write!(f, "${var}"),
+            Self::Num(ordered_float) => write!(f, "{ordered_float}"),
+            Self::Str(intern) => write!(f, "\"{intern}\""),
+            Self::Fun(v, b) => write!(f, "\\${v} => {b}"),
+            Self::App(l, r) => write!(f, "{l} {r}"),
+            Self::TyFun(k, b) => write!(f, "%{k:?} => \n\t{b}"),
+            Self::Local(v, b, i) => write!(f, "let \n\t%{v} \n= \n\t{b}\nin \n\t{i}"),
+            Self::Tuple(v) => write!(
+                f,
+                "{{{}}}",
+                v.iter()
+                    .map(|v| format!("{v}"))
+                    .collect::<Vec<String>>()
+                    .join(",")
+            ),
+            Self::Case(t, b, v) => {
+                write!(
+                    f,
+                    "match {b}\n{}",
+                    v.iter()
+                        .map(|x| format!("\t{} => {}", x.param, x.body))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            }
+            Self::Field(k, s) => {
+                write!(f, "{k}::{s}")
+            }
+            Self::Tag(t, i, b) => {
+                write!(f, "{t} tag {i} as {b}")
+            }
+            Self::Particle(p) => write!(f, "@{p}"),
+            _ => write!(f, "{self:?}"),
         }
     }
 }

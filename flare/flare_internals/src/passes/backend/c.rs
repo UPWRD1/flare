@@ -18,19 +18,6 @@ pub struct C;
 impl Target for C {
     type Output = String;
     type Partial = String;
-    type Artifact = Vec<String>;
-    fn convert_type(&mut self, ty: Type) -> Self::Partial {
-        match ty {
-            Type::Num => "double".to_string(),
-            Type::String => "char*".to_string(),
-            Type::Var(_) => "void*".to_string(),
-            _ => todo!("{ty:?}"),
-        }
-    }
-
-    fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>) {
-        todo!()
-    }
 
     // fn finish(self) -> Self::Output {
     //     let mut string_buf = String::new();
@@ -44,7 +31,36 @@ impl Target for C {
     //     format!("{}{}", self.decls, out)
     // }
 
-    fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> Self::Output {
+    // fn generate_struct(&mut self, s: &StructEntry) -> Self::Output {
+    // todo!()
+    // }
+    fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
+        p.join("")
+    }
+
+    fn generate(&mut self, ir: super::lowering::ir::IR) -> Self::Partial {
+        todo!()
+    }
+    fn ext(&self) -> impl Into<String> {
+        "c"
+    }
+}
+
+impl C {
+    pub fn new() -> Self {
+        Self
+    }
+
+    fn convert_type(&mut self, ty: Type) -> String {
+        match ty {
+            Type::Num => "double".to_string(),
+            Type::String => "char*".to_string(),
+            Type::Var(_) => "void*".to_string(),
+            _ => todo!("{ty:?}"),
+        }
+    }
+
+    fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> String {
         let out_ty = f.sig;
         // let mut arg_types = vec![];
         let (args, ret) = out_ty.0.destructure_arrow();
@@ -55,26 +71,7 @@ impl Target for C {
         dbg!(output);
         todo!()
     }
-
-    fn generate_type(&mut self, t: Type) -> Self::Partial {
+    fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>) {
         todo!()
-    }
-
-    // fn generate_struct(&mut self, s: &StructEntry) -> Self::Output {
-    // todo!()
-    // }
-
-    // fn generate_enum(&mut self, s: &EnumEntry) -> Self::Output {
-    // todo!()
-    // }
-
-    fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
-        p.join("")
-    }
-}
-
-impl C {
-    pub fn new() -> Self {
-        Self
     }
 }

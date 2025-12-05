@@ -27,7 +27,7 @@ enum UnificationError {
 impl<'env> Solver<'env> {
     pub fn normalize_ty(&mut self, ty: Intern<Type>) -> Intern<Type> {
         match *ty {
-            Type::Num | Type::String | Type::Bool | Type::Unit => ty,
+            Type::Num | Type::String | Type::Bool | Type::Unit | Type::Particle(_) => ty,
 
             Type::Var(var) => Type::Var(var).into(),
             Type::Func(arg, ret) => {
@@ -84,6 +84,7 @@ impl<'env> Solver<'env> {
         let right = self.normalize_ty(unnorm_right);
         match (*left, *right) {
             (Type::Num, Type::Num) => Ok(()),
+            (Type::Particle(p), Type::Particle(q)) if p == q => Ok(()),
 
             (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
             (Type::Func(a_arg, a_ret), Type::Func(b_arg, b_ret)) => {
@@ -355,6 +356,10 @@ impl<'env> Solver<'env> {
                                         inferred: right,
                                     },
                                 ),
+                                // FIXME: Use actual rows and not types...
+                                Provenance::ExpectedCombine(node_id) => {
+                                    (node_id, TypeErr::TypeNotEqual(left, right))
+                                }
                             },
                             UnificationError::RowsNotEqual((l, r)) => {
                                 (provenance.id(), TypeErr::RowNotEqual(l, r))
@@ -363,9 +368,9 @@ impl<'env> Solver<'env> {
                         self.tables.errors.insert(node_id, mark.into());
                     }
                 }
-                Constraint::RowCombine(row_comb) => {
+                Constraint::RowCombine(p, row_comb) => {
                     if let Err(kind) = self.unify_row_comb(row_comb) {
-                        panic!()
+                        panic!("{kind:?}")
                     }
                 }
                 _ => todo!(),

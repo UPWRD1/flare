@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    passes::midend::typing::{Type, TypeScheme},
+    passes::midend::typing::{Row, Type, TypeScheme},
     resource::{
         errors::{CompResult, DynamicErr},
         rep::{
@@ -122,6 +122,7 @@ pub struct ItemId(pub usize);
 pub enum Kind {
     Ty,
     Func,
+    Param,
 }
 
 /// Type representing an Expression.
@@ -132,14 +133,16 @@ where
     V: Variable,
 {
     Ident(V),
+    // Param(V),
     Number(ordered_float::OrderedFloat<f64>),
     String(Spanned<Intern<String>>),
     Bool(bool),
 
+    Particle(Spanned<Intern<String>>),
+
     Hole(V),
 
     Item(ItemId, Kind),
-    ItemInstance(V, Intern<TypeScheme>, Spanned<Intern<Self>>),
 
     Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Project(Direction, Spanned<Intern<Self>>),
@@ -176,8 +179,14 @@ where
         Spanned<Intern<Self>>,
         Intern<Vec<(Spanned<Pattern<V>>, Spanned<Intern<Self>>)>>,
     ),
-    Lambda(V, Spanned<Intern<Self>>, bool),
+    Lambda(V, Spanned<Intern<Self>>, LambdaInfo),
     Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LambdaInfo {
+    Anon,
+    Curried,
 }
 
 impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {

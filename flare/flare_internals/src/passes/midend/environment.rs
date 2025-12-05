@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 // use serde::{Deserialize, Serialize};
 // use std::cell::OnceCell;
 // use std::collections::HashMap;
-use std::hash::RandomState;
+use std::{collections::BTreeSet, hash::RandomState};
 
 use crate::{
     passes::midend::typing::{ClosedRow, Type},
@@ -161,10 +161,23 @@ impl Environment {
                                 name: *name,
                                 sig: *sig,
                                 body: *body,
+                                unbound_types: BTreeSet::new().into(),
+                                unbound_rows: BTreeSet::new().into(),
+                                evidence: vec![].into(),
                             }),
                             false,
                         );
-                        me.add(current_node, ident, entry);
+                        let idx = me.add(current_node, ident, entry);
+
+                        // for arg in args {
+                        //     let arg_item = Item::new(
+                        //         ItemKind::Param {
+                        //             name: arg.0,
+                        //             value: arg.1,
+                        //         },
+                        //         false,
+                        //     );
+                        // }
                     }
                     Definition::Extern(n, ty) => {
                         let ident = QualifierFragment::Func(n.0);
@@ -236,31 +249,32 @@ impl Environment {
         &mut self,
         package_quant: QualifierFragment,
         the_ty: &Spanned<Intern<String>>,
-        methods: &Vec<(
+        methods: &[(
             Spanned<Intern<String>>,
             Spanned<Intern<Expr<Untyped>>>,
             Spanned<Intern<Type>>,
-        )>,
+        )],
     ) -> CompResult<()> {
-        use ItemKind::Function;
-        let type_name = QualifierFragment::Type(the_ty.0);
+        todo!()
+        // use ItemKind::Function;
+        // let type_name = QualifierFragment::Type(the_ty.0);
 
-        let type_node = self
-            .get(&[package_quant, type_name])
-            .map_err(|_| errors::not_defined(type_name, &the_ty.1))?;
-        for &(method_name, method_body, method_ty) in methods {
-            let method_qual = QualifierFragment::Method(method_name.0);
-            let the_method = Item::new(
-                Function(FunctionItem {
-                    name: Untyped(method_name),
-                    sig: method_ty,
-                    body: method_body,
-                }),
-                false,
-            );
-            self.add(type_node, method_qual, the_method);
-        }
-        Ok(())
+        // let type_node = self
+        //     .get(&[package_quant, type_name])
+        //     .map_err(|_| errors::not_defined(type_name, &the_ty.1))?;
+        // for &(method_name, method_body, method_ty) in methods {
+        //     let method_qual = QualifierFragment::Method(method_name.0);
+        //     let the_method = Item::new(
+        //         Function(FunctionItem {
+        //             name: Untyped(method_name),
+        //             sig: method_ty,
+        //             body: method_body,
+        //         }),
+        //         false,
+        //     );
+        //     self.add(type_node, method_qual, the_method);
+        // }
+        // Ok(())
     }
 
     // /// Builds a struct.

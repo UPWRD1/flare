@@ -49,7 +49,8 @@ impl Typechecker {
                     self.check_type(*item_idx, t)?;
                 }
                 ItemKind::Extern { name, sig } => {
-                    let (unbound_types, unbound_rows) = Self::extract_generics(sig.0);
+                    let unbound_types = Self::extract_generics(sig.0);
+                    let unbound_rows = BTreeSet::new();
                     let scheme = TypeScheme {
                         unbound_types,
                         unbound_rows,
@@ -71,7 +72,8 @@ impl Typechecker {
     }
 
     fn check_type(&mut self, item_idx: NodeIndex, t: Intern<Type>) -> CompResult<()> {
-        let (unbound_types, unbound_rows) = Self::extract_generics(t);
+        let unbound_types = Self::extract_generics(t);
+        let unbound_rows = BTreeSet::new();
         // TODO: Add support for rows and generics
         let scheme = TypeScheme {
             unbound_types,
@@ -83,15 +85,15 @@ impl Typechecker {
         Ok(())
     }
 
-    pub fn extract_generics(t: Intern<Type>) -> (BTreeSet<TypeVar>, BTreeSet<RowVar>) {
-        let mut rowcount = 0;
+    pub fn extract_generics(t: Intern<Type>) -> BTreeSet<TypeVar> {
+        // let mut rowcount = 0;
         let mut accum = BTreeSet::new();
-        let row_accum = BTreeSet::new();
+        // let row_accum = BTreeSet::new();
         fn helper(
             t: Intern<Type>,
             accum: &mut BTreeSet<TypeVar>,
             // _rowaccum: &mut BTreeSet<RowVar>,
-            row_count: &mut u32,
+            // row_count: &mut u32,
         ) {
             match *t {
                 Type::Var(type_var) => {
@@ -99,15 +101,14 @@ impl Typechecker {
                 }
 
                 Type::Func(l, r) => {
-                    helper(l, accum, row_count);
-                    helper(r, accum, row_count);
+                    helper(l, accum);
+                    helper(r, accum);
                 }
 
                 Type::Prod(row) | Type::Sum(row) => match row {
                     crate::passes::midend::typing::Row::Closed(closed_row) => {
-                        *row_count += 1;
                         for t in closed_row.values {
-                            helper(*t, accum, row_count);
+                            helper(*t, accum);
                         }
                     }
                     // crate::passes::midend::typing::Row::Open(o) => {
@@ -124,9 +125,8 @@ impl Typechecker {
                 _ => (),
             };
         }
-        helper(t, &mut accum, &mut rowcount);
-        dbg!(rowcount);
-        (accum, row_accum)
+        helper(t, &mut accum);
+        accum
     }
 
     fn check_function(
@@ -134,17 +134,21 @@ impl Typechecker {
         item_idx: NodeIndex,
         f: FunctionItem<Untyped>,
     ) -> CompResult<TypesOutput> {
-        let (unbound_types, unbound_rows) = Self::extract_generics(f.sig.0);
-
+        let unbound_types = Intern::as_ref(f.unbound_types).clone();
+        let unbound_rows = Intern::as_ref(f.unbound_rows).clone();
+        let evidence = Intern::as_ref(f.evidence).to_vec();
         let scheme = TypeScheme {
             unbound_types,
             unbound_rows,
-            evidence: Vec::new(),
+            evidence,
             ty: f.sig.0,
         };
-        // dbg!(&scheme);
+        dbg!(&scheme);
         self.context
             .insert(ItemId(item_idx.index()), scheme.clone());
+
+        // let infer = Solver::type_infer_with_items(&self.context, f.body)?;
+        // dbg!(infer.scheme);
         // dbg!(&self.context);
         let checked =
             Solver::check_with_items(&self.context, f.body, scheme).map_err(|e: CompilerErr| {

@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use petgraph::{
@@ -13,12 +15,12 @@ use crate::{
     passes::midend::{
         environment::Environment,
         typechecker::Typechecker,
-        typing::{ClosedRow, Solver, Type, TypeScheme},
+        typing::{self, ClosedRow, Evidence, Row, RowVar, Solver, Type, TypeScheme, TypeVar},
     },
     resource::{
-        errors::{self, not_defined, CompResult, CompilerErr, DynamicErr},
+        errors::{self, not_defined, CompResult, CompilerErr, DynamicErr, FatalErr},
         rep::{
-            ast::{Direction, Expr, ItemId, Kind, Label, Untyped},
+            ast::{Direction, Expr, ItemId, Kind, Label, LambdaInfo, Untyped},
             common::Ident,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
@@ -47,7 +49,15 @@ pub struct Resolver {
     current_dag_node: Option<NodeIndex>,
     pub dag: DiGraph<usize, ()>,
     main_dag_idx: Option<usize>,
-    // new_rows: FxHashSet,
+    unbound_ty_count: u32,
+    // rows: BTreeMap<RowVar, Row>,
+    unbound_row_count: u32, // new_rows: BTreeSet<RowVar>,
+    guess_evidence: Vec<Evidence>,
+}
+#[derive(Debug, Clone, Copy)]
+enum VariableKind {
+    Local(Spanned<Intern<Expr<Untyped>>>),
+    Param(Spanned<Intern<String>>, Intern<Type>),
 }
 
 impl Resolver {
@@ -58,6 +68,10 @@ impl Resolver {
             current_dag_node: None,
             dag: DiGraph::new(),
             main_dag_idx: None,
+            unbound_ty_count: 0,
+            // rows: BTreeMap::new(),
+            unbound_row_count: 0,
+            guess_evidence: vec![],
         }
     }
 
@@ -106,7 +120,7 @@ impl Resolver {
             },
             |_, e| Some(e),
         );
-        self.debug();
+        // self.debug();
 
         let flat: Vec<NodeIndex> = Topo::new(&self.dag).iter(&self.dag).collect();
         let flat: Vec<NodeIndex> = flat
@@ -165,6 +179,7 @@ impl Resolver {
                     if let ItemKind::Function(ref mut func) = item.kind {
                         *func = f;
                     }
+
                     Ok(())
                 }
                 ItemKind::Type(n, t, _) => {
@@ -185,7 +200,7 @@ impl Resolver {
                 ItemKind::Field { name, value } => {
                     // let t = self.in_context(|me| me.analyze_type(value), dag_idx)?;
                     let t = self.analyze_type(value)?;
-                    dbg!(value, t); // Write back the result
+                    // dbg!(value, t); // Write back the result
                     let item = self
                         .env
                         .graph
@@ -236,7 +251,20 @@ impl Resolver {
 
         let out = f(self);
         self.current_dag_node = old;
+        self.guess_evidence = vec![];
         out
+    }
+
+    fn new_rowvar(&mut self) -> u32 {
+        let v = self.unbound_row_count;
+        self.unbound_row_count += 1;
+        v
+    }
+
+    fn new_typvar(&mut self) -> Intern<String> {
+        let v = self.unbound_ty_count;
+        self.unbound_ty_count += 1;
+        v.to_string().into()
     }
 
     fn analyze_func(
@@ -248,11 +276,32 @@ impl Resolver {
         self.in_context(
             |me| {
                 let sig = me.analyze_type(the_func.sig.0)?;
-                // dbg!(sig);
+                // let arg_types = sig.destructure_arrow().0;
+                // let vars = the_func
+                //     .args
+                //     .iter()
+                //     .zip(arg_types)
+                //     .map(|(n, t)| {
+                //         me.analyze_type(t)
+                //             .map(|t| (n.0, VariableKind::Param(*n, t)))
+                //     })
+                //     .collect::<Result<Vec<_>, _>>();
+
                 let body = me.analyze_expr(the_func.body, &[])?;
                 // dbg!(body);
+                the_func.unbound_rows = (0..me.unbound_row_count)
+                    .map(RowVar)
+                    .collect::<BTreeSet<_>>()
+                    .into();
+
+                the_func.unbound_types = (0..me.unbound_ty_count)
+                    .map(|x| TypeVar(x.to_string().into()))
+                    .collect::<BTreeSet<_>>()
+                    .into();
+
                 the_func.sig = Spanned(sig, the_func.sig.1);
-                // bg!(f_old == *the_func);
+                the_func.evidence = me.guess_evidence.clone().into();
+
                 the_func.body = body;
                 Ok(())
             },
@@ -312,6 +361,7 @@ impl Resolver {
                     }
                     _ => unreachable!("All rows should be closed"),
                 };
+                // self.rows.insert(, value)
                 Ok(Type::Prod(new_r).into())
             }
 
@@ -350,12 +400,15 @@ impl Resolver {
         expr: Spanned<Intern<Expr<Untyped>>>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
+        dbg!(&expr);
         let ex = match *expr.0 {
-            Expr::Ident(name) => {
+            Expr::Ident(u) => {
+                // dbg!(vars);
+
                 if vars
                     .iter()
                     .rev()
-                    .any(|n| name.ident().is_ok_and(|name| n.0 == name.0))
+                    .any(|n| u.ident().is_ok_and(|name| n.0 == name.0))
                 {
                     Ok(expr)
                 } else {
@@ -408,66 +461,56 @@ impl Resolver {
                 let func = self.analyze_expr(func, vars)?;
 
                 let arg = self.analyze_expr(arg, vars)?;
-                if let Expr::Item(id, Kind::Func) = *func.0 {
-                    let ty = self.env.value(NodeIndex::new(id.0))?;
-                    let name = ty.ident()?;
-                    if let ItemKind::Type(name, the_type, s) = ty.kind {
-                        // dbg!(the_type);
-                        // let lambda_var = Untyped(func.update("x".to_string()));
-                        // let lambda =
-                        // Expr::Lambda(lambda_var, func.replace(Expr::Ident(lambda_var)), false);
-                        let newty = self.analyze_type(the_type)?;
-                        dbg!(newty);
-
-                        let (unbound_types, unbound_rows) = Typechecker::extract_generics(newty);
-                        let scheme = TypeScheme {
-                            unbound_types,
-                            unbound_rows,
-                            evidence: vec![],
-                            ty: newty,
-                        }
-
-                        let ex: Expr<Untyped> = Expr::ItemInstance(Untyped(name), scheme.into(), arg);
-                        Ok(expr.update(ex))
-                    } else {
-                        Ok(expr.update(arg.0))
-                    }
-                } else {
-                    Ok(expr.update(Expr::Call(func, arg)))
-                }
+                if let Expr::Item(id, Kind::Ty) = *func.0 {
+                    todo!()
+                };
+                Ok(expr.update(Expr::Call(func, arg)))
             }
             Expr::FieldAccess(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
-                // dbg!(l);
+
                 if let Expr::Item(id, k) = *l.0 {
                     let res = self.resolve_name_expr(r)?;
 
                     Ok(res)
                 } else if let Expr::Ident(n) = *l.0 {
-                    if let Some((l, val)) = vars.iter().find(|x| x.0 == n.0 .0) {
-                        // dbg! val);
-                        // self.analyze_expr(expr, vars)
-                        let projection = self.find_row_address(*val, r, vars)?;
-                        // dbg!(projection);
+                    if let Some((variable, val)) = vars.iter().find(|x| x.0 == n.0 .0) {
+                        let projection = {
+                            let combo = *val;
+                            let id = r.ident()?;
+
+                            {
+                                let mut path = Vec::new();
+                                self.row_addr_helper(&combo, id, vars, &mut path)
+                                    .map_err(|e| {
+                                        if let Some(err) = e.downcast_ref::<DynamicErr>() {
+                                            err.clone()
+                                                .extra_labels(vec![(
+                                                    "in this object".to_string(),
+                                                    combo.1,
+                                                )])
+                                                .into()
+                                        } else {
+                                            e
+                                        }
+                                    })?;
+                                // dbg!(&path);
+
+                                let ex = path.into_iter().fold(combo, |prev, dir| {
+                                    combo.replace(Expr::Project(dir, prev))
+                                });
+
+                                ex.replace(Expr::Unlabel(ex, Label(id)))
+                            }
+
+                            // dbg!(combo);
+                        };
                         Ok(expr.update(projection.0))
                     } else {
                         todo!()
                     }
                 } else if let Expr::Unlabel(combo, label) = *l.0 {
-                    // self.find_row_address(combo, id)
-
-                    // let body = self.analyze_expr(l, vars)?;
-
-                    // let new_vars =
-                    //     [vars, &[(Intern::from(format!("%temp{}", vars.len())), l)]].concat();
-                    // let and_in = self.analyze_expr(r, &new_vars)?;
-                    // let name = Untyped(l.update(Intern::from(format!("%anon{}", vars.len()))));
-                    // let lambda = Spanned(Expr::Lambda(name, and_in, true).into(), expr.1);
-
-                    // Ok(expr.update(Expr::Call(lambda, l)))
                     self.resolve_name_expr(r)
-                    // dbg!(r);
-                    // todo!()
                 } else {
                     todo!("{l:?}")
                 }
@@ -481,8 +524,8 @@ impl Resolver {
             }
             Expr::Lambda(arg, body, is_anon) => {
                 let new_vars =
-                    [vars, &[(arg.0 .0, arg.ident()?.update(Expr::Ident(arg)))]].concat();
-                let body = self.analyze_expr(body, &new_vars)?;
+                    &[vars, &[(arg.0 .0, arg.ident()?.update(Expr::Ident(arg)))]].concat();
+                let body = self.analyze_expr(body, new_vars)?;
                 // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
                 Ok(expr.update(Expr::Lambda(arg, body, is_anon)))
             }
@@ -491,7 +534,7 @@ impl Resolver {
 
                 let new_vars = [vars, &[(id.0 .0, body)]].concat();
                 let and_in = self.analyze_expr(and_in, &new_vars)?;
-                let lambda = Spanned(Expr::Lambda(id, and_in, true).into(), expr.1);
+                let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
 
                 Ok(expr.update(Expr::Call(lambda, body)))
 
@@ -507,141 +550,135 @@ impl Resolver {
         // })
     }
 
+    fn row_addr_helper(
+        &mut self,
+        combo: &Spanned<Intern<Expr<Untyped>>>,
+        id: Spanned<Intern<String>>,
+        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+        accum: &mut Vec<Direction>,
+    ) -> CompResult<()> {
+        match *combo.0 {
+            Expr::Concat(l, r) => {
+                if matches!(*r.0, Expr::Label(a, _) if a.0.0 == id.0) {
+                    accum.push(Direction::Right);
+                    Ok(())
+                } else {
+                    accum.push(Direction::Left);
+                    let l = self.analyze_expr(l, vars)?;
+                    self.row_addr_helper(&l, id, vars, accum)
+                }
+            }
+
+            Expr::Branch(l, r) => todo!(),
+            Expr::Label(a, r) => {
+                if a.0 .0 == id.0 {
+                    Ok(())
+                } else {
+                    let r = self.analyze_expr(r, vars)?;
+                    self.row_addr_helper(&r, id, vars, accum)
+                }
+            }
+            Expr::Call(l, r) => {
+                if matches!(*l.0, Expr::Item(_, Kind::Ty)) {
+                    todo!()
+                } else {
+                    self.row_addr_helper(&r, id, vars, accum)
+                }
+            }
+            Expr::Ident(n) => {
+                let ty = Type::Var(TypeVar(self.new_typvar())).into();
+                let goal = Row::Open(RowVar(self.new_rowvar()));
+
+                let right = Row::Open(RowVar(self.new_rowvar()));
+                let left = Row::Open(RowVar(self.new_rowvar()));
+                let remainder = Row::Open(RowVar(self.new_rowvar()));
+                // evidence we can produce a row containing the field and other types
+                let ev1 = Evidence::RowEquation {
+                    left: Row::single(Label(id.ident()?), ty),
+                    right: remainder,
+                    goal,
+                };
+
+                let ev2 = Evidence::RowEquation { left, right, goal };
+                self.guess_evidence.push(ev1);
+                self.guess_evidence.push(ev2);
+                accum.push(Direction::Left);
+                Ok(())
+            }
+
+            _ => Err(
+                DynamicErr::new(format!("The field {} is not available here", id.0))
+                    .label("this", id.1)
+                    .into(),
+            ),
+        }
+    }
+
     // fn find_row_address(
     //     &mut self,
-    //     combo: Spanned<Intern<Expr<Untyped>>>,
+    //     combo: VariableKind,
     //     id: Spanned<Intern<Expr<Untyped>>>,
+    //     vars: &[(Intern<String>, VariableKind)],
     // ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
-    //     let accum = vec![];
-    //     fn helper(
-    //         // me: &mut Resolver,
-    //         combo: &Spanned<Intern<Expr<Untyped>>>,
-    //         id: Spanned<Intern<Expr<Untyped>>>,
-    //         accum: &[Direction],
-    //     ) -> CompResult<Vec<Direction>> {
-    //         // dbg!(combo);
-    //         match *combo.0 {
-    //             Expr::Concat(l, r) => {
-    //                 // let name = me.resolve_name_expr(id)?;
+    //     let id = id.ident()?;
+    //     match combo {
+    //         VariableKind::Local(combo) => {
+    //             let mut path = Vec::new();
+    //             self.row_addr_helper(&combo, id, vars, &mut path)
+    //                 .map_err(|e| {
+    //                     if let Some(err) = e.downcast_ref::<DynamicErr>() {
+    //                         err.clone()
+    //                             .extra_labels(vec![("in this object".to_string(), combo.1)])
+    //                             .into()
+    //                     } else {
+    //                         e
+    //                     }
+    //                 })?;
+    //             // dbg!(&path);
 
-    //                 if matches!(*r.0, Expr::Label(a, _) if a.0.0 == id.ident().unwrap().0) {
-    //                     Ok([accum, &[Direction::Right]].concat().to_vec())
-    //                 } else {
-    //                     let accum = [accum, &[Direction::Left]].concat();
-    //                     helper(&l, id, &accum)
-    //                 }
-    //             }
-    //             Expr::Branch(l, r) => todo!(),
-    //             Expr::Label(a, r) => {
-    //                 if a.0 .0 == id.ident()?.0 {
-    //                     Ok([accum, &[Direction::Left]].concat().to_vec())
-    //                 } else {
-    //                     helper(&r, id, accum)
-    //                 }
-    //             }
-    //             Expr::Call(l, r) => {
-    //                 if let Expr::Item(_, Kind::Func) = *l.0 {
-    //                     // dbg!(combo);
-    //                     helper(&r, id, accum)
-    //                 } else {
-    //                     panic!()
-    //                 }
-    //             }
+    //             let ex = path
+    //                 .into_iter()
+    //                 .fold(combo, |prev, dir| combo.replace(Expr::Project(dir, prev)));
 
-    //             _ => Err(DynamicErr::new(format!(
-    //                 "The field {} is not available here",
-    //                 id.ident()?.0
-    //             ))
-    //             .label("this", id.1)
-    //             .into()),
+    //             Ok(ex.replace(Expr::Unlabel(ex, Label(id))))
+    //         }
+
+    //         VariableKind::Param(combo, t) => {
+    //             let rv: Result<Intern<Type>, CompilerErr> = match *t {
+    //                 Type::Prod(row) | Type::Sum(row) => match row {
+    //                     Row::Closed(closed_row) => {
+    //                         dbg!(combo, id, t, row);
+    //                         let idx = closed_row.fields.iter().position(|x| x.0 == id).ok_or(
+    //                             DynamicErr::new(format!(
+    //                                 "The field {} is not available here",
+    //                                 id.0
+    //                             ))
+    //                             .label("this", id.1)
+    //                             .extra_labels(vec![("in this object".to_string(), combo.1)]),
+    //                         )?;
+    //                         Ok(closed_row.values[idx])
+    //                     }
+    //                     _ => panic!(),
+    //                 },
+    //                 _ => Err(DynamicErr::new(format!("{t:?} is not a row type")).into()),
+    //             };
+
+    //             let left = typing::Row::Closed(ClosedRow {
+    //                 fields: vec![Label(combo.ident()?)].leak(),
+    //                 values: vec![rv?].leak(),
+    //             });
+    //             let right = typing::Row::Open(RowVar(self.new_rowvar()));
+
+    //             let goal = typing::Row::Open(RowVar(self.new_rowvar()));
+    //             self.guess_evidence
+    //                 .push(Evidence::RowEquation { left, right, goal });
+
+    //             Ok(combo.update(Expr::FieldAccess(combo, id)))
     //         }
     //     }
-    //     let path = helper(&combo, id, &accum);
-    //     let ex = path
-    //         .map_err(|e| {
-    //             if let Some(err) = e.downcast_ref::<DynamicErr>() {
-    //                 err.clone()
-    //                     .extra_labels(vec![("in this object".to_string(), combo.1)])
-    //                     .into()
-    //             } else {
-    //                 e
-    //             }
-    //         })?
-    //         .into_iter()
-    //         .fold(combo, |prev, x| combo.replace(Expr::Project(x, prev)));
-    //     Ok(ex.replace(Expr::Unlabel(ex, Label(id.ident()?))))
+
+    //     // dbg!(combo);
     // }
-
-    fn find_row_address(
-        &mut self,
-        combo: Spanned<Intern<Expr<Untyped>>>,
-        id: Spanned<Intern<Expr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-    ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
-        let id = id.ident()?;
-        // dbg!(combo);
-        fn helper(
-            me: &mut Resolver,
-            combo: &Spanned<Intern<Expr<Untyped>>>,
-            id: Spanned<Intern<String>>,
-            vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-            accum: &mut Vec<Direction>,
-        ) -> CompResult<()> {
-            match *combo.0 {
-                Expr::Concat(l, r) => {
-                    if matches!(*r.0, Expr::Label(a, _) if a.0.0 == id.0) {
-                        accum.push(Direction::Right);
-                        Ok(())
-                    } else {
-                        accum.push(Direction::Left);
-                        let l = me.analyze_expr(l, vars)?;
-                        helper(me, &l, id, vars, accum)
-                    }
-                }
-
-                Expr::Branch(l, r) => todo!(),
-                Expr::Label(a, r) => {
-                    if a.0 .0 == id.0 {
-                        Ok(())
-                    } else {
-                        let r = me.analyze_expr(r, vars)?;
-                        helper(me, &r, id, vars, accum)
-                    }
-                }
-                // Expr::Call(l, r) => {
-                //     if matches!(*l.0, Expr::Item(_, Kind::Func)) {
-                //         helper(me, &r, id, vars, accum)
-                //     } else {
-                //         todo!()
-                //     }
-                // }
-                Expr::ItemInstance(n, t, v) => helper(me, &v, id, vars, accum),
-                _ => Err(
-                    DynamicErr::new(format!("The field {} is not available here", id.0))
-                        .label("this", id.1)
-                        .into(),
-                ),
-            }
-        }
-        // dbg!(combo);
-        let mut path = Vec::new();
-        helper(self, &combo, id, vars, &mut path).map_err(|e| {
-            if let Some(err) = e.downcast_ref::<DynamicErr>() {
-                err.clone()
-                    .extra_labels(vec![("in this object".to_string(), combo.1)])
-                    .into()
-            } else {
-                e
-            }
-        })?;
-        // dbg!(&path);
-
-        let ex = path
-            .into_iter()
-            .fold(combo, |prev, dir| combo.replace(Expr::Project(dir, prev)));
-
-        Ok(ex.replace(Expr::Unlabel(ex, Label(id))))
-    }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     #[deprecated]

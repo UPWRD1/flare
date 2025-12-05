@@ -1,11 +1,11 @@
-use std::cell::Cell;
+use std::{cell::Cell, collections::BTreeSet};
 
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 // use lasso::Spur;
 
 use crate::{
-    passes::midend::typing::Type,
+    passes::midend::typing::{Evidence, RowVar, Type, TypeVar},
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr, FatalErr},
         rep::{
@@ -50,7 +50,11 @@ pub struct FunctionItem<V: Variable> {
     pub name: V,
     // pub sig: Cell<Option<Spanned<Intern<Type>>>>,
     pub sig: Spanned<Intern<Type>>,
+    // pub args: Intern<Vec<Spanned<Intern<String>>>>,
     pub body: Spanned<Intern<Expr<V>>>,
+    pub unbound_types: Intern<BTreeSet<TypeVar>>,
+    pub unbound_rows: Intern<BTreeSet<RowVar>>,
+    pub evidence: Intern<Vec<Evidence>>,
     // pub checked: Cell<bool>,
 }
 

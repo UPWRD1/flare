@@ -150,11 +150,12 @@ impl<T: Target> Context<T> {
         let (items, source) = tc.check()?;
         
         let mut lowerer = Lowerer::new(items);
-        let out = lowerer.lower(source);
-        dbg!(&out);
+        let ir = lowerer.lower(source);
+
+        // dbg!(&out);
                 // s.check_item()?;
 
-        let g = Generator::new(self.target, vec![]);
+        let g = Generator::new(self.target, ir);
 
         let out = g.generate();
         // dbg!(&out);
