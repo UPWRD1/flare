@@ -100,8 +100,22 @@ pub enum Direction {
     Right,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Label(pub Spanned<Intern<String>>);
+
+impl PartialEq for Label {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 .0 == other.0 .0
+    }
+}
+
+impl Hash for Label {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0 .0.hash(state);
+    }
+}
+
+impl Eq for Label {}
 
 impl PartialOrd for Label {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

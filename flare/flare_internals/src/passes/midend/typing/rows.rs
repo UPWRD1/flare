@@ -63,7 +63,25 @@ impl Row {
 }
 
 impl ClosedRow {
+    pub fn subtyped(&self, other: Self) -> Option<Self> {
+        let mut accum = vec![];
+        for (me_label, me_v) in self.fields.into_iter().zip(self.values) {
+            if let Some((idx, other_t)) = other
+                .fields
+                .iter().enumerate()
+                .find(|(_, other_label)| *other_label == me_label) && other.values[idx] == *me_v 
+            {
+                accum.push((me_label, me_v))
+            } else {
+                return None;
+            }
+        }
+
+        todo!()
+    }
+
     pub fn merge(left: Self, right: Self) -> Self {
+        // dbg!(left, right);
         let mut left_fields = left.fields.iter().peekable();
         let mut left_values = left.values.iter();
         let mut right_fields = right.fields.iter().peekable();

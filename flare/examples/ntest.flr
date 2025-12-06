@@ -43,12 +43,12 @@ package Main =
         # more: str,
     
     
-    struct Person =
-        name: str,
-        age: num,
+    # struct Person =
+        # name: str,
+        # age: num,
     #     # eye_color: EyeColor,
 
-    let person_age p : {name: str, age: num} -> num =
+    let person_age p : {age: num} -> num =
         p.age
 
     # struct Wrapper =
@@ -61,9 +61,9 @@ package Main =
     let multiply x y : ?T -> ?T -> ?T =
         x * y
 
-    let main : str =
+    let main : num =
         let yes = @yes in
-        let p = {name = "joe", age = 3000, iscool = yes} in
+        let p = {name = "joe", age = 3, height = 30} in
        
         # let colors = {@red | @blue | @green}
         

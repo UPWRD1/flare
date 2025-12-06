@@ -36,8 +36,8 @@ impl<'env> Solver<'env> {
             ),
 
             Expr::Ident(v) => {
-                dbg!(v);
-                dbg!(env.keys().collect::<Vec<_>>());
+                // dbg!(v);
+                // dbg!(env.keys().collect::<Vec<_>>());
                 let ty = &env[&v.0 .0];
                 (
                     GenOut::new(vec![], ast.update(Expr::Ident(Typed(v, *ty)))),
@@ -127,20 +127,30 @@ impl<'env> Solver<'env> {
             }
 
             Expr::Call(fun, arg) => {
-                let (arg_out, arg_ty) = self.infer(env.clone(), arg);
+                let fun_id = fun.id();
+                let (fun_out, supposed_fun_ty) = self.infer(env.clone(), fun);
+                let mut constraint = fun_out.constraints;
+                let (arg_ty, ret_ty) = match *supposed_fun_ty {
+                    Type::Func(arg, ret) => (*arg, *ret),
+                    ty => {
+                        let arg = self.fresh_ty_var();
+                        let ret = self.fresh_ty_var();
 
-                let ret_ty = Type::Unifier(self.fresh_ty_var());
-                let fun_ty = Type::Func(arg_ty, ret_ty.into());
+                        constraint.push(Constraint::TypeEqual(
+                            Provenance::AppExpectedFun(fun_id),
+                            supposed_fun_ty,
+                            Type::Func(Type::Unifier(arg).into(), Type::Unifier(ret).into()).into(),
+                        ));
 
-                let fun_out = self.check(env, fun, fun_ty);
+                        (Type::Unifier(arg), Type::Unifier(ret))
+                    }
+                };
 
+                let arg_out = self.check(env, arg, arg_ty);
+                constraint.extend(arg_out.constraints);
                 (
                     GenOut::new(
-                        arg_out
-                            .constraints
-                            .into_iter()
-                            .chain(fun_out.constraints)
-                            .collect(),
+                        constraint,
                         ast.update(Expr::Call(fun_out.typed_ast, arg_out.typed_ast)),
                     ),
                     ret_ty.into(),

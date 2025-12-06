@@ -54,11 +54,6 @@ pub struct Resolver {
     unbound_row_count: u32, // new_rows: BTreeSet<RowVar>,
     guess_evidence: Vec<Evidence>,
 }
-#[derive(Debug, Clone, Copy)]
-enum VariableKind {
-    Local(Spanned<Intern<Expr<Untyped>>>),
-    Param(Spanned<Intern<String>>, Intern<Type>),
-}
 
 impl Resolver {
     pub fn new(env: Environment) -> Self {
@@ -276,16 +271,6 @@ impl Resolver {
         self.in_context(
             |me| {
                 let sig = me.analyze_type(the_func.sig.0)?;
-                // let arg_types = sig.destructure_arrow().0;
-                // let vars = the_func
-                //     .args
-                //     .iter()
-                //     .zip(arg_types)
-                //     .map(|(n, t)| {
-                //         me.analyze_type(t)
-                //             .map(|t| (n.0, VariableKind::Param(*n, t)))
-                //     })
-                //     .collect::<Result<Vec<_>, _>>();
 
                 let body = me.analyze_expr(the_func.body, &[])?;
                 // dbg!(body);
@@ -339,11 +324,11 @@ impl Resolver {
                 let new_r = match r {
                     super::typing::Row::Closed(closed_row) => {
                         let new_values: CompResult<Vec<Intern<Type>>> = closed_row
-                            .fields
+                            .values
                             .iter()
-                            .map(|n| -> CompResult<Intern<Type>> {
-                                let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
-                                self.analyze_type(t)
+                            .map(|t| -> CompResult<Intern<Type>> {
+                                // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                                self.analyze_type(*t)
                             })
                             .collect();
 
@@ -400,7 +385,7 @@ impl Resolver {
         expr: Spanned<Intern<Expr<Untyped>>>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
-        dbg!(&expr);
+        // dbg!(&expr);
         let ex = match *expr.0 {
             Expr::Ident(u) => {
                 // dbg!(vars);
@@ -467,8 +452,8 @@ impl Resolver {
                 Ok(expr.update(Expr::Call(func, arg)))
             }
             Expr::FieldAccess(l, r) => {
+                dbg!(expr, l);
                 let l = self.analyze_expr(l, vars)?;
-
                 if let Expr::Item(id, k) = *l.0 {
                     let res = self.resolve_name_expr(r)?;
 

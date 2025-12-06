@@ -10,16 +10,12 @@ pub use rows::{ClosedRow, Row, RowVar};
 use rows::{RowCombination, RowUniVar};
 pub use types::{TyUniVar, Type, TypeVar};
 
-use std::{
-    collections::BTreeSet,
-    fmt::Display,
-    hash::{Hash, Hasher},
-};
+use std::{collections::BTreeSet, fmt::Display, hash::Hash};
 
 use ena::unify::InPlaceUnificationTable;
 use internment::Intern;
 
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet, FxHasher};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 use crate::{
     passes::midend::typing::subst::SubstOut,
@@ -51,7 +47,7 @@ impl Ident for Typed {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Constraint {
+pub enum Constraint {
     TypeEqual(Provenance, Intern<Type>, Intern<Type>),
     RowCombine(Provenance, RowCombination),
 }
@@ -62,7 +58,7 @@ pub enum Evidence {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum Provenance {
+pub enum Provenance {
     // A non function type encountered a Fun ast node, causing a type mismatch.
     UnexpectedFun(NodeId),
     // An application has an ast node in function position that does not have a function type.
@@ -131,6 +127,7 @@ pub struct TypeInferOut {
 pub struct TypesOutput {
     pub typed_ast: Spanned<Intern<Expr<Typed>>>,
     pub scheme: TypeScheme,
+    pub errors: FxHashMap<NodeId, CompilerErr>,
     pub row_to_ev: FxHashMap<NodeId, Evidence>,
     pub branch_to_ret_ty: FxHashMap<NodeId, Intern<Type>>,
     pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
@@ -173,8 +170,6 @@ pub struct Solver<'env> {
 struct SolverTables {
     unification_table: InPlaceUnificationTable<TyUniVar>,
     row_unification_table: InPlaceUnificationTable<RowUniVar>,
-
-    hasher: FxHasher,
 
     partial_row_combs: BTreeSet<RowCombination>,
     row_to_combo: FxHashMap<NodeId, RowCombination>,
@@ -382,7 +377,7 @@ impl<'env> Solver<'env> {
                     RowCombination { left, right, goal },
                 ),
             }));
-        dbg!(&out.constraints);
+        // dbg!(&out.constraints);
         self.unification(out.constraints)?;
 
         // We still need to substitute, but only our ast.
@@ -439,6 +434,7 @@ impl<'env> Solver<'env> {
             .difference(&sig_evs)
             .cloned()
             .collect::<Vec<_>>();
+
         if !extra_types.is_empty() || !extra_row.is_empty() || !extra_evidence.is_empty() {
             return Err(
                 DynamicErr::new("Checking introduced new constraints".to_string())
@@ -452,6 +448,7 @@ impl<'env> Solver<'env> {
         Ok(TypesOutput {
             typed_ast,
             scheme: signature,
+            errors: std::mem::take(&mut self.tables.errors),
             row_to_ev,
             branch_to_ret_ty,
             item_wrappers,

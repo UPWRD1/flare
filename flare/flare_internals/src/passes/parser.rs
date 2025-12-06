@@ -915,7 +915,8 @@ where
 raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comma)).collect::<Vec<_>>()
                     .clone()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|types, e| {
+                    .map_with(|mut types, e| {
+                        types.reverse();
                         let ty = Type::Prod(Row::Closed(ClosedRow {
                             fields: types
                                 .iter()

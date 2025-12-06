@@ -36,12 +36,35 @@ impl<'env> Solver<'env> {
             (Expr::Unit, Type::Unit) => GenOut::new(vec![], Spanned(Expr::Unit.into(), id)),
 
             // Lambdas
-            (Expr::Lambda(arg, body, is_anon), Type::Func(arg_ty, ret_ty)) => {
-                // dbg!(arg, arg_ty);
-                let env = env.update(arg.0 .0, arg_ty);
-                self.check(env, body, ret_ty).with_typed_ast(|body| {
-                    body.replace(Expr::Lambda(Typed(arg, arg_ty), body, is_anon))
-                })
+            (Expr::Lambda(arg, body, is_anon), ty) => {
+                let mut constraints = vec![];
+                let (arg_ty, ret_ty) = match ty {
+                    Type::Func(arg, ret) => (*arg, *ret),
+                    ty => {
+                        let arg = self.fresh_ty_var();
+                        let ret = self.fresh_ty_var();
+
+                        constraints.push(Constraint::TypeEqual(
+                            Provenance::UnexpectedFun(id),
+                            ty.into(),
+                            Type::Func(Type::Unifier(arg).into(), Type::Unifier(ret).into()).into(),
+                        ));
+
+                        (Type::Unifier(arg), Type::Unifier(ret))
+                    }
+                };
+                let env = env.update(arg.0 .0, arg_ty.into());
+                let body_out = self.check(env, body, ret_ty);
+
+                constraints.extend(body_out.constraints);
+                GenOut::new(
+                    constraints,
+                    the_ast.update(Expr::Lambda(
+                        Typed(arg, arg_ty.into()),
+                        body_out.typed_ast,
+                        is_anon,
+                    )),
+                )
             }
 
             // Row Types

@@ -11,7 +11,7 @@ use crate::{
         typing::{ItemSource, RowVar, Solver, Type, TypeScheme, TypeVar, Typed, TypesOutput},
     },
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr},
+        errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
             ast::{Expr, ItemId, Untyped},
             common::Ident,
@@ -134,36 +134,51 @@ impl Typechecker {
         item_idx: NodeIndex,
         f: FunctionItem<Untyped>,
     ) -> CompResult<TypesOutput> {
-        let unbound_types = Intern::as_ref(f.unbound_types).clone();
-        let unbound_rows = Intern::as_ref(f.unbound_rows).clone();
-        let evidence = Intern::as_ref(f.evidence).to_vec();
+        // let unbound_types = Intern::as_ref(f.unbound_types).clone();
+        // let unbound_rows = Intern::as_ref(f.unbound_rows).clone();
+        // let evidence = Intern::as_ref(f.evidence).to_vec();
+        let unbound_types = BTreeSet::new();
+        let unbound_rows = BTreeSet::new();
+        let evidence = Vec::new();
         let scheme = TypeScheme {
             unbound_types,
             unbound_rows,
             evidence,
             ty: f.sig.0,
         };
-        dbg!(&scheme);
+        // dbg!(&scheme);
         self.context
             .insert(ItemId(item_idx.index()), scheme.clone());
 
-        // let infer = Solver::type_infer_with_items(&self.context, f.body)?;
-        // dbg!(infer.scheme);
-        // dbg!(&self.context);
-        let checked =
-            Solver::check_with_items(&self.context, f.body, scheme).map_err(|e: CompilerErr| {
-                if let Some(e) = e.downcast_ref::<DynamicErr>() {
-                    e.clone()
-                        .label("this_func", f.name.ident().unwrap().1)
-                        .into()
-                } else {
-                    e
-                }
-            })?;
+        let infer = Solver::type_infer_with_items(&self.context, f.body)?;
+        dbg!(infer.scheme);
+
+        let checked = Solver::check_with_items(&self.context, f.body, scheme)?;
+
+        if !checked.errors.is_empty() {
+            Err(ErrorCollection::new(
+                checked
+                    .errors
+                    .into_values()
+                    .map(|e| {
+                        if let Some(e) = e.downcast_ref::<DynamicErr>() {
+                            e.clone()
+                                .extra("in this let-definition", f.name.ident().unwrap().1)
+                                .into()
+                        } else {
+                            e
+                        }
+                    })
+                    .collect(),
+            )
+            .into())
+        } else {
+            self.context
+                .insert(ItemId(item_idx.index()), checked.scheme.clone());
+            Ok(checked)
+        }
         // dbg!(&checked);
-        self.context
-            .insert(ItemId(item_idx.index()), checked.scheme.clone());
-        Ok(checked)
+
         // Ok(infer.scheme)
         // Ok(ItemKind::Function( FunctionItem {
         //     name,

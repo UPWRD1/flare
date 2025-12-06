@@ -1,30 +1,21 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
 
-use std::{
-    env,
-    fs::{self, File},
-    io::Write,
-    path::PathBuf,
-};
+use std::{env, fs::File, io::Write, path::PathBuf};
 
 use flare_internals::{
     Context, convert_path_to_id,
     passes::backend::{c::C, lowering::ir::IRTarget, target::Target},
-    resource::errors::{CompResult, ReportableError},
+    resource::errors::CompResult,
 };
 fn enable_loggin() {
-    unsafe {
-        if cfg!(debug_assertions) {
-            std::env::set_var("RUST_LOG", "trace");
-            pretty_env_logger::formatted_builder()
-                .filter_level(log::LevelFilter::Debug)
-                //.format_module_path(false)
-                .format(|f, r| writeln!(f, "{}", r.args()))
-                .init();
-        } else {
-            std::env::set_var("RUST_LOG", "off");
-        }
+    if cfg!(debug_assertions) {
+        pretty_env_logger::formatted_builder()
+            .filter_level(log::LevelFilter::Info)
+            .target(pretty_env_logger::env_logger::Target::Stdout)
+            //.format_module_path(false)
+            .format(|f, r| writeln!(f, "{}", r.args(),))
+            .init();
     }
 }
 
