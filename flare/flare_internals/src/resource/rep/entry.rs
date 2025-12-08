@@ -7,9 +7,9 @@ use internment::Intern;
 use crate::{
     passes::midend::typing::{Evidence, RowVar, Type, TypeVar},
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr, FatalErr},
+        errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
-            ast::{Label, Untyped, Variable},
+            ast::{Label, Variable},
             common::{Ident, SpanWrapped},
             files::FileID,
         },
@@ -17,9 +17,9 @@ use crate::{
 };
 
 use super::{
-    ast::Expr,
     // concretetypes::{EnumVariant, Ty},
     Spanned,
+    ast::Expr,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -106,7 +106,7 @@ impl<V: Variable> SpanWrapped for Item<V> {
             ),
             ItemKind::Type(_, _, s) => *s,
             ItemKind::Extern { name, sig } => name.1.union(sig.1),
-            ItemKind::Field { name, value } => name.0 .1,
+            ItemKind::Field { name, value } => name.0.1,
 
             ItemKind::Dummy(_) => panic!(),
         }
@@ -169,7 +169,7 @@ impl<V: Variable> Item<V> {
             // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
             // ItemKind::Field((_, ty)) => Ok(*ty),
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
-            ItemKind::Field { name, value } => Ok(Spanned(*value, name.0 .1)),
+            ItemKind::Field { name, value } => Ok(Spanned(*value, name.0.1)),
             ItemKind::Type(_, t, s) => Ok(Spanned(*t, *s)),
             _ => Err(err(self)),
         }

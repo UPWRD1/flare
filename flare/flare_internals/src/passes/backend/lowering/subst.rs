@@ -24,14 +24,18 @@ impl Subst {
     fn subst_row_var(self) -> Row {
         match self {
             Self::RowPayload(row) => row,
-            Self::TyPayload(_) => panic!("ICE: Kind mismatch. A type was substituted for a row"),
+            Self::TyPayload(_) => {
+                unreachable!("Kind mismatch. A type was substituted for a row")
+            }
         }
     }
 
     fn subst_ty_var(self) -> Type {
         match self {
             Self::TyPayload(ty) => ty,
-            Self::RowPayload(_) => panic!("ICE: Kind mismatch. A type was substituted for a row"),
+            Self::RowPayload(_) => {
+                unreachable!("ICE: Kind mismatch. A type was substituted for a row")
+            }
         }
     }
 

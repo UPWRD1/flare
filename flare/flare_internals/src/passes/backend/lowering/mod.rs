@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 use crate::{
     passes::{
         backend::lowering::{
-            ir::{IRTarget, Kind, Var, IR},
+            ir::{IR, IRTarget, ItemId, Kind, Var},
             lower_ast::{ItemSupply, LowerAst, VarSupply},
             lower_types::{AstTypeVar, LowerTypes},
         },

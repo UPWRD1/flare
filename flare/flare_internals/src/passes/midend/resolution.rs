@@ -1,30 +1,28 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use petgraph::{
     dot::Config,
     graph::NodeIndex,
-    visit::{EdgeRef, IntoNodeReferences, Topo, Walker},
+    visit::{IntoNodeReferences, Topo, Walker},
 };
-use rustc_hash::FxHashSet;
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 
 use crate::{
     passes::midend::{
         environment::Environment,
-        typechecker::Typechecker,
-        typing::{self, ClosedRow, Evidence, Row, RowVar, Solver, Type, TypeScheme, TypeVar},
+        typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeVar},
     },
     resource::{
-        errors::{self, not_defined, CompResult, CompilerErr, DynamicErr, FatalErr},
+        errors::{self, CompResult, CompilerErr, DynamicErr},
         rep::{
+            Spanned,
             ast::{Direction, Expr, ItemId, Kind, Label, LambdaInfo, Untyped},
             common::Ident,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
-            Spanned,
         },
     },
 };
@@ -81,8 +79,7 @@ impl Resolver {
             .graph
             .node_indices()
             .filter_map(|idx| {
-                let t = self
-                    .env
+                self.env
                     .value(idx)
                     .map(|x| {
                         if let ItemKind::Package(p) = x.kind {
@@ -92,8 +89,7 @@ impl Resolver {
                         }
                     })
                     .ok()
-                    .flatten();
-                t
+                    .flatten()
             })
             // .map(|x| if let Some(x) = x { x } else { unreachable!() })
             .collect();
@@ -159,7 +155,7 @@ impl Resolver {
             match item_kind {
                 ItemKind::Package(_) => Ok::<(), CompilerErr>(()),
                 ItemKind::Function(mut f) => {
-                    if *f.name.0 .0 == "main" {
+                    if *f.name.0.0 == "main" {
                         self.main_dag_idx = Some(child);
                     }
                     // Analyze the function (doesn't touch the graph)
@@ -386,7 +382,8 @@ impl Resolver {
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
         // dbg!(&expr);
-        let ex = match *expr.0 {
+
+        match *expr.0 {
             Expr::Ident(u) => {
                 // dbg!(vars);
 
@@ -452,14 +449,14 @@ impl Resolver {
                 Ok(expr.update(Expr::Call(func, arg)))
             }
             Expr::FieldAccess(l, r) => {
-                dbg!(expr, l);
+                // dbg!(expr, l);
                 let l = self.analyze_expr(l, vars)?;
                 if let Expr::Item(id, k) = *l.0 {
                     let res = self.resolve_name_expr(r)?;
 
                     Ok(res)
                 } else if let Expr::Ident(n) = *l.0 {
-                    if let Some((variable, val)) = vars.iter().find(|x| x.0 == n.0 .0) {
+                    if let Some((variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
                         let projection = {
                             let combo = *val;
                             let id = r.ident()?;
@@ -509,7 +506,7 @@ impl Resolver {
             }
             Expr::Lambda(arg, body, is_anon) => {
                 let new_vars =
-                    &[vars, &[(arg.0 .0, arg.ident()?.update(Expr::Ident(arg)))]].concat();
+                    &[vars, &[(arg.0.0, arg.ident()?.update(Expr::Ident(arg)))]].concat();
                 let body = self.analyze_expr(body, new_vars)?;
                 // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
                 Ok(expr.update(Expr::Lambda(arg, body, is_anon)))
@@ -517,7 +514,7 @@ impl Resolver {
             Expr::Let(id, body, and_in) => {
                 let body = self.analyze_expr(body, vars)?;
 
-                let new_vars = [vars, &[(id.0 .0, body)]].concat();
+                let new_vars = [vars, &[(id.0.0, body)]].concat();
                 let and_in = self.analyze_expr(and_in, &new_vars)?;
                 let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
 
@@ -527,8 +524,7 @@ impl Resolver {
             }
 
             _ => Ok(expr),
-        };
-        ex
+        }
         //.inspect(|x| {
 
         // dbg!(x);
@@ -556,7 +552,7 @@ impl Resolver {
 
             Expr::Branch(l, r) => todo!(),
             Expr::Label(a, r) => {
-                if a.0 .0 == id.0 {
+                if a.0.0 == id.0 {
                     Ok(())
                 } else {
                     let r = self.analyze_expr(r, vars)?;
@@ -699,10 +695,11 @@ impl Resolver {
             self.dag.add_node(env_node)
         };
 
-        if let Some(current) = self.current_dag_node {
-            if n != current && !self.dag.contains_edge(current, n) {
-                self.dag.update_edge(n, current, ());
-            }
+        if let Some(current) = self.current_dag_node
+            && n != current
+            && !self.dag.contains_edge(current, n)
+        {
+            self.dag.update_edge(n, current, ());
         }
     }
 

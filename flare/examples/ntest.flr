@@ -19,9 +19,9 @@ package Main =
     #struct S =
     #    d: str,
     #    f: str -> num -> str
-
-    let id x : num -> num =
-           x
+    
+    # let id x : num -> num =
+           # x
 
     # let looper limit f items : num -> Seq[?T] -> (?T -> unit) -> num =
     #     let looper_helper = fn c =>
@@ -58,12 +58,12 @@ package Main =
     #     catchphrase: unit -> ?T,
     #     behavior: Term
 
-    let multiply x y : ?T -> ?T -> ?T =
-        x * y
+    # let multiply x y : num -> num -> num =
+        # x * y
 
     let main : num =
-        let yes = @yes in
-        let p = {name = "joe", age = 3, height = 30} in
+        # let yes = @yes in 
+        let p = {name = "joe", age = 3, cool = false} in
        
         # let colors = {@red | @blue | @green}
         
@@ -72,7 +72,7 @@ package Main =
         # let w = {value = p, meta = "asdf" } in
             # let m = multiply p.age (1/2) in
             # w.value
-            person_age p
+            (person_age p)
             # tuple.0
 
                 # id multiply 3 4

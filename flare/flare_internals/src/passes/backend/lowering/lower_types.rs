@@ -2,12 +2,9 @@ use std::collections::BTreeMap;
 
 use rustc_hash::FxHashMap;
 
-use crate::{
-    passes::{
-        backend::lowering::ir::{Kind, Row, Type, TypeVar},
-        midend::typing::{self, Evidence},
-    },
-    resource::errors::FatalErr,
+use crate::passes::{
+    backend::lowering::ir::{Kind, Row, Type, TypeVar},
+    midend::typing::{self, Evidence},
 };
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -34,7 +31,7 @@ impl LowerTypes {
         match row {
             typing::Row::Open(var) => Row::Open(self.env[&AstTypeVar::Row(var)]),
             typing::Row::Closed(closed_row) => Row::Closed(self.lower_closed_row_ty(closed_row)),
-            typing::Row::Unifier(_) => FatalErr::new("Encountered unification row during lowering"),
+            typing::Row::Unifier(_) => unreachable!("Encountered unification row during lowering"),
         }
     }
 

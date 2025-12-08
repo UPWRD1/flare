@@ -1,20 +1,17 @@
-use std::collections::BTreeSet;
-
 use internment::Intern;
-use rustc_hash::FxHashSet;
 
 use crate::{
     passes::midend::typing::{
-        rows::{ClosedRow, Row, RowCombination, RowUniVar},
-        // types::InternType,
         Constraint,
         Provenance,
         Solver,
         TyUniVar,
         Type,
+        // types::InternType,
+        rows::{ClosedRow, Row, RowCombination, RowUniVar},
     },
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr, TypeErr},
+        errors::{CompilerErr, DynamicErr, TypeErr},
         rep::ast::Label,
     },
 };
@@ -26,6 +23,8 @@ enum UnificationError {
 
     RowsNotEqual((Row, Row)),
 }
+
+pub struct UnificationFailure;
 
 impl<'env> Solver<'env> {
     pub fn normalize_ty(&mut self, ty: Intern<Type>) -> Intern<Type> {
@@ -203,21 +202,26 @@ impl<'env> Solver<'env> {
             (Row::Closed(l), Row::Closed(r)) => {
                 // RowCombination::is_unifiable(&self, other);
                 // dbg!(left.equatable(&right));
+                // dbg!(l.subtyped(&r));
+                // dbg!(r.is_subtype_of(&r));
+                if let Some(l) = l.is_subtype_of(&r) {
+                    // dbg!(l);
+                    // if l.fields != r.fields {
 
-                if l.fields != r.fields {
                     // let offenders = FxHashSet::from_iter(l.fields);
                     // let d = offenders.difference(&FxHashSet::from_iter(r.fields));
-                    return Err(UnificationError::RowsNotEqual((left, right)));
-                }
 
-                // If they are, our values are already in order so we can walk them and unify each
-                // type
-                let left_tys = l.values.iter();
-                let right_tys = r.values.iter();
-                for (left_ty, right_ty) in left_tys.zip(right_tys) {
-                    self.unify_ty_ty(*left_ty, *right_ty)?;
+                    // If they are, our values are already in order so we can walk them and unify each
+                    // type
+                    let left_tys = l.values.iter();
+                    let right_tys = r.values.iter();
+                    for (left_ty, right_ty) in left_tys.zip(right_tys) {
+                        self.unify_ty_ty(*left_ty, *right_ty)?;
+                    }
+                    Ok(())
+                } else {
+                    Err(UnificationError::RowsNotEqual((left, right)))
                 }
-                Ok(())
             }
 
             (_, _) => Err(UnificationError::RowsNotEqual((left, right))),
@@ -317,70 +321,74 @@ impl<'env> Solver<'env> {
         }
     }
 
-    pub fn unification(&mut self, constraints: Vec<Constraint>) -> CompResult<()> {
+    pub fn unification(&mut self, constraints: Vec<Constraint>) -> Result<(), UnificationFailure> {
         for constr in constraints {
             // dbg!(&constr);
-            match constr {
-                Constraint::TypeEqual(provenance, left, right) => {
-                    if let Err(kind) = self.unify_ty_ty(left, right) {
-                        let (node_id, mark): (_, CompilerErr) = match kind {
-                            UnificationError::InfiniteType(type_var, ty) => (
-                                provenance.id(),
-                                TypeErr::InfiniteType { type_var, ty }.into(),
-                            ),
-                            UnificationError::TypeNotEqual(left, right) => match provenance {
-                                Provenance::UnexpectedFun(node_id) => (
-                                    node_id,
-                                    TypeErr::UnexpectedFun {
-                                        expected_ty: left,
-                                        fun_ty: right,
-                                    }
-                                    .into(),
-                                ),
-                                Provenance::AppExpectedFun(node_id) => (
-                                    node_id,
-                                    TypeErr::AppExpectedFun {
-                                        inferred_ty: left,
-                                        expected_fun_ty: right,
-                                    }
-                                    .into(),
-                                ),
-                                Provenance::ExpectedUnify(node_id) => (
-                                    node_id,
-                                    DynamicErr::new(format!(
-                                        "Type mismatch between {left} and {right}"
-                                    ))
-                                    .label(
-                                        format!("expected '{left}' here, found '{right}'"),
-                                        provenance.id(),
-                                    )
-                                    .into(),
-                                ),
-                                // FIXME: Use actual rows and not types...
-                                Provenance::ExpectedCombine(node_id) => {
-                                    (node_id, TypeErr::TypeNotEqual(left, right).into())
-                                }
-                            },
-                            UnificationError::RowsNotEqual((l, r)) => {
-                                let err = DynamicErr::new("Could not unify types").label(
-                                    format!("Expected {:?}, found {:?}", l, r),
-                                    provenance.id(),
-                                );
-                                (provenance.id(), err.into())
-                            }
-                        };
-                        self.tables.errors.insert(node_id, mark);
-                    }
-                }
-                Constraint::RowCombine(p, row_comb) => {
-                    if let Err(kind) = self.unify_row_comb(row_comb) {
-                        panic!("{kind:?}")
-                    }
-                }
+            let (provenance, uni_state) = match constr {
+                Constraint::TypeEqual(p, left, right) => (p, self.unify_ty_ty(left, right)),
+
+                Constraint::RowCombine(p, row_comb) => (p, self.unify_row_comb(row_comb)),
                 _ => todo!(),
+            };
+
+            if let Err(kind) = uni_state {
+                let (node_id, mark): (_, CompilerErr) = match kind {
+                    UnificationError::InfiniteType(type_var, ty) => (
+                        provenance.id(),
+                        TypeErr::InfiniteType { type_var, ty }.into(),
+                    ),
+                    UnificationError::TypeNotEqual(left, right) => match provenance {
+                        Provenance::UnexpectedFun(node_id) => (
+                            node_id,
+                            TypeErr::UnexpectedFun {
+                                expected_ty: left,
+                                fun_ty: right,
+                            }
+                            .into(),
+                        ),
+                        Provenance::AppExpectedFun(node_id) => (
+                            node_id,
+                            TypeErr::AppExpectedFun {
+                                inferred_ty: left,
+                                expected_fun_ty: right,
+                            }
+                            .into(),
+                        ),
+                        Provenance::ExpectedUnify(l_id, r_id) => (
+                            l_id,
+                            DynamicErr::new(format!("Type mismatch between {left} and {right}"))
+                                .label(
+                                    format!("expected '{right}' here, found '{left}'"),
+                                    provenance.id(),
+                                )
+                                .extra(format!("This is {}", left), l_id)
+                                .extra(format!("This is {}", right), r_id)
+                                .into(),
+                        ),
+                        // FIXME: Use actual rows and not types...
+                        Provenance::ExpectedCombine(node_id) => {
+                            let err = DynamicErr::new("Could not combine types").label(
+                                format!("Expected {:?}, found {:?}", left, right),
+                                provenance.id(),
+                            );
+                            (node_id, err.into())
+                        }
+                    },
+                    UnificationError::RowsNotEqual((l, r)) => {
+                        // dbg!(provenance);
+                        let err = DynamicErr::new("Could not unify types")
+                            .label(format!("Expected {:?}, found {:?}", l, r), provenance.id());
+                        (provenance.id(), err.into())
+                    }
+                };
+                self.tables.errors.insert(node_id, mark);
             }
         }
+        if !self.tables.errors.is_empty() {
+            Err(UnificationFailure)
+        } else {
+            Ok(())
+        }
         // dbg!()
-        Ok(())
     }
 }

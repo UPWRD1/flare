@@ -1,22 +1,21 @@
 use std::collections::BTreeSet;
 
 use internment::Intern;
-use log::info;
+
 use petgraph::graph::NodeIndex;
 use rustc_hash::FxHashMap;
 
 use crate::{
     passes::midend::{
         environment::Environment,
-        typing::{ItemSource, RowVar, Solver, Type, TypeScheme, TypeVar, Typed, TypesOutput},
+        typing::{ItemSource, Solver, Type, TypeScheme, TypeVar, TypesOutput},
     },
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
+        errors::{CompResult, DynamicErr, ErrorCollection},
         rep::{
-            ast::{Expr, ItemId, Untyped},
+            ast::{ItemId, Untyped},
             common::Ident,
             entry::{FunctionItem, ItemKind},
-            Spanned,
         },
     },
 };
@@ -45,10 +44,10 @@ impl Typechecker {
                     let o = self.check_function(*item_idx, f)?;
                     accum.push(o);
                 }
-                ItemKind::Type(n, t, s) => {
+                ItemKind::Type(_n, t, _s) => {
                     self.check_type(*item_idx, t)?;
                 }
-                ItemKind::Extern { name, sig } => {
+                ItemKind::Extern { name: _, sig } => {
                     let unbound_types = Self::extract_generics(sig.0);
                     let unbound_rows = BTreeSet::new();
                     let scheme = TypeScheme {
@@ -60,7 +59,7 @@ impl Typechecker {
                     self.context
                         .insert(ItemId(item_idx.index()), scheme.clone());
                 }
-                ItemKind::Field { name, value } => {
+                ItemKind::Field { name: _, value } => {
                     self.check_type(*item_idx, value)?;
                 }
 
@@ -115,12 +114,12 @@ impl Typechecker {
                     // row_accum.insert(o);
                     // *row_count += 1;
                     // }
-                    _ => panic!("Should be closed? todo"),
+                    _ => todo!("Should be closed? todo"),
                 },
                 // Type::Sum(row) => todo!(),
                 Type::Label(label, intern) => todo!(),
                 Type::User(t) => {
-                    panic!("{t}")
+                    unreachable!("Encountered user type {t} after resolution")
                 }
                 _ => (),
             };
@@ -134,10 +133,10 @@ impl Typechecker {
         item_idx: NodeIndex,
         f: FunctionItem<Untyped>,
     ) -> CompResult<TypesOutput> {
-        // let unbound_types = Intern::as_ref(f.unbound_types).clone();
+        let unbound_types = Self::extract_generics(f.sig.0);
         // let unbound_rows = Intern::as_ref(f.unbound_rows).clone();
         // let evidence = Intern::as_ref(f.evidence).to_vec();
-        let unbound_types = BTreeSet::new();
+        // let unbound_types = BTreeSet::new();
         let unbound_rows = BTreeSet::new();
         let evidence = Vec::new();
         let scheme = TypeScheme {
@@ -150,10 +149,18 @@ impl Typechecker {
         self.context
             .insert(ItemId(item_idx.index()), scheme.clone());
 
-        let infer = Solver::type_infer_with_items(&self.context, f.body)?;
-        dbg!(infer.scheme);
+        // let infer = Solver::type_infer_with_items(&self.context, f.body)?;
+        // dbg!(infer.scheme);
 
-        let checked = Solver::check_with_items(&self.context, f.body, scheme)?;
+        let checked = Solver::check_with_items(&self.context, f.body, scheme).map_err(|e| {
+            if let Some(e) = e.downcast_ref::<DynamicErr>() {
+                e.clone()
+                    .label("in this let-definition", f.name.ident().unwrap().1)
+                    .into()
+            } else {
+                e
+            }
+        })?;
 
         if !checked.errors.is_empty() {
             Err(ErrorCollection::new(

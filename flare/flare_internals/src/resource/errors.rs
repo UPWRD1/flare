@@ -28,7 +28,7 @@ mod templates {
 use rustc_hash::FxHashMap;
 pub(crate) use templates::*;
 
-use ariadne::{sources, Color, Label, Report, ReportKind};
+use ariadne::{Color, Label, Report, ReportKind, sources};
 
 use chumsky::span::{SimpleSpan, Span};
 use thiserror::Error;
@@ -46,9 +46,9 @@ pub trait AnnotatableError: ReportableError {
 pub struct CompilerErr(Box<dyn ReportableError>);
 
 use crate::{
-    passes::midend::typing::{Row, TyUniVar, Type},
-    resource::rep::files::FileSource,
     FileCtx, FileID,
+    passes::midend::typing::{Row, TyUniVar, Type},
+    resource::rep::{ast::NodeId, files::FileSource},
 };
 
 impl Display for CompilerErr {
@@ -63,20 +63,8 @@ impl CompilerErr {
     }
 }
 
-impl From<DynamicErr> for CompilerErr {
-    fn from(value: DynamicErr) -> Self {
-        Self(Box::new(value))
-    }
-}
-
-impl From<ErrorCollection> for CompilerErr {
-    fn from(value: ErrorCollection) -> Self {
-        Self(Box::new(value))
-    }
-}
-
-impl From<std::io::Error> for CompilerErr {
-    fn from(value: std::io::Error) -> Self {
+impl<T: ReportableError> From<T> for CompilerErr {
+    fn from(value: T) -> Self {
         Self(Box::new(value))
     }
 }
@@ -188,6 +176,18 @@ impl ReportableError for ErrorCollection {
     }
 }
 
+impl From<Vec<CompilerErr>> for ErrorCollection {
+    fn from(value: Vec<CompilerErr>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Vec<CompilerErr>> for CompilerErr {
+    fn from(value: Vec<CompilerErr>) -> Self {
+        Self(Box::new(ErrorCollection(value)))
+    }
+}
+
 #[derive(Debug, Error, Clone)]
 pub struct DynamicErr {
     //context: Option<Context>,
@@ -236,7 +236,12 @@ impl DynamicErr {
     }
     pub fn generate_sources(&self, context: &FileCtx) -> Vec<(&'static str, &'static str)> {
         let mut source_ids: Vec<u64> = vec![];
-        let label_origin = self.label.as_ref().unwrap().1.context;
+        let label_origin = self
+            .label
+            .as_ref()
+            .unwrap_or(&("here".to_string(), SimpleSpan::new(0, 0..0)))
+            .1
+            .context;
         source_ids.push(label_origin);
         let mut extra_labels_origin: Vec<u64> =
             self.extra_labels.iter().map(|x| x.1.context).collect();
@@ -251,6 +256,7 @@ impl DynamicErr {
     }
 
     pub fn get_gen(self, context: &FileCtx) -> GeneralErr {
+        // dbg!(&self);
         let s = self.generate_sources(context);
         GeneralErr {
             msg: self.msg,
@@ -348,50 +354,6 @@ impl std::fmt::Display for GeneralErr {
     }
 }
 
-/// A wrapper struct for a fatal, terminating error.
-/// Essentially a glorified wrapper for `panic!()`.
-#[derive(Error, Debug)]
-#[allow(dead_code)]
-pub struct FatalErr(String);
-
-impl ReportableError for FatalErr {
-    fn report<'src>(&self, _: &FileCtx) {
-        unreachable!()
-    }
-}
-
-impl fmt::Display for FatalErr {
-    fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unreachable!()
-    }
-}
-
-impl FatalErr {
-    /// Create a new `FatalErr`.
-    /// Note that the act of creating a `FatalErr` terminates the program.
-    #[inline]
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(msg: impl Display) -> ! {
-        eprintln!("Brrrrrrrr!");
-        eprintln!("Your code was so cool, flarec ICE-d out!\n");
-        eprintln!("flarec encountered a fatal internal compiler error during compilation.");
-        eprintln!("This is a bug within flarec.");
-        eprintln!("Your code may also be bugged.\n");
-        eprintln!("Please file an issue here:");
-        eprintln!("\thttps://github.com/UPWRD1/flare/issues/new/choose");
-        eprintln!("\nError details:");
-        eprintln!("\t{msg}\n");
-        eprintln!("flarec will now panic. Goodbye.");
-        panic!()
-    }
-}
-
-impl From<FatalErr> for CompilerErr {
-    fn from(_value: FatalErr) -> Self {
-        unreachable!("FatalErr panics on creation, this should NEVER be called. This is here to satisfy Rust's typechecker.")
-    }
-}
-
 #[derive(PartialEq, Eq, Debug, Clone, Error)]
 pub enum TypeErr {
     InfiniteType {
@@ -423,11 +385,5 @@ impl Display for TypeErr {
 impl ReportableError for TypeErr {
     fn report(&self, _ctx: &FileCtx) {
         eprintln!("{self}");
-    }
-}
-
-impl From<TypeErr> for CompilerErr {
-    fn from(value: TypeErr) -> Self {
-        Self(Box::new(value))
     }
 }

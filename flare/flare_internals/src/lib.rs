@@ -52,7 +52,7 @@ use rustc_hash::{FxHashMap, FxHasher};
 use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
-        backend::{lowering::Lowerer, target::{Generator, Target}},
+        backend::{lowering::Lowerer, simplify, target::{Generator, Target}},
         midend::{environment::Environment, resolution::Resolver, typechecker::Typechecker, },
         parser,
     },
@@ -151,6 +151,7 @@ impl<T: Target> Context<T> {
         
         let mut lowerer = Lowerer::new(items);
         let ir = lowerer.lower(source);
+        let ir = simplify::simplify(ir);
 
         // dbg!(&out);
                 // s.check_item()?;

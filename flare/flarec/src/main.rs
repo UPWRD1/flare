@@ -1,7 +1,7 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
 
-use std::{env, fs::File, io::Write, path::PathBuf};
+use std::{backtrace, env, fs::File, io::Write, panic, path::PathBuf};
 
 use flare_internals::{
     Context, convert_path_to_id,
@@ -19,10 +19,48 @@ fn enable_loggin() {
     }
 }
 
+fn panic_hook() {
+    panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info.location().unwrap();
+        let file = location.file();
+        let line = location.line();
+
+        // The payload can be either &str or String
+        let payload = panic_info.payload();
+        let message = if let Some(s) = payload.downcast_ref::<&str>() {
+            s
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            s
+        } else {
+            "Unknown panic type"
+        };
+
+        eprintln!("Brrrrrrrr!");
+        eprintln!("Your code was so cool, flarec ICE-d out!\n");
+        eprintln!("flarec encountered a fatal internal compiler error during compilation.");
+        eprintln!("This is a bug within flarec.");
+        eprintln!("Your code may also be bugged.\n");
+        eprintln!("Please file an issue here:");
+        eprintln!("\thttps://github.com/UPWRD1/flare/issues/new/choose");
+        eprintln!("\nError details:");
+        eprintln!("ICE at {}:{}", file, line);
+        eprintln!("\t{message}\n");
+
+        // Custom message format
+
+        // Optionally, print a backtrace programmatically (requires Rust 1.65+)
+        let backtrace = std::backtrace::Backtrace::capture();
+        eprintln!("stack backtrace:\n{}", backtrace);
+        eprintln!("flarec will now panic. Goodbye.");
+    }));
+}
+
 fn main() -> CompResult<()> {
     const VERSION: &str = "0.0.1";
     let prog_args: Vec<String> = env::args().collect();
     enable_loggin();
+
+    panic_hook();
 
     match prog_args.len() {
         3 => match prog_args[1].as_str() {
@@ -40,7 +78,7 @@ fn main() -> CompResult<()> {
                             PathBuf::from(filename.to_str().unwrap().split(".").next().unwrap())
                                 .with_extension(target.ext().into());
                         let mut f = File::create(f).unwrap();
-                        f.write(code.as_bytes());
+                        f.write_all(code.as_bytes())?;
 
                         Ok(())
                     }

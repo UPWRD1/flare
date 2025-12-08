@@ -14,8 +14,10 @@ use std::{collections::BTreeSet, hash::RandomState};
 use crate::{
     passes::midend::typing::{ClosedRow, Type},
     resource::{
-        errors::{self, CompResult, DynamicErr, FatalErr},
+        errors::{self, CompResult, DynamicErr},
         rep::{
+            // concretetypes::{EnumVariant, Ty},
+            Spanned,
             ast::{
                 Definition,
                 Expr,
@@ -27,8 +29,6 @@ use crate::{
             common::{Ident, Named},
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
-            // concretetypes::{EnumVariant, Ty},
-            Spanned,
         },
     },
 };
@@ -97,7 +97,7 @@ impl Environment {
     pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<Untyped>> {
         self.graph
             .node_weight(idx)
-            .ok_or_else(|| FatalErr::new(format!("Bad node index: {:?}", idx)))
+            .ok_or_else(|| unreachable!("Bad node index: {:?}", idx))
     }
 
     /// Build the environment from a given `Program`
@@ -155,7 +155,7 @@ impl Environment {
                     }
 
                     Definition::Let(name, body, sig) => {
-                        let ident = QualifierFragment::Func(name.0 .0);
+                        let ident = QualifierFragment::Func(name.0.0);
                         let entry = Item::new(
                             Function(FunctionItem {
                                 name: *name,
@@ -339,7 +339,7 @@ impl Environment {
                 },
                 false,
             );
-            let val_idx = self.add(current_node, QualifierFragment::Field(name.0 .0), entry);
+            let val_idx = self.add(current_node, QualifierFragment::Field(name.0.0), entry);
             self.build_type(val_idx, value, name.0)?;
         }
         Ok(())
@@ -543,7 +543,7 @@ impl Environment {
                         .graph
                         .edges_connecting(*first, *second)
                         .next()
-                        .unwrap_or_else(|| FatalErr::new(format!("Index {:?} is not a child of index {:?}; could not build dependancy graph.", first, second)))
+                        .unwrap_or_else(|| unreachable!("Index {:?} is not a child of index {:?}; could not build dependancy graph.", first, second))
                         .weight();
                     path.push(edge);
                 }

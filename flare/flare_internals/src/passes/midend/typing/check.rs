@@ -3,12 +3,12 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     passes::midend::typing::{
-        rows::{Row, RowCombination},
         Constraint, GenOut, Provenance, Solver, Type, Typed,
+        rows::{Row, RowCombination},
     },
     resource::rep::{
-        ast::{Direction, Expr, Untyped},
         Spanned,
+        ast::{Direction, Expr, Untyped},
     },
 };
 
@@ -53,7 +53,7 @@ impl<'env> Solver<'env> {
                         (Type::Unifier(arg), Type::Unifier(ret))
                     }
                 };
-                let env = env.update(arg.0 .0, arg_ty.into());
+                let env = env.update(arg.0.0, arg_ty.into());
                 let body_out = self.check(env, body, ret_ty);
 
                 constraints.extend(body_out.constraints);
@@ -147,7 +147,7 @@ impl<'env> Solver<'env> {
                     _ => {
                         let goal = self.fresh_row_var();
                         constraints.push(Constraint::TypeEqual(
-                            Provenance::ExpectedUnify(id),
+                            Provenance::ExpectedUnify(left_ast.1, right_ast.1),
                             arg_ty,
                             Type::Sum(Row::Unifier(goal)).into(),
                         ));
@@ -208,7 +208,7 @@ impl<'env> Solver<'env> {
             (_, expected_ty) => {
                 let (mut out, actual_ty) = self.infer(env, the_ast);
                 out.constraints.push(Constraint::TypeEqual(
-                    Provenance::ExpectedUnify(id),
+                    Provenance::ExpectedUnify(id, out.typed_ast.1),
                     expected_ty.into(),
                     actual_ty,
                 ));

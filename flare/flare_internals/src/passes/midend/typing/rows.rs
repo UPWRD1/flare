@@ -4,8 +4,8 @@ use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
 use crate::{
-    passes::midend::typing::{types::Type, Evidence, TyUniVar},
-    resource::rep::ast::{Expr, Label, Untyped},
+    passes::midend::typing::{Evidence, TyUniVar, types::Type},
+    resource::rep::ast::Label,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -54,8 +54,10 @@ impl Row {
             (Self::Open(a), Self::Open(b)) => a == b,
 
             // Closed rows are equatable when their fields are equal
-            (Self::Closed(a), Self::Closed(b)) => a.fields == b.fields,
+            // (Self::Closed(a), Self::Closed(b)) => a.fields == b.fields,
 
+            // Closed rows are equatable when they are subtypes?
+            (Self::Closed(a), Self::Closed(b)) => a.is_subtype_of(b).is_some(),
             // Anything else is not equatable
             _ => false,
         }
@@ -63,21 +65,25 @@ impl Row {
 }
 
 impl ClosedRow {
-    pub fn subtyped(&self, other: Self) -> Option<Self> {
+    pub fn is_subtype_of(&self, other: &Self) -> Option<Self> {
         let mut accum = vec![];
-        for (me_label, me_v) in self.fields.into_iter().zip(self.values) {
-            if let Some((idx, other_t)) = other
+        for (me_label, me_v) in self.fields.iter().zip(self.values) {
+            if let Some((idx, _)) = other
                 .fields
-                .iter().enumerate()
-                .find(|(_, other_label)| *other_label == me_label) && other.values[idx] == *me_v 
+                .iter()
+                .enumerate()
+                .find(|(_, other_label)| *other_label == me_label)
+                && other.values[idx] == *me_v
             {
                 accum.push((me_label, me_v))
             } else {
                 return None;
             }
         }
-
-        todo!()
+        let (fields, values): (Vec<_>, Vec<_>) = accum.into_iter().unzip();
+        let fields = fields.leak();
+        let values = values.leak();
+        Some(Self { fields, values })
     }
 
     pub fn merge(left: Self, right: Self) -> Self {
@@ -95,7 +101,7 @@ impl ClosedRow {
         loop {
             match (left_fields.peek(), right_fields.peek()) {
                 (Some(left), Some(right)) => {
-                    if left.0 .0 <= right.0 .0 {
+                    if left.0.0 <= right.0.0 {
                         // SAFETY: We know the next item exists because we are matching against it.
                         unsafe { fields.push(*left_fields.next().unwrap_unchecked()) };
 
@@ -155,8 +161,8 @@ impl Ord for ClosedRow {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.fields
             .iter()
-            .map(|x| x.0 .0)
-            .cmp(other.fields.iter().map(|x| x.0 .0))
+            .map(|x| x.0.0)
+            .cmp(other.fields.iter().map(|x| x.0.0))
             .then(self.values.iter().cmp(other.values.iter()))
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     passes::midend::typing::{ClosedRow, Row, Type, TypeVar},
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection, FatalErr},
+        errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
             ast::{
                 ComparisonOp, Definition, Expr, Label, LambdaInfo, Package, Pattern, PatternAtom, Untyped // Untyped,
@@ -857,7 +857,7 @@ where
     let raw_ident =
         rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| Spanned(Intern::from_ref(x), e.span()));
 
-    let t = recursive(
+     recursive(
         |ty: Recursive<dyn Parser<'_, I, Spanned<Intern<Type>>, _>>| {
             let type_list = ty
                 .clone()
@@ -871,7 +871,7 @@ where
             );
             
             // Atomic types (no arrows at this level)
-            let atom = choice((
+             choice((
                 // Primitive Types
                 just(Token::TyNum).map_with(|_, e| Spanned(Intern::from(Type::Num), e.span())),
                 just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
@@ -929,8 +929,8 @@ raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comm
                         Spanned(Intern::from(ty), e.span())
                     }),
                 grouping,
-            ));
-            atom
+            ))
+            
             // Now apply pratt for function arrows
                     },
     ).pratt(vec![infix(
@@ -940,10 +940,9 @@ raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comm
                     Spanned(Intern::from(Type::Func(x.0, y.0)), e.span())
                 },
             )])
-    .boxed();
+    .boxed()
     // dbg!("made it");
-    t
-}
+    }
 
 fn pattern_parser<'src, I>(
     ident: Boxed<
@@ -969,7 +968,7 @@ fn pattern_parser<'src, I>(
 where
     I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
 {
-    let pattern = recursive(|pat| {
+    recursive(|pat| {
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
         // let ty = ty_parser(ident).lazy().boxed();
@@ -1014,8 +1013,8 @@ where
             ty.clone()
                 .map_with(|x, e| Spanned(Pattern::Atom(PatternAtom::Type(x)), e.span())),
         ))
-    });
-    pattern
+    })
+    
 }
 
 /// Trait that extends `SimpleSpan` to permit adding `FileID` information
@@ -1069,10 +1068,10 @@ pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Package<Untyped>> {
     let input = ctx
         .get(&fid)
         .unwrap_or_else(|| {
-            FatalErr::new(format!(
+            unreachable!(
                 "FileID {} does not exist in context: {:?}",
                 fid, ctx
-            ))
+            )
         })
         .src_text;
     let tokens: Vec<Spanned<Token>> = match lexer(fid).parse(input).into_result() {

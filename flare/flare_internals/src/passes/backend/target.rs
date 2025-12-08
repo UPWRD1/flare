@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use internment::Intern;
 
-use crate::passes::backend::lowering::ir::{Type, IR};
+use crate::passes::backend::lowering::ir::{IR, ItemId, Type};
 
 pub trait Target: Copy {
     type Partial: Default;
@@ -40,8 +40,8 @@ pub struct Generator<T: Target> {
 impl<T: Target> Generator<T> {
     pub fn generate(mut self) -> T::Output {
         let mut v: Vec<T::Partial> = vec![];
-        for ir in self.items {
-            v.push(self.target.generate(ir.0))
+        for (ir, _) in self.items {
+            v.push(self.target.generate(ir))
         }
         self.target.finish(v)
         // self.target.finish()

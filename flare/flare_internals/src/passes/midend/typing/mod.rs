@@ -22,9 +22,9 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
+            Spanned,
             ast::{Expr, ItemId, NodeId, Untyped, Variable},
             common::Ident,
-            Spanned,
         },
     },
 };
@@ -64,7 +64,7 @@ pub enum Provenance {
     // An application has an ast node in function position that does not have a function type.
     AppExpectedFun(NodeId),
     // Constraint produced by subsumption.
-    ExpectedUnify(NodeId),
+    ExpectedUnify(NodeId, NodeId),
     ExpectedCombine(NodeId),
 }
 
@@ -74,7 +74,7 @@ impl Provenance {
             Self::UnexpectedFun(node_id)
             | Self::AppExpectedFun(node_id)
             | Self::ExpectedCombine(node_id)
-            | Self::ExpectedUnify(node_id) => *node_id,
+            | Self::ExpectedUnify(node_id, _) => *node_id,
         }
     }
 }
@@ -266,7 +266,7 @@ impl<'env> Solver<'env> {
     pub fn type_infer_with_items(
         item_source: &'env ItemSource,
         ast: Spanned<Intern<Expr<Untyped>>>,
-    ) -> CompResult<TypeInferOut> {
+    ) -> Result<TypeInferOut, FxHashMap<NodeId, CompilerErr>> {
         let ctx = Self {
             item_source,
             tables: Default::default(),
@@ -277,14 +277,15 @@ impl<'env> Solver<'env> {
     pub fn type_infer_logic(
         mut self,
         ast: Spanned<Intern<Expr<Untyped>>>,
-    ) -> CompResult<TypeInferOut> {
+    ) -> Result<TypeInferOut, FxHashMap<NodeId, CompilerErr>> {
         // Constraint generation
         let (out, ty) = self.infer(im::HashMap::with_hasher(FxBuildHasher), ast);
 
         // Constraint solving
-        self.unification(out.constraints)?;
 
-        // Apply our substition to our inferred types
+        if self.unification(out.constraints).is_err() {
+            return Err(std::mem::take(&mut self.tables.errors));
+        }; // Apply our substition to our inferred types
         let subst_out = self
             .substitute_ty(ty)
             .merge(self.substitute_ast(out.typed_ast), |ty, ast| (ty, ast));
@@ -378,7 +379,12 @@ impl<'env> Solver<'env> {
                 ),
             }));
         // dbg!(&out.constraints);
-        self.unification(out.constraints)?;
+        if self.unification(out.constraints).is_err() {
+            return Err(std::mem::take(&mut self.tables.errors)
+                .into_values()
+                .collect::<Vec<_>>()
+                .into());
+        };
 
         // We still need to substitute, but only our ast.
         let subst_out = self.substitute_ast(out.typed_ast);

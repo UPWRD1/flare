@@ -4,11 +4,11 @@ use internment::Intern;
 
 use crate::{
     passes::midend::typing::{
+        ClosedRow, Evidence, ItemWrapper, Row, Solver, Type, Typed,
         rows::{RowCombination, RowVar},
         types::TypeVar,
-        ClosedRow, Evidence, ItemWrapper, Row, Solver, Type, Typed,
     },
-    resource::rep::{ast::Expr, Spanned},
+    resource::rep::{Spanned, ast::Expr},
 };
 
 #[derive(Debug)]
@@ -87,14 +87,16 @@ impl<'env> Solver<'env> {
                 let root = self.tables.row_unification_table.find(var);
 
                 match self.tables.row_unification_table.probe_value(root) {
-          Some(Row::Unifier(_)) => panic!("Unexpected open row found as value of row unification table. This variable should've been `unify_var_var()`, not `unify_var_value()`"),
-          Some(Row::Open(v)) => SubstOut::new(Row::Open(v)),
-          Some(Row::Closed(row)) => self.substitute_closedrow(row).map(Row::Closed),
-          None => {
-              let rowvar = self.rowvar_for_unifier(root);
-              SubstOut::new(Row::Open(rowvar)).with_unbound_row(rowvar)
-          },
-        }
+                    Some(Row::Unifier(_)) => panic!(
+                        "Unexpected open row found as value of row unification table. This variable should've been `unify_var_var()`, not `unify_var_value()`"
+                    ),
+                    Some(Row::Open(v)) => SubstOut::new(Row::Open(v)),
+                    Some(Row::Closed(row)) => self.substitute_closedrow(row).map(Row::Closed),
+                    None => {
+                        let rowvar = self.rowvar_for_unifier(root);
+                        SubstOut::new(Row::Open(rowvar)).with_unbound_row(rowvar)
+                    }
+                }
             }
             Row::Closed(row) => self.substitute_closedrow(row).map(Row::Closed),
         }
@@ -104,7 +106,7 @@ impl<'env> Solver<'env> {
         match *ty {
             Type::Num => SubstOut::new(Type::Num.into()),
             Type::String => SubstOut::new(Type::Num.into()),
-
+            Type::Bool => SubstOut::new(Type::Bool.into()),
             Type::Unit => SubstOut::new(Type::Unit.into()),
 
             Type::Particle(p) => SubstOut::new(Type::Particle(p).into()),
@@ -146,6 +148,7 @@ impl<'env> Solver<'env> {
 
             Expr::Number(i) => SubstOut::new(ast.update(Expr::Number(i))),
             Expr::String(s) => SubstOut::new(ast.update(Expr::String(s))),
+            Expr::Bool(b) => SubstOut::new(ast.update(Expr::Bool(b))),
 
             Expr::Particle(p) => SubstOut::new(ast.update(Expr::Particle(p))),
 

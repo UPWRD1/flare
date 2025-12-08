@@ -3,12 +3,12 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     passes::midend::typing::{
-        inst::Instantiate, Constraint, Evidence, GenOut, ItemWrapper, Provenance, Row, Solver,
-        Type, Typed,
+        Constraint, Evidence, GenOut, ItemWrapper, Provenance, Row, Solver, Type, Typed,
+        inst::Instantiate,
     },
     resource::rep::{
-        ast::{Direction, Expr, Untyped},
         Spanned,
+        ast::{Direction, Expr, Untyped},
     },
 };
 
@@ -30,6 +30,10 @@ impl<'env> Solver<'env> {
                 GenOut::new(vec![], ast.update(Expr::String(s))),
                 Type::String.into(),
             ),
+            Expr::Bool(v) => (
+                GenOut::new(vec![], ast.update(Expr::Bool(v))),
+                Type::Bool.into(),
+            ),
             Expr::Particle(p) => (
                 GenOut::new(vec![], ast.update(Expr::Particle(p))),
                 Type::Particle(p).into(),
@@ -38,7 +42,7 @@ impl<'env> Solver<'env> {
             Expr::Ident(v) => {
                 // dbg!(v);
                 // dbg!(env.keys().collect::<Vec<_>>());
-                let ty = &env[&v.0 .0];
+                let ty = &env[&v.0.0];
                 (
                     GenOut::new(vec![], ast.update(Expr::Ident(Typed(v, *ty)))),
                     *ty,
@@ -46,7 +50,7 @@ impl<'env> Solver<'env> {
             }
             Expr::Lambda(arg, body, is_anon) => {
                 let arg_tyvar = self.fresh_ty_var();
-                let env = env.update(arg.0 .0, Type::Unifier(arg_tyvar).into());
+                let env = env.update(arg.0.0, Type::Unifier(arg_tyvar).into());
 
                 let (body_out, body_ty) = self.infer(env, body);
                 (

@@ -4,17 +4,17 @@ use rustc_hash::FxHashMap;
 use crate::{
     passes::{
         backend::lowering::{
-            ir::{ItemId, Kind, Row, TyApp, Type, TypeVar, Var, VarId, IR},
-            lower_types::LowerTypes,
             ItemSource,
+            ir::{IR, ItemId, Kind, Row, TyApp, Type, TypeVar, Var, VarId},
+            lower_types::LowerTypes,
         },
         midend::typing::{self, Evidence, ItemWrapper, Typed},
     },
     resource::{
         errors::FatalErr,
         rep::{
-            ast::{self, Direction, Expr, NodeId, Untyped},
             Spanned,
+            ast::{self, Direction, Expr, NodeId, Untyped},
         },
     },
 };
@@ -273,11 +273,11 @@ impl LowerSolvedEv<'_> {
         })
     }
 
-    fn left_enumerated_values(&self) -> impl Iterator<Item = (usize, Type)> {
+    fn left_enumerated_values(&self) -> impl Iterator<Item = (usize, Type)> + use<> {
         self.left_indices().into_iter().zip(self.left.clone())
     }
 
-    fn right_enumerated_values(&self) -> impl Iterator<Item = (usize, Type)> {
+    fn right_enumerated_values(&self) -> impl Iterator<Item = (usize, Type)> + use<> {
         self.right_indices().into_iter().zip(self.right.clone())
     }
 
@@ -369,7 +369,7 @@ impl<'source> LowerAst<'source> {
                     goal: typing::Row::Closed(goal),
                 } = ev
                 else {
-                    panic!("ICE: Unsolved evidence appeared in AST that wasn't in type scheme");
+                    unreachable!("Unsolved evidence appeared in AST that wasn't in type scheme");
                 };
                 let param = self.var_supply.supply();
 
@@ -420,6 +420,8 @@ impl<'source> LowerAst<'source> {
             )),
             Expr::Number(n) => IR::Num(n),
             Expr::String(n) => IR::Str(n.0),
+            Expr::Bool(b) => IR::Bool(b),
+
             Expr::Particle(p) => IR::Particle(p.0),
             Expr::Lambda(Typed(var, ty), body, _) => {
                 let ir_ty = self.types.lower_ty(*ty);
@@ -441,7 +443,7 @@ impl<'source> LowerAst<'source> {
                     .get(&id)
                     .cloned()
                     .map(|ev| self.lookup_ev(ev))
-                    .unwrap_or_else(|| FatalErr::new("Concat AST node lacks evidence"));
+                    .unwrap_or_else(|| unreachable!("Concat AST node lacks evidence"));
 
                 let concat = IR::field(IR::Var(param), 0);
                 let left = self.lower_ast(left);
@@ -455,7 +457,7 @@ impl<'source> LowerAst<'source> {
                     .cloned()
                     .map(|ev| self.lookup_ev(ev))
                     .unwrap_or_else(|| {
-                        FatalErr::new("ICE: Branch AST node lacks an expected evidence")
+                        unreachable!("ICE: Branch AST node lacks an expected evidence")
                     });
 
                 let ret_ty = self
