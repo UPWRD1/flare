@@ -214,8 +214,8 @@ pub enum Kind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Branch {
-    param: Var,
-    body: IR,
+    pub param: Var,
+    pub body: IR,
 }
 
 impl Branch {
@@ -274,11 +274,10 @@ pub enum IR {
     Fun(Var, Box<Self>),
     App(Box<Self>, Box<Self>),
 
-    Add(Box<Self>, Box<Self>),
-    Sub(Box<Self>, Box<Self>),
-    Mul(Box<Self>, Box<Self>),
-    Div(Box<Self>, Box<Self>),
-
+    // Add(Box<Self>, Box<Self>),
+    // Sub(Box<Self>, Box<Self>),
+    // Mul(Box<Self>, Box<Self>),
+    // Div(Box<Self>, Box<Self>),
     TyFun(Kind, Box<Self>),
     TyApp(Box<Self>, TyApp),
     Local(Var, Box<Self>, Box<Self>),
@@ -289,23 +288,24 @@ pub enum IR {
     Case(Type, Box<Self>, Vec<Branch>),
 
     Item(Type, ItemId),
+    Extern(&'static str, Type),
 }
 
 #[allow(clippy::should_implement_trait)]
 impl IR {
-    pub fn add(l: Self, r: Self) -> Self {
-        Self::Add(Box::new(l), Box::new(r))
-    }
+    // pub fn add(l: Self, r: Self) -> Self {
+    //     Self::Add(Box::new(l), Box::new(r))
+    // }
 
-    pub fn sub(l: Self, r: Self) -> Self {
-        Self::Sub(Box::new(l), Box::new(r))
-    }
-    pub fn mul(l: Self, r: Self) -> Self {
-        Self::Mul(Box::new(l), Box::new(r))
-    }
-    pub fn div(l: Self, r: Self) -> Self {
-        Self::Div(Box::new(l), Box::new(r))
-    }
+    // pub fn sub(l: Self, r: Self) -> Self {
+    //     Self::Sub(Box::new(l), Box::new(r))
+    // }
+    // pub fn mul(l: Self, r: Self) -> Self {
+    //     Self::Mul(Box::new(l), Box::new(r))
+    // }
+    // pub fn div(l: Self, r: Self) -> Self {
+    //     Self::Div(Box::new(l), Box::new(r))
+    // }
 
     pub fn fun(v: Var, b: Self) -> Self {
         Self::Fun(v, Box::new(b))
@@ -444,15 +444,16 @@ impl IR {
                 ty.clone()
             }
             Self::Item(t, _) => t.clone(),
+            Self::Extern(_, t) => t.clone(),
             // These should all be numbers
-            Self::Add(l, r) | Self::Sub(l, r) | Self::Mul(l, r) | Self::Div(l, r) => {
-                let lty = l.type_of();
-                let rty = r.type_of();
-                if lty != rty || lty != Type::Num {
-                    unreachable!("Expected number type in arithmatic operation while generating IR",)
-                }
-                Type::Num
-            }
+            // Self::Add(l, r) | Self::Sub(l, r) | Self::Mul(l, r) | Self::Div(l, r) => {
+            //     let lty = l.type_of();
+            //     let rty = r.type_of();
+            //     if lty != rty || lty != Type::Num {
+            //         unreachable!("Expected number type in arithmatic operation while generating IR",)
+            //     }
+            //     Type::Num
+            // }
         }
     }
 
@@ -465,7 +466,7 @@ impl IR {
         }
     }
 
-    fn render(self) -> Doc<'static> {
+    pub fn render(self) -> Doc<'static> {
         // dbg!(level);
         match self {
             Self::Var(var) => var.render_n(),
@@ -496,7 +497,18 @@ impl IR {
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))
                     .append(Doc::soft_line().append(Doc::text(")")))
             }
-
+            // Self::Fun(v, b) => {
+            //     // let mut vars = vec![v.clone()];
+            //     Doc::text("(def")
+            //         .append(Doc::space())
+            //         .append(v.render())
+            //         .append(Doc::space())
+            //         .append(Doc::text("=>"))
+            //         // .append(Doc::)
+            //         .group()
+            //         .append(Doc::line_or_space().append(b.render()).group().nest(INC))
+            //         .append(Doc::soft_line().append(Doc::text(")")))
+            // }
             Self::App(l, r) => Doc::nil()
                 .append(l.render())
                 .append(Doc::space())
@@ -572,28 +584,27 @@ impl IR {
             Self::Item(t, id) => Doc::text(format!("#{}:", id.0))
                 .append(Doc::space())
                 .append(t.render()),
+            Self::Extern(n, t) => Doc::text(format!("extern_{n}")), // Self::Add(l, r) => Doc::text("add")
+                                                                    //     .append(Doc::space())
+                                                                    //     .append(l.render())
+                                                                    //     .append(Doc::space())
+                                                                    //     .append(r.render()),
 
-            Self::Add(l, r) => Doc::text("add")
-                .append(Doc::space())
-                .append(l.render())
-                .append(Doc::space())
-                .append(r.render()),
-
-            Self::Sub(l, r) => Doc::text("sub")
-                .append(Doc::space())
-                .append(l.render())
-                .append(Doc::space())
-                .append(r.render()),
-            Self::Mul(l, r) => Doc::text("mul")
-                .append(Doc::space())
-                .append(l.render())
-                .append(Doc::space())
-                .append(r.render()),
-            Self::Div(l, r) => Doc::text("div")
-                .append(Doc::space())
-                .append(l.render())
-                .append(Doc::space())
-                .append(r.render()),
+                                                                    // Self::Sub(l, r) => Doc::text("sub")
+                                                                    //     .append(Doc::space())
+                                                                    //     .append(l.render())
+                                                                    //     .append(Doc::space())
+                                                                    //     .append(r.render()),
+                                                                    // Self::Mul(l, r) => Doc::text("mul")
+                                                                    //     .append(Doc::space())
+                                                                    //     .append(l.render())
+                                                                    //     .append(Doc::space())
+                                                                    //     .append(r.render()),
+                                                                    // Self::Div(l, r) => Doc::text("div")
+                                                                    //     .append(Doc::space())
+                                                                    //     .append(l.render())
+                                                                    //     .append(Doc::space())
+                                                                    //     .append(r.render()),
         }
     }
 }

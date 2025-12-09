@@ -1,7 +1,7 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
 
-use std::{backtrace, env, fs::File, io::Write, panic, path::PathBuf};
+use std::{env, fs::File, io::Write, panic, path::PathBuf};
 
 use flare_internals::{
     Context, convert_path_to_id,
@@ -39,7 +39,7 @@ fn panic_hook() {
         eprintln!("Your code was so cool, flarec ICE-d out!\n");
         eprintln!("flarec encountered a fatal internal compiler error during compilation.");
         eprintln!("This is a bug within flarec.");
-        eprintln!("Your code may also be bugged.\n");
+        eprintln!("This may be caused by a bug in your code, or an issue with your environment.\n");
         eprintln!("Please file an issue here:");
         eprintln!("\thttps://github.com/UPWRD1/flare/issues/new/choose");
         eprintln!("\nError details:");

@@ -174,6 +174,24 @@ impl<V: Variable> Item<V> {
             _ => Err(err(self)),
         }
     }
+
+    pub fn get_type_universal(&self) -> CompResult<Spanned<Intern<Type>>> {
+        fn err<V: Variable>(t: &Item<V>) -> CompilerErr {
+            DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
+        }
+        match &self.kind {
+            ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
+            // ItemKind::Struct(StructEntry { ty, .. }) => Ok(*ty),
+            // ItemKind::Enum(EnumEntry { ty, .. }) => Ok(*ty),
+            // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
+            // ItemKind::Field((_, ty)) => Ok(*ty),
+            ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
+            ItemKind::Field { name, value } => Ok(Spanned(*value, name.0.1)),
+            ItemKind::Type(_, t, s) => Ok(Spanned(*t, *s)),
+            ItemKind::Extern { name: _, sig } => Ok(*sig),
+            _ => Err(err(self)),
+        }
+    }
 }
 
 impl<V: Variable> Default for Item<V> {

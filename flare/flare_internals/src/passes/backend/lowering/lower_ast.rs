@@ -10,25 +10,22 @@ use crate::{
         },
         midend::typing::{self, Evidence, ItemWrapper, Typed},
     },
-    resource::{
-        errors::FatalErr,
-        rep::{
-            Spanned,
-            ast::{self, Direction, Expr, NodeId, Untyped},
-        },
+    resource::rep::{
+        Spanned,
+        ast::{self, Direction, Expr, NodeId, Untyped},
     },
 };
 
 #[derive(Default)]
 pub struct VarSupply {
     next: usize,
-    cache: FxHashMap<Untyped, VarId>,
+    cache: FxHashMap<Intern<String>, VarId>,
 }
 
 impl VarSupply {
     fn supply_for(&mut self, var: Untyped) -> VarId {
         self.cache
-            .entry(var)
+            .entry(var.0.0)
             .or_insert_with(|| {
                 let ir_var = self.next;
                 self.next += 1;
@@ -88,6 +85,8 @@ pub struct LowerSolvedEv<'supply> {
     goal: Vec<Type>,
 
     goal_indices: Vec<RowIndex>,
+    left_indices: Vec<usize>,
+    right_indices: Vec<usize>,
 }
 
 impl LowerSolvedEv<'_> {
@@ -210,46 +209,46 @@ impl LowerSolvedEv<'_> {
         )
     }
 
-    fn left_indices(&self) -> Vec<usize> {
-        let mut left = self
-            .goal_indices
-            .iter()
-            .enumerate()
-            .filter_map(|(goal_index, row_index)| match row_index {
-                RowIndex::Left(left_indx) => Some((*left_indx, goal_index)),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        left.sort_by_key(|(key, _)| *key);
-        left.into_iter().map(|(_, goal_index)| goal_index).collect()
-    }
+    // fn left_indices(&self) -> Vec<usize> {
+    //     let mut left = self
+    //         .goal_indices
+    //         .iter()
+    //         .enumerate()
+    //         .filter_map(|(goal_index, row_index)| match row_index {
+    //             RowIndex::Left(left_indx) => Some((*left_indx, goal_index)),
+    //             _ => None,
+    //         })
+    //         .collect::<Vec<_>>();
+    //     left.sort_by_key(|(key, _)| *key);
+    //     left.into_iter().map(|(_, goal_index)| goal_index).collect()
+    // }
 
-    fn right_indices(&self) -> Vec<usize> {
-        let mut right = self
-            .goal_indices
-            .iter()
-            .enumerate()
-            .filter_map(|(goal_index, row_index)| match row_index {
-                RowIndex::Right(right_index) => Some((*right_index, goal_index)),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        right.sort_by_key(|(key, _)| *key);
-        right
-            .into_iter()
-            .map(|(_, goal_index)| goal_index)
-            .collect()
-    }
+    // fn right_indices(&self) -> Vec<usize> {
+    //     let mut right = self
+    //         .goal_indices
+    //         .iter()
+    //         .enumerate()
+    //         .filter_map(|(goal_index, row_index)| match row_index {
+    //             RowIndex::Right(right_index) => Some((*right_index, goal_index)),
+    //             _ => None,
+    //         })
+    //         .collect::<Vec<_>>();
+    //     right.sort_by_key(|(key, _)| *key);
+    //     right
+    //         .into_iter()
+    //         .map(|(_, goal_index)| goal_index)
+    //         .collect()
+    // }
 
     fn prj_left(&mut self) -> IR {
         let [goal] = self.make_vars([self.goal_prod()]);
-        let left_indices = self.left_indices();
         IR::fun(goal.clone(), {
             if self.left.len() == 1 {
-                Self::unwrap_prj(left_indices[0], self.goal.len(), goal)
+                Self::unwrap_prj(self.left_indices[0], self.goal.len(), goal)
             } else {
                 IR::tuple(
-                    left_indices
+                    self.left_indices
+                        .clone()
                         .into_iter()
                         .map(|i| Self::unwrap_prj(i, self.goal.len(), goal.clone())),
                 )
@@ -259,13 +258,14 @@ impl LowerSolvedEv<'_> {
 
     fn prj_right(&mut self) -> IR {
         let [goal] = self.make_vars([self.goal_prod()]);
-        let right_indices = self.right_indices();
+
         IR::fun(goal.clone(), {
             if self.right.len() == 1 {
-                Self::unwrap_prj(right_indices[0], self.goal.len(), goal)
+                Self::unwrap_prj(self.right_indices[0], self.goal.len(), goal)
             } else {
                 IR::tuple(
-                    right_indices
+                    self.right_indices
+                        .clone()
                         .into_iter()
                         .map(|i| Self::unwrap_prj(i, self.goal.len(), goal.clone())),
                 )
@@ -274,11 +274,14 @@ impl LowerSolvedEv<'_> {
     }
 
     fn left_enumerated_values(&self) -> impl Iterator<Item = (usize, Type)> + use<> {
-        self.left_indices().into_iter().zip(self.left.clone())
+        self.left_indices.clone().into_iter().zip(self.left.clone())
     }
 
     fn right_enumerated_values(&self) -> impl Iterator<Item = (usize, Type)> + use<> {
-        self.right_indices().into_iter().zip(self.right.clone())
+        self.right_indices
+            .clone()
+            .into_iter()
+            .zip(self.right.clone())
     }
 
     fn inj_left(&mut self) -> IR {
@@ -373,18 +376,28 @@ impl<'source> LowerAst<'source> {
                 };
                 let param = self.var_supply.supply();
 
+                let mut left_indices = vec![0; left.fields.len()];
+                let mut right_indices = vec![0; right.fields.len()];
                 let goal_indices = goal
                     .fields
                     .iter()
-                    .map(|field| {
+                    .enumerate()
+                    .map(|(goal_indx, field)| {
                         left.fields
                             .binary_search(field)
-                            .map(RowIndex::Left)
-                            .or_else(|_| right.fields.binary_search(field).map(RowIndex::Right))
-                            .expect("ICE: Invalid solved row combination.")
+                            .map(|left_indx| {
+                                left_indices[left_indx] = goal_indx;
+                                RowIndex::Left(left_indx)
+                            })
+                            .or_else(|_| {
+                                right.fields.binary_search(field).map(|right_indx| {
+                                    right_indices[right_indx] = goal_indx;
+                                    RowIndex::Right(right_indx)
+                                })
+                            })
+                            .expect("Invalid solved row combination.")
                     })
                     .collect::<Vec<_>>();
-
                 let left_values = self.types.lower_closed_row_ty(*left);
                 let right_values = self.types.lower_closed_row_ty(*right);
                 let goal_values = self.types.lower_closed_row_ty(*goal);
@@ -395,6 +408,8 @@ impl<'source> LowerAst<'source> {
                     right: right_values,
                     goal: goal_values,
                     goal_indices,
+                    left_indices,
+                    right_indices,
                 };
 
                 let term = lower_solved_ev.lower_ev_term();
@@ -456,15 +471,13 @@ impl<'source> LowerAst<'source> {
                     .get(&id)
                     .cloned()
                     .map(|ev| self.lookup_ev(ev))
-                    .unwrap_or_else(|| {
-                        unreachable!("ICE: Branch AST node lacks an expected evidence")
-                    });
+                    .unwrap_or_else(|| unreachable!(" Branch AST node lacks an expected evidence"));
 
                 let ret_ty = self
                     .branch_to_ret_ty
                     .get(&id)
                     .map(|ty| self.types.lower_ty(**ty))
-                    .unwrap_or_else(|| FatalErr::new("ICE: Branch AST node lacks expected type"));
+                    .unwrap_or_else(|| unreachable!("Branch AST node lacks expected type"));
                 let branch = IR::ty_app(IR::field(IR::Var(param), 1), TyApp::Ty(ret_ty));
 
                 let left = self.lower_ast(left);
@@ -478,7 +491,7 @@ impl<'source> LowerAst<'source> {
                     .get(&id)
                     .cloned()
                     .map(|ev| self.lookup_ev(ev))
-                    .expect("ICE: Project AST node lacks an expected evidence");
+                    .expect("Project AST node lacks an expected evidence");
 
                 let term = self.lower_ast(body);
                 let direction_field = match direction {
@@ -494,7 +507,7 @@ impl<'source> LowerAst<'source> {
                     .get(&id)
                     .cloned()
                     .map(|ev| self.lookup_ev(ev))
-                    .expect("ICE: Inject AST node lacks an expected evidence");
+                    .expect("Inject AST node lacks an expected evidence");
 
                 let term = self.lower_ast(body);
                 let direction_field = match direction {
@@ -504,46 +517,31 @@ impl<'source> LowerAst<'source> {
                 let inj_direction = IR::field(IR::field(IR::Var(param), direction_field), 1);
                 IR::app(inj_direction, term)
             }
-            Expr::Item(item_id, _) => {
+            Expr::Item(item_id, k) => {
                 let ty = self.item_source.lookup_item(item_id);
+                match k {
+                    ast::Kind::Extern(s) => IR::Extern(s, ty),
+                    ast::Kind::Func => {
+                        let item_ir = IR::Item(ty, self.item_supply.supply_for(item_id));
+                        let wrapper = self
+                            .item_wrappers
+                            .get(&id)
+                            .cloned()
+                            .unwrap_or_else(|| unreachable!("Item lacks expected wrapper"));
 
-                let item_ir = IR::Item(ty, self.item_supply.supply_for(item_id));
-                let wrapper = self
-                    .item_wrappers
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or_else(|| FatalErr::new("ICE: Item lacks expected wrapper"));
-
-                let ty_ir = wrapper.types.into_iter().fold(item_ir, |ir, ty| {
-                    IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty)))
-                });
-                let row_ir = wrapper.rows.into_iter().fold(ty_ir, |ir, row| {
-                    IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(row)))
-                });
-                wrapper.evidence.into_iter().fold(row_ir, |ir, ev| {
-                    let param = self.lookup_ev(ev);
-                    IR::app(ir, IR::Var(param))
-                })
-            }
-            Expr::Add(l, r) => {
-                let ir_l = self.lower_ast(l);
-                let ir_r = self.lower_ast(r);
-                IR::add(ir_l, ir_r)
-            }
-            Expr::Sub(l, r) => {
-                let ir_l = self.lower_ast(l);
-                let ir_r = self.lower_ast(r);
-                IR::sub(ir_l, ir_r)
-            }
-            Expr::Mul(l, r) => {
-                let ir_l = self.lower_ast(l);
-                let ir_r = self.lower_ast(r);
-                IR::mul(ir_l, ir_r)
-            }
-            Expr::Div(l, r) => {
-                let ir_l = self.lower_ast(l);
-                let ir_r = self.lower_ast(r);
-                IR::div(ir_l, ir_r)
+                        let ty_ir = wrapper.types.into_iter().fold(item_ir, |ir, ty| {
+                            IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty)))
+                        });
+                        let row_ir = wrapper.rows.into_iter().fold(ty_ir, |ir, row| {
+                            IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(row)))
+                        });
+                        wrapper.evidence.into_iter().fold(row_ir, |ir, ev| {
+                            let param = self.lookup_ev(ev);
+                            IR::app(ir, IR::Var(param))
+                        })
+                    }
+                    _ => unimplemented!(),
+                }
             }
             _ => todo!("{ast:?}"),
         }

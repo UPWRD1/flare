@@ -8,6 +8,11 @@ use petgraph::{
     visit::{IntoNodeReferences, Topo, Walker},
 };
 
+const INTRINSIC_FUNC_ADD: usize = 0;
+const INTRINSIC_FUNC_SUB: usize = 1;
+const INTRINSIC_FUNC_MUL: usize = 2;
+const INTRINSIC_FUNC_DIV: usize = 3;
+
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 
 use crate::{
@@ -41,20 +46,51 @@ use crate::{
 /// In theory, this whole process could be built into the intial graph building.
 /// However, I'd rather maintain a separation of concerns,
 /// even if it would be more efficient to use a single pass over the environment.
-pub struct Resolver {
+pub struct Resolver<const N: usize> {
     env: Environment,
     current_parent: QualifierFragment,
     current_dag_node: Option<NodeIndex>,
     pub dag: DiGraph<usize, ()>,
     main_dag_idx: Option<usize>,
     unbound_ty_count: u32,
+    intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
     // rows: BTreeMap<RowVar, Row>,
     unbound_row_count: u32, // new_rows: BTreeSet<RowVar>,
     guess_evidence: Vec<Evidence>,
 }
 
-impl Resolver {
-    pub fn new(env: Environment) -> Self {
+impl<const N: usize> Resolver<N> {
+    pub fn new(env: Environment, intrinsics: [impl Into<String>; N]) -> Self {
+        fn register_intrinsic(
+            id: impl Into<String>,
+            env: &Environment,
+        ) -> (ItemId, Intern<Expr<Untyped>>) {
+            let name = Intern::from(id.into());
+            // env.debug();
+            if let Ok((e, _)) = env.raw_get_node_and_children_indexes(
+                &QualifierFragment::Func(name),
+                &QualifierFragment::Package(Intern::from_ref("Main")),
+            ) {
+                let itemid = ItemId(e.index());
+                // let ty = env
+                // .value(e)
+                // .expect("Impossible")
+                // .get_type_universal()
+                // .unwrap();
+                (
+                    itemid,
+                    Expr::Item(itemid, Kind::Extern((*name).clone().leak())).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
+                )
+            } else {
+                panic!(
+                    "Could not resolve intrinsic: {:?}. Are your externs ok?",
+                    name
+                )
+            }
+        }
+
+        let intrinsics = intrinsics.map(|id| register_intrinsic(id, &env));
+
         Self {
             env,
             current_parent: QualifierFragment::Root,
@@ -62,6 +98,7 @@ impl Resolver {
             dag: DiGraph::new(),
             main_dag_idx: None,
             unbound_ty_count: 0,
+            intrinsics,
             // rows: BTreeMap::new(),
             unbound_row_count: 0,
             guess_evidence: vec![],
@@ -246,10 +283,10 @@ impl Resolver {
         out
     }
 
-    fn new_rowvar(&mut self) -> u32 {
+    fn new_rowvar(&mut self) -> RowVar {
         let v = self.unbound_row_count;
         self.unbound_row_count += 1;
-        v
+        RowVar(v)
     }
 
     fn new_typvar(&mut self) -> Intern<String> {
@@ -342,6 +379,13 @@ impl Resolver {
                     }
                     _ => unreachable!("All rows should be closed"),
                 };
+                let left = Row::Open(self.new_rowvar());
+                let right = Row::Open(self.new_rowvar());
+                self.guess_evidence.push(Evidence::RowEquation {
+                    left,
+                    right,
+                    goal: new_r,
+                });
                 // self.rows.insert(, value)
                 Ok(Type::Prod(new_r).into())
             }
@@ -416,27 +460,39 @@ impl Resolver {
             //     Ok(expr.update(Expr::Label(l, v)))
             // }
             // Expr::Unlabel(spanned, label) => todo!(),
-            Expr::ExternFunc(intern) => todo!(),
             Expr::Pat(spanned) => todo!(),
             Expr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                Ok(expr.update(Expr::Mul(l, r)))
+                let (id, f) = self.intrinsics[INTRINSIC_FUNC_MUL];
+                self.dag_add(id.0);
+                let final_expr = Expr::Call(expr.replace(Expr::Call(expr.replace(f), l)), r);
+
+                self.analyze_expr(expr.replace(final_expr), vars)
             }
             Expr::Div(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                Ok(expr.update(Expr::Div(l, r)))
+                let (id, f) = self.intrinsics[INTRINSIC_FUNC_DIV];
+                self.dag_add(id.0);
+                let final_expr = Expr::Call(expr.replace(Expr::Call(expr.replace(f), l)), r);
+                self.analyze_expr(expr.replace(final_expr), vars)
             }
             Expr::Add(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                Ok(expr.update(Expr::Add(l, r)))
+                let (id, f) = self.intrinsics[INTRINSIC_FUNC_ADD];
+                self.dag_add(id.0);
+                let final_expr = Expr::Call(expr.replace(Expr::Call(expr.replace(f), l)), r);
+                self.analyze_expr(expr.replace(final_expr), vars)
             }
             Expr::Sub(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                Ok(expr.update(Expr::Sub(l, r)))
+                let (id, f) = self.intrinsics[INTRINSIC_FUNC_SUB];
+                self.dag_add(id.0);
+                let final_expr = Expr::Call(expr.replace(Expr::Call(expr.replace(f), l)), r);
+                self.analyze_expr(expr.replace(final_expr), vars)
             }
             Expr::Comparison(spanned, comparison_op, spanned1) => todo!(),
             Expr::Call(func, arg) => {
@@ -567,22 +623,22 @@ impl Resolver {
                 }
             }
             Expr::Ident(n) => {
-                let ty = Type::Var(TypeVar(self.new_typvar())).into();
-                let goal = Row::Open(RowVar(self.new_rowvar()));
+                // let ty = Type::Var(TypeVar(self.new_typvar())).into();
+                // let goal = Row::Open(self.new_rowvar());
 
-                let right = Row::Open(RowVar(self.new_rowvar()));
-                let left = Row::Open(RowVar(self.new_rowvar()));
-                let remainder = Row::Open(RowVar(self.new_rowvar()));
-                // evidence we can produce a row containing the field and other types
-                let ev1 = Evidence::RowEquation {
-                    left: Row::single(Label(id.ident()?), ty),
-                    right: remainder,
-                    goal,
-                };
+                // let right = Row::Open(self.new_rowvar());
+                // let left = Row::Open(self.new_rowvar());
+                // let remainder = Row::Open(self.new_rowvar());
+                // // evidence we can produce a row containing the field and other types
+                // let ev1 = Evidence::RowEquation {
+                //     left: Row::single(Label(id.ident()?), ty),
+                //     right: remainder,
+                //     goal,
+                // };
 
-                let ev2 = Evidence::RowEquation { left, right, goal };
-                self.guess_evidence.push(ev1);
-                self.guess_evidence.push(ev2);
+                // let ev2 = Evidence::RowEquation { left, right, goal };
+                // self.guess_evidence.push(ev1);
+                // self.guess_evidence.push(ev2);
                 accum.push(Direction::Left);
                 Ok(())
             }
@@ -594,72 +650,6 @@ impl Resolver {
             ),
         }
     }
-
-    // fn find_row_address(
-    //     &mut self,
-    //     combo: VariableKind,
-    //     id: Spanned<Intern<Expr<Untyped>>>,
-    //     vars: &[(Intern<String>, VariableKind)],
-    // ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
-    //     let id = id.ident()?;
-    //     match combo {
-    //         VariableKind::Local(combo) => {
-    //             let mut path = Vec::new();
-    //             self.row_addr_helper(&combo, id, vars, &mut path)
-    //                 .map_err(|e| {
-    //                     if let Some(err) = e.downcast_ref::<DynamicErr>() {
-    //                         err.clone()
-    //                             .extra_labels(vec![("in this object".to_string(), combo.1)])
-    //                             .into()
-    //                     } else {
-    //                         e
-    //                     }
-    //                 })?;
-    //             // dbg!(&path);
-
-    //             let ex = path
-    //                 .into_iter()
-    //                 .fold(combo, |prev, dir| combo.replace(Expr::Project(dir, prev)));
-
-    //             Ok(ex.replace(Expr::Unlabel(ex, Label(id))))
-    //         }
-
-    //         VariableKind::Param(combo, t) => {
-    //             let rv: Result<Intern<Type>, CompilerErr> = match *t {
-    //                 Type::Prod(row) | Type::Sum(row) => match row {
-    //                     Row::Closed(closed_row) => {
-    //                         dbg!(combo, id, t, row);
-    //                         let idx = closed_row.fields.iter().position(|x| x.0 == id).ok_or(
-    //                             DynamicErr::new(format!(
-    //                                 "The field {} is not available here",
-    //                                 id.0
-    //                             ))
-    //                             .label("this", id.1)
-    //                             .extra_labels(vec![("in this object".to_string(), combo.1)]),
-    //                         )?;
-    //                         Ok(closed_row.values[idx])
-    //                     }
-    //                     _ => panic!(),
-    //                 },
-    //                 _ => Err(DynamicErr::new(format!("{t:?} is not a row type")).into()),
-    //             };
-
-    //             let left = typing::Row::Closed(ClosedRow {
-    //                 fields: vec![Label(combo.ident()?)].leak(),
-    //                 values: vec![rv?].leak(),
-    //             });
-    //             let right = typing::Row::Open(RowVar(self.new_rowvar()));
-
-    //             let goal = typing::Row::Open(RowVar(self.new_rowvar()));
-    //             self.guess_evidence
-    //                 .push(Evidence::RowEquation { left, right, goal });
-
-    //             Ok(combo.update(Expr::FieldAccess(combo, id)))
-    //         }
-    //     }
-
-    //     // dbg!(combo);
-    // }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     #[deprecated]

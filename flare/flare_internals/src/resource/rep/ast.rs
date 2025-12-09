@@ -19,9 +19,9 @@ use internment::Intern;
 use ordered_float::OrderedFloat;
 
 use super::{
+    Spanned,
     // concretetypes::{EnumVariant, Ty},
     quantifier::QualifierFragment,
-    Spanned,
 };
 
 pub trait Variable:
@@ -43,7 +43,7 @@ impl Ident for Untyped {
 
 impl Display for Untyped {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0 .0)
+        write!(f, "{}", self.0.0)
     }
 }
 
@@ -105,13 +105,13 @@ pub struct Label(pub Spanned<Intern<String>>);
 
 impl PartialEq for Label {
     fn eq(&self, other: &Self) -> bool {
-        self.0 .0 == other.0 .0
+        self.0.0 == other.0.0
     }
 }
 
 impl Hash for Label {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0 .0.hash(state);
+        self.0.0.hash(state);
     }
 }
 
@@ -125,7 +125,7 @@ impl PartialOrd for Label {
 
 impl Ord for Label {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0 .0.cmp(&other.0 .0)
+        self.0.0.cmp(&other.0.0)
     }
 }
 
@@ -137,6 +137,7 @@ pub enum Kind {
     Ty,
     Func,
     Param,
+    Extern(&'static str),
 }
 
 /// Type representing an Expression.
@@ -167,7 +168,7 @@ where
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
 
-    ExternFunc(Intern<Vec<QualifierFragment>>),
+    ExternFunc(ItemId, &'static str, Spanned<Intern<Type>>),
     Unit,
 
     Pat(Spanned<Pattern<V>>),

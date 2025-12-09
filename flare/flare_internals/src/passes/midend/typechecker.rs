@@ -133,12 +133,12 @@ impl Typechecker {
         item_idx: NodeIndex,
         f: FunctionItem<Untyped>,
     ) -> CompResult<TypesOutput> {
-        let unbound_types = Self::extract_generics(f.sig.0);
-        // let unbound_rows = Intern::as_ref(f.unbound_rows).clone();
-        // let evidence = Intern::as_ref(f.evidence).to_vec();
-        // let unbound_types = BTreeSet::new();
         let unbound_rows = BTreeSet::new();
-        let evidence = Vec::new();
+        let unbound_types = BTreeSet::new();
+        let evidence = vec![];
+        // let unbound_rows = (*f.unbound_rows).clone();
+        // let unbound_types = (*f.unbound_types).clone();
+        // let evidence = f.evidence.to_vec();
         let scheme = TypeScheme {
             unbound_types,
             unbound_rows,

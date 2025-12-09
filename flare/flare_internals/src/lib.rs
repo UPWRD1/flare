@@ -142,7 +142,14 @@ impl<T: Target> Context<T> {
         let program = self.parse_program(id)?;
 
         let e = Environment::build(&program)?;
-        let mut resolver = Resolver::new(e);
+
+        let intrinsics = [
+            "sys_arith_add" ,
+            "sys_arith_sub",
+            "sys_arith_mul",
+            "sys_arith_div",
+        ];
+          let mut resolver = Resolver::new(e, intrinsics);
         let order = resolver.build()?;
         let resolved_e = resolver.finish();
 
@@ -172,63 +179,3 @@ pub fn convert_path_to_id(path: &Path) -> FileID {
     //path.canonicalize().unwrap().hash(&mut hasher);
     hasher.finish()
 }
-
-// pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {
-// todo!()
-// let mut p = Program {
-//     modules: vec![],
-//     dependencies: HashSet::new(),
-// };
-
-// let root_ast = parse_file(ctx, filename.clone())?;
-// p.modules.push(root_ast.clone());
-
-// match root_ast {
-//     Cst::Module { name: _, body } => {
-//         for c in body {
-//             match c {
-//                 Cst::WithClause { include } => {
-//                     let parent_path = PathBuf::from_iter(
-//                         filename
-//                             .canonicalize()?
-//                             .components()
-//                             .clone()
-//                             .into_iter()
-//                             .take(filename.canonicalize()?.components().count() - 1)
-//                             .collect::<Vec<std::path::Component>>()
-//                             .iter()
-//                             .map(|x| x.as_os_str()),
-//                     );
-//                     let include_path =
-//                         parent_path.join(format!("{}.flr", include.get_symbol_name().unwrap()));
-
-//                     let include_ast = parse_file(ctx, include_path)?;
-//                     p.modules.push(include_ast.clone());
-//                 }
-//                 _ => {}
-//             }
-//         }
-//     }
-//     _ => panic!("Should be a module"),
-// }
-
-// //println!("{:#?}", p.clone());
-
-// ctx.env.build(p.clone())?;
-// //dbg!(ctx.env.clone());
-
-// // let mut tc = Typechecker::new(ctx.env.clone());
-// // let res = tc.check()?;
-// // dbg!(res.clone());
-
-// // let mut flattener = Flattener::new(res.clone());
-// // let flat = flattener.flatten();
-// // let main_func: FunctionTableEntry = flat.items.get(&quantifier!(Root, Func("main"), End)).cloned().unwrap().into();
-// // dbg!(&main_func);
-
-// //let mut g = Generator::new(res);
-// //let code = g.generate().unwrap();
-// //println!("Output: \n{}", code);
-// //todo!();
-// Ok("".to_string())
-// }

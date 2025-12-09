@@ -3,8 +3,8 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     passes::midend::typing::{
-        rows::{RowCombination, RowUniVar, RowVar},
         Constraint, Evidence, Provenance, Row, TyUniVar, Type, TypeScheme, TypeVar,
+        rows::{RowCombination, RowUniVar, RowVar},
     },
     resource::rep::ast::NodeId,
 };
@@ -38,6 +38,7 @@ impl<'a> Instantiate<'a> {
     }
 
     fn evidence(&self, ev: Evidence) -> Constraint {
+        dbg!(&ev);
         match ev {
             Evidence::RowEquation { left, right, goal } => Constraint::RowCombine(
                 Provenance::ExpectedCombine(self.id),

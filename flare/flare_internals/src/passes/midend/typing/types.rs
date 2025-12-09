@@ -8,9 +8,9 @@ use crate::{
     resource::{
         errors::CompResult,
         rep::{
+            Spanned,
             ast::{ItemId, Label},
             common::Ident,
-            Spanned,
         },
     },
 };
@@ -166,6 +166,7 @@ impl fmt::Display for Type {
         match self {
             Self::Unifier(u) => write!(f, "%var{}", u.0),
             Self::Var(v) => write!(f, "?{}", v.0),
+            Self::Func(l, r) => write!(f, "{l} -> {r}"),
             _ => write!(f, "{self:#?}"),
         }
     }

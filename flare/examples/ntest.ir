@@ -1,158 +1,49 @@
 item #0 is
-let $1: {
-  num -> {} -> num *
-  TyFunc Type num -> %0 -> {} -> %0 -> num -> %0 *
-  {num -> num * num -> num} *
-  {num -> {} * {} -> num}
-} = {
-  (def [$2: num, $3: {}] => $2 ),
+(def [$0: {num * str}] =>
+  {
+  (def [$2: num, $3: str] =>
+        {
+        $2,
+          $3
+        } ),
     (tyfun Type =>
-        (def [$4: num -> %0, $5: {} -> %0, $6: num] =>
-          (def [$7: num] => $4 $7 ) $6 ) ),
+        (def [$4: num -> %0, $5: str -> %0, $6: {num |
+            str}] =>
+          match $6:
+          | $7 then $4 $7,
+          | $8 then $5 $8 ) ),
     {
-      (def [$8: num] => $8 ),
-        (def [$9: num] =>
-            (def [$10: num] => $10 ) $9 )
+      (def [$9: {num * str}] => $9 field 0 ),
+        (def [$10: num] => $10 )
       },
     {
-      (def [$11: num] => {} ),
-        (def [$12: {}] =>
-            match $12:
-             )
+      (def [$12: {num * str}] => $12 field 1
+          ),
+        (def [$13: str] => $13 )
       }
-  }
-in
-  (def [$0: num] => $1 field 2 field 0 $0 )
+  } field 2 field 0 $0 )
 end item #0
 
 item #1 is
-let $18: {
-  num -> num -> {num * num} *
-  TyFunc Type num -> %0 -> num -> %0 -> {num |
-      num} -> %0 *
-  {{num * num} -> num * num -> {num | num}} *
-  {{num * num} -> num * num -> {num | num}}
-} = {
-  (def [$19: num, $20: num] =>
-        {
-        $20,
-          $19
-        } ),
-    (tyfun Type =>
-        (def [$21: num -> %0, $22: num -> %0, $23: {num |
-            num}] =>
-          match $23:
-          | $24 then $22 $24,
-          | $25 then $21 $25 ) ),
-    {
-      (def [$26: {num * num}] => $26 field 1
-          ),
-        (def [$27: num] =>
-            (def [$28: num] =>
-              {num | num} tag $28 variant 1
-            ) $27 )
-      },
-    {
-      (def [$29: {num * num}] => $29 field 0
-          ),
-        (def [$30: num] =>
-            (def [$31: num] =>
-              {num | num} tag $31 variant 0
-            ) $30 )
-      }
-  }
-in
-  let $2: {
-    {num * num} -> bool -> {
-        num *
-        bool *
-        num
-      } *
-    TyFunc Type {num |
-        num} -> %0 -> bool -> %0 -> {
-        num |
-        bool |
-        num
-      } -> %0 *
-    {{
-            num *
-            bool *
-            num
-          } -> {num * num} *
-        {num | num} -> {
-            num |
-            bool |
-            num
-          }} *
-    {{
-            num *
-            bool *
-            num
-          } -> bool *
-        bool -> {
-            num |
-            bool |
-            num
-          }}
-  } = {
-    (def [$3: {num * num}, $4: bool] =>
-          {
-          $3 field 0,
-            $4,
-            $3 field 1
-          } ),
-      (tyfun Type =>
-          (def [$5: {num |
-              num} -> %0, $6: bool -> %0, $7: {
-              num |
-              bool |
-              num
-            }] =>
-            match $7:
-            | $8 then $5 {num |
-                  num} tag $8 variant 0,
-            | $9 then $6 $9,
-            | $10 then $5 {num |
-                  num} tag $10 variant 1 ) ),
+#0: {num * str} -> num {
+(def [$2: str, $3: num] =>
       {
-        (def [$11: {
-                num *
-                bool *
-                num
-              }] =>
-              {
-              $11 field 0,
-                $11 field 2
-              } ),
-          (def [$12: {num | num}] =>
-              match $12:
-              | $13 then {
-                    num |
-                    bool |
-                    num
-                  } tag $13 variant 0,
-              | $14 then {
-                    num |
-                    bool |
-                    num
-                  } tag $14 variant 2 )
-        },
-      {
-        (def [$15: {
-                num *
-                bool *
-                num
-              }] => $15 field 1 ),
-          (def [$16: bool] =>
-              (def [$17: bool] =>
-                {
-                  num |
-                  bool |
-                  num
-                } tag $17 variant 1 ) $16 )
-        }
+      $3,
+        $2
+      } ),
+  (tyfun Type =>
+      (def [$4: str -> %0, $5: num -> %0, $6: {num |
+          str}] =>
+        match $6:
+        | $7 then $5 $7,
+        | $8 then $4 $8 ) ),
+  {
+    (def [$9: {num * str}] => $9 field 1 ),
+      (def [$10: str] => $10 )
+    },
+  {
+    (def [$12: {num * str}] => $12 field 0 ),
+      (def [$13: num] => $13 )
     }
-  in
-    (def [$0: num] => #0: num -> num $1
-    ) $2 field 0 $18 field 0 joe 3 false
+} field 0 john 3
 end item #1

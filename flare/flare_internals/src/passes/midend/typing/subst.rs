@@ -105,7 +105,7 @@ impl<'env> Solver<'env> {
     pub fn substitute_ty(&mut self, ty: Intern<Type>) -> SubstOut<Intern<Type>> {
         match *ty {
             Type::Num => SubstOut::new(Type::Num.into()),
-            Type::String => SubstOut::new(Type::Num.into()),
+            Type::String => SubstOut::new(Type::String.into()),
             Type::Bool => SubstOut::new(Type::Bool.into()),
             Type::Unit => SubstOut::new(Type::Unit.into()),
 

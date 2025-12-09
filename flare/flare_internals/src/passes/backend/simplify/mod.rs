@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
-use crate::passes::backend::lowering::ir::{IR, Kind, TyApp, Type, Var, VarId};
+use crate::passes::backend::lowering::ir::{Branch, IR, Kind, TyApp, Type, Var, VarId};
 
 enum Param {
     Ty(Kind),
@@ -32,8 +32,7 @@ impl IR {
             | Self::Particle(_) => 0,
 
             // Arith is always cheap
-            Self::Add(l, r) | Self::Sub(l, r) | Self::Mul(l, r) | Self::Div(l, r) => 0,
-
+            // Self::Add(_, _) | Self::Sub(_, _) | Self::Mul(_, _) | Self::Div(_, _) => 0,
             Self::Fun(_, body) => 10 + body.size(),
             Self::App(fun, arg) => arg.size() + size_app(fun, 1),
             Self::TyFun(_, ir) => ir.size(),
@@ -68,12 +67,15 @@ impl IR {
             Self::TyFun(_, ir) => ir.is_value(),
             Self::TyApp(ir, _) => ir.is_value(),
             Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
-            Self::Add(_, _)
-            | Self::Sub(_, _)
-            | Self::Mul(_, _)
-            | Self::Div(_, _)
-            | Self::App(_, _) => false,
+            Self::Tuple(s) => s.iter().all(|x| x.is_value()),
+            // Self::Tag(_, _, ir) =
+            // Self::Add(_, _)
+            // | Self::Sub(_, _)
+            // | Self::Mul(_, _)
+            // | Self::Div(_, _)
+            // | Self::App(_, _) => false,
             _ => todo!("{self:?}"),
+            // _ => false,
         }
     }
 
@@ -115,21 +117,25 @@ struct Occurrences {
 }
 
 impl Occurrences {
-    fn with_var_once(v: VarId) -> Self {
-        Self {
-            vars: FxHashMap::from_iter([(v, Occurrence::Once)]),
-        }
+    fn with_var_once(var: VarId) -> Self {
+        let mut vars = FxHashMap::default();
+        vars.insert(var, Occurrence::Once);
+        Self { vars }
+        // Self {
+        // vars: FxHashMap::from_iter([(v, Occurrence::Once)]),
+        // }
     }
 
-    fn lookup_var(&self, k: &VarId) -> Occurrence {
-        *self.vars.get(k).unwrap_or_else(|| {
+    fn lookup_var(&self, k: &Var) -> Occurrence {
+        *self.vars.get(&k.id).unwrap_or_else(|| {
             unreachable!(
-                "Tried to reference undefined variable during simplification: {k:?}, {self:?}",
+                "Tried to reference undefined variable during simplification: {k:?}, \n\n{self:?}",
             )
         })
     }
 
     fn mark_dead(&mut self, k: VarId) {
+        // self.vars.remove(&k);
         self.vars.entry(k).and_modify(|x| *x = Occurrence::Dead);
     }
 
@@ -178,12 +184,6 @@ fn subst_ty(haystack: IR, payload: Type) -> IR {
         IR::Bool(b) => IR::Bool(b),
         IR::Unit => IR::Unit,
         IR::Particle(p) => IR::Particle(p),
-
-        IR::Add(l, r) => IR::add(subst_ty(*l, payload.clone()), subst_ty(*r, payload)),
-
-        IR::Sub(l, r) => IR::sub(subst_ty(*l, payload.clone()), subst_ty(*r, payload)),
-        IR::Mul(l, r) => IR::mul(subst_ty(*l, payload.clone()), subst_ty(*r, payload)),
-        IR::Div(l, r) => IR::div(subst_ty(*l, payload.clone()), subst_ty(*r, payload)),
 
         IR::Fun(var, ir) => IR::fun(
             var.map_ty(|ty| ty.subst_ty(payload.clone())),
@@ -247,7 +247,7 @@ fn occurrence_analysis(ir: &IR) -> (FxHashSet<VarId>, Occurrences) {
             }
             (free, occs)
         }
-        IR::Case(t, scrutinee, branches) => {
+        IR::Case(_, scrutinee, branches) => {
             let (mut scrutinee_free, mut scrutinee_occs) = occurrence_analysis(scrutinee);
             for branch in branches {
                 let (branch_free, branch_occs) = occurrence_analysis(&branch.as_fun());
@@ -257,7 +257,7 @@ fn occurrence_analysis(ir: &IR) -> (FxHashSet<VarId>, Occurrences) {
             (scrutinee_free, scrutinee_occs)
         }
         IR::Tag(_, _, ir) => occurrence_analysis(ir),
-        IR::Item(_, _) => (Default::default(), Default::default()),
+        IR::Item(_, _) | IR::Extern(_, _) => (Default::default(), Default::default()),
         _ => todo!("{ir:?}"),
     }
 }
@@ -282,9 +282,11 @@ type SimplifierContext = Vec<(ContextEntry, Subst)>;
 enum ContextEntry {
     App(IR),
     TyApp(TyApp),
-
     TyFun(Kind),
     Local(Var, Occurrence, IR),
+    Field(usize),
+    Tag(Type, usize),
+    Case(Type, Vec<Branch>),
 }
 
 #[derive(Default)]
@@ -329,6 +331,7 @@ impl Simplifier {
 
     fn simplify(&mut self, mut ir: IR, in_scope: InScope, mut ctx: SimplifierContext) -> IR {
         loop {
+            // dbg!(&ir);
             ir = match ir {
                 IR::App(fun, arg) => {
                     ctx.push((ContextEntry::App(*arg), self.subst.clone()));
@@ -343,6 +346,10 @@ impl Simplifier {
                     *body
                 }
                 IR::Num(i) => break self.rebuild(IR::Num(i), in_scope, ctx),
+                IR::Str(i) => break self.rebuild(IR::Str(i), in_scope, ctx),
+                IR::Bool(b) => break self.rebuild(IR::Bool(b), in_scope, ctx),
+                IR::Unit => break self.rebuild(IR::Unit, in_scope, ctx),
+                IR::Particle(p) => break self.rebuild(IR::Particle(p), in_scope, ctx),
 
                 IR::Fun(var, body) => {
                     let body =
@@ -354,17 +361,53 @@ impl Simplifier {
                     ControlFlow::Continue(ir) => ir,
                     ControlFlow::Break(var) => break self.rebuild(IR::Var(var), in_scope, ctx),
                 },
-                // IR::Tuple(elements) => {
-                // let v =
-                // self.rebuild(IR::Tuple(t), in_scope, ctx)
-                // }
-                _ => break self.rebuild(ir, in_scope, ctx), // _ => todo!("{ir:?}"),
+
+                IR::Tuple(elements) => {
+                    let new_elements = elements
+                        .into_iter()
+                        .map(|elem| self.simplify(elem, in_scope.clone(), vec![]))
+                        .collect();
+                    break self.rebuild(IR::Tuple(new_elements), in_scope, ctx);
+                }
+                IR::Field(obj, idx) => {
+                    ctx.push((ContextEntry::Field(idx), self.subst.clone()));
+                    *obj
+                }
+                IR::Case(ty, scrutinee, branches) => {
+                    let branches: Vec<Branch> = branches
+                        .into_iter()
+                        .map(|b| self.simplify_branch(b, in_scope.clone(), vec![]))
+                        .collect();
+
+                    ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
+                    *scrutinee
+                }
+
+                IR::Tag(ty, idx, ir) => {
+                    // ctx.push((ContextEntry::Tag(ty, idx), self.subst.clone()));
+                    break self.rebuild(*ir, in_scope, ctx);
+                    // *ir
+                }
+                ir @ IR::Extern(_, _) | ir @ IR::Item(_, _) => {
+                    break self.rebuild(ir, in_scope, ctx);
+                }
             }
         }
     }
 
+    fn simplify_branch(&mut self, b: Branch, in_scope: InScope, ctx: SimplifierContext) -> Branch {
+        Branch {
+            body: self.simplify(
+                b.body,
+                in_scope.update(b.param.id, Definition::Unknown),
+                ctx,
+            ),
+            ..b
+        }
+    }
+
     fn simplify_local(&mut self, var: Var, defn: IR, body: IR, ctx: &mut SimplifierContext) -> IR {
-        match self.occs.lookup_var(&var.id) {
+        match self.occs.lookup_var(&var) {
             Occurrence::Dead => {
                 self.locals_inlined += 1;
                 body
@@ -423,8 +466,8 @@ impl Simplifier {
             })
             .unwrap_or_else(|| {
                 unreachable!(
-                    "Unbound variable encountered in simplification: {:?}",
-                    var.id
+                    "Unbound variable encountered in simplification: {:?}\nin_scope: {:?}",
+                    var.id, in_scope
                 )
             })
     }
@@ -445,7 +488,6 @@ impl Simplifier {
                 let small_enough = ir.size() <= self.inline_size_threshold;
                 ir.is_value() && small_enough && self.some_benefit(ir, in_scope, ctx)
             }
-            _ => todo!(),
         }
     }
 
@@ -482,6 +524,7 @@ impl Simplifier {
 
     fn rebuild(&mut self, mut ir: IR, in_scope: InScope, mut ctx: SimplifierContext) -> IR {
         while let Some((entry, subst)) = ctx.pop() {
+            // dbg!(&ir);
             self.subst = subst;
             match entry {
                 ContextEntry::App(arg) => {
@@ -493,6 +536,9 @@ impl Simplifier {
                         ir = IR::app(ir, arg);
                     }
                 }
+                ContextEntry::Field(idx) => ir = IR::field(ir, idx),
+                ContextEntry::Tag(ty, idx) => ir = IR::tag(ty, idx, ir),
+                ContextEntry::Case(ty, b) => ir = IR::case(ty, ir, b),
                 ContextEntry::TyApp(ty) => {
                     ir = if let IR::TyFun(_, body) = ir {
                         self.saturated_ty_fun_count += 1;
@@ -519,7 +565,7 @@ impl Simplifier {
                             in_scope.update(var.id, Definition::BoundTo(ir.clone(), occ)),
                             vec![],
                         );
-                        ir = if let Occurrence::Dead = self.occs.lookup_var(&var.id) {
+                        ir = if let Occurrence::Dead = self.occs.lookup_var(&var) {
                             self.locals_inlined += 1;
                             body
                         } else {
