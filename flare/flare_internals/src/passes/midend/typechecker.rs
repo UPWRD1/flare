@@ -13,6 +13,7 @@ use crate::{
     resource::{
         errors::{CompResult, DynamicErr, ErrorCollection},
         rep::{
+            Spanned,
             ast::{ItemId, Untyped},
             common::Ident,
             entry::{FunctionItem, ItemKind},
@@ -59,7 +60,7 @@ impl Typechecker {
                     self.context
                         .insert(ItemId(item_idx.index()), scheme.clone());
                 }
-                ItemKind::Field { name: _, value } => {
+                ItemKind::Field { name, value } => {
                     self.check_type(*item_idx, value)?;
                 }
 

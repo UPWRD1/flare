@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use chumsky::span::SimpleSpan;
+use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 use petgraph::{
     dot::Config,
@@ -60,36 +60,40 @@ pub struct Resolver<const N: usize> {
 }
 
 impl<const N: usize> Resolver<N> {
-    pub fn new(env: Environment, intrinsics: [impl Into<String>; N]) -> Self {
+    pub fn new(
+        mut env: Environment,
+        intrinsics: [(impl Into<String>, impl Into<Intern<Type>>); N],
+    ) -> Self {
         fn register_intrinsic(
-            id: impl Into<String>,
-            env: &Environment,
+            (id, sig): (impl Into<String>, impl Into<Intern<Type>>),
+            env: &mut Environment,
         ) -> (ItemId, Intern<Expr<Untyped>>) {
             let name = Intern::from(id.into());
             // env.debug();
-            if let Ok((e, _)) = env.raw_get_node_and_children_indexes(
-                &QualifierFragment::Func(name),
-                &QualifierFragment::Package(Intern::from_ref("Main")),
-            ) {
-                let itemid = ItemId(e.index());
-                // let ty = env
-                // .value(e)
-                // .expect("Impossible")
-                // .get_type_universal()
-                // .unwrap();
-                (
-                    itemid,
-                    Expr::Item(itemid, Kind::Extern((*name).clone().leak())).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
-                )
-            } else {
-                panic!(
-                    "Could not resolve intrinsic: {:?}. Are your externs ok?",
-                    name
-                )
-            }
+            //
+            let e = env.add(
+                env.root,
+                QualifierFragment::Func(name),
+                Item {
+                    kind: ItemKind::Extern {
+                        name: Spanned(name, SimpleSpan::new(0, 0..0)),
+                        sig: Spanned(sig.into(), SimpleSpan::new(0, 0..0)),
+                    },
+                },
+            );
+            let itemid = ItemId(e.index());
+            // let ty = env
+            // .value(e)
+            // .expect("Impossible")
+            // .get_type_universal()
+            // .unwrap();
+            (
+                itemid,
+                Expr::Item(itemid, Kind::Extern((*name).clone().leak())).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
+            )
         }
 
-        let intrinsics = intrinsics.map(|id| register_intrinsic(id, &env));
+        let intrinsics = intrinsics.map(|id| register_intrinsic(id, &mut env));
 
         Self {
             env,

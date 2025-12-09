@@ -58,7 +58,7 @@ impl Environment {
     /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
     /// assert!(env.graph.contains_edge(env.root, foo))
     /// ```
-    fn add(
+    pub fn add(
         &mut self,
         parent_node: NodeIndex,
         qualifier: QualifierFragment,
@@ -107,7 +107,7 @@ impl Environment {
     pub fn build(program: &Program<Untyped>) -> CompResult<Self> {
         use ItemKind::*;
         let mut graph = DiGraph::new();
-        let mut current_node = graph.add_node(Item::new(ItemKind::Root, true));
+        let mut current_node = graph.add_node(Item::new(ItemKind::Root));
 
         let mut me = Self {
             graph,
@@ -123,14 +123,11 @@ impl Environment {
             let package_name = package.0.name;
 
             let mut deps = Vec::new();
-            let package_entry = Item::new(
-                Package(PackageEntry {
-                    name: package.0.name,
-                    id: package.1, // file: fsource.filename,
-                                   // src: fsource.src_text,
-                }),
-                false,
-            );
+            let package_entry = Item::new(Package(PackageEntry {
+                name: package.0.name,
+                id: package.1, // file: fsource.filename,
+                               // src: fsource.src_text,
+            }));
             let package_quant = QualifierFragment::Package(package_name.0);
 
             let p_id = me.add(current_node, package_quant, package_entry);
@@ -150,23 +147,20 @@ impl Environment {
                     // me.build_enum(current_node, the_ty, variants)?;
                     // }
                     Definition::Type(name, t) => {
-                        me.build_type(current_node, t, *name)?;
+                        me.build_type(current_node, *t, *name)?;
                         // todo!()
                     }
 
                     Definition::Let(name, body, sig) => {
                         let ident = QualifierFragment::Func(name.0.0);
-                        let entry = Item::new(
-                            Function(FunctionItem {
-                                name: *name,
-                                sig: *sig,
-                                body: *body,
-                                unbound_types: BTreeSet::new().into(),
-                                unbound_rows: BTreeSet::new().into(),
-                                evidence: vec![].into(),
-                            }),
-                            false,
-                        );
+                        let entry = Item::new(Function(FunctionItem {
+                            name: *name,
+                            sig: *sig,
+                            body: *body,
+                            unbound_types: BTreeSet::new().into(),
+                            unbound_rows: BTreeSet::new().into(),
+                            evidence: vec![].into(),
+                        }));
                         let idx = me.add(current_node, ident, entry);
 
                         // for arg in args {
@@ -181,14 +175,11 @@ impl Environment {
                     }
                     Definition::Extern(n, ty) => {
                         let ident = QualifierFragment::Func(n.0);
-                        let entry = Item::new(
-                            Extern {
-                                //parent: current_parent.clone(),
-                                name: *n,
-                                sig: *ty,
-                            },
-                            true,
-                        );
+                        let entry = Item::new(Extern {
+                            //parent: current_parent.clone(),
+                            name: *n,
+                            sig: *ty,
+                        });
                         me.add(current_node, ident, entry);
                     }
                     Definition::ImplDef(ImplDef { the_ty, methods }) => {
@@ -332,15 +323,12 @@ impl Environment {
         // dbg!(current_node);
         for (name, value) in the_row.fields.iter().zip(the_row.values) {
             // dbg!(name);
-            let entry = Item::new(
-                ItemKind::Field {
-                    name: *name,
-                    value: *value,
-                },
-                false,
-            );
+            let entry = Item::new(ItemKind::Field {
+                name: *name,
+                value: *value,
+            });
             let val_idx = self.add(current_node, QualifierFragment::Field(name.0.0), entry);
-            self.build_type(val_idx, value, name.0)?;
+            self.build_type(val_idx, **value, name.0)?;
         }
         Ok(())
     }
@@ -348,7 +336,7 @@ impl Environment {
     fn build_type(
         &mut self,
         current_node: NodeIndex,
-        the_ty: &Type,
+        the_ty: Type,
         name: Spanned<Intern<String>>,
     ) -> CompResult<()> {
         // dbg!(the_ty);
@@ -357,22 +345,18 @@ impl Environment {
                 crate::passes::midend::typing::Row::Closed(the_row) => {
                     // let type_name = l.0;
                     let qual = QualifierFragment::Type(name.0);
-                    let entry =
-                        Item::new(ItemKind::Type(name, Intern::from(*the_ty), name.1), false);
+                    let entry = Item::new(ItemKind::Type(name, the_ty.into(), name.1));
                     let ty_node_idx = self.add(current_node, qual, entry);
-                    self.build_row(ty_node_idx, *the_row)?;
+                    self.build_row(ty_node_idx, the_row)?;
                 }
                 _ => panic!(),
             },
             Type::Label(l, r) => {
                 let type_name = l.0;
                 let qual = QualifierFragment::Type(type_name.0);
-                let entry = Item::new(
-                    ItemKind::Type(name, Intern::from(*the_ty), type_name.1),
-                    false,
-                );
+                let entry = Item::new(ItemKind::Type(name, the_ty.into(), type_name.1));
                 let ty_node_idx = self.add(current_node, qual, entry);
-                self.build_type(ty_node_idx, r, l.0)?;
+                self.build_type(ty_node_idx, *r, l.0)?;
             }
             _ => (),
         };
@@ -635,11 +619,4 @@ impl Environment {
 
     //     Self { graph, root }
     // }
-
-    pub fn remove_unused(self) -> Self {
-        let g = self
-            .graph
-            .filter_map_owned(|_, n| n.is_checked.get().then_some(n), |_, e| Some(e));
-        Self { graph: g, ..self }
-    }
 }

@@ -2,17 +2,12 @@ use internment::Intern;
 
 use crate::{
     passes::midend::typing::{
-        Constraint,
-        Provenance,
-        Solver,
-        TyUniVar,
-        Type,
-        // types::InternType,
+        Constraint, Provenance, Solver, TyUniVar, Type,
         rows::{ClosedRow, Row, RowCombination, RowUniVar},
     },
     resource::{
         errors::{CompilerErr, DynamicErr, TypeErr},
-        rep::ast::Label,
+        rep::{Spanned, ast::Label},
     },
 };
 
@@ -200,14 +195,6 @@ impl<'env> Solver<'env> {
                 self.dispatch_any_solved(var, row)
             }
             (Row::Closed(l), Row::Closed(r)) => {
-                // RowCombination::is_unifiable(&self, other);
-                dbg!(l, r);
-                // dbg!(left.equatable(&right));
-                // dbg!(l.subtyped(&r));
-                // dbg!(r.is_subtype_of(&r));
-                // if let Some(l) = l.is_subtype_of(&r) {
-
-                // dbg!(l);
                 if l.fields == r.fields {
                     // let offenders = FxHashSet::from_iter(l.fields);
                     // let d = offenders.difference(&FxHashSet::from_iter(r.fields));
@@ -221,8 +208,24 @@ impl<'env> Solver<'env> {
                     }
                     Ok(())
                 } else if let Some(l) = l.is_subtype_of(&r) {
-                    let res = self.diff_and_unify(r, l)?;
-                    dbg!(res);
+                    // let res = self.diff_and_unify(r, l)?;
+                    // dbg!(res);
+
+                    let left_tys = l.values.iter();
+                    let right_tys = r.values.iter();
+                    for (left_ty, right_ty) in left_tys.zip(right_tys) {
+                        self.unify_ty_ty(*left_ty, *right_ty)?;
+                    }
+                    Ok(())
+                } else if let Some(r) = r.is_subtype_of(&l) {
+                    // let res = self.diff_and_unify(r, l)?;
+                    // dbg!(res);
+
+                    let left_tys = l.values.iter();
+                    let right_tys = r.values.iter();
+                    for (left_ty, right_ty) in left_tys.zip(right_tys) {
+                        self.unify_ty_ty(*left_ty, *right_ty)?;
+                    }
                     Ok(())
                 } else {
                     Err(UnificationError::RowsNotEqual((left, right)))
@@ -368,27 +371,23 @@ impl<'env> Solver<'env> {
                         Provenance::ExpectedUnify(l_id, r_id) => (
                             l_id,
                             DynamicErr::new(format!("Type mismatch between {left} and {right}"))
-                                .label(
-                                    format!("expected '{right}' here, found '{left}'"),
-                                    provenance.id(),
-                                )
+                                .label(format!("expected '{right}' here, found '{left}'"), l_id)
                                 .extra(format!("This is {}", left), l_id)
                                 .extra(format!("This is {}", right), r_id)
                                 .into(),
                         ),
                         // FIXME: Use actual rows and not types...
-                        Provenance::ExpectedCombine(node_id) => {
-                            let err = DynamicErr::new("Could not combine types").label(
-                                format!("Expected {:?}, found {:?}", left, right),
-                                provenance.id(),
-                            );
-                            (node_id, err.into())
+                        Provenance::ExpectedCombine(r_id) => {
+                            let err = DynamicErr::new("Could not combine types")
+                                .label(format!("Expected {:?}, found {:?}", left, right), r_id)
+                                .extra("Defined here", r_id);
+                            (r_id, err.into())
                         }
                     },
                     UnificationError::RowsNotEqual((l, r)) => {
-                        // dbg!(provenance);
-                        let err = DynamicErr::new("Could not unify types")
-                            .label(format!("Expected {:?}, found {:?}", l, r), provenance.id());
+                        dbg!(provenance);
+                        let err = DynamicErr::new("Could not unify rows")
+                            .label(format!("Expected {:?}, found {:?}", r, l), provenance.id());
                         (provenance.id(), err.into())
                     }
                 };

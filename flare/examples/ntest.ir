@@ -1,49 +1,37 @@
 item #0 is
-(def [$0: {num * str}] =>
-  {
-  (def [$2: num, $3: str] =>
-        {
+let $1: {
+  num -> str -> {num * str} *
+  TyFunc Type num -> %0 -> str -> %0 -> {num |
+      str} -> %0 *
+  {{num * str} -> num * num -> {num | str}} *
+  {{num * str} -> str * str -> {num | str}}
+} = {
+    fn[$2: num, $3: str] =>
+      {
         $2,
-          $3
-        } ),
-    (tyfun Type =>
-        (def [$4: num -> %0, $5: str -> %0, $6: {num |
-            str}] =>
-          match $6:
-          | $7 then $4 $7,
-          | $8 then $5 $8 ) ),
-    {
-      (def [$9: {num * str}] => $9 field 0 ),
-        (def [$10: num] => $10 )
+        $3
       },
+    (tyfun Type =>
+      fn[$4: num -> %0, $5: str -> %0, $6: {num |
+        str}] =>
+        match $6:
+          | $7 then $4($7),
+          | $8 then $5($8)
+    ),
     {
-      (def [$12: {num * str}] => $12 field 1
-          ),
-        (def [$13: str] => $13 )
-      }
-  } field 2 field 0 $0 )
+      fn[$9: {num * str}] => $9 field 0,
+      fn[$10: num] => $10
+    },
+    {
+      fn[$12: {num * str}] => $12 field 1,
+      fn[$13: str] => $13
+    }
+  }
+in
+  fn[$0: {num * str}] =>
+    $1 field 2 field 0($0)
 end item #0
 
 item #1 is
-#0: {num * str} -> num {
-(def [$2: str, $3: num] =>
-      {
-      $3,
-        $2
-      } ),
-  (tyfun Type =>
-      (def [$4: str -> %0, $5: num -> %0, $6: {num |
-          str}] =>
-        match $6:
-        | $7 then $5 $7,
-        | $8 then $4 $8 ) ),
-  {
-    (def [$9: {num * str}] => $9 field 1 ),
-      (def [$10: str] => $10 )
-    },
-  {
-    (def [$12: {num * str}] => $12 field 0 ),
-      (def [$13: num] => $13 )
-    }
-} field 0 john 3
+extern_intrinsic_arith_add(#0($1 field 0(john)(3)))(extern_intrinsic_arith_mul(4)(3))
 end item #1

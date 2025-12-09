@@ -477,13 +477,13 @@ impl IR {
             Self::Fun(v, b) => {
                 let mut vars = vec![v.clone()];
                 let ir = b.clone().collect_fun_vars(&mut vars);
-                Doc::text("(def")
-                    .append(Doc::space())
+                Doc::text("fn")
+                    // .append(Doc::space())
                     .append(Doc::text("["))
                     .append(
                         Doc::list(
                             Itertools::intersperse(
-                                vars.into_iter().map(|v| v.render().nest(INC)),
+                                vars.into_iter().map(|v| v.render()),
                                 Doc::text(",").append(Doc::space()),
                             )
                             .collect(),
@@ -495,7 +495,7 @@ impl IR {
                     // .append(Doc::)
                     .group()
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))
-                    .append(Doc::soft_line().append(Doc::text(")")))
+                // .append(Doc::soft_line().append(Doc::text(")")))
             }
             // Self::Fun(v, b) => {
             //     // let mut vars = vec![v.clone()];
@@ -511,17 +511,18 @@ impl IR {
             // }
             Self::App(l, r) => Doc::nil()
                 .append(l.render())
-                .append(Doc::space())
-                .append(r.render()),
+                .append(Doc::text("("))
+                .append(r.render())
+                .append(Doc::text(")")),
             Self::TyApp(t, k) => Doc::nil()
-                .append(t.render().nest(INC))
+                .append(t.render())
                 .append(Doc::space())
                 .append(Doc::text(format!("{k:?}"))),
             Self::TyFun(k, b) => Doc::text("(tyfun")
                 .append(Doc::space())
                 .append(Doc::text(format!("{k:?} =>")))
                 .append(Doc::line_or_space().append(b.render()).nest(INC))
-                .append(Doc::soft_line().append(Doc::text(")"))),
+                .append(Doc::hard_line().append(Doc::text(")"))),
             Self::Local(v, b, i) => Doc::nil()
                 .append(
                     Doc::text("let")
@@ -541,18 +542,19 @@ impl IR {
                     Doc::text("{}")
                 } else {
                     Doc::text("{")
-                        .append(Doc::hard_line())
                         .append(
                             Doc::list(
                                 Itertools::intersperse(
-                                    v.into_iter().map(|x| x.render().nest(INC)),
-                                    Doc::text(",").append(Doc::hard_line()),
+                                    v.into_iter()
+                                        .map(|x| Doc::hard_line().append(x.render()).nest(INC)),
+                                    Doc::text(","),
                                 )
                                 .collect(),
                             )
-                            .nest(INC),
+                            .group(),
                         )
-                        .append(Doc::hard_line().append(Doc::text("}")))
+                        .append(Doc::hard_line())
+                        .append(Doc::text("}"))
                 }
             }
             Self::Case(t, b, v) => Doc::text("match")
@@ -560,13 +562,15 @@ impl IR {
                 .append(b.render())
                 .append(Doc::text(":"))
                 .append(
-                    Doc::hard_line().append(Doc::list(
+                    Doc::list(
                         Itertools::intersperse(
-                            v.into_iter().map(|x| x.render().nest(INC)),
-                            Doc::text(",").append(Doc::hard_line()),
+                            v.into_iter()
+                                .map(|x| Doc::hard_line().append(x.render()).nest(INC)),
+                            Doc::text(","),
                         )
                         .collect(),
-                    )),
+                    )
+                    .group(),
                 ),
             Self::Field(k, s) => Doc::nil()
                 .append(k.render())
@@ -581,9 +585,9 @@ impl IR {
                 .append(Doc::text(" variant "))
                 .append(Doc::text(format!("{i}"))),
             Self::Particle(p) => Doc::text(format!("@{p}")),
-            Self::Item(t, id) => Doc::text(format!("#{}:", id.0))
-                .append(Doc::space())
-                .append(t.render()),
+            Self::Item(t, id) => Doc::text(format!("#{}", id.0)),
+            // .append(Doc::space())
+            // .append(t.render()),
             Self::Extern(n, t) => Doc::text(format!("extern_{n}")), // Self::Add(l, r) => Doc::text("add")
                                                                     //     .append(Doc::space())
                                                                     //     .append(l.render())

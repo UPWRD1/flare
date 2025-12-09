@@ -1,5 +1,6 @@
 use std::{collections::BTreeSet, fmt, hash::Hash};
 
+use chumsky::span::Span;
 use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
@@ -142,9 +143,9 @@ impl Type {
     }
     pub fn destructure_arrow(&self) -> (Vec<Intern<Self>>, Intern<Self>) {
         fn worker(t: &Type, v: &mut Vec<Intern<Type>>) {
-            match *t {
+            match t {
                 Type::Func(l, r) => {
-                    v.push(l);
+                    v.push(*l);
                     worker(&r, v);
                 }
                 _ => v.push((*t).into()),
@@ -157,7 +158,7 @@ impl Type {
     }
 
     pub fn fun(arg: Self, ret: Self) -> Self {
-        Self::Func(Intern::from(arg), Intern::from(ret))
+        Self::Func(arg.into(), ret.into())
     }
 }
 

@@ -40,8 +40,12 @@ impl IR {
             Self::Local(var, defn, body) => {
                 defn.size() + body.size() + (if var.ty.is_cheap_alloc() { 0 } else { 10 })
             }
-
-            _ => todo!(),
+            Self::Tuple(v) => v.iter().map(|x| x.size()).sum(),
+            Self::Field(ir, _) => ir.size(),
+            Self::Tag(t, _, ir) => ir.size(),
+            Self::Case(t, s, b) => s.size() + b.iter().map(|x| x.as_fun().size()).sum::<usize>(),
+            Self::Item(_, _) | Self::Extern(_, _) => 0,
+            // _ => todo!(),
         }
     }
     fn is_trivial(&self) -> bool {
@@ -250,7 +254,8 @@ fn occurrence_analysis(ir: &IR) -> (FxHashSet<VarId>, Occurrences) {
         IR::Case(_, scrutinee, branches) => {
             let (mut scrutinee_free, mut scrutinee_occs) = occurrence_analysis(scrutinee);
             for branch in branches {
-                let (branch_free, branch_occs) = occurrence_analysis(&branch.as_fun());
+                let (mut branch_free, branch_occs) = occurrence_analysis(&branch.body);
+                branch_free.insert(branch.param.id);
                 scrutinee_free.extend(branch_free);
                 scrutinee_occs = scrutinee_occs.merge(branch_occs)
             }
@@ -258,7 +263,7 @@ fn occurrence_analysis(ir: &IR) -> (FxHashSet<VarId>, Occurrences) {
         }
         IR::Tag(_, _, ir) => occurrence_analysis(ir),
         IR::Item(_, _) | IR::Extern(_, _) => (Default::default(), Default::default()),
-        _ => todo!("{ir:?}"),
+        // _ => todo!("{ir:?}"),
     }
 }
 
@@ -319,7 +324,7 @@ impl Simplifier {
     fn new(occs: Occurrences) -> Self {
         Self {
             occs,
-            inline_size_threshold: 60,
+            inline_size_threshold: 60, // GHC magic number is 60
             ..Default::default()
         }
     }
@@ -370,17 +375,22 @@ impl Simplifier {
                     break self.rebuild(IR::Tuple(new_elements), in_scope, ctx);
                 }
                 IR::Field(obj, idx) => {
-                    ctx.push((ContextEntry::Field(idx), self.subst.clone()));
-                    *obj
+                    // ctx.push((ContextEntry::Field(idx), self.subst.clone()));
+                    // *obj
+                    break self.rebuild(IR::field(*obj, idx), in_scope, ctx);
                 }
                 IR::Case(ty, scrutinee, branches) => {
-                    let branches: Vec<Branch> = branches
-                        .into_iter()
-                        .map(|b| self.simplify_branch(b, in_scope.clone(), vec![]))
-                        .collect();
+                    if branches.is_empty() {
+                        break self.rebuild(*scrutinee, in_scope, ctx);
+                    } else {
+                        let branches: Vec<Branch> = branches
+                            .into_iter()
+                            .map(|b| self.simplify_branch(b, in_scope.clone(), vec![]))
+                            .collect();
 
-                    ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
-                    *scrutinee
+                        ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
+                        *scrutinee
+                    }
                 }
 
                 IR::Tag(ty, idx, ir) => {

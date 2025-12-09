@@ -53,7 +53,7 @@ use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
         backend::{lowering::Lowerer, simplify, target::{Generator, Target}},
-        midend::{environment::Environment, resolution::Resolver, typechecker::Typechecker, },
+        midend::{environment::Environment, resolution::Resolver, typechecker::Typechecker, typing::Type, },
         parser,
     },
     resource::{
@@ -144,12 +144,12 @@ impl<T: Target> Context<T> {
         let e = Environment::build(&program)?;
 
         let intrinsics = [
-            "sys_arith_add" ,
-            "sys_arith_sub",
-            "sys_arith_mul",
-            "sys_arith_div",
+            ("intrinsic_arith_add",Type::Func(Type::Num.into(), Type::Func(Type::Num.into(), Type::Num.into()).into())) ,
+            ("intrinsic_arith_sub",Type::Func(Type::Num.into(), Type::Func(Type::Num.into(), Type::Num.into()).into())),
+            ("intrinsic_arith_mul",Type::Func(Type::Num.into(), Type::Func(Type::Num.into(), Type::Num.into()).into())),
+            ("intrinsic_arith_div",Type::Func(Type::Num.into(), Type::Func(Type::Num.into(), Type::Num.into()).into())),
         ];
-          let mut resolver = Resolver::new(e, intrinsics);
+        let mut resolver = Resolver::new(e, intrinsics);
         let order = resolver.build()?;
         let resolved_e = resolver.finish();
 

@@ -6,12 +6,7 @@ package Main =
     #use Opt.unwrap
     #use Opt.unwrap_or
     #use Option
-
-    extern sys_arith_add: num -> num -> num
-    extern sys_arith_sub: num -> num -> num
-    extern sys_arith_mul: num -> num -> num
-    extern sys_arith_div: num -> num -> num
-    
+      
     # extern println: str -> unit
 
     #extern concat: str -> str -> str
@@ -53,7 +48,7 @@ package Main =
         # age: num,
     #     # eye_color: EyeColor,
 
-    let person_age p : {name: str, age: num} -> num =
+    let person_age p : {age: num} -> num =
         p.age
 
     # struct Wrapper =
@@ -71,7 +66,7 @@ package Main =
         # let b = 4 in
         
         # let yes = @yes in 
-        let p = { name = "john", age = 3} in
+        let p = {name = "john", age = 3} in
        
 # let p = { age = 3} in        # let colors = {@red | @blue | @green}
         
@@ -80,7 +75,7 @@ package Main =
         # let w = {value = p, meta = "asdf" } in
             # let m = multiply p.age (1/2) in
             # w.value
-            (person_age p) 
+            person_age p + person_age p
             # tuple.0
 
                 # id multiply 3 4

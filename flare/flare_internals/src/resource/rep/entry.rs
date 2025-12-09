@@ -61,7 +61,7 @@ pub struct FunctionItem<V: Variable> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Item<V: Variable> {
     pub kind: ItemKind<V>,
-    pub is_checked: Cell<bool>,
+    // pub is_checked: Cell<bool>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -136,11 +136,8 @@ impl<V: Variable> Ident for Item<V> {
 }
 
 impl<V: Variable> Item<V> {
-    pub fn new(kind: ItemKind<V>, is_checked: bool) -> Self {
-        Self {
-            kind,
-            is_checked: is_checked.into(),
-        }
+    pub fn new(kind: ItemKind<V>) -> Self {
+        Self { kind }
     }
 
     #[must_use]
@@ -151,10 +148,6 @@ impl<V: Variable> Item<V> {
             ItemKind::Extern { sig, .. } => Some(*sig),
             _ => None,
         }
-    }
-
-    pub fn is_checked(&self) -> bool {
-        self.is_checked.get()
     }
 
     /// Get the type of the `Item`.
@@ -181,10 +174,6 @@ impl<V: Variable> Item<V> {
         }
         match &self.kind {
             ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
-            // ItemKind::Struct(StructEntry { ty, .. }) => Ok(*ty),
-            // ItemKind::Enum(EnumEntry { ty, .. }) => Ok(*ty),
-            // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
-            // ItemKind::Field((_, ty)) => Ok(*ty),
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
             ItemKind::Field { name, value } => Ok(Spanned(*value, name.0.1)),
             ItemKind::Type(_, t, s) => Ok(Spanned(*t, *s)),
@@ -198,7 +187,6 @@ impl<V: Variable> Default for Item<V> {
     fn default() -> Self {
         Self {
             kind: ItemKind::Dummy(""),
-            is_checked: false.into(),
         }
     }
 }

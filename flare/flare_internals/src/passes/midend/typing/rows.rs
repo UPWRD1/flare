@@ -5,7 +5,7 @@ use internment::Intern;
 
 use crate::{
     passes::midend::typing::{Evidence, TyUniVar, types::Type},
-    resource::rep::ast::Label,
+    resource::rep::{Spanned, ast::Label},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -72,7 +72,7 @@ impl ClosedRow {
                 .fields
                 .iter()
                 .enumerate()
-                .find(|(_, other_label)| *other_label == me_label)
+                .find(|(_, other_label)| other_label.0.0 == me_label.0.0)
                 && other.values[idx] == *me_v
             {
                 accum.push((me_label, me_v))
@@ -101,7 +101,7 @@ impl ClosedRow {
         loop {
             match (left_fields.peek(), right_fields.peek()) {
                 (Some(left), Some(right)) => {
-                    if left.0.0 <= right.0.0 {
+                    if left.0.0.cmp(&right.0.0).is_lt() {
                         // SAFETY: We know the next item exists because we are matching against it.
                         unsafe { fields.push(*left_fields.next().unwrap_unchecked()) };
 

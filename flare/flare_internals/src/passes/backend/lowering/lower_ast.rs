@@ -458,7 +458,12 @@ impl<'source> LowerAst<'source> {
                     .get(&id)
                     .cloned()
                     .map(|ev| self.lookup_ev(ev))
-                    .unwrap_or_else(|| unreachable!("Concat AST node lacks evidence"));
+                    .unwrap_or_else(|| {
+                        unreachable!(
+                            "Concat AST node lacks evidence\n\n{:?}\n\n{:#?}",
+                            id, self.row_to_ev
+                        )
+                    });
 
                 let concat = IR::field(IR::Var(param), 0);
                 let left = self.lower_ast(left);

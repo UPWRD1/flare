@@ -749,7 +749,7 @@ where
                             .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
                             .collect::<Vec<_>>()
                             .leak(),
-                        values: types.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak(),
+                        values: types.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak()
                     }));
                     let n = Label(name);
                     let variant_ty = Type::Label(Label(name), fields.into());
@@ -912,7 +912,7 @@ where
                         Spanned(Intern::from(ty), e.span())
                     }),
 // Table
-raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comma)).collect::<Vec<_>>()
+raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
                     .clone()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
                     .map_with(|mut types, e| {

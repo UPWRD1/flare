@@ -68,9 +68,10 @@ impl<'env> Solver<'env> {
             }
 
             // Row Types
-            (Expr::Label(ast_lbl, term), Type::Label(ty_lbl, ty)) if ast_lbl == ty_lbl => self
-                .check(env, term, ty)
-                .with_typed_ast(|term| Spanned(Expr::Label(ast_lbl, term).into(), id)),
+            (Expr::Label(ast_lbl, term), Type::Label(ty_lbl, ty)) if ast_lbl.0.0 == ty_lbl.0.0 => {
+                self.check(env, term, ty)
+                    .with_typed_ast(|term| Spanned(Expr::Label(ast_lbl, term).into(), term.1))
+            }
 
             (ast @ Expr::Concat(_, _), Type::Label(lbl, ty))
             | (ast @ Expr::Project(_, _), Type::Label(lbl, ty)) => {
@@ -105,6 +106,7 @@ impl<'env> Solver<'env> {
                     right: right_row,
                     goal: goal_row,
                 };
+
                 constraints.push(Constraint::RowCombine(
                     Provenance::ExpectedCombine(id),
                     row_comb,
@@ -169,7 +171,7 @@ impl<'env> Solver<'env> {
                 constraints.extend(right_out.constraints);
                 let row_comb = RowCombination { left, right, goal };
                 constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(id),
+                    Provenance::ExpectedCombine(right_out.typed_ast.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(id, row_comb);
@@ -197,7 +199,7 @@ impl<'env> Solver<'env> {
                     goal,
                 };
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(id),
+                    Provenance::ExpectedCombine(out.typed_ast.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(id, row_comb);
@@ -207,6 +209,7 @@ impl<'env> Solver<'env> {
             // Wildcard
             (_, expected_ty) => {
                 let (mut out, actual_ty) = self.infer(env, the_ast);
+                // if matches!(the_ast.0, Expr:)
                 out.constraints.push(Constraint::TypeEqual(
                     Provenance::ExpectedUnify(id, out.typed_ast.1),
                     expected_ty.into(),
