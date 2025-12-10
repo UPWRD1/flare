@@ -1,4 +1,3 @@
-use chumsky::span::SimpleSpan;
 use internment::Intern;
 
 use crate::{
@@ -77,7 +76,6 @@ impl<'env> Solver<'env> {
         &mut self,
         unnorm_left: Intern<Type>,
         unnorm_right: Intern<Type>,
-        s: Option<(SimpleSpan<usize, u64>, SimpleSpan<usize, u64>)>,
     ) -> Result<(), UnificationError> {
         let left = self.normalize_ty(unnorm_left);
         let right = self.normalize_ty(unnorm_right);
@@ -88,17 +86,14 @@ impl<'env> Solver<'env> {
 
             (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
             (Type::Func(a_arg, a_ret), Type::Func(b_arg, b_ret)) => {
-                self.unify_ty_ty(a_arg, b_arg, None)?;
-                self.unify_ty_ty(a_ret, b_ret, None)
-                    .map_err(|kind| match kind {
-                        UnificationError::TypeNotEqual(a_ret, b_ret) => {
-                            UnificationError::TypeNotEqual(
-                                Type::Func(a_arg, a_ret.into()),
-                                Type::Func(b_arg, b_ret.into()),
-                            )
-                        }
-                        kind => kind,
-                    })
+                self.unify_ty_ty(a_arg, b_arg)?;
+                self.unify_ty_ty(a_ret, b_ret).map_err(|kind| match kind {
+                    UnificationError::TypeNotEqual(a_ret, b_ret) => UnificationError::TypeNotEqual(
+                        Type::Func(a_arg, a_ret.into()),
+                        Type::Func(b_arg, b_ret.into()),
+                    ),
+                    kind => kind,
+                })
             }
             (Type::Unifier(a), Type::Unifier(b)) => self
                 .tables
@@ -209,11 +204,7 @@ impl<'env> Solver<'env> {
                     let left_tys = l.values.iter();
                     let right_tys = r.values.iter();
                     for (i, (left_ty, right_ty)) in left_tys.zip(right_tys).enumerate() {
-                        self.unify_ty_ty(
-                            *left_ty,
-                            *right_ty,
-                            Some((l.fields[i].0.1, r.fields[i].0.1)),
-                        )?;
+                        self.unify_ty_ty(*left_ty, *right_ty)?;
                     }
                     Ok(())
                 } else if let Some(l) = l.is_subtype_of(&r) {
@@ -224,11 +215,7 @@ impl<'env> Solver<'env> {
                     let right_tys = r.values.iter();
 
                     for (i, (left_ty, right_ty)) in left_tys.zip(right_tys).enumerate() {
-                        self.unify_ty_ty(
-                            *left_ty,
-                            *right_ty,
-                            Some((l.fields[i].0.1, r.fields[i].0.1)),
-                        )?;
+                        self.unify_ty_ty(*left_ty, *right_ty)?;
                     }
                     Ok(())
                 } else if let Some(r) = r.is_subtype_of(&l) {
@@ -239,11 +226,7 @@ impl<'env> Solver<'env> {
                     let right_tys = r.values.iter();
 
                     for (i, (left_ty, right_ty)) in left_tys.zip(right_tys).enumerate() {
-                        self.unify_ty_ty(
-                            *left_ty,
-                            *right_ty,
-                            Some((l.fields[i].0.1, r.fields[i].0.1)),
-                        )?;
+                        self.unify_ty_ty(*left_ty, *right_ty)?;
                     }
                     Ok(())
                 } else {
@@ -267,11 +250,7 @@ impl<'env> Solver<'env> {
         for (field, value) in goal.fields.iter().zip(goal.values.iter()) {
             match sub.fields.binary_search(field) {
                 Ok(indx) => {
-                    self.unify_ty_ty(
-                        *value,
-                        sub.values[indx],
-                        Some((goal.fields[indx].0.1, sub.fields[indx].0.1)),
-                    )?;
+                    self.unify_ty_ty(*value, sub.values[indx])?;
                 }
                 Err(_) => {
                     diff_fields.push(*field);
@@ -362,7 +341,7 @@ impl<'env> Solver<'env> {
         for constr in constraints {
             // dbg!(&constr);
             let (provenance, uni_state) = match constr {
-                Constraint::TypeEqual(p, left, right) => (p, self.unify_ty_ty(left, right, None)),
+                Constraint::TypeEqual(p, left, right) => (p, self.unify_ty_ty(left, right)),
 
                 Constraint::RowCombine(p, row_comb) => (p, self.unify_row_comb(row_comb)),
                 _ => todo!(),
