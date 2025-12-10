@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
-use crate::passes::backend::lowering::ir::{Branch, IR, Kind, TyApp, Type, Var, VarId};
+use crate::passes::backend::lowering::ir::{Branch, IR, ItemId, Kind, TyApp, Type, Var, VarId};
 
 enum Param {
     Ty(Kind),
@@ -40,11 +40,11 @@ impl IR {
             Self::Local(var, defn, body) => {
                 defn.size() + body.size() + (if var.ty.is_cheap_alloc() { 0 } else { 10 })
             }
-            Self::Tuple(v) => v.iter().map(|x| x.size()).sum(),
+            Self::Tuple(v) => v.iter().map(|x| x.size()).sum::<usize>(),
             Self::Field(ir, _) => ir.size(),
             Self::Tag(t, _, ir) => ir.size(),
             Self::Case(t, s, b) => s.size() + b.iter().map(|x| x.as_fun().size()).sum::<usize>(),
-            Self::Item(_, _) | Self::Extern(_, _) => 0,
+            Self::Item(_, _) | Self::Extern(_, _) => 100,
             // _ => todo!(),
         }
     }
@@ -77,9 +77,8 @@ impl IR {
             // | Self::Sub(_, _)
             // | Self::Mul(_, _)
             // | Self::Div(_, _)
-            // | Self::App(_, _) => false,
+            Self::App(_, _) => false,
             _ => todo!("{self:?}"),
-            // _ => false,
         }
     }
 
@@ -180,7 +179,7 @@ impl Occurrences {
     }
 }
 
-fn subst_ty(haystack: IR, payload: Type) -> IR {
+pub fn subst_ty(haystack: IR, payload: Type) -> IR {
     match haystack {
         IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_ty(payload))),
         IR::Num(i) => IR::Num(i),
@@ -204,66 +203,97 @@ fn subst_ty(haystack: IR, payload: Type) -> IR {
             subst_ty(*defn, payload.clone()),
             subst_ty(*body, payload),
         ),
+        IR::Field(ir, u) => {
+            if let IR::Tuple(content) = *ir {
+                let heads = &content[..u];
+                let i = content[u].clone();
+                let tails = &content[u + 1..];
+                let v = subst_ty(i, payload);
+                let new_tuple = IR::Tuple([heads, &[v], tails].concat());
+                // let (i, heads) = items.split_last().unwrap();
+                dbg!(new_tuple);
+                todo!()
+            } else {
+                dbg!(&ir);
+                subst_ty(*ir, payload)
+            }
+        }
 
-        _ => todo!(),
+        IR::Tuple(content) => {
+            dbg!(content);
+            todo!()
+        }
+
+        _ => todo!("{haystack:?}"),
     }
 }
-fn occurrence_analysis(ir: &IR) -> (FxHashSet<VarId>, Occurrences) {
-    match ir {
-        IR::Var(var) => {
-            let mut free = FxHashSet::default();
-            free.insert(var.id);
-            (free, Occurrences::with_var_once(var.id))
-        }
-        IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
-            (FxHashSet::default(), Occurrences::default())
-        }
-        IR::Fun(var, ir) => {
-            let (mut free, occs) = occurrence_analysis(ir);
-            free.remove(&var.id);
-            let occs = occs.in_fun(&free);
-            (free, occs)
-        }
 
-        IR::App(fun, arg) => {
-            let (mut fun_free, fun_occs) = occurrence_analysis(fun);
-            let (arg_free, arg_occs) = occurrence_analysis(arg);
-            fun_free.extend(arg_free);
-            (fun_free, fun_occs.merge(arg_occs))
-        }
-        IR::TyFun(_, ir) => occurrence_analysis(ir),
-        IR::TyApp(ir, _) => occurrence_analysis(ir),
-        IR::Local(var, defn, body) => {
-            let (mut free, occs) = occurrence_analysis(body);
-            let (defn_free, defn_occs) = occurrence_analysis(defn);
-            free.extend(defn_free);
-            free.remove(&var.id);
-            (free, defn_occs.merge(occs))
-        }
-        IR::Field(ir, _) => occurrence_analysis(ir),
-        IR::Tuple(elements) => {
-            let mut occs = Occurrences::default();
-            let mut free = FxHashSet::default();
-            for elem in elements {
-                let (elem_free, elem_occs) = occurrence_analysis(elem);
-                free.extend(elem_free);
-                occs = occs.merge(elem_occs)
+struct OccuranceAnalyzer<'i> {
+    items: &'i Vec<(IR, Type)>,
+}
+impl<'i> OccuranceAnalyzer<'i> {
+    pub fn new(items: &'i Vec<(IR, Type)>) -> Self {
+        Self { items }
+    }
+
+    fn occurrence_analysis(&self, ir: &IR) -> (FxHashSet<VarId>, Occurrences) {
+        match ir {
+            IR::Var(var) => {
+                let mut free = FxHashSet::default();
+                free.insert(var.id);
+                (free, Occurrences::with_var_once(var.id))
             }
-            (free, occs)
-        }
-        IR::Case(_, scrutinee, branches) => {
-            let (mut scrutinee_free, mut scrutinee_occs) = occurrence_analysis(scrutinee);
-            for branch in branches {
-                let (mut branch_free, branch_occs) = occurrence_analysis(&branch.body);
-                branch_free.insert(branch.param.id);
-                scrutinee_free.extend(branch_free);
-                scrutinee_occs = scrutinee_occs.merge(branch_occs)
+            IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
+                (FxHashSet::default(), Occurrences::default())
             }
-            (scrutinee_free, scrutinee_occs)
+            IR::Fun(var, ir) => {
+                let (mut free, occs) = self.occurrence_analysis(ir);
+                free.remove(&var.id);
+                let occs = occs.in_fun(&free);
+                (free, occs)
+            }
+
+            IR::App(fun, arg) => {
+                let (mut fun_free, fun_occs) = self.occurrence_analysis(fun);
+                let (arg_free, arg_occs) = self.occurrence_analysis(arg);
+                fun_free.extend(arg_free);
+                (fun_free, fun_occs.merge(arg_occs))
+            }
+            IR::TyFun(_, ir) => self.occurrence_analysis(ir),
+            IR::TyApp(ir, _) => self.occurrence_analysis(ir),
+            IR::Local(var, defn, body) => {
+                let (mut free, occs) = self.occurrence_analysis(body);
+                let (defn_free, defn_occs) = self.occurrence_analysis(defn);
+                free.extend(defn_free);
+                free.remove(&var.id);
+                (free, defn_occs.merge(occs))
+            }
+            IR::Field(ir, _) => self.occurrence_analysis(ir),
+            IR::Tuple(elements) => {
+                let mut occs = Occurrences::default();
+                let mut free = FxHashSet::default();
+                for elem in elements {
+                    let (elem_free, elem_occs) = self.occurrence_analysis(elem);
+                    free.extend(elem_free);
+                    occs = occs.merge(elem_occs)
+                }
+                (free, occs)
+            }
+            IR::Case(_, scrutinee, branches) => {
+                let (mut scrutinee_free, mut scrutinee_occs) = self.occurrence_analysis(scrutinee);
+                for branch in branches {
+                    let (mut branch_free, branch_occs) = self.occurrence_analysis(&branch.body);
+                    branch_free.insert(branch.param.id);
+                    scrutinee_free.extend(branch_free);
+                    scrutinee_occs = scrutinee_occs.merge(branch_occs)
+                }
+                (scrutinee_free, scrutinee_occs)
+            }
+            IR::Tag(_, _, ir) => self.occurrence_analysis(ir),
+            IR::Item(_, id) => self.occurrence_analysis(&self.items[id.0 as usize].0),
+            IR::Extern(_, _) => (Default::default(), Default::default()),
+            // _ => todo!("{ir:?}"),
         }
-        IR::Tag(_, _, ir) => occurrence_analysis(ir),
-        IR::Item(_, _) | IR::Extern(_, _) => (Default::default(), Default::default()),
-        // _ => todo!("{ir:?}"),
     }
 }
 
@@ -283,7 +313,7 @@ enum Definition {
 }
 
 type SimplifierContext = Vec<(ContextEntry, Subst)>;
-
+#[derive(Clone)]
 enum ContextEntry {
     App(IR),
     TyApp(TyApp),
@@ -294,38 +324,43 @@ enum ContextEntry {
     Case(Type, Vec<Branch>),
 }
 
-#[derive(Default)]
-struct Simplifier {
+// #[derive(Default)]
+struct Simplifier<'p> {
     occs: Occurrences,
     subst: Subst,
     saturated_fun_count: usize,
     saturated_ty_fun_count: usize,
     locals_inlined: usize,
     inline_size_threshold: usize,
+    prev: &'p Vec<(IR, Type)>,
 }
 
-pub fn simplify(ir: Vec<(IR, Type)>) -> Vec<(IR, Type)> {
-    ir.into_iter()
-        .map(|(mut ir, t)| {
-            for _ in 0..2 {
-                let (_, occs) = occurrence_analysis(&ir);
-                let mut simplifier = Simplifier::new(occs);
-                ir = simplifier.simplify(ir, InScope::default(), vec![]);
-                if simplifier.did_no_work() {
-                    break;
-                }
+pub fn simplify(the_ir: Vec<(IR, Type)>) -> Vec<(IR, Type)> {
+    the_ir.into_iter().fold(vec![], |mut prev, (mut ir, t)| {
+        for _ in 0..2 {
+            let occ_a = OccuranceAnalyzer::new(&prev);
+            let (_, occs) = occ_a.occurrence_analysis(&ir);
+            let mut simplifier = Simplifier::new(occs, &prev);
+            ir = simplifier.simplify(ir, InScope::default(), vec![]);
+            if simplifier.did_no_work() {
+                break;
             }
-            (ir, t)
-        })
-        .collect()
+        }
+        prev.push((ir, t));
+        prev
+    })
 }
 
-impl Simplifier {
-    fn new(occs: Occurrences) -> Self {
+impl<'p> Simplifier<'p> {
+    fn new(occs: Occurrences, prev: &'p Vec<(IR, Type)>) -> Self {
         Self {
             occs,
+            prev,
             inline_size_threshold: 60, // GHC magic number is 60
-            ..Default::default()
+            subst: Default::default(),
+            saturated_fun_count: Default::default(),
+            saturated_ty_fun_count: Default::default(),
+            locals_inlined: Default::default(),
         }
     }
     fn did_no_work(&self) -> bool {
@@ -340,6 +375,7 @@ impl Simplifier {
             ir = match ir {
                 IR::App(fun, arg) => {
                     ctx.push((ContextEntry::App(*arg), self.subst.clone()));
+
                     *fun
                 }
                 IR::TyApp(ty_fun, ty_app) => {
@@ -366,7 +402,6 @@ impl Simplifier {
                     ControlFlow::Continue(ir) => ir,
                     ControlFlow::Break(var) => break self.rebuild(IR::Var(var), in_scope, ctx),
                 },
-
                 IR::Tuple(elements) => {
                     let new_elements = elements
                         .into_iter()
@@ -375,9 +410,9 @@ impl Simplifier {
                     break self.rebuild(IR::Tuple(new_elements), in_scope, ctx);
                 }
                 IR::Field(obj, idx) => {
-                    // ctx.push((ContextEntry::Field(idx), self.subst.clone()));
-                    // *obj
-                    break self.rebuild(IR::field(*obj, idx), in_scope, ctx);
+                    ctx.push((ContextEntry::Field(idx), self.subst.clone()));
+                    *obj
+                    // break self.rebuild(IR::field(*obj, idx), in_scope, ctx);
                 }
                 IR::Case(ty, scrutinee, branches) => {
                     if branches.is_empty() {
@@ -394,12 +429,19 @@ impl Simplifier {
                 }
 
                 IR::Tag(ty, idx, ir) => {
-                    // ctx.push((ContextEntry::Tag(ty, idx), self.subst.clone()));
-                    break self.rebuild(*ir, in_scope, ctx);
-                    // *ir
+                    ctx.push((ContextEntry::Tag(ty, idx), self.subst.clone()));
+                    // break self.rebuild(*ir, in_scope, ctx);
+                    *ir
                 }
-                ir @ IR::Extern(_, _) | ir @ IR::Item(_, _) => {
+                ir @ IR::Extern(_, _) => {
                     break self.rebuild(ir, in_scope, ctx);
+                }
+
+                ir @ IR::Item(_, itemid) => {
+                    match self.item_inline(itemid, in_scope.clone(), &ctx) {
+                        ControlFlow::Continue(c) => c,
+                        ControlFlow::Break(_) => break self.rebuild(ir, in_scope, ctx),
+                    }
                 }
             }
         }
@@ -482,6 +524,29 @@ impl Simplifier {
             })
     }
 
+    fn item_inline(
+        &mut self,
+        var: ItemId,
+        in_scope: InScope,
+        ctx: &SimplifierContext,
+    ) -> ControlFlow<ItemId, IR> {
+        self.prev
+            .get(var.0 as usize)
+            .map(|(definition, _)| {
+                if definition.size() < self.inline_size_threshold {
+                    self.subst = Subst::default();
+                    ControlFlow::Continue(definition.clone())
+                } else {
+                    ControlFlow::Break(var)
+                }
+            })
+            .unwrap_or_else(|| {
+                unreachable!(
+                    "Unbound item encountered in simplification: {:?}\nin_scope: {:?}",
+                    var, in_scope
+                )
+            })
+    }
     fn should_inline(
         &self,
         ir: &IR,
@@ -495,6 +560,7 @@ impl Simplifier {
             ),
             Occurrence::OnceInFun => ir.is_value() && self.some_benefit(ir, in_scope, ctx),
             Occurrence::Many => {
+                dbg!(ir.size());
                 let small_enough = ir.size() <= self.inline_size_threshold;
                 ir.is_value() && small_enough && self.some_benefit(ir, in_scope, ctx)
             }
@@ -546,7 +612,15 @@ impl Simplifier {
                         ir = IR::app(ir, arg);
                     }
                 }
-                ContextEntry::Field(idx) => ir = IR::field(ir, idx),
+                ContextEntry::Field(idx) => {
+                    if let IR::Tuple(irs) = ir {
+                        let field = irs[idx].clone();
+                        return self.simplify(field, in_scope, ctx);
+                    } else {
+                        let obj = self.simplify(ir, in_scope.clone(), vec![]);
+                        ir = IR::field(obj, idx);
+                    }
+                }
                 ContextEntry::Tag(ty, idx) => ir = IR::tag(ty, idx, ir),
                 ContextEntry::Case(ty, b) => ir = IR::case(ty, ir, b),
                 ContextEntry::TyApp(ty) => {

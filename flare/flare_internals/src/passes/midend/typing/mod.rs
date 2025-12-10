@@ -6,6 +6,7 @@ mod subst;
 mod types;
 mod unify;
 
+use chumsky::span::SimpleSpan;
 pub use rows::{ClosedRow, Row, RowVar};
 use rows::{RowCombination, RowUniVar};
 pub use types::{TyUniVar, Type, TypeVar};
@@ -65,6 +66,7 @@ pub enum Provenance {
     AppExpectedFun(NodeId),
     // Constraint produced by subsumption.
     ExpectedUnify(NodeId, NodeId),
+    //
     ExpectedCombine(NodeId),
 }
 
@@ -74,7 +76,7 @@ impl Provenance {
             Self::UnexpectedFun(node_id)
             | Self::AppExpectedFun(node_id)
             | Self::ExpectedCombine(node_id)
-            | Self::ExpectedUnify(node_id, _) => *node_id,
+            | Self::ExpectedUnify(_, node_id) => *node_id,
         }
     }
 }
@@ -83,6 +85,7 @@ impl Provenance {
 pub struct GenOut {
     constraints: Vec<Constraint>,
     typed_ast: Spanned<Intern<Expr<Typed>>>,
+    // inference_base_loc: Option<SimpleSpan<usize, u64>>,
 }
 
 impl GenOut {
@@ -90,6 +93,7 @@ impl GenOut {
         Self {
             constraints,
             typed_ast,
+            // inference_base_loc: None,
         }
     }
 
@@ -100,8 +104,17 @@ impl GenOut {
         Self {
             constraints: self.constraints,
             typed_ast: f(self.typed_ast),
+            // inference_base_loc: self.inference_base_loc,
         }
     }
+
+    // fn with_infer_loc(self, loc: SimpleSpan<usize, u64>) -> Self {
+    //     Self {
+    //         constraints: self.constraints,
+    //         typed_ast: self.typed_ast,
+    //         inference_base_loc: Some(loc),
+    //     }
+    // }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]

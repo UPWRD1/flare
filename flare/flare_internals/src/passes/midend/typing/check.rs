@@ -70,7 +70,7 @@ impl<'env> Solver<'env> {
             // Row Types
             (Expr::Label(ast_lbl, term), Type::Label(ty_lbl, ty)) if ast_lbl.0.0 == ty_lbl.0.0 => {
                 self.check(env, term, ty)
-                    .with_typed_ast(|term| Spanned(Expr::Label(ast_lbl, term).into(), term.1))
+                    .with_typed_ast(|term| Spanned(Expr::Label(ast_lbl, term).into(), id))
             }
 
             (ast @ Expr::Concat(_, _), Type::Label(lbl, ty))
@@ -113,10 +113,7 @@ impl<'env> Solver<'env> {
                 ));
                 self.tables.row_to_combo.insert(id, row_comb);
                 let typed_ast = Expr::Concat(left_out.typed_ast, right_out.typed_ast);
-                GenOut {
-                    constraints,
-                    typed_ast: Spanned(typed_ast.into(), id),
-                }
+                GenOut::new(constraints, Spanned(typed_ast.into(), id))
             }
 
             (Expr::Project(dir, goal), Type::Prod(sub_row)) => {
@@ -171,19 +168,19 @@ impl<'env> Solver<'env> {
                 constraints.extend(right_out.constraints);
                 let row_comb = RowCombination { left, right, goal };
                 constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(right_out.typed_ast.1),
+                    Provenance::ExpectedCombine(id),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(id, row_comb);
                 self.tables.branch_to_ret_ty.insert(id, ret_ty);
 
-                GenOut {
+                GenOut::new(
                     constraints,
-                    typed_ast: Spanned(
+                    Spanned(
                         Expr::Branch(left_out.typed_ast, right_out.typed_ast).into(),
                         id,
                     ),
-                }
+                )
             }
 
             (Expr::Inject(dir, value), Type::Sum(goal)) => {
@@ -199,7 +196,7 @@ impl<'env> Solver<'env> {
                     goal,
                 };
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(out.typed_ast.1),
+                    Provenance::ExpectedCombine(id),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(id, row_comb);
@@ -208,14 +205,37 @@ impl<'env> Solver<'env> {
 
             // Wildcard
             (_, expected_ty) => {
+                // dbg!(the_ast, expected_ty);
                 let (mut out, actual_ty) = self.infer(env, the_ast);
+                match *actual_ty {
+                    Type::Prod(row) | Type::Sum(row) => {
+                        let mut fresh_comb = self.fresh_row_combination();
+                        fresh_comb.left = row;
+
+                        out.constraints.push(Constraint::RowCombine(
+                            Provenance::ExpectedCombine(id),
+                            fresh_comb,
+                        ));
+                        out
+                    }
+                    Type::Label(l, _) => {
+                        out.constraints.push(Constraint::TypeEqual(
+                            Provenance::ExpectedUnify(id, l.0.1),
+                            expected_ty.into(),
+                            actual_ty,
+                        ));
+                        out
+                    }
+                    _ => {
+                        out.constraints.push(Constraint::TypeEqual(
+                            Provenance::ExpectedUnify(id, the_ast.1),
+                            expected_ty.into(),
+                            actual_ty,
+                        ));
+                        out
+                    }
+                }
                 // if matches!(the_ast.0, Expr:)
-                out.constraints.push(Constraint::TypeEqual(
-                    Provenance::ExpectedUnify(id, out.typed_ast.1),
-                    expected_ty.into(),
-                    actual_ty,
-                ));
-                out
             }
         }
     }

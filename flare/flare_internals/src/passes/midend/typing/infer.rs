@@ -1,3 +1,4 @@
+use chumsky::span::Span;
 use internment::Intern;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
@@ -9,6 +10,7 @@ use crate::{
     resource::rep::{
         Spanned,
         ast::{Direction, Expr, Untyped},
+        common::Ident,
     },
 };
 
@@ -110,7 +112,7 @@ impl<'env> Solver<'env> {
             Expr::Label(label, value) => {
                 let (out, value_ty) = self.infer(env, value);
                 (
-                    out.with_typed_ast(|ast| value.update(Expr::Label(label, ast))),
+                    out.with_typed_ast(|ast| ast.update(Expr::Label(label, ast))),
                     Type::Label(label, value_ty).into(),
                 )
             }
@@ -134,12 +136,12 @@ impl<'env> Solver<'env> {
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(id),
-                    // Provenance::ExpectedCombine(left),
+                    // Provenance::ExpectedCombine(id),
+                    Provenance::ExpectedCombine(ast.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
-                let typed_ast = right.update(Expr::Concat(left_out.typed_ast, right_out.typed_ast));
+                let typed_ast = ast.update(Expr::Concat(left_out.typed_ast, right_out.typed_ast));
                 (
                     GenOut {
                         constraints,
@@ -158,11 +160,11 @@ impl<'env> Solver<'env> {
                 let mut out = self.check(env, goal, Type::Prod(row_comb.goal));
 
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(goal.1),
+                    Provenance::ExpectedCombine(ast.1),
                     row_comb,
                 ));
                 (
-                    out.with_typed_ast(|ast| goal.update(Expr::Project(dir, ast))),
+                    out.with_typed_ast(|ast| ast.update(Expr::Project(dir, ast))),
                     Type::Prod(sub_row).into(),
                 )
             }
@@ -196,7 +198,7 @@ impl<'env> Solver<'env> {
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(right_out.typed_ast.1),
+                    Provenance::ExpectedCombine(ast.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
@@ -221,7 +223,7 @@ impl<'env> Solver<'env> {
 
                 let mut out = self.check(env, value, Type::Sum(sub_row));
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(out.typed_ast.1),
+                    Provenance::ExpectedCombine(ast.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);

@@ -146,7 +146,7 @@ impl Type {
             match t {
                 Type::Func(l, r) => {
                     v.push(*l);
-                    worker(&r, v);
+                    worker(r, v);
                 }
                 _ => v.push((*t).into()),
             }

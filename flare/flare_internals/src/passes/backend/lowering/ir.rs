@@ -66,7 +66,7 @@ impl Type {
             Self::Str => Doc::text("str"),
             Self::Bool => Doc::text("bool"),
             Self::Particle(intern) => Doc::text(format!("@{intern}")),
-            Self::Var(type_var) => Doc::text(format!("%{}", type_var.0)),
+            Self::Var(type_var) => Doc::text(format!("?{}", type_var.0)),
             Self::Fun(l, r) => l
                 .render()
                 .append(Doc::space().append(Doc::text("->").append(Doc::space())))
@@ -212,7 +212,7 @@ pub enum Kind {
     Row,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Branch {
     pub param: Var,
     pub body: IR,
@@ -260,7 +260,7 @@ impl TyApp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub enum IR {
     Var(Var),
     Num(OrderedFloat<f64>),
@@ -274,10 +274,6 @@ pub enum IR {
     Fun(Var, Box<Self>),
     App(Box<Self>, Box<Self>),
 
-    // Add(Box<Self>, Box<Self>),
-    // Sub(Box<Self>, Box<Self>),
-    // Mul(Box<Self>, Box<Self>),
-    // Div(Box<Self>, Box<Self>),
     TyFun(Kind, Box<Self>),
     TyApp(Box<Self>, TyApp),
     Local(Var, Box<Self>, Box<Self>),
@@ -293,20 +289,6 @@ pub enum IR {
 
 #[allow(clippy::should_implement_trait)]
 impl IR {
-    // pub fn add(l: Self, r: Self) -> Self {
-    //     Self::Add(Box::new(l), Box::new(r))
-    // }
-
-    // pub fn sub(l: Self, r: Self) -> Self {
-    //     Self::Sub(Box::new(l), Box::new(r))
-    // }
-    // pub fn mul(l: Self, r: Self) -> Self {
-    //     Self::Mul(Box::new(l), Box::new(r))
-    // }
-    // pub fn div(l: Self, r: Self) -> Self {
-    //     Self::Div(Box::new(l), Box::new(r))
-    // }
-
     pub fn fun(v: Var, b: Self) -> Self {
         Self::Fun(v, Box::new(b))
     }
@@ -497,32 +479,24 @@ impl IR {
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))
                 // .append(Doc::soft_line().append(Doc::text(")")))
             }
-            // Self::Fun(v, b) => {
-            //     // let mut vars = vec![v.clone()];
-            //     Doc::text("(def")
-            //         .append(Doc::space())
-            //         .append(v.render())
-            //         .append(Doc::space())
-            //         .append(Doc::text("=>"))
-            //         // .append(Doc::)
-            //         .group()
-            //         .append(Doc::line_or_space().append(b.render()).group().nest(INC))
-            //         .append(Doc::soft_line().append(Doc::text(")")))
-            // }
             Self::App(l, r) => Doc::nil()
                 .append(l.render())
+                // .append(Doc::soft_line())
                 .append(Doc::text("("))
                 .append(r.render())
                 .append(Doc::text(")")),
             Self::TyApp(t, k) => Doc::nil()
-                .append(t.render())
+                .append(Doc::text(format!("[{k:?})")))
+                .append(Doc::text("]::"))
+                .append(t.render()),
+            Self::TyFun(k, b) => Doc::text("tyfn")
                 .append(Doc::space())
-                .append(Doc::text(format!("{k:?}"))),
-            Self::TyFun(k, b) => Doc::text("(tyfun")
+                .append(Doc::text(format!("{k:?}")))
                 .append(Doc::space())
-                .append(Doc::text(format!("{k:?} =>")))
-                .append(Doc::line_or_space().append(b.render()).nest(INC))
-                .append(Doc::hard_line().append(Doc::text(")"))),
+                .append(Doc::text("=>"))
+                .group()
+                .append(Doc::line_or_space().append(b.render()).group().nest(INC)),
+            // .append(Doc::hard_line().append(Doc::text(""))),
             Self::Local(v, b, i) => Doc::nil()
                 .append(
                     Doc::text("let")
@@ -574,14 +548,15 @@ impl IR {
                 ),
             Self::Field(k, s) => Doc::nil()
                 .append(k.render())
-                .append(Doc::space())
-                .append(Doc::text("field"))
-                .append(Doc::space())
+                .append(Doc::text("."))
+                // .append(Doc::space())
                 .append(Doc::text(format!("{s}"))),
             Self::Tag(t, i, b) => Doc::nil()
-                .append(t.render())
-                .append(Doc::text(" tag "))
                 .append(b.render())
+                .append(Doc::space())
+                .append(Doc::text("tag"))
+                .append(Doc::space())
+                .append(t.render())
                 .append(Doc::text(" variant "))
                 .append(Doc::text(format!("{i}"))),
             Self::Particle(p) => Doc::text(format!("@{p}")),
@@ -622,7 +597,7 @@ impl Display for IR {
             tiny_pretty::print(
                 &doc,
                 &tiny_pretty::PrintOptions {
-                    width: 45,
+                    width: 35,
                     ..Default::default()
                 }
             )

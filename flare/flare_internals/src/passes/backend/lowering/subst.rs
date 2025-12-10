@@ -39,7 +39,7 @@ impl Subst {
         }
     }
 
-    fn subst_row(self, haystack: Row, needle: usize) -> Row {
+    pub fn subst_row(self, haystack: Row, needle: usize) -> Row {
         match haystack {
             Row::Open(row_var) => match row_var.0.cmp(&needle) {
                 Ordering::Equal => self.subst_row_var(),
@@ -55,7 +55,7 @@ impl Subst {
         }
     }
 
-    fn subst_ty(self, haystack: Type, needle: usize) -> Type {
+    pub fn subst_ty(self, haystack: Type, needle: usize) -> Type {
         match haystack {
             Type::Num | Type::Unit | Type::Str | Type::Bool | Type::Particle(_) => haystack,
             Type::Var(type_var) => match type_var.0.cmp(&needle) {

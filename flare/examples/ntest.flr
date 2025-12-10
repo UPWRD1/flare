@@ -20,8 +20,8 @@ package Main =
     #    d: str,
     #    f: str -> num -> str
     
-    # let id x : num -> num =
-           # x
+    let id x : ?T -> ?T =
+           x
 
     # let looper limit f items : num -> Seq[?T] -> (?T -> unit) -> num =
     #     let looper_helper = fn c =>
@@ -51,6 +51,9 @@ package Main =
     let person_age p : {age: num} -> num =
         p.age
 
+    let x_getter r : {x: ?T} -> ?T =
+        r.x
+
     # struct Wrapper =
         # value: Person,
         # meta: str,
@@ -61,13 +64,16 @@ package Main =
     # let asdf x y : num -> num -> num =
         # x * y + x - y
 
+    let combiner a b : ?T -> ?U -> {x: ?T,  y: ?U} =
+        {x = a, y = b}
+
     let main : num =
         # let a = 3 in
         # let b = 4 in
         
         # let yes = @yes in 
         let p = {name = "john", age = 3} in
-       
+        let rx = {x = 4} in 
 # let p = { age = 3} in        # let colors = {@red | @blue | @green}
         
         # let tuple = {1, 2, 3} in
@@ -75,7 +81,7 @@ package Main =
         # let w = {value = p, meta = "asdf" } in
             # let m = multiply p.age (1/2) in
             # w.value
-            person_age p + person_age p
+            combiner(3 "asdf") 
             # tuple.0
 
                 # id multiply 3 4
