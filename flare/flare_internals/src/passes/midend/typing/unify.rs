@@ -321,7 +321,6 @@ impl<'env> Solver<'env> {
                         //Row combinations commute so we have to check for that possible unification
                         } else if comb.is_comm_unifiable(&new_comb) {
                             // We commute our combination so we unify the correct rows later
-
                             poss_uni = Some(RowCombination {
                                 left: comb.right,
                                 right: comb.left,
@@ -335,7 +334,6 @@ impl<'env> Solver<'env> {
                 match poss_uni {
                     // Unify if we have a match
                     Some(match_comb) => {
-                        // dbg!(&match_comb);
                         self.unify_row_row(new_comb.left, match_comb.left)?;
                         self.unify_row_row(new_comb.right, match_comb.right)?;
                         self.unify_row_row(new_comb.goal, match_comb.goal)?;
@@ -343,7 +341,7 @@ impl<'env> Solver<'env> {
                     // Otherwise add our combination to our list of
                     // partial combinations
                     None => {
-                        println!("here {new_comb:?}");
+                        // println!("here {new_comb:#?}");
                         self.tables.partial_row_combs.insert(new_comb);
                     }
                 }

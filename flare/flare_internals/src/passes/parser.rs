@@ -46,6 +46,7 @@ enum Token {
     Sandwich(&'static str),
     Eq,
     Dot,
+    TripleDot,
     FatArrow,
     Arrow,
     Comma,
@@ -129,6 +130,7 @@ impl std::fmt::Display for Token {
             Self::Separator => write!(f, "newline"),
             Self::Whitespace => write!(f, "whitespace"),
             Self::Dot => write!(f, "."),
+            Self::TripleDot => write!(f, "..."),
             Self::FatArrow => write!(f, "=>"),
             Self::Arrow => write!(f, "->"),
             Self::Question => write!(f, "?"),
@@ -263,6 +265,7 @@ where
             arith_op,
             //             just("(").to(Token::LParen),
             // just(")").to(Token::RParen),
+            just("...").to(Token::TripleDot),
             just(".").to(Token::Dot),
             just(",").to(Token::Comma),
             
@@ -609,26 +612,6 @@ where
             .labelled("let-definition")
             .as_context();
 
-        // let def_binding = just(Token::Def)
-        //     .ignore_then(ident)
-       //     .then_ignore(just(Token::Myself))
-        //     .then(ident.repeated().collect::<Vec<_>>())
-        //     .then(just(Token::Colon).ignore_then(ty))
-        //     .then(just(Token::Eq).ignore_then(expression.clone()))
-        //     // .then(expression.clone())
-        //     .map_with(|(((name, args), ty), body), e| {
-        //         let value: (Expr, SimpleSpan<usize, u64>) =
-        //             args.into_iter().rev().fold(body, |acc, arg| {
-        //                 (
-        //                     Expr::Lambda(Box::leak(Box::new(arg)), Box::leak(Box::new(acc))),
-        //                     e.span(),
-        //                 )
-        //             });
-        //         (name, value, ty)
-        //     })
-        //     .labelled("def-definition")
-        //     .as_context();
-
         // Struct definition
         let struct_field = raw_ident.then_ignore(just(Token::Colon)).then(ty.clone());
         let struct_def = just(Token::Struct)
@@ -820,7 +803,7 @@ where
                 just(Token::Question)
                     .ignore_then(raw_ident)
                     .map_with(|name, e| {
-                        Spanned(Intern::from(Type::Var(TypeVar(name.0))), e.span())
+                        Spanned(Intern::from(Type::Generic(name)), e.span())
                     }),
 
                 // Row Vars
@@ -848,11 +831,26 @@ where
                     }),
 // Table
                 raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
-                    .clone()
+                    .clone().then(just(Token::TripleDot).or_not())
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|types, e| {
+                    .map_with(|(types, is_open), e| {
                         let (fields, values): (Vec<Spanned<Intern<String>>>, Vec<Spanned<Intern<Type>>>) = types.into_iter().unzip();
-                        // types.reverse();
+                        if is_open.is_some() {
+
+let l_ty = Type::Prod(Row::Closed(ClosedRow {
+                            fields: fields
+                                .iter()
+                                .map(|name| Label(*name))
+                                .collect::<Vec<_>>()
+                                .leak(),
+                            values: values.leak(),
+                        }));
+                        let l_ty = Spanned(Intern::from(l_ty), e.span())                       ;
+                        let ty = Type::Subtable(l_ty);
+                        Spanned(Intern::from(ty), e.span())
+                                                   } else {
+                            
+// types.reverse();
                         let ty = Type::Prod(Row::Closed(ClosedRow {
                             fields: fields
                                 .iter()
@@ -862,7 +860,8 @@ where
                             values: values.leak(),
                         }));
                         Spanned(Intern::from(ty), e.span())
-                    }),
+                        }
+                                            }),
                 grouping,
             ))
             

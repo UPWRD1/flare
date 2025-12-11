@@ -57,6 +57,7 @@ impl Row {
             // Closed rows are equatable when their fields are equal
             (Self::Closed(a), Self::Closed(b)) => a.fields == b.fields,
 
+            // (Self::Unifier(_), Self::Closed(_)) | (Self::Closed(_), Self::Unifier(_)) => true,
             // Closed rows are equatable when they are subtypes?
             // (Self::Closed(a), Self::Closed(b)) => a.is_subtype_of(b).is_some(),
             // Anything else is not equatable

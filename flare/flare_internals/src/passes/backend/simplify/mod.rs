@@ -50,6 +50,7 @@ impl IR {
             // _ => todo!(),
         }
     }
+
     fn is_trivial(&self) -> bool {
         matches!(
             self,
@@ -71,15 +72,12 @@ impl IR {
             | Self::Particle(_)
             | Self::Fun(_, _) => true,
             Self::TyFun(_, ir) => ir.is_value(),
-            Self::TyApp(ir, _) => ir.is_value(),
+            // Self:TyApp(ir, _) => ir.is_value(),
             Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
             Self::Tuple(s) => s.iter().all(|x| x.is_value()),
             // Self::Tag(_, _, ir) =
-            // Self::Add(_, _)
-            // | Self::Sub(_, _)
-            // | Self::Mul(_, _)
-            // | Self::Div(_, _)
-            Self::App(_, _) => false,
+            Self::App(_, _) | Self::TyApp(_, _) => false,
+
             _ => todo!("{self:?}"),
         }
     }
@@ -116,7 +114,7 @@ enum Occurrence {
     Many,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct Occurrences {
     vars: FxHashMap<VarId, Occurrence>,
 }
@@ -221,7 +219,7 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
         }
 
         IR::Tuple(elements) => {
-            
+            // dbg!(&elements);
             IR::Tuple(
                 elements
                     .into_iter()
@@ -253,8 +251,9 @@ impl<'i> OccuranceAnalyzer<'i> {
                 (FxHashSet::default(), Occurrences::default())
             }
             IR::Fun(var, ir) => {
-                let (mut free, occs) = self.occurrence_analysis(ir);
+                let (mut free, mut occs) = self.occurrence_analysis(ir);
                 free.remove(&var.id);
+                occs.vars.entry(var.id).or_insert(Occurrence::Dead);
                 let occs = occs.in_fun(&free);
                 (free, occs)
             }
@@ -268,10 +267,11 @@ impl<'i> OccuranceAnalyzer<'i> {
             IR::TyFun(_, ir) => self.occurrence_analysis(ir),
             IR::TyApp(ir, _) => self.occurrence_analysis(ir),
             IR::Local(var, defn, body) => {
-                let (mut free, occs) = self.occurrence_analysis(body);
+                let (mut free, mut occs) = self.occurrence_analysis(body);
                 let (defn_free, defn_occs) = self.occurrence_analysis(defn);
                 free.extend(defn_free);
                 free.remove(&var.id);
+                occs.vars.entry(var.id).or_insert(Occurrence::Dead);
                 (free, defn_occs.merge(occs))
             }
             IR::Field(ir, _) => self.occurrence_analysis(ir),
@@ -289,13 +289,19 @@ impl<'i> OccuranceAnalyzer<'i> {
             IR::Case(_, scrutinee, branches) => {
                 let (mut scrutinee_free, mut scrutinee_occs) = self.occurrence_analysis(scrutinee);
                 for branch in branches {
-                    let (mut branch_free, branch_occs) = self.occurrence_analysis(&branch.body);
+                    let (mut branch_free, mut branch_occs) = self.occurrence_analysis(&branch.body);
                     branch_free.remove(&branch.param.id);
+
+                    branch_occs
+                        .vars
+                        .entry(branch.param.id)
+                        .or_insert(Occurrence::Dead);
                     scrutinee_free.extend(branch_free);
                     scrutinee_occs = scrutinee_occs.merge(branch_occs)
                 }
                 (scrutinee_free, scrutinee_occs)
             }
+
             IR::Tag(_, _, ir) => self.occurrence_analysis(ir),
             IR::Item(_, id) => self.occurrence_analysis(&self.items[id.0 as usize].0),
             IR::Extern(_, _) => (Default::default(), Default::default()),
@@ -339,7 +345,7 @@ struct Simplifier<'p> {
     saturated_ty_fun_count: usize,
     locals_inlined: usize,
     inline_size_threshold: usize,
-    prev: &'p Vec<(IR, Type)>,
+    items: &'p Vec<(IR, Type)>,
 }
 
 pub fn simplify(the_ir: Vec<(IR, Type)>) -> Vec<(IR, Type)> {
@@ -362,7 +368,7 @@ impl<'p> Simplifier<'p> {
     fn new(occs: Occurrences, prev: &'p Vec<(IR, Type)>) -> Self {
         Self {
             occs,
-            prev,
+            items: prev,
             inline_size_threshold: 60, // GHC magic number is 60
             subst: Default::default(),
             saturated_fun_count: Default::default(),
@@ -441,11 +447,12 @@ impl<'p> Simplifier<'p> {
                     // break self.rebuild(*ir, in_scope, ctx);
                     *ir
                 }
-                ir @ IR::Extern(_, _) => {
+                IR::Extern(_, _) => {
                     break self.rebuild(ir, in_scope, ctx);
                 }
 
-                ir @ IR::Item(_, itemid) => {
+                IR::Item(_, itemid) => {
+                    // break self.rebuild(ir, in_scope, ctx);
                     match self.item_inline(itemid, in_scope.clone(), &ctx) {
                         ControlFlow::Continue(c) => c,
                         ControlFlow::Break(_) => break self.rebuild(ir, in_scope, ctx),
@@ -538,9 +545,10 @@ impl<'p> Simplifier<'p> {
         in_scope: InScope,
         ctx: &SimplifierContext,
     ) -> ControlFlow<ItemId, IR> {
-        self.prev
+        self.items
             .get(var.0 as usize)
             .map(|(definition, _)| {
+                dbg!(&definition.size());
                 if definition.size() < self.inline_size_threshold {
                     self.subst = Subst::default();
                     ControlFlow::Continue(definition.clone())
@@ -616,15 +624,6 @@ impl<'p> Simplifier<'p> {
                     if let IR::Fun(var, body) = ir {
                         // self.saturated_fun_count += 1;
                         self.saturated_fun_count += 1;
-                        // GENERATED: Claude
-                        // Inline the argument directly - do occurrence analysis on the fly
-                        let occ_analyzer = OccuranceAnalyzer::new(self.prev);
-                        let (_, body_occs) = occ_analyzer.occurrence_analysis(&body);
-                        let occ = body_occs.vars.get(&var.id).copied().unwrap_or(Occurrence::Dead);
-        
-                        // Add this variable's occurrence to our map before simplifying
-                        self.occs.vars.insert(var.id, occ);
-                        // END: Claude
                         return self.simplify(IR::local(var, arg, *body), in_scope, ctx);
                     } else {
                         let arg = self.simplify(arg, in_scope.clone(), vec![]);

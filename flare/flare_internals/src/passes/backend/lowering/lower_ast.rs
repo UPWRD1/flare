@@ -209,37 +209,6 @@ impl LowerSolvedEv<'_> {
         )
     }
 
-    // fn left_indices(&self) -> Vec<usize> {
-    //     let mut left = self
-    //         .goal_indices
-    //         .iter()
-    //         .enumerate()
-    //         .filter_map(|(goal_index, row_index)| match row_index {
-    //             RowIndex::Left(left_indx) => Some((*left_indx, goal_index)),
-    //             _ => None,
-    //         })
-    //         .collect::<Vec<_>>();
-    //     left.sort_by_key(|(key, _)| *key);
-    //     left.into_iter().map(|(_, goal_index)| goal_index).collect()
-    // }
-
-    // fn right_indices(&self) -> Vec<usize> {
-    //     let mut right = self
-    //         .goal_indices
-    //         .iter()
-    //         .enumerate()
-    //         .filter_map(|(goal_index, row_index)| match row_index {
-    //             RowIndex::Right(right_index) => Some((*right_index, goal_index)),
-    //             _ => None,
-    //         })
-    //         .collect::<Vec<_>>();
-    //     right.sort_by_key(|(key, _)| *key);
-    //     right
-    //         .into_iter()
-    //         .map(|(_, goal_index)| goal_index)
-    //         .collect()
-    // }
-
     fn prj_left(&mut self) -> IR {
         let [goal] = self.make_vars([self.goal_prod()]);
         IR::fun(goal.clone(), {

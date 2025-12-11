@@ -41,12 +41,16 @@ impl UnifyKey for TyUniVar {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TypeVar(pub Intern<String>);
+// pub struct TypeVar(pub Intern<String>);
+pub struct TypeVar(pub usize);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
     Infer,
+    Subtable(Spanned<Intern<Self>>),
+
     Unifier(TyUniVar),
+    Generic(Spanned<Intern<String>>),
     Var(TypeVar),
     Particle(Spanned<Intern<String>>),
 
@@ -169,6 +173,13 @@ impl Type {
         worker(&t, &mut v);
         let (ret, args) = v.split_last().unwrap();
         (args.to_vec(), *ret)
+    }
+
+    pub fn to_row(self) -> Row {
+        match self {
+            Type::Prod(row) | Type::Sum(row) => row,
+            _ => panic!(),
+        }
     }
 }
 

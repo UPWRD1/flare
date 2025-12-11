@@ -5,14 +5,29 @@ package Main =
     # let person_age p : {age: num} -> num =
             # p.age
 
-    let x_getter r : {x: ?T} -> ?T =
-        r.x
-
-    let combiner a b : ?T -> ?U -> {x: ?T, y: ?U} =
+     let combiner a b : ?T -> ?U -> {x: ?T, y: ?U} =
         {x = a, y = b}
 
-    let main: {x: str, y: {x: bool, y: @ok}} =
-         let temp = combiner true @ok in
+    # let x_getter r : {x: ?T} -> ?T =
+        # r.x
+
+    let factorial x : num -> num =
+        if x == 0 then
+            0
+        else
+            factorial(x - 1) + x
+            
+
+    let singleton x: {x: ?T} -> {y: ?T} =
+        let x = x.x in
+            {y = x}
+
+    # let y_getter r : {y: ?V} -> ?V =
+        # r.y
+
+    let main: infer =
+        # let temp = combiner true @ok in
         # let rx = {x = 4} in 
-           combiner "asdf" temp
+        let v = combiner "asdf" 3 in
+            singleton {x = @ok}        
                

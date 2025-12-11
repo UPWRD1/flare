@@ -22,9 +22,9 @@ impl Target for IRTarget {
     }
 
     fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
-        p.iter()
+        p.into_iter()
             .enumerate()
-            .map(|(i, x)| format!("item #{i} is\n{}\nend item #{i}", x))
+            .map(|(i, x)| format!("item #{i}: is\n{}\nend item #{i}", x))
             .collect::<Vec<String>>()
             .join("\n\n")
     }
@@ -36,9 +36,10 @@ impl Target for IRTarget {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
 pub struct TypeVar(pub usize);
 
-#[derive(PartialEq, Eq, PartialOrd, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Clone, Debug, Hash, Default)]
 pub enum Type {
     Num,
+    #[default]
     Unit,
     Str,
     Bool,
@@ -376,6 +377,7 @@ impl IR {
                 }
             }
             Self::Local(v, defn, body) => {
+                // dbg!(v, defn.type_of());
                 if v.ty != defn.type_of() {
                     unreachable!(
                         "Type mismatch local variable has different type from its definition",
@@ -453,7 +455,7 @@ impl IR {
         match self {
             Self::Var(var) => var.render_n(),
             Self::Num(ordered_float) => Doc::text(format!("{ordered_float}")),
-            Self::Str(intern) => Doc::text(format!("{intern}")),
+            Self::Str(intern) => Doc::text(format!("\"{intern}\"")),
             Self::Bool(b) => Doc::text(format!("{b}")),
             Self::Unit => Doc::text("unit"),
             Self::Fun(v, b) => {

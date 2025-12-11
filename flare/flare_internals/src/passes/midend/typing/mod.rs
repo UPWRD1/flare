@@ -117,13 +117,13 @@ impl GenOut {
     // }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct TypeScheme {
     pub unbound_types: BTreeSet<TypeVar>,
-
     pub unbound_rows: BTreeSet<RowVar>,
     pub evidence: Vec<Evidence>,
     pub ty: Spanned<Intern<Type>>,
+    pub types_to_name: FxHashMap<TypeVar, Spanned<Intern<String>>>,
 }
 
 #[derive(Debug)]
@@ -202,9 +202,9 @@ struct SolverTables {
     branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
 
     subst_unifiers_to_tyvars: FxHashMap<TyUniVar, TypeVar>,
-    next_tyvar: u32,
+    next_tyvar: usize,
     subst_unifiers_to_rowvars: FxHashMap<RowUniVar, RowVar>,
-    next_rowvar: u32,
+    next_rowvar: usize,
 
     item_wrappers: FxHashMap<NodeId, ItemWrapper>,
 
@@ -239,7 +239,7 @@ impl<'env> Solver<'env> {
 
                 // self.tables.hasher.write_u32(next);
                 // let out = self.tables.hasher.finish().to_string().into();
-                TypeVar(next.to_string().into())
+                TypeVar(next)
             })
     }
 
@@ -357,6 +357,7 @@ impl<'env> Solver<'env> {
                 unbound_types: evidence_subst.unbound_tys,
                 evidence,
                 ty,
+                types_to_name: FxHashMap::default(),
             },
             row_to_ev,
             branch_to_ret_ty,
@@ -373,8 +374,8 @@ impl<'env> Solver<'env> {
             item_source,
 
             tables: SolverTables {
-                next_tyvar: (signature.unbound_types.iter().len() + 1) as u32,
-                next_rowvar: (signature.unbound_rows.iter().len() + 1) as u32,
+                next_tyvar: (signature.unbound_types.iter().len() + 1),
+                next_rowvar: (signature.unbound_rows.iter().len() + 1),
                 ..Default::default()
             },
         };

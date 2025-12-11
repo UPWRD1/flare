@@ -10,6 +10,12 @@ const INTRINSIC_FUNC_ADD: usize = 0;
 const INTRINSIC_FUNC_SUB: usize = 1;
 const INTRINSIC_FUNC_MUL: usize = 2;
 const INTRINSIC_FUNC_DIV: usize = 3;
+const INTRINSIC_FUNC_CEQ: usize = 4;
+const INTRINSIC_FUNC_NEQ: usize = 5;
+const INTRINSIC_FUNC_CLT: usize = 6;
+const INTRINSIC_FUNC_CLE: usize = 6;
+const INTRINSIC_FUNC_CGT: usize = 7;
+const INTRINSIC_FUNC_CGE: usize = 8;
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 
@@ -537,7 +543,14 @@ impl<const N: usize> Resolver<N> {
                 // if matches!(*l.0, Expr::Con) {}
                 // Ok(expr.update(Expr::FieldAccess(l, r)))
             }
-            Expr::If(spanned, spanned1, spanned2) => todo!(),
+            Expr::If(cond, then, otherwise) => {
+                let cond = self.analyze_expr(cond, vars)?;
+                let then_vars = vars;
+                let then = self.analyze_expr(then, then_vars)?;
+                let otherwise_vars = vars;
+                let otherwise = self.analyze_expr(otherwise, otherwise_vars)?;
+                Ok(expr.convert(Expr::If(cond, then, otherwise)))
+            }
             Expr::Match(spanned, intern) => {
                 todo!()
             }
