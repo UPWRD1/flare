@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use crate::passes::backend::lowering::ir::{Row, Type, TypeVar};
+use crate::passes::backend::lowering::ir::{Row, TyApp, Type, TypeVar};
 
 #[derive(Clone)]
 pub enum Subst {
@@ -102,6 +102,14 @@ impl Row {
 }
 
 impl Type {
+    pub fn subst_app(self, payload: TyApp) -> Self {
+        match payload {
+            TyApp::Ty(ty) => self.subst_ty(ty),
+
+            TyApp::Row(row) => self.subst_row(row),
+        }
+    }
+
     pub fn subst_ty(self, ty: Self) -> Self {
         Subst::TyPayload(ty).subst_ty(self, 0)
     }

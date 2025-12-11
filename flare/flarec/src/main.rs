@@ -36,8 +36,8 @@ fn panic_hook() {
         };
 
         eprintln!("Brrrrrrrr!");
-        eprintln!("Your code was so cool, flarec ICE-d out!\n");
-        eprintln!("flarec encountered a fatal internal compiler error during compilation.");
+        eprintln!("Your code was too cool for flarec!\n");
+        eprintln!("flarec encountered a fatal, internal compiler error (ICE) during compilation.");
         eprintln!("This is a bug within flarec.");
         eprintln!("This may be caused by a bug in your code, or an issue with your environment.\n");
         eprintln!("Please file an issue here:");

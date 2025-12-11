@@ -214,7 +214,7 @@ impl<const N: usize> Resolver<N> {
 
                     Ok(())
                 }
-                ItemKind::Type(n, t, _) => {
+                ItemKind::Type(n, t) => {
                     // Analyze the type
                     let t = self.in_context(|me| me.analyze_type(t), dag_idx)?;
 
@@ -224,7 +224,7 @@ impl<const N: usize> Resolver<N> {
                         .graph
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
-                    if let ItemKind::Type(_, ref mut ty, _) = item.kind {
+                    if let ItemKind::Type(_, ref mut ty) = item.kind {
                         *ty = t;
                     }
                     Ok(())
@@ -252,7 +252,7 @@ impl<const N: usize> Resolver<N> {
 
                 ItemKind::Extern { name, sig } => {
                     let old_sig = sig;
-                    let t = self.in_context(|me| me.analyze_type(sig.0), dag_idx)?;
+                    let t = self.in_context(|me| me.analyze_type(sig), dag_idx)?;
 
                     // Write back the result
                     let item = self
@@ -261,7 +261,7 @@ impl<const N: usize> Resolver<N> {
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
                     if let ItemKind::Extern { name, ref mut sig } = item.kind {
-                        *sig = old_sig.replace(t);
+                        *sig = old_sig.convert(t.0);
                     }
                     Ok(())
                 }
@@ -307,7 +307,7 @@ impl<const N: usize> Resolver<N> {
         // let f_old = *the_func;
         self.in_context(
             |me| {
-                let sig = me.analyze_type(the_func.sig.0)?;
+                let sig = me.analyze_type(the_func.sig)?;
 
                 let body = me.analyze_expr(the_func.body, &[])?;
                 // dbg!(body);
@@ -321,7 +321,7 @@ impl<const N: usize> Resolver<N> {
                     .collect::<BTreeSet<_>>()
                     .into();
 
-                the_func.sig = Spanned(sig, the_func.sig.1);
+                the_func.sig = sig;
                 the_func.evidence = me.guess_evidence.clone().into();
 
                 the_func.body = body;
@@ -331,25 +331,25 @@ impl<const N: usize> Resolver<N> {
         )
     }
 
-    fn analyze_type(&mut self, t: Intern<Type>) -> CompResult<Intern<Type>> {
+    fn analyze_type(&mut self, t: Spanned<Intern<Type>>) -> CompResult<Spanned<Intern<Type>>> {
         // dbg!(self.current_node);
         // dbg!(t);
-        match *t {
+        match *t.0 {
             Type::Func(l, r) => {
                 let l = self.analyze_type(l)?;
                 let r = self.analyze_type(r)?;
-                let new_t = Type::Func(Intern::from(*l), Intern::from(*r)).into();
+                let new_t = t.modify(Type::Func(l, r));
                 // *t = new_t;
                 Ok(new_t)
             }
             Type::Label(l, the_r) => {
                 let new_t = self.analyze_type(the_r)?;
                 // *t = new_t;
-                Ok(Type::Label(l, new_t).into())
+                Ok(t.modify(Type::Label(l, new_t)))
             }
             Type::User(name) => {
                 let the_item = self.resolve_name_generic(&name)?;
-                if let ItemKind::Type(_, new_t, _) = the_item.kind {
+                if let ItemKind::Type(_, new_t) = the_item.kind {
                     self.analyze_type(new_t)
                 } else {
                     Err(DynamicErr::new(format!("{} is not a type", name.0))
@@ -360,10 +360,10 @@ impl<const N: usize> Resolver<N> {
             Type::Prod(r) => {
                 let new_r = match r {
                     super::typing::Row::Closed(closed_row) => {
-                        let new_values: CompResult<Vec<Intern<Type>>> = closed_row
+                        let new_values: CompResult<Vec<Spanned<Intern<Type>>>> = closed_row
                             .values
                             .iter()
-                            .map(|t| -> CompResult<Intern<Type>> {
+                            .map(|t| -> CompResult<Spanned<Intern<Type>>> {
                                 // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
                                 self.analyze_type(*t)
                             })
@@ -391,17 +391,17 @@ impl<const N: usize> Resolver<N> {
                     goal: new_r,
                 });
                 // self.rows.insert(, value)
-                Ok(Type::Prod(new_r).into())
+                Ok(t.modify(Type::Prod(new_r)))
             }
 
             Type::Sum(r) => {
                 let new_r = match r {
                     super::typing::Row::Closed(closed_row) => {
-                        let new_values: CompResult<Vec<Intern<Type>>> = closed_row
+                        let new_values: CompResult<Vec<Spanned<Intern<Type>>>> = closed_row
                             .fields
                             .iter()
-                            .map(|n| -> CompResult<Intern<Type>> {
-                                let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                            .map(|n| -> CompResult<Spanned<Intern<Type>>> {
+                                let t = self.resolve_name_generic(&n.0)?.get_ty()?;
                                 self.analyze_type(t)
                             })
                             .collect();
@@ -414,7 +414,7 @@ impl<const N: usize> Resolver<N> {
                     }
                     _ => unreachable!("All rows should be closed"),
                 };
-                Ok(Type::Sum(new_r).into())
+                Ok(t.modify(Type::Sum(new_r)))
             }
             _ => Ok(t),
         }
@@ -449,12 +449,12 @@ impl<const N: usize> Resolver<N> {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
                 // let t = Type::Prod(crate::passes::midend::typing::Row::Closed(());
-                Ok(expr.update(Expr::Concat(l, r)))
+                Ok(expr.convert(Expr::Concat(l, r)))
             }
             // Expr::Project(direction, spanned) => todo!(),
             Expr::Inject(direction, ex) => {
                 let ex = self.analyze_expr(ex, vars)?;
-                Ok(expr.update(Expr::Inject(direction, ex)))
+                Ok(expr.convert(Expr::Inject(direction, ex)))
             }
             // Expr::Branch(spanned, spanned1) => todo!(),
             // Expr::Label(l, v) => {
@@ -470,33 +470,33 @@ impl<const N: usize> Resolver<N> {
                 let r = self.analyze_expr(r, vars)?;
                 let (id, f) = self.intrinsics[INTRINSIC_FUNC_MUL];
                 self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.replace(Expr::Call(expr.replace(f), l)), r);
+                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
 
-                self.analyze_expr(expr.replace(final_expr), vars)
+                self.analyze_expr(expr.convert(final_expr), vars)
             }
             Expr::Div(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
                 let (id, f) = self.intrinsics[INTRINSIC_FUNC_DIV];
                 self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.replace(Expr::Call(expr.replace(f), l)), r);
-                self.analyze_expr(expr.replace(final_expr), vars)
+                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                self.analyze_expr(expr.convert(final_expr), vars)
             }
             Expr::Add(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
                 let (id, f) = self.intrinsics[INTRINSIC_FUNC_ADD];
                 self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.replace(Expr::Call(expr.replace(f), l)), r);
-                self.analyze_expr(expr.replace(final_expr), vars)
+                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                self.analyze_expr(expr.convert(final_expr), vars)
             }
             Expr::Sub(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
                 let (id, f) = self.intrinsics[INTRINSIC_FUNC_SUB];
                 self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.replace(Expr::Call(expr.replace(f), l)), r);
-                self.analyze_expr(expr.replace(final_expr), vars)
+                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                self.analyze_expr(expr.convert(final_expr), vars)
             }
             Expr::Comparison(spanned, comparison_op, spanned1) => todo!(),
             Expr::Call(func, arg) => {
@@ -506,7 +506,7 @@ impl<const N: usize> Resolver<N> {
                 if let Expr::Item(id, Kind::Ty) = *func.0 {
                     todo!()
                 };
-                Ok(expr.update(Expr::Call(func, arg)))
+                Ok(expr.convert(Expr::Call(func, arg)))
             }
             Expr::FieldAccess(l, r) => {
                 // dbg!(expr, l);
@@ -517,7 +517,7 @@ impl<const N: usize> Resolver<N> {
                     Ok(res)
                 } else if let Expr::Ident(n) = *l.0 {
                     if let Some((variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
-                        let projection = {
+                        let projection: Spanned<Intern<Expr<Untyped>>> = {
                             let combo = *val;
                             let id = r.ident()?;
 
@@ -539,15 +539,15 @@ impl<const N: usize> Resolver<N> {
                                 // dbg!(&path);
 
                                 let ex = path.into_iter().fold(combo, |prev, dir| {
-                                    combo.replace(Expr::Project(dir, prev))
+                                    combo.convert(Expr::Project(dir, prev))
                                 });
 
-                                ex.replace(Expr::Unlabel(ex, Label(id)))
+                                ex.convert(Expr::Unlabel(ex, Label(id)))
                             }
 
                             // dbg!(combo);
                         };
-                        Ok(expr.update(projection.0))
+                        Ok(expr.convert(projection.0))
                     } else {
                         todo!()
                     }
@@ -566,10 +566,10 @@ impl<const N: usize> Resolver<N> {
             }
             Expr::Lambda(arg, body, is_anon) => {
                 let new_vars =
-                    &[vars, &[(arg.0.0, arg.ident()?.update(Expr::Ident(arg)))]].concat();
+                    &[vars, &[(arg.0.0, arg.ident()?.convert(Expr::Ident(arg)))]].concat();
                 let body = self.analyze_expr(body, new_vars)?;
                 // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
-                Ok(expr.update(Expr::Lambda(arg, body, is_anon)))
+                Ok(expr.convert(Expr::Lambda(arg, body, is_anon)))
             }
             Expr::Let(id, body, and_in) => {
                 let body = self.analyze_expr(body, vars)?;
@@ -578,7 +578,7 @@ impl<const N: usize> Resolver<N> {
                 let and_in = self.analyze_expr(and_in, &new_vars)?;
                 let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
 
-                Ok(expr.update(Expr::Call(lambda, body)))
+                Ok(expr.convert(Expr::Call(lambda, body)))
 
                 // Ok(expr.replace(Expr::Let(id, body, and_in)))
             }
@@ -720,9 +720,9 @@ impl<const N: usize> Resolver<N> {
         let name = expr.ident()?;
 
         if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name.0), &expr.1) {
-            Ok(expr.update(Expr::Item(e, Kind::Func)))
+            Ok(expr.convert(Expr::Item(e, Kind::Func)))
         } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &expr.1) {
-            Ok(expr.update(Expr::Item(e, Kind::Ty)))
+            Ok(expr.convert(Expr::Item(e, Kind::Ty)))
         } else {
             Err(errors::not_defined(
                 QualifierFragment::Wildcard(name.0),

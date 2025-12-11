@@ -2,7 +2,9 @@ use std::ops::ControlFlow;
 
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
-use crate::passes::backend::lowering::ir::{Branch, IR, ItemId, Kind, TyApp, Type, Var, VarId};
+use crate::passes::backend::lowering::ir::{
+    Branch, IR, ItemId, Kind, TyApp, Type, TypeVar, Var, VarId,
+};
 
 enum Param {
     Ty(Kind),
@@ -179,27 +181,26 @@ impl Occurrences {
     }
 }
 
-pub fn subst_ty(haystack: IR, payload: Type) -> IR {
+pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
     match haystack {
-        IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_ty(payload))),
-        IR::Num(i) => IR::Num(i),
-        IR::Str(s) => IR::Str(s),
-        IR::Bool(b) => IR::Bool(b),
-        IR::Unit => IR::Unit,
-        IR::Particle(p) => IR::Particle(p),
+        IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_app(payload))),
+        IR::Num(_)
+        | IR::Str(_)
+        | IR::Bool(_)
+        | IR::Unit
+        | IR::Particle(_)
+        | IR::Tuple(_)
+        | IR::Tag(_, _, _) => haystack,
 
         IR::Fun(var, ir) => IR::fun(
-            var.map_ty(|ty| ty.subst_ty(payload.clone())),
+            var.map_ty(|ty| ty.subst_app(payload.clone())),
             subst_ty(*ir, payload),
         ),
         IR::App(fun, arg) => IR::app(subst_ty(*fun, payload.clone()), subst_ty(*arg, payload)),
         IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
-        IR::TyApp(ir, ty) => IR::ty_app(
-            subst_ty(*ir, payload.clone()),
-            ty.subst_tyapp(TyApp::Ty(payload)),
-        ),
+        IR::TyApp(ir, ty) => IR::ty_app(subst_ty(*ir, payload.clone()), ty.subst_tyapp(payload)),
         IR::Local(var, defn, body) => IR::local(
-            var.map_ty(|ty| ty.subst_ty(payload.clone())),
+            var.map_ty(|ty| ty.subst_app(payload.clone())),
             subst_ty(*defn, payload.clone()),
             subst_ty(*body, payload),
         ),
@@ -211,17 +212,12 @@ pub fn subst_ty(haystack: IR, payload: Type) -> IR {
                 let v = subst_ty(i, payload);
                 let new_tuple = IR::Tuple([heads, &[v], tails].concat());
                 // let (i, heads) = items.split_last().unwrap();
-                dbg!(new_tuple);
+                // dbg!(new_tuple);
                 todo!()
             } else {
                 dbg!(&ir);
                 subst_ty(*ir, payload)
             }
-        }
-
-        IR::Tuple(content) => {
-            dbg!(content);
-            todo!()
         }
 
         _ => todo!("{haystack:?}"),
@@ -408,6 +404,7 @@ impl<'p> Simplifier<'p> {
                         .map(|elem| self.simplify(elem, in_scope.clone(), vec![]))
                         .collect();
                     break self.rebuild(IR::Tuple(new_elements), in_scope, ctx);
+                    // break self.rebuild(IR::Tuple(elements), in_scope, ctx);
                 }
                 IR::Field(obj, idx) => {
                     ctx.push((ContextEntry::Field(idx), self.subst.clone()));
@@ -617,22 +614,20 @@ impl<'p> Simplifier<'p> {
                         let field = irs[idx].clone();
                         return self.simplify(field, in_scope, ctx);
                     } else {
+                        dbg!(&ir);
                         let obj = self.simplify(ir, in_scope.clone(), vec![]);
                         ir = IR::field(obj, idx);
                     }
                 }
                 ContextEntry::Tag(ty, idx) => ir = IR::tag(ty, idx, ir),
                 ContextEntry::Case(ty, b) => ir = IR::case(ty, ir, b),
-                ContextEntry::TyApp(ty) => {
+                ContextEntry::TyApp(tyapp) => {
                     ir = if let IR::TyFun(_, body) = ir {
+                        // dbg!(&body);
                         self.saturated_ty_fun_count += 1;
-                        if let TyApp::Ty(ty) = ty {
-                            subst_ty(*body, ty)
-                        } else {
-                            todo!()
-                        }
+                        subst_ty(*body, tyapp)
                     } else {
-                        IR::ty_app(ir, ty)
+                        IR::ty_app(ir, tyapp)
                     }
                 }
                 ContextEntry::TyFun(kind) => {

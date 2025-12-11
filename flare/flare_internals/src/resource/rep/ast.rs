@@ -241,7 +241,7 @@ impl<V: Variable> Ident for Spanned<Intern<Expr<V>>> {
                     Ok(n.trunc() as usize)
                 }?;
 
-                Ok(self.update(n.to_string()))
+                Ok(self.convert(n.to_string()))
             }
             _ => self.name()?.ident(), // _ => Err(DynamicErr::new("cannot get ident")
                                        //     .label(format!("{self:?}"), self.get_span())
@@ -379,7 +379,7 @@ pub struct ImplDef<V: Variable> {
 #[derive(Debug, PartialEq)]
 pub enum Definition<V: Variable> {
     Import(Spanned<Intern<Expr<V>>>),
-    Type(Spanned<Intern<String>>, Type),
+    Type(Spanned<Intern<String>>, Spanned<Intern<Type>>),
     Let(V, Spanned<Intern<Expr<V>>>, Spanned<Intern<Type>>),
     Extern(Spanned<Intern<String>>, Spanned<Intern<Type>>),
     ImplDef(ImplDef<V>),

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
 use flare_internals::passes::backend::c::C;
 use flare_internals::passes::midend::resolution::Resolver;
 use flare_internals::passes::midend::typechecker::Typechecker;

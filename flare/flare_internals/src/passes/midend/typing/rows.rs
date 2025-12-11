@@ -1,7 +1,8 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, fmt::Display, hash};
 
 use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
+use itertools::Itertools;
 
 use crate::{
     passes::midend::typing::{Evidence, TyUniVar, types::Type},
@@ -38,7 +39,7 @@ pub enum Row {
 }
 
 impl Row {
-    pub fn single(lbl: Label, ty: Intern<Type>) -> Self {
+    pub fn single(lbl: Label, ty: Spanned<Intern<Type>>) -> Self {
         Self::Closed(ClosedRow {
             fields: vec![lbl].leak(),
             values: vec![ty].leak(),
@@ -54,13 +55,78 @@ impl Row {
             (Self::Open(a), Self::Open(b)) => a == b,
 
             // Closed rows are equatable when their fields are equal
-            // (Self::Closed(a), Self::Closed(b)) => a.fields == b.fields,
+            (Self::Closed(a), Self::Closed(b)) => a.fields == b.fields,
 
             // Closed rows are equatable when they are subtypes?
-            (Self::Closed(a), Self::Closed(b)) => a.is_subtype_of(b).is_some(),
+            // (Self::Closed(a), Self::Closed(b)) => a.is_subtype_of(b).is_some(),
             // Anything else is not equatable
             _ => false,
         }
+    }
+}
+
+impl Display for Row {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Open(row_var) => write!(f, "row_var{}", row_var.0),
+            Self::Unifier(row_uni_var) => write!(f, "unifier{}", row_uni_var.0),
+            Self::Closed(closed_row) => write!(f, "{closed_row}"),
+        }
+    }
+}
+
+impl EqUnifyValue for Row {}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ClosedRow {
+    pub fields: &'static [Label],
+    pub values: &'static [Spanned<Intern<Type>>],
+}
+
+impl hash::Hash for ClosedRow {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.fields.hash(state);
+        self.values.iter().for_each(|x| x.0.hash(state))
+    }
+}
+
+impl PartialEq for ClosedRow {
+    fn eq(&self, other: &Self) -> bool {
+        self.is_subtype_of(other).is_some()
+    }
+}
+
+impl Eq for ClosedRow {}
+
+impl Ord for ClosedRow {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.fields
+            .iter()
+            .map(|x| x.0.0)
+            .cmp(other.fields.iter().map(|x| x.0.0))
+            .then(self.values.iter().cmp(other.values.iter()))
+    }
+}
+
+impl PartialOrd for ClosedRow {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl EqUnifyValue for ClosedRow {}
+
+impl Display for ClosedRow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{{{}}}",
+            self.fields
+                .iter()
+                .zip(self.values.iter())
+                .map(|(label, field)| format!("{}: {}", label.0.0, field))
+                .join(",")
+        )
     }
 }
 
@@ -94,7 +160,7 @@ impl ClosedRow {
         let mut right_values = right.values.iter();
 
         let mut fields: Vec<Label> = vec![];
-        let mut values: Vec<Intern<Type>> = vec![];
+        let mut values: Vec<Spanned<Intern<Type>>> = vec![];
 
         // Since our input rows are already sorted we can explit that and not worry about resorting
         // them here, we just have to merge our two sorted rows.
@@ -141,39 +207,13 @@ impl ClosedRow {
         unbound_rows: &BTreeSet<RowUniVar>,
     ) -> bool {
         for ty in self.values.iter() {
-            if ty.mentions(unbound_tys, unbound_rows) {
+            if ty.0.mentions(unbound_tys, unbound_rows) {
                 return true;
             }
         }
         false
     }
 }
-
-impl EqUnifyValue for Row {}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ClosedRow {
-    pub fields: &'static [Label],
-    pub values: &'static [Intern<Type>],
-}
-
-impl Ord for ClosedRow {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.fields
-            .iter()
-            .map(|x| x.0.0)
-            .cmp(other.fields.iter().map(|x| x.0.0))
-            .then(self.values.iter().cmp(other.values.iter()))
-    }
-}
-
-impl PartialOrd for ClosedRow {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl EqUnifyValue for ClosedRow {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RowCombination {

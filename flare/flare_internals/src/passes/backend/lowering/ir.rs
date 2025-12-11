@@ -248,7 +248,7 @@ impl TyApp {
     pub fn is_cheap_alloc(&self) -> bool {
         match self {
             Self::Ty(t) => t.is_cheap_alloc(),
-            Self::Row(row) => false,
+            Self::Row(_) => false,
         }
     }
 
@@ -531,7 +531,7 @@ impl IR {
                         .append(Doc::text("}"))
                 }
             }
-            Self::Case(t, b, v) => Doc::text("match")
+            Self::Case(_, b, v) => Doc::text("match")
                 .append(Doc::space())
                 .append(b.render())
                 .append(Doc::text(":"))
@@ -560,10 +560,10 @@ impl IR {
                 .append(Doc::text(" variant "))
                 .append(Doc::text(format!("{i}"))),
             Self::Particle(p) => Doc::text(format!("@{p}")),
-            Self::Item(t, id) => Doc::text(format!("#{}", id.0)),
+            Self::Item(_, id) => Doc::text(format!("#{}", id.0)),
             // .append(Doc::space())
             // .append(t.render()),
-            Self::Extern(n, t) => Doc::text(format!("extern_{n}")), // Self::Add(l, r) => Doc::text("add")
+            Self::Extern(n, _) => Doc::text(format!("extern_{n}")), // Self::Add(l, r) => Doc::text("add")
                                                                     //     .append(Doc::space())
                                                                     //     .append(l.render())
                                                                     //     .append(Doc::space())

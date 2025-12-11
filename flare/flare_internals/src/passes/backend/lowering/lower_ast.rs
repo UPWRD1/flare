@@ -72,7 +72,7 @@ pub struct LowerAst<'source> {
     ev_to_var: FxHashMap<Evidence, Var>,
     pub solved: Vec<(Var, IR)>,
     row_to_ev: &'source FxHashMap<NodeId, Evidence>,
-    branch_to_ret_ty: &'source FxHashMap<NodeId, Intern<typing::Type>>,
+    branch_to_ret_ty: &'source FxHashMap<NodeId, Spanned<Intern<typing::Type>>>,
     item_wrappers: &'source FxHashMap<NodeId, ItemWrapper>,
     item_source: &'source ItemSource,
     item_supply: &'source mut ItemSupply,
@@ -340,7 +340,7 @@ impl<'source> LowerAst<'source> {
         types: LowerTypes,
         ev_to_var: FxHashMap<Evidence, Var>,
         row_to_ev: &'source FxHashMap<NodeId, Evidence>,
-        branch_to_ret_ty: &'source FxHashMap<NodeId, Intern<typing::Type>>,
+        branch_to_ret_ty: &'source FxHashMap<NodeId, Spanned<Intern<typing::Type>>>,
         item_wrappers: &'source FxHashMap<NodeId, ItemWrapper>,
         item_source: &'source ItemSource,
         item_supply: &'source mut ItemSupply,
@@ -431,7 +431,7 @@ impl<'source> LowerAst<'source> {
         match *ast.0 {
             Expr::Ident(Typed(var, ty)) => IR::Var(Var::new(
                 self.var_supply.supply_for(var),
-                self.types.lower_ty(*ty),
+                self.types.lower_ty(*ty.0),
             )),
             Expr::Number(n) => IR::Num(n),
             Expr::String(n) => IR::Str(n.0),
@@ -439,7 +439,7 @@ impl<'source> LowerAst<'source> {
 
             Expr::Particle(p) => IR::Particle(p.0),
             Expr::Lambda(Typed(var, ty), body, _) => {
-                let ir_ty = self.types.lower_ty(*ty);
+                let ir_ty = self.types.lower_ty(*ty.0);
                 let ir_var = self.var_supply.supply_for(var);
                 let ir_body = self.lower_ast(body);
                 IR::fun(Var::new(ir_var, ir_ty), ir_body)
@@ -481,7 +481,7 @@ impl<'source> LowerAst<'source> {
                 let ret_ty = self
                     .branch_to_ret_ty
                     .get(&id)
-                    .map(|ty| self.types.lower_ty(**ty))
+                    .map(|ty| self.types.lower_ty(*ty.0))
                     .unwrap_or_else(|| unreachable!("Branch AST node lacks expected type"));
                 let branch = IR::ty_app(IR::field(IR::Var(param), 1), TyApp::Ty(ret_ty));
 
@@ -535,7 +535,7 @@ impl<'source> LowerAst<'source> {
                             .unwrap_or_else(|| unreachable!("Item lacks expected wrapper"));
 
                         let ty_ir = wrapper.types.into_iter().fold(item_ir, |ir, ty| {
-                            IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty)))
+                            IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty.0)))
                         });
                         let row_ir = wrapper.rows.into_iter().fold(ty_ir, |ir, row| {
                             IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(row)))

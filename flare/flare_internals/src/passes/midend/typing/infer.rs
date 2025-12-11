@@ -17,28 +17,28 @@ use crate::{
 impl<'env> Solver<'env> {
     pub fn infer(
         &mut self,
-        env: im::HashMap<Intern<String>, Intern<Type>, FxBuildHasher>,
+        env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
         ast: Spanned<Intern<Expr<Untyped>>>,
-    ) -> (GenOut, Intern<Type>) {
+    ) -> (GenOut, Spanned<Intern<Type>>) {
         // dbg!(&env);
         let id = ast.id();
         match *ast.0 {
             Expr::Number(n) => (
-                GenOut::new(vec![], ast.update(Expr::Number(n))),
-                Type::Num.into(),
+                GenOut::new(vec![], ast.convert(Expr::Number(n))),
+                ast.convert(Type::Num),
             ),
 
             Expr::String(s) => (
-                GenOut::new(vec![], ast.update(Expr::String(s))),
-                Type::String.into(),
+                GenOut::new(vec![], ast.convert(Expr::String(s))),
+                ast.convert(Type::String),
             ),
             Expr::Bool(v) => (
-                GenOut::new(vec![], ast.update(Expr::Bool(v))),
-                Type::Bool.into(),
+                GenOut::new(vec![], ast.convert(Expr::Bool(v))),
+                ast.convert(Type::Bool),
             ),
             Expr::Particle(p) => (
-                GenOut::new(vec![], ast.update(Expr::Particle(p))),
-                Type::Particle(p).into(),
+                GenOut::new(vec![], ast.convert(Expr::Particle(p))),
+                ast.convert(Type::Particle(p)),
             ),
 
             Expr::Ident(v) => {
@@ -46,25 +46,26 @@ impl<'env> Solver<'env> {
                 // dbg!(env.keys().collect::<Vec<_>>());
                 let ty = &env[&v.0.0];
                 (
-                    GenOut::new(vec![], ast.update(Expr::Ident(Typed(v, *ty)))),
+                    GenOut::new(vec![], ast.convert(Expr::Ident(Typed(v, *ty)))),
                     *ty,
                 )
             }
             Expr::Lambda(arg, body, is_anon) => {
                 let arg_tyvar = self.fresh_ty_var();
-                let env = env.update(arg.0.0, Type::Unifier(arg_tyvar).into());
+                let arg_ty = arg.0.convert(Type::Unifier(arg_tyvar));
+                let env = env.update(arg.0.0, arg_ty);
 
                 let (body_out, body_ty) = self.infer(env, body);
                 (
                     GenOut {
-                        typed_ast: ast.update(Expr::Lambda(
-                            Typed(arg, Type::Unifier(arg_tyvar).into()),
+                        typed_ast: ast.convert(Expr::Lambda(
+                            Typed(arg, arg_ty),
                             body_out.typed_ast,
                             is_anon,
                         )),
                         ..body_out
                     },
-                    Type::Func(Type::Unifier(arg_tyvar).into(), body_ty).into(),
+                    ast.convert(Type::Func(arg_ty, body_ty)),
                 )
             }
 
@@ -72,19 +73,20 @@ impl<'env> Solver<'env> {
                 let fun_id = fun.id();
                 let (fun_out, supposed_fun_ty) = self.infer(env.clone(), fun);
                 let mut constraint = fun_out.constraints;
-                let (arg_ty, ret_ty) = match *supposed_fun_ty {
-                    Type::Func(arg, ret) => (*arg, *ret),
+                let (arg_ty, ret_ty) = match *supposed_fun_ty.0 {
+                    Type::Func(arg, ret) => (arg, ret),
                     ty => {
-                        let arg = self.fresh_ty_var();
-                        let ret = self.fresh_ty_var();
-
+                        let arg_tyvar = self.fresh_ty_var();
+                        let arg_ty = arg.convert(Type::Unifier(arg_tyvar));
+                        let ret_tyvar = self.fresh_ty_var();
+                        let ret_ty = arg.convert(Type::Unifier(ret_tyvar));
                         constraint.push(Constraint::TypeEqual(
                             Provenance::AppExpectedFun(fun_id),
                             supposed_fun_ty,
-                            Type::Func(Type::Unifier(arg).into(), Type::Unifier(ret).into()).into(),
+                            fun_out.typed_ast.convert(Type::Func(arg_ty, ret_ty)),
                         ));
 
-                        (Type::Unifier(arg), Type::Unifier(ret))
+                        (arg_ty, ret_ty)
                     }
                 };
 
@@ -93,61 +95,58 @@ impl<'env> Solver<'env> {
                 (
                     GenOut::new(
                         constraint,
-                        ast.update(Expr::Call(fun_out.typed_ast, arg_out.typed_ast)),
+                        ast.convert(Expr::Call(fun_out.typed_ast, arg_out.typed_ast)),
                     ),
-                    ret_ty.into(),
+                    ret_ty,
                 )
             }
             Expr::Hole(v) => {
                 let var = self.fresh_ty_var();
-                (
-                    GenOut::new(
-                        vec![],
-                        ast.update(Expr::Hole(Typed(v, Type::Unifier(var).into()))),
-                    ),
-                    Type::Unifier(var).into(),
-                )
+                let t = ast.convert(Type::Unifier(var));
+                (GenOut::new(vec![], ast.convert(Expr::Hole(Typed(v, t)))), t)
             }
 
             Expr::Label(label, value) => {
                 let (out, value_ty) = self.infer(env, value);
                 (
-                    out.with_typed_ast(|ast| ast.update(Expr::Label(label, ast))),
-                    Type::Label(label, value_ty).into(),
+                    out.with_typed_ast(|ast| ast.convert(Expr::Label(label, ast))),
+                    ast.convert(Type::Label(label, value_ty)),
                 )
             }
             Expr::Unlabel(value, label) => {
                 let value_var = self.fresh_ty_var();
-                let expected_ty = Type::Label(label, Type::Unifier(value_var).into());
+                let value_ty = value.convert(Type::Unifier(value_var));
+                let expected_ty = label.0.convert(Type::Label(label, value_ty));
                 let out = self.check(env, value, expected_ty);
                 (
-                    out.with_typed_ast(|ast| ast.update(Expr::Unlabel(ast, label))),
-                    Type::Unifier(value_var).into(),
+                    out.with_typed_ast(|ast| ast.convert(Expr::Unlabel(ast, label))),
+                    value_ty,
                 )
             }
 
             Expr::Concat(left, right) => {
                 let row_comb = self.fresh_row_combination();
 
-                let left_out = self.check(env.clone(), left, Type::Prod(row_comb.left));
-                let right_out = self.check(env, right, Type::Prod(row_comb.right));
+                let left_out =
+                    self.check(env.clone(), left, left.convert(Type::Prod(row_comb.left)));
+                let right_out = self.check(env, right, right.convert(Type::Prod(row_comb.right)));
 
-                let out_ty = Type::Prod(row_comb.goal);
+                let out_ty = ast.convert(Type::Prod(row_comb.goal));
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(
                     // Provenance::ExpectedCombine(id),
-                    Provenance::ExpectedCombine(ast.1),
+                    Provenance::ExpectedCombine(left.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
-                let typed_ast = ast.update(Expr::Concat(left_out.typed_ast, right_out.typed_ast));
+                let typed_ast = ast.convert(Expr::Concat(left_out.typed_ast, right_out.typed_ast));
                 (
                     GenOut {
                         constraints,
                         typed_ast,
                     },
-                    out_ty.into(),
+                    out_ty,
                 )
             }
             Expr::Project(dir, goal) => {
@@ -157,59 +156,45 @@ impl<'env> Solver<'env> {
                     Direction::Right => row_comb.right,
                 };
 
-                let mut out = self.check(env, goal, Type::Prod(row_comb.goal));
+                let mut out = self.check(env, goal, goal.convert(Type::Prod(row_comb.goal)));
 
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(ast.1),
+                    Provenance::ExpectedCombine(goal.1),
                     row_comb,
                 ));
                 (
-                    out.with_typed_ast(|ast| ast.update(Expr::Project(dir, ast))),
-                    Type::Prod(sub_row).into(),
+                    out.with_typed_ast(|ast| ast.convert(Expr::Project(dir, ast))),
+                    ast.convert(Type::Prod(sub_row)),
                 )
             }
             Expr::Branch(left, right) => {
                 let row_comb = self.fresh_row_combination();
-                let ret_ty = self.fresh_ty_var();
-
+                let ret_var = self.fresh_ty_var();
+                let ret_ty = ast.convert(Type::Unifier(ret_var));
                 let left_out = self.check(
                     env.clone(),
                     left,
-                    Type::Func(
-                        Type::Sum(row_comb.left).into(),
-                        Type::Unifier(ret_ty).into(),
-                    ),
+                    left.convert(Type::Func(left.convert(Type::Sum(row_comb.left)), ret_ty)),
                 );
 
                 let right_out = self.check(
                     env.clone(),
                     right,
-                    Type::Func(
-                        Type::Sum(row_comb.right).into(),
-                        Type::Unifier(ret_ty).into(),
-                    ),
+                    right.convert(Type::Func(right.convert(Type::Sum(row_comb.right)), ret_ty)),
                 );
 
-                let out_ty = Type::Func(
-                    Type::Sum(row_comb.goal).into(),
-                    Type::Unifier(ret_ty).into(),
-                );
+                let out_ty = ast.convert(Type::Func(ast.convert(Type::Sum(row_comb.goal)), ret_ty));
 
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(ast.1),
+                    Provenance::ExpectedCombine(right.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
-                self.tables
-                    .branch_to_ret_ty
-                    .insert(ast.1, Type::Unifier(ret_ty).into());
+                self.tables.branch_to_ret_ty.insert(ast.1, ret_ty);
                 let typed_ast = Expr::Branch(left_out.typed_ast, right_out.typed_ast);
-                (
-                    GenOut::new(constraints, ast.update(typed_ast)),
-                    out_ty.into(),
-                )
+                (GenOut::new(constraints, ast.convert(typed_ast)), out_ty)
             }
             Expr::Inject(dir, value) => {
                 let row_comb = self.fresh_row_combination();
@@ -219,31 +204,31 @@ impl<'env> Solver<'env> {
                     Direction::Right => row_comb.right,
                 };
 
-                let out_ty = Type::Sum(row_comb.goal);
+                let out_ty = ast.convert(Type::Sum(row_comb.goal));
 
-                let mut out = self.check(env, value, Type::Sum(sub_row));
+                let mut out = self.check(env, value, ast.convert(Type::Sum(sub_row)));
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(ast.1),
+                    Provenance::ExpectedCombine(value.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
                 (
-                    out.with_typed_ast(|ast| ast.update(Expr::Inject(dir, ast))),
+                    out.with_typed_ast(|ast| ast.convert(Expr::Inject(dir, ast))),
                     // Our goal row is the type of our output
-                    out_ty.into(),
+                    out_ty,
                 )
             }
             Expr::Item(item_id, kind) => {
                 let ty_scheme = self.item_source.type_of_item(item_id);
 
                 // Create fresh unifiers for each type and row variable in our type scheme.
-                let mut wrapper_tyvars: Vec<Intern<Type>> = vec![];
+                let mut wrapper_tyvars: Vec<Spanned<Intern<Type>>> = vec![];
                 let tyvar_to_unifiers = ty_scheme
                     .unbound_types
                     .iter()
                     .map(|ty_var| {
                         let unifier = self.fresh_ty_var();
-                        wrapper_tyvars.push(Type::Unifier(unifier).into());
+                        wrapper_tyvars.push(ast.convert(Type::Unifier(unifier)));
                         (*ty_var, unifier)
                     })
                     .collect::<FxHashMap<_, _>>();
@@ -282,8 +267,8 @@ impl<'env> Solver<'env> {
                 };
                 self.tables.item_wrappers.insert(ast.1, wrapper);
                 (
-                    GenOut::new(constraints, ast.update(Expr::Item(item_id, kind))),
-                    ty.into(),
+                    GenOut::new(constraints, ast.convert(Expr::Item(item_id, kind))),
+                    ty,
                 )
             }
 

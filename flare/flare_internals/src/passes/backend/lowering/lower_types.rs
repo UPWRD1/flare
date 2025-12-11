@@ -39,7 +39,7 @@ impl LowerTypes {
         closed_row
             .values
             .iter()
-            .map(|ty| self.lower_ty(**ty))
+            .map(|ty| self.lower_ty(*ty.0))
             .collect()
     }
 
@@ -53,11 +53,11 @@ impl LowerTypes {
             typing::Type::Particle(p) => Type::Particle(p.0),
             typing::Type::Var(v) => Type::Var(self.env[&AstTypeVar::Ty(v)]),
             typing::Type::Func(arg, ret) => {
-                let arg = self.lower_ty(*arg);
-                let ret = self.lower_ty(*ret);
+                let arg = self.lower_ty(*arg.0);
+                let ret = self.lower_ty(*ret.0);
                 Type::fun(arg, ret)
             }
-            typing::Type::Label(_, ty) => self.lower_ty(*ty),
+            typing::Type::Label(_, ty) => self.lower_ty(*ty.0),
             typing::Type::Prod(row) => Type::prod(self.lower_row_ty(row)),
             typing::Type::Sum(row) => Type::sum(self.lower_row_ty(row)),
             _ => todo!("{ty:?}"),

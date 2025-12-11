@@ -152,6 +152,7 @@ impl Environment {
                     }
 
                     Definition::Let(name, body, sig) => {
+                        // dbg!(sig);
                         let ident = QualifierFragment::Func(name.0.0);
                         let entry = Item::new(Function(FunctionItem {
                             name: *name,
@@ -201,14 +202,7 @@ impl Environment {
                 let path = QualifierFragment::from_expr(dep);
                 // dbg!(&path);
                 let imports: Vec<NodeIndex> = if let Ok(n) = me.get(&path?) {
-                    // if matches!(me.value(n).unwrap(), Item::Package(_)) {
-                    //     me.graph
-                    //         .edges_directed(n, petgraph::Direction::Outgoing)
-                    //         .map(|e| e.target())
-                    //         .collect()
-                    // } else {
                     vec![n]
-                    // }
                 } else {
                     return Err(DynamicErr::new("Import does not exist")
                         .label("this", dep.1)
@@ -268,57 +262,6 @@ impl Environment {
         // Ok(())
     }
 
-    // /// Builds a struct.
-    // ///
-    // /// # Errors
-    // ///
-    // /// On invalid names
-    // fn build_struct(
-    //     &mut self,
-    //     current_node: NodeIndex,
-    //     the_ty: &Spanned<Intern<Typ>>,
-    //     fields: &Vec<(Spanned<Intern<String>>, Spanned<Intern<Ty>>)>,
-    // ) -> Result<(), CompilerErr> {
-    //     use ItemKind::{Field, Struct};
-    //     let ident = QualifierFragment::Type(the_ty.ident()?.0);
-    //     let struct_entry = Item::new(Struct(StructEntry { ty: *the_ty }), false);
-    //     let struct_node = self.add(current_node, ident, struct_entry);
-
-    //     for field in fields {
-    //         let field_name = QualifierFragment::Field(field.0 .0);
-    //         let field_entry = Item::new(Field(*field), false);
-    //         self.add(struct_node, field_name, field_entry);
-    //     }
-    //     Ok(())
-    // }
-    // /// Builds an enum
-    // fn build_enum(
-    //     &mut self,
-    //     current_node: NodeIndex,
-    //     the_ty: &Spanned<Intern<Ty>>,
-    //     variants: &Vec<Spanned<EnumVariant>>,
-    // ) -> Result<(), CompilerErr> {
-    //     use ItemKind::{Enum, Variant};
-    //     let parent_name = the_ty.ident()?;
-    //     let ident = QualifierFragment::Type(parent_name.0);
-    //     let enum_entry = Item::new(Enum(EnumEntry { ty: *the_ty }), false);
-    //     let enum_node = self.add(current_node, ident, enum_entry);
-
-    //     for variant in variants {
-    //         let variant_name = QualifierFragment::Variant(variant.0.name.0);
-    //         let the_variant = (
-    //             EnumVariant {
-    //                 parent_name: Some(parent_name),
-    //                 ..variant.0
-    //             },
-    //             variant.1,
-    //         );
-    //         let variant_entry = Item::new(Variant(the_variant.into()), false);
-    //         self.add(enum_node, variant_name, variant_entry);
-    //     }
-    //     Ok(())
-    // }
-
     fn build_row(&mut self, current_node: NodeIndex, the_row: ClosedRow) -> CompResult<()> {
         // dbg!(current_node);
         for (name, value) in the_row.fields.iter().zip(the_row.values) {
@@ -328,7 +271,7 @@ impl Environment {
                 value: *value,
             });
             let val_idx = self.add(current_node, QualifierFragment::Field(name.0.0), entry);
-            self.build_type(val_idx, **value, name.0)?;
+            self.build_type(val_idx, *value, name.0)?;
         }
         Ok(())
     }
@@ -336,16 +279,16 @@ impl Environment {
     fn build_type(
         &mut self,
         current_node: NodeIndex,
-        the_ty: Type,
+        the_ty: Spanned<Intern<Type>>,
         name: Spanned<Intern<String>>,
     ) -> CompResult<()> {
         // dbg!(the_ty);
-        match the_ty {
+        match *the_ty.0 {
             Type::Prod(row) | Type::Sum(row) => match row {
                 crate::passes::midend::typing::Row::Closed(the_row) => {
                     // let type_name = l.0;
                     let qual = QualifierFragment::Type(name.0);
-                    let entry = Item::new(ItemKind::Type(name, the_ty.into(), name.1));
+                    let entry = Item::new(ItemKind::Type(name, the_ty));
                     let ty_node_idx = self.add(current_node, qual, entry);
                     self.build_row(ty_node_idx, the_row)?;
                 }
@@ -354,9 +297,9 @@ impl Environment {
             Type::Label(l, r) => {
                 let type_name = l.0;
                 let qual = QualifierFragment::Type(type_name.0);
-                let entry = Item::new(ItemKind::Type(name, the_ty.into(), type_name.1));
+                let entry = Item::new(ItemKind::Type(name, the_ty));
                 let ty_node_idx = self.add(current_node, qual, entry);
-                self.build_type(ty_node_idx, *r, l.0)?;
+                self.build_type(ty_node_idx, r, l.0)?;
             }
             _ => (),
         };

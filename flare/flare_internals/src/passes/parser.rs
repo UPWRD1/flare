@@ -275,7 +275,8 @@ where
             text::int(10)
                 .then(just('.').then(text::digits(10)).or_not())
                 .to_slice()
-                .map(|s: &str| Token::Num(s.parse().unwrap()))
+                .try_map(|s: &str, span| Ok(Token::Num(s.parse().map_err(|_| Rich::custom(span, "Could not parse number"))?)))
+                
                 .labelled("number"),
             just('"')
                 .ignore_then(none_of('"').repeated().to_slice())
@@ -357,7 +358,7 @@ where
         // });
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
-        let path = ident.pratt(vec![infix(
+        let _ = ident.pratt(vec![infix(
             right(9),
             just(Token::Dot),
             |x,
@@ -377,8 +378,7 @@ where
                     .allow_trailing().at_least(1)
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|args,
-                                e| {
+                    .map_with(|args, _| {
                                                    unsafe {
                                 args
                                 .into_iter()
@@ -441,91 +441,7 @@ where
                 // False
                 just(Token::False)
                     .map_with(|_, e| Spanned(Intern::from(Expr::Bool(false)), e.span())),
-                // Identifiers
-//                 raw_ident.rewind().then(choice((
-//                     //enums
-//                     raw_ident.then(
-//                         expr.clone()
-//                             .separated_by(just(Token::Comma))
-//                             .at_least(1)
-//                             .collect::<Vec<_>>()
-//                             .delimited_by(
-//                                 just(Token::LBrace),
-//                                  just(Token::RBrace))
-//                             .or_not()
-//                             .labelled("enum variant field")
-//                             .as_context(),
-//                     )
-//                     // .validate(|o, _, _| dbg!(o))
-//                     .map_with(|(name, args):
-//                                (_, Option<Vec<_>>), e| {
-//                         if let Some(args) = args {
-//                             let args = unsafe {
-//                                 args
-//                                 .into_iter()
-//                                 .enumerate()
-//                                 .map(|(i, arg ):
-//                                     (_, Spanned<Intern<Expr<Untyped>>>)| {
-//                                     Spanned(
-//                                         Expr::Label(
-//                                             Label(Spanned(
-//                                                 i.to_string().into(), arg.1)),
-//                                             arg
-//                                         ).into(),
-//                                         arg.1)
-//                                 })
-//                                 .reduce(|l, r| Spanned(Expr::Inject(Direction::Left, l).into(), l.1.union(r.1))).unwrap_unchecked()}
-//                                 ;
-//                             let ex = Expr::Label(Label(name), args);
-
-//                             Spanned(Intern::from(ex), e.span())
-//                         } else {
-                            
-// Spanned(Expr::Ident(Untyped(name)).into(), e.span())
-//                         }
-//                                            })
-//                     .labelled("enum constructor")
-//                     .as_context(),
-
-//                     // structs
-//                     raw_ident
-//                      .then(
-//                         raw_ident
-//                             .then_ignore(just(Token::Eq))
-//                             .then(expr.clone())
-//                             .separated_by(just(Token::Comma))
-//                             .at_least(1)
-//                             .collect::<Vec<(Spanned<Intern<String>>, Spanned<Intern<Expr<Untyped>>>)>>()
-//                             .delimited_by(just(Token::LBrace), just(Token::RBrace)),
-//                     )
-//                     .map_with(|(name, args), e| {
-//                         if args.is_empty() {
-//                             unreachable!()
-//                                                     } else {
-//                             let args = unsafe {args
-//                                 .into_iter()
-//                                 .map(|(field_name, arg)| -> Spanned<Intern<Expr<Untyped>>> {
-//                                     Spanned(
-//                                         Expr::Label(Label(Spanned(field_name.0, arg.1)), arg).into(),
-//                                         field_name.1.union(arg.1),
-//                                     )
-//                                 })
-//                                 .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()};
-//                             let ex = Expr::Label(Label(name), args);
-//                            Spanned(Intern::from(ex), e.span())
-//                         }
-//                     })
-//                     .labelled("struct constructor")
-//                     .as_context(),
-
-//                 // plain old idents
-//                 raw_ident.then(empty()).map_with(
-//                     |(name, _), e|
-//                     Spanned(Expr::Ident(Untyped(name)).into(), e.span())),
-//                 ))).map(|x| x.1),
-
-                          
-                                              
+                                                                 
                 // Tuple Constructors
                 tuple,
 
@@ -726,8 +642,8 @@ where
             .map_with(|(name, fields), _| {
                 let (fields, values): (Vec<Spanned<_>>, Vec<_>) = fields.into_iter().unzip();
                 let fields = fields.iter().map(|x| Label(*x)).collect::<Vec<_>>().leak();
-                let values = values.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak();
-                let ty_body = Type::Prod(Row::Closed(ClosedRow { fields, values }));
+                let values = values.leak();
+                let ty_body = name.convert(Type::Prod(Row::Closed(ClosedRow { fields, values })));
                 // let ty = Type::Label(Label(name), ty_body.into());
                 let ty = ty_body;
                 Definition::Type(name, ty)
@@ -742,23 +658,24 @@ where
                         .delimited_by(just(Token::LBrace), just(Token::RBrace)),
                 )
                 .map_with(|(name, types), e| {
-                    let fields = Type::Prod(Row::Closed(ClosedRow {
+                    let fields = name.convert(Type::Prod(Row::Closed(ClosedRow {
                         fields: types
                             .iter()
                             .enumerate()
                             .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
                             .collect::<Vec<_>>()
                             .leak(),
-                        values: types.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak()
-                    }));
+                        values: types.leak()
+                    })));
                     let n = Label(name);
-                    let variant_ty = Type::Label(Label(name), fields.into());
-                    (n, Intern::from(variant_ty))
+                    let variant_ty = Type::Label(Label(name), fields);
+                    (n, Spanned( Intern::from(variant_ty), e.span(),))
+                    
                 }),
             raw_ident.map_with(|name, e| {
                 let n = Label(name);
-                let ty = Type::Label(n, Type::Unit.into());
-                (n, Intern::from(ty))
+                let ty = Type::Label(n, name.convert(Type::Unit));
+                (n, Spanned(Intern::from(ty), e.span()))
             }),
         )).boxed();
 
@@ -771,14 +688,14 @@ where
                     .clone()
                     .separated_by(just(Token::Comma))
                     .allow_trailing()
-                    .collect::<Vec<(Label, Intern<Type>)>>(),
+                    .collect::<Vec<(Label, Spanned<Intern<Type>>)>>(),
             )
             .map_with(|(name, variants), _| {
-                let (fields, values): (Vec<Label>, Vec<Intern<Type>>) = variants.into_iter().unzip();
+                let (fields, values): (Vec<Label>, Vec<Spanned<Intern<Type>>>) = variants.into_iter().unzip();
 
                 let (fields, values) = (fields.leak(), values.leak());
 
-                let ty_body = Type::Sum(Row::Closed(ClosedRow { fields, values }));
+                let ty_body = name.convert(Type::Sum(Row::Closed(ClosedRow { fields, values })));
                 // let ty = Definition::Type(Type::Label(
                 //     Label(name),
                 //     ty_body.into(),
@@ -907,24 +824,24 @@ where
                                 .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
                                 .collect::<Vec<_>>()
                                 .leak(),
-                            values: types.iter().map(|x| Intern::from(*x.0)).collect::<Vec<_>>().leak(),
+                            values: types.leak(),
                         }));
                         Spanned(Intern::from(ty), e.span())
                     }),
 // Table
-raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
+                raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
                     .clone()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|mut types, e| {
-                        types.reverse();
+                    .map_with(|types, e| {
+                        let (fields, values): (Vec<Spanned<Intern<String>>>, Vec<Spanned<Intern<Type>>>) = types.into_iter().unzip();
+                        // types.reverse();
                         let ty = Type::Prod(Row::Closed(ClosedRow {
-                            fields: types
+                            fields: fields
                                 .iter()
-                                
-                                .map(|(name, _)| Label(*name))
+                                .map(|name| Label(*name))
                                 .collect::<Vec<_>>()
                                 .leak(),
-                            values: types.iter().map(|(_, value)| value.0).collect::<Vec<_>>().leak(),
+                            values: values.leak(),
                         }));
                         Spanned(Intern::from(ty), e.span())
                     }),
@@ -937,7 +854,7 @@ raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comm
                 right(9),
                 just(Token::Arrow),
                 |x: Spanned<Intern<Type>>, _, y, e| {
-                    Spanned(Intern::from(Type::Func(x.0, y.0)), e.span())
+                    Spanned(Intern::from(Type::Func(x, y)), e.span())
                 },
             )])
     .boxed()
@@ -1166,16 +1083,16 @@ mod tests {
                 Type::Func(
                     a,
                     b
-                ) if a == b && matches!(*a, Type::Num)
+                ) if a == b && matches!(*a.0, Type::Num)
             ),
             ("num -> num -> num",
                 Type::Func(
                     a,
                     b,
                     
-                ) if matches!(*a, Type::Num)
-                    && matches!(*b, Type::Func(c, d)
-                        if c == d && matches!(*c, Type::Num))
+                ) if matches!(*a.0, Type::Num)
+                    && matches!(*b.0, Type::Func(c, d)
+                        if c == d && matches!(*c.0, Type::Num))
            ),          
         ]);
     }

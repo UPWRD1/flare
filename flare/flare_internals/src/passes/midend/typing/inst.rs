@@ -1,3 +1,4 @@
+use chumsky::span::Span;
 use internment::Intern;
 use rustc_hash::FxHashMap;
 
@@ -6,7 +7,7 @@ use crate::{
         Constraint, Evidence, Provenance, Row, TyUniVar, Type, TypeScheme, TypeVar,
         rows::{RowCombination, RowUniVar, RowVar},
     },
-    resource::rep::ast::NodeId,
+    resource::rep::{Spanned, ast::NodeId},
 };
 
 pub struct Instantiate<'a> {
@@ -27,7 +28,7 @@ impl<'a> Instantiate<'a> {
         }
     }
 
-    pub fn type_scheme(&self, ty_scheme: TypeScheme) -> (Vec<Constraint>, Type) {
+    pub fn type_scheme(&self, ty_scheme: TypeScheme) -> (Vec<Constraint>, Spanned<Intern<Type>>) {
         let constraints = ty_scheme
             .evidence
             .into_iter()
@@ -38,7 +39,7 @@ impl<'a> Instantiate<'a> {
     }
 
     fn evidence(&self, ev: Evidence) -> Constraint {
-        dbg!(&ev);
+        // dbg!(&ev);
         match ev {
             Evidence::RowEquation { left, right, goal } => Constraint::RowCombine(
                 Provenance::ExpectedCombine(self.id),
@@ -55,14 +56,14 @@ impl<'a> Instantiate<'a> {
         match row {
             // Type Scheme's should have been generalized and only contain Row::Open.
             // If we see a Unifier in a type scheme our type checker has a bug in it.
-            Row::Unifier(_) => panic!("Leftover unifier in type scheme"),
+            Row::Unifier(_) => unreachable!("Leftover unifier in type scheme"),
             Row::Open(var) => self
                 .rowvar_to_unifiers
                 .get(&var)
                 .copied()
                 .map(Row::Unifier)
                 .unwrap_or_else(|| {
-                    panic!(
+                    unreachable!(
                         "Expected row var {:?} to be mapped to fresh unifier in instantiation",
                         var
                     )
@@ -71,7 +72,7 @@ impl<'a> Instantiate<'a> {
                 row.values = row
                     .values
                     .iter()
-                    .map(|ty| self.ty(*ty).into())
+                    .map(|ty| self.ty(*ty))
                     .collect::<Vec<_>>()
                     .leak();
                 Row::Closed(row)
@@ -79,33 +80,31 @@ impl<'a> Instantiate<'a> {
         }
     }
 
-    fn ty(&self, ty: Intern<Type>) -> Type {
-        match *ty {
+    fn ty(&self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
+        match *ty.0 {
             Type::Var(var) => self
                 .tyvar_to_unifiers
                 .get(&var)
                 .copied()
                 .map(Type::Unifier)
+                .map(|x| ty.convert(x))
                 .unwrap_or_else(|| {
-                    panic!(
+                    unreachable!(
                         "Expected type var {:?} to be mapped to fresh unifier in instantiation",
                         var
                     )
                 }),
-            ty @ Type::Num
-            | ty @ Type::Bool
-            | ty @ Type::String
-            | ty @ Type::Unit
-            | ty @ Type::Unifier(_) => ty,
+            Type::Num | Type::Bool | Type::String | Type::Unit | Type::Unifier(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.ty(arg);
                 let ret = self.ty(ret);
-                Type::fun(arg, ret)
+                let s = arg.1.union(ret.1);
+                Spanned(Type::Func(arg, ret).into(), s)
             }
-            Type::Prod(row) => Type::Prod(self.row(row)),
-            Type::Sum(row) => Type::Sum(self.row(row)),
-            Type::Label(label, ty) => Type::Label(label, ty),
-            _ => panic!("{:?}", ty),
+            Type::Prod(row) => ty.convert(Type::Prod(self.row(row))),
+            Type::Sum(row) => ty.convert(Type::Sum(self.row(row))),
+            Type::Label(label, ty) => ty.convert(Type::Label(label, ty)),
+            _ => todo!("{:?}", ty),
         }
     }
 }

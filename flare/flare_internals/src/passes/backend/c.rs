@@ -6,9 +6,9 @@ use crate::{
         midend::typing::{Type, Typed},
     },
     resource::rep::{
+        Spanned,
         ast::{Expr, Variable},
         entry::FunctionItem,
-        Spanned,
     },
 };
 
@@ -63,12 +63,13 @@ impl C {
     fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> String {
         let out_ty = f.sig;
         // let mut arg_types = vec![];
-        let (args, ret) = out_ty.0.destructure_arrow();
+        let (args, ret) = Type::destructure_arrow(out_ty);
         dbg!(args, ret);
-        let converted_ret = self.convert_type(*ret);
+        todo!();
+        // let converted_ret = self.convert_type(ret);
 
-        let output = format!("{} {}()", converted_ret, f.name.ident().unwrap().0);
-        dbg!(output);
+        //let output = format!("{} {}()", converted_ret, f.name.ident().unwrap().0);
+        // dbg!(output);
         todo!()
     }
     fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>) {

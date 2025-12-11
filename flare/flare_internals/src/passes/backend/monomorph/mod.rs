@@ -1,8 +1,5 @@
 use crate::passes::backend::{
-    lowering::{
-        ir::{IR, TyApp, Type},
-        subst::Subst,
-    },
+    lowering::ir::{IR, TyApp, Type},
     simplify,
 };
 
@@ -23,12 +20,12 @@ fn collect_types(ir: &IR, types: &mut Vec<TyApp>) {
             collect_types(func, types);
             collect_types(body, types);
         }
-        IR::TyFun(kind, ir) => collect_types(ir, types),
+        IR::TyFun(_, ir) => collect_types(ir, types),
         IR::TyApp(ir, ty_app) => {
             types.push(ty_app.clone());
             collect_types(ir, types);
         }
-        IR::Local(var, def, body) => {
+        IR::Local(_, def, body) => {
             collect_types(def, types);
             collect_types(body, types);
         }
@@ -54,18 +51,12 @@ fn instantiate(ir: IR, types: &[TyApp]) -> IR {
         [ty, rest_types @ ..] => match ir {
             IR::TyFun(_, body) => {
                 let body = instantiate(*body, rest_types);
-                match ty {
-                    TyApp::Ty(ty) => simplify::subst_ty(body, ty.clone()),
-                    TyApp::Row(r) => todo!(),
-                }
+                simplify::subst_ty(body, ty.clone())
             }
-            IR::TyApp(body, a) => {
+            IR::TyApp(body, _) => {
                 // dbg!(a, &ty);
                 let body = instantiate(*body, rest_types);
-                match ty {
-                    TyApp::Ty(ty) => simplify::subst_ty(body, ty.clone()),
-                    TyApp::Row(r) => todo!(),
-                }
+                simplify::subst_ty(body, ty.clone())
             }
             IR::Local(v, d, b) => IR::local(v, instantiate(*d, types), instantiate(*b, types)),
 

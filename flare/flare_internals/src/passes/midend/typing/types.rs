@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, fmt, hash::Hash};
 
-use chumsky::span::Span;
+use chumsky::span::{SimpleSpan, Span};
 use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
@@ -25,7 +25,7 @@ impl fmt::Display for TyUniVar {
 }
 
 impl UnifyKey for TyUniVar {
-    type Value = Option<Type>;
+    type Value = Option<Spanned<Intern<Type>>>;
 
     fn index(&self) -> u32 {
         self.0
@@ -54,7 +54,7 @@ pub enum Type {
     Num,
     Bool,
     String,
-    Func(Intern<Self>, Intern<Self>),
+    Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
     Package(Spanned<Intern<String>>),
     Item(ItemId),
@@ -62,13 +62,13 @@ pub enum Type {
     User(Spanned<Intern<String>>),
     Prod(Row),
     Sum(Row),
-    Label(Label, Intern<Self>),
+    Label(Label, Spanned<Intern<Self>>),
 }
 
 // #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 // pub struct InternType(pub Intern<Type>);
 
-impl EqUnifyValue for Type {}
+impl EqUnifyValue for Spanned<Intern<Type>> {}
 
 impl Ident for Type {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
@@ -81,6 +81,10 @@ impl Ident for Type {
 }
 
 impl Type {
+    pub fn to_default_span(self) -> Spanned<Intern<Self>> {
+        Spanned(self.into(), SimpleSpan::new(0, 0..0))
+    }
+
     pub fn occurs_check(&self, var: TyUniVar) -> Result<(), Self> {
         match self {
             Self::Num | Self::String | Self::Bool | Self::Unit | Self::Particle(_) => Ok(()),
@@ -93,17 +97,17 @@ impl Type {
             }
             Self::Var(_) => Ok(()),
             Self::Func(arg, ret) => {
-                arg.occurs_check(var).map_err(|_| *self)?;
-                ret.occurs_check(var).map_err(|_| *self)
+                arg.0.occurs_check(var).map_err(|_| *self)?;
+                ret.0.occurs_check(var).map_err(|_| *self)
             }
 
-            Self::Label(_, ty) => ty.occurs_check(var).map_err(|_| *self),
+            Self::Label(_, ty) => ty.0.occurs_check(var).map_err(|_| *self),
             Self::Prod(row) | Self::Sum(row) => match row {
                 Row::Open(_) => Ok(()),
                 Row::Unifier(_) => Ok(()),
                 Row::Closed(closed_row) => {
                     for ty in closed_row.values.iter() {
-                        ty.occurs_check(var).map_err(|_| *self)?
+                        ty.0.occurs_check(var).map_err(|_| *self)?
                     }
                     Ok(())
                 }
@@ -122,9 +126,10 @@ impl Type {
             Self::Unifier(v) => unbound_tys.contains(v),
             Self::Var(_) => false,
             Self::Func(arg, ret) => {
-                arg.mentions(unbound_tys, unbound_rows) || ret.mentions(unbound_tys, unbound_rows)
+                arg.0.mentions(unbound_tys, unbound_rows)
+                    || ret.0.mentions(unbound_tys, unbound_rows)
             }
-            Self::Label(_, ty) => ty.mentions(unbound_tys, unbound_rows),
+            Self::Label(_, ty) => ty.0.mentions(unbound_tys, unbound_rows),
             Self::Prod(row) | Self::Sum(row) => match row {
                 Row::Unifier(var) => unbound_rows.contains(var),
                 Row::Open(_) => false,
@@ -134,31 +139,29 @@ impl Type {
         }
     }
 
-    pub fn split_func(&self) -> (&Intern<Self>, &Intern<Self>) {
+    pub fn split_func(&self) -> (&Spanned<Intern<Self>>, &Spanned<Intern<Self>>) {
         if let Self::Func(l, r) = self {
             (l, r)
         } else {
             panic!()
         }
     }
-    pub fn destructure_arrow(&self) -> (Vec<Intern<Self>>, Intern<Self>) {
-        fn worker(t: &Type, v: &mut Vec<Intern<Type>>) {
-            match t {
+    pub fn destructure_arrow(
+        t: Spanned<Intern<Self>>,
+    ) -> (Vec<Spanned<Intern<Self>>>, Spanned<Intern<Self>>) {
+        fn worker(t: &Spanned<Intern<Type>>, v: &mut Vec<Spanned<Intern<Type>>>) {
+            match *t.0 {
                 Type::Func(l, r) => {
-                    v.push(*l);
-                    worker(r, v);
+                    v.push(l);
+                    worker(&r, v);
                 }
-                _ => v.push((*t).into()),
+                _ => v.push(*t),
             }
         }
         let mut v = vec![];
-        worker(self, &mut v);
+        worker(&t, &mut v);
         let (ret, args) = v.split_last().unwrap();
         (args.to_vec(), *ret)
-    }
-
-    pub fn fun(arg: Self, ret: Self) -> Self {
-        Self::Func(arg.into(), ret.into())
     }
 }
 
@@ -168,6 +171,7 @@ impl fmt::Display for Type {
             Self::Unifier(u) => write!(f, "%var{}", u.0),
             Self::Var(v) => write!(f, "?{}", v.0),
             Self::Func(l, r) => write!(f, "{l} -> {r}"),
+            Self::Prod(r) | Self::Sum(r) => write!(f, "{r}"),
             _ => write!(f, "{self:#?}"),
         }
     }

@@ -1,19 +1,16 @@
 item #0 is
-tyfn Type => fn[$0: ?0] => $0
+tyfn Type =>
+  tyfn Type =>
+    fn[$0: ?1, $1: ?0] =>
+      {
+        $0,
+        $1
+      }
 end item #0
 
 item #1 is
-tyfn Type => fn[$0: ?0] => $0
+{
+  3,
+  asdf
+}
 end item #1
-
-item #2 is
-let $0: {num * str} = {
-    3,
-    john
-  }
-in
-  let $0: num -> num =
-    fn[$0: num] => $0
-  in
-    $0(4)
-end item #2

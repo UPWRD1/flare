@@ -31,7 +31,7 @@ use crate::{
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Typed(pub Untyped, pub Intern<Type>);
+pub struct Typed(pub Untyped, pub Spanned<Intern<Type>>);
 
 impl Variable for Typed {}
 
@@ -49,7 +49,7 @@ impl Ident for Typed {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Constraint {
-    TypeEqual(Provenance, Intern<Type>, Intern<Type>),
+    TypeEqual(Provenance, Spanned<Intern<Type>>, Spanned<Intern<Type>>),
     RowCombine(Provenance, RowCombination),
 }
 
@@ -76,7 +76,7 @@ impl Provenance {
             Self::UnexpectedFun(node_id)
             | Self::AppExpectedFun(node_id)
             | Self::ExpectedCombine(node_id)
-            | Self::ExpectedUnify(_, node_id) => *node_id,
+            | Self::ExpectedUnify(node_id, _) => *node_id,
         }
     }
 }
@@ -123,7 +123,7 @@ pub struct TypeScheme {
 
     pub unbound_rows: BTreeSet<RowVar>,
     pub evidence: Vec<Evidence>,
-    pub ty: Intern<Type>,
+    pub ty: Spanned<Intern<Type>>,
 }
 
 #[derive(Debug)]
@@ -132,7 +132,7 @@ pub struct TypeInferOut {
     pub scheme: TypeScheme,
     pub errors: FxHashMap<NodeId, CompilerErr>,
     pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Intern<Type>>,
+    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
     pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
 }
 
@@ -142,13 +142,13 @@ pub struct TypesOutput {
     pub scheme: TypeScheme,
     pub errors: FxHashMap<NodeId, CompilerErr>,
     pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Intern<Type>>,
+    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
     pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ItemWrapper {
-    pub types: Vec<Intern<Type>>,
+    pub types: Vec<Spanned<Intern<Type>>>,
     pub rows: Vec<Row>,
     pub evidence: Vec<Evidence>,
 }
@@ -186,7 +186,7 @@ struct SolverTables {
 
     partial_row_combs: BTreeSet<RowCombination>,
     row_to_combo: FxHashMap<NodeId, RowCombination>,
-    branch_to_ret_ty: FxHashMap<NodeId, Intern<Type>>,
+    branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
 
     subst_unifiers_to_tyvars: FxHashMap<TyUniVar, TypeVar>,
     next_tyvar: u32,

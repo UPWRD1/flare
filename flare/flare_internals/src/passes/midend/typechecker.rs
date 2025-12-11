@@ -45,17 +45,17 @@ impl Typechecker {
                     let o = self.check_function(*item_idx, f)?;
                     accum.push(o);
                 }
-                ItemKind::Type(_n, t, _s) => {
+                ItemKind::Type(_n, t) => {
                     self.check_type(*item_idx, t)?;
                 }
                 ItemKind::Extern { name: _, sig } => {
-                    let unbound_types = Self::extract_generics(sig.0);
+                    let unbound_types = Self::extract_generics(sig);
                     let unbound_rows = BTreeSet::new();
                     let scheme = TypeScheme {
                         unbound_types,
                         unbound_rows,
                         evidence: Vec::new(),
-                        ty: sig.0,
+                        ty: sig,
                     };
                     self.context
                         .insert(ItemId(item_idx.index()), scheme.clone());
@@ -71,7 +71,7 @@ impl Typechecker {
         Ok((accum, self.context))
     }
 
-    fn check_type(&mut self, item_idx: NodeIndex, t: Intern<Type>) -> CompResult<()> {
+    fn check_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
         let unbound_types = Self::extract_generics(t);
         let unbound_rows = BTreeSet::new();
         // TODO: Add support for rows and generics
@@ -85,17 +85,12 @@ impl Typechecker {
         Ok(())
     }
 
-    pub fn extract_generics(t: Intern<Type>) -> BTreeSet<TypeVar> {
+    pub fn extract_generics(t: Spanned<Intern<Type>>) -> BTreeSet<TypeVar> {
         // let mut rowcount = 0;
         let mut accum = BTreeSet::new();
         // let row_accum = BTreeSet::new();
-        fn helper(
-            t: Intern<Type>,
-            accum: &mut BTreeSet<TypeVar>,
-            // _rowaccum: &mut BTreeSet<RowVar>,
-            // row_count: &mut u32,
-        ) {
-            match *t {
+        fn helper(t: Spanned<Intern<Type>>, accum: &mut BTreeSet<TypeVar>) {
+            match *t.0 {
                 Type::Var(type_var) => {
                     accum.insert(type_var);
                 }
@@ -111,10 +106,7 @@ impl Typechecker {
                             helper(*t, accum);
                         }
                     }
-                    // crate::passes::midend::typing::Row::Open(o) => {
-                    // row_accum.insert(o);
-                    // *row_count += 1;
-                    // }
+
                     _ => todo!("Should be closed? todo"),
                 },
                 // Type::Sum(row) => todo!(),
@@ -138,19 +130,19 @@ impl Typechecker {
         // let unbound_types = BTreeSet::new();
         let evidence = vec![];
         // let unbound_rows = (*f.unbound_rows).clone();
-        let unbound_types = Self::extract_generics(f.sig.0);
+        let unbound_types = Self::extract_generics(f.sig);
         // let evidence = f.evidence.to_vec();
         let scheme = TypeScheme {
             unbound_types,
             unbound_rows,
             evidence,
-            ty: f.sig.0,
+            ty: f.sig,
         };
         // dbg!(&scheme);
         self.context
             .insert(ItemId(item_idx.index()), scheme.clone());
 
-        // let infer = Solver::type_infer_with_items(&self.context, f.body)?;
+        // let infer = Solver::type_infer_with_items(&self.context, f.body).unwrap();
         // dbg!(infer.scheme);
 
         let checked = Solver::check_with_items(&self.context, f.body, scheme).map_err(|e| {
