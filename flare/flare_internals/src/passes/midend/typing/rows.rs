@@ -29,7 +29,7 @@ impl UnifyKey for RowUniVar {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RowVar(pub u32);
+pub struct RowVar(pub Intern<String>);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Row {
@@ -68,7 +68,7 @@ impl Row {
 impl Display for Row {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Open(row_var) => write!(f, "row_var{}", row_var.0),
+            Self::Open(row_var) => write!(f, "?{{{}}}", row_var.0),
             Self::Unifier(row_uni_var) => write!(f, "unifier{}", row_uni_var.0),
             Self::Closed(closed_row) => write!(f, "{closed_row}"),
         }

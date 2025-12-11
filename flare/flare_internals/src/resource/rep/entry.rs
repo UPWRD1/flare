@@ -1,11 +1,9 @@
-use std::{cell::Cell, collections::BTreeSet};
-
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 // use lasso::Spur;
 
 use crate::{
-    passes::midend::typing::{Evidence, RowVar, Type, TypeVar},
+    passes::midend::typing::Type,
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
@@ -48,17 +46,12 @@ pub struct PackageEntry {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct FunctionItem<V: Variable> {
     pub name: V,
-    // pub sig: Cell<Option<Spanned<Intern<Type>>>>,
     pub sig: Spanned<Intern<Type>>,
-    // pub args: Intern<Vec<Spanned<Intern<String>>>>,
     pub body: Spanned<Intern<Expr<V>>>,
-    pub unbound_types: Intern<BTreeSet<TypeVar>>,
-    pub unbound_rows: Intern<BTreeSet<RowVar>>,
-    pub evidence: Intern<Vec<Evidence>>,
-    // pub checked: Cell<bool>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[repr(transparent)]
 pub struct Item<V: Variable> {
     pub kind: ItemKind<V>,
     // pub is_checked: Cell<bool>,
@@ -106,7 +99,7 @@ impl<V: Variable> SpanWrapped for Item<V> {
             ),
             ItemKind::Type(_, t) => t.1,
             ItemKind::Extern { name, sig } => name.1.union(sig.1),
-            ItemKind::Field { name, value } => name.0.1,
+            ItemKind::Field { name, value: _ } => name.0.1,
 
             ItemKind::Dummy(_) => panic!(),
         }
@@ -129,7 +122,7 @@ impl<V: Variable> Ident for Item<V> {
             ItemKind::Function(FunctionItem { name, .. }) => Ok(name.ident()?),
             ItemKind::Extern { name, .. } => Ok(name),
             ItemKind::Type(name, _) => Ok(name),
-            ItemKind::Field { name, value } => Ok(name.0),
+            ItemKind::Field { name, value: _ } => Ok(name.0),
             _ => panic!(),
         }
     }
@@ -162,7 +155,7 @@ impl<V: Variable> Item<V> {
             // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
             // ItemKind::Field((_, ty)) => Ok(*ty),
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
-            ItemKind::Field { name, value } => Ok(*value),
+            ItemKind::Field { name: _, value } => Ok(*value),
             ItemKind::Type(_, t) => Ok(*t),
             _ => Err(err(self)),
         }
@@ -175,7 +168,7 @@ impl<V: Variable> Item<V> {
         match &self.kind {
             ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
-            ItemKind::Field { name, value } => Ok(*value),
+            ItemKind::Field { name: _, value } => Ok(*value),
             ItemKind::Type(_, t) => Ok(*t),
             ItemKind::Extern { name: _, sig } => Ok(*sig),
             _ => Err(err(self)),

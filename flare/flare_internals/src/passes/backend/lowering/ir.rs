@@ -92,7 +92,7 @@ impl Row {
             Self::Closed(c) => {
                 if c.is_empty() {
                     Doc::text("{}")
-                } else if c.len() <= 2 {
+                } else if c.len() <= 3 {
                     Doc::nil()
                         .append(Doc::text("{"))
                         .append(
@@ -486,7 +486,11 @@ impl IR {
                 .append(r.render())
                 .append(Doc::text(")")),
             Self::TyApp(t, k) => Doc::nil()
-                .append(Doc::text(format!("[{k:?})")))
+                .append(Doc::text("["))
+                .append(match k {
+                    TyApp::Ty(t) => t.render(),
+                    TyApp::Row(row) => row.render(","),
+                })
                 .append(Doc::text("]::"))
                 .append(t.render()),
             Self::TyFun(k, b) => Doc::text("tyfn")

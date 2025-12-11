@@ -1,5 +1,5 @@
 use crate::{
-    passes::midend::typing::{ClosedRow, Row, Type, TypeVar},
+    passes::midend::typing::{ClosedRow, Row, RowVar, Type, TypeVar},
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
@@ -92,6 +92,7 @@ enum Token {
     TyUnit,
     Myself,
     Metatype,
+    TyInfer,
 }
 
 impl std::fmt::Display for Token {
@@ -154,7 +155,7 @@ impl std::fmt::Display for Token {
                 write!(f, "then")
             }
             Self::Def => write!(f, "def"),
-
+            Self::TyInfer => write!(f, "infer"),
             Self::TyNum => write!(f, "num"),
             Self::TyStr => write!(f, "str"),
             Self::TyBool => write!(f, "bool"),
@@ -225,9 +226,10 @@ where
                 "extern" => Token::Extern,
                 "false" => Token::False,
                 "fn" => Token::Fn,
-                "impl" => Token::Impl,
                 "if" => Token::If,
+                "impl" => Token::Impl,
                 "in" => Token::In,
+                "infer" => Token::TyInfer,
                 "let" => Token::Let,
                 "match" => Token::Match,
                 "package" => Token::Package,
@@ -794,7 +796,8 @@ where
                 just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
                 just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
                 just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
-                // User Types
+                just(Token::TyInfer)
+.map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())),                // User Types
                 raw_ident
                     .then(
                         type_list
@@ -806,12 +809,27 @@ where
                     .map_with(|(name, generics), e| {
                         Spanned(Intern::from(Type::User(name)), e.span())
                     }),
-                // Generic Type
+
+                // Particles
+                just(Token::At).ignore_then(raw_ident).map_with(|name, e| {
+                    Spanned(Intern::from(Type::Particle(name)), e.span())
+                }),
+                
+
+                // Generic Types
                 just(Token::Question)
                     .ignore_then(raw_ident)
                     .map_with(|name, e| {
                         Spanned(Intern::from(Type::Var(TypeVar(name.0))), e.span())
                     }),
+
+                // Row Vars
+                just(Token::Question)
+                    .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
+                    .map_with(|name, e| {
+                        Spanned(Intern::from(Type::Prod(Row::Open(RowVar(name.0)))), e.span())
+                    }),
+
                 // Tuple
                 type_list
                     .clone()

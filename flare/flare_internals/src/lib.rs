@@ -47,6 +47,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use internment::Intern;
 use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
@@ -65,7 +66,7 @@ use crate::{
                 Untyped,
                 // Untyped
             },
-            files::{FileID, FileSource},
+            files::{FileID, FileSource}, Spanned,
         },
     },
 };
@@ -159,20 +160,8 @@ impl<T: Target> Context<T> {
         let mut lowerer = Lowerer::new(items);
         let ir = lowerer.lower(source);
         let ir = simplify::simplify(ir);
-        // let mut h1 = FxHasher::default();
-        // let mut h2 = FxHasher::default();
-        // ir.iter().for_each(|x| x.0.hash(&mut h1));
-        // let v1 = h1.finish();
-
         let ir = monomorph::monomorph(ir);
-        // ir.iter().for_each(|x| x.0.hash(&mut h2));
-        // let v2 = h2.finish();
-        // dbg!(v1, v2);
-        // dbg!(&out);
-
-        // let ir = simplify::simplify(ir);
-                // s.check_item()?;
-
+        
         let g = Generator::new(self.target, ir);
 
         let out = g.generate();

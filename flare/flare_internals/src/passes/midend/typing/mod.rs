@@ -136,6 +136,19 @@ pub struct TypeInferOut {
     pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
 }
 
+impl TypeInferOut {
+    pub fn to_typesoutput(self) -> TypesOutput {
+        TypesOutput {
+            typed_ast: self.ast,
+            scheme: self.scheme,
+            errors: self.errors,
+            row_to_ev: self.row_to_ev,
+            branch_to_ret_ty: self.branch_to_ret_ty,
+            item_wrappers: self.item_wrappers,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TypesOutput {
     pub typed_ast: Spanned<Intern<Expr<Typed>>>,
@@ -238,7 +251,7 @@ impl<'env> Solver<'env> {
             .or_insert_with(|| {
                 let next = self.tables.next_rowvar;
                 self.tables.next_rowvar += 1;
-                RowVar(next)
+                RowVar(next.to_string().into())
             })
     }
 
@@ -361,13 +374,7 @@ impl<'env> Solver<'env> {
 
             tables: SolverTables {
                 next_tyvar: (signature.unbound_types.iter().len() + 1) as u32,
-                next_rowvar: signature
-                    .unbound_rows
-                    .iter()
-                    .max()
-                    .map(|rv| rv.0 + 1)
-                    .unwrap_or(2),
-
+                next_rowvar: (signature.unbound_rows.iter().len() + 1) as u32,
                 ..Default::default()
             },
         };
@@ -382,7 +389,7 @@ impl<'env> Solver<'env> {
         let id = ast.id();
         // We start with `check` instead of `infer`.
         let mut out = self.check(im::HashMap::default(), ast, signature.ty);
-
+        // dbg!(&out.constraints);
         // Add any evidence in our type annotation to be used during solving.
         out.constraints
             .extend(signature.evidence.iter().map(|ev| match *ev {

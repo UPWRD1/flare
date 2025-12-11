@@ -10,7 +10,10 @@ end item #0
 
 item #1 is
 {
-  3,
-  asdf
+  asdf,
+  {
+    true,
+    @ok
+  }
 }
 end item #1

@@ -189,7 +189,7 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
         | IR::Bool(_)
         | IR::Unit
         | IR::Particle(_)
-        | IR::Tuple(_)
+        // c IR::Tuple(_)
         | IR::Tag(_, _, _) => haystack,
 
         IR::Fun(var, ir) => IR::fun(
@@ -218,6 +218,16 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
                 dbg!(&ir);
                 subst_ty(*ir, payload)
             }
+        }
+
+        IR::Tuple(elements) => {
+            
+            IR::Tuple(
+                elements
+                    .into_iter()
+                    .map(|elem| subst_ty(elem, payload.clone()))
+                    .collect()
+            )
         }
 
         _ => todo!("{haystack:?}"),
@@ -269,6 +279,7 @@ impl<'i> OccuranceAnalyzer<'i> {
                 let mut occs = Occurrences::default();
                 let mut free = FxHashSet::default();
                 for elem in elements {
+                    // dbg!(elem);
                     let (elem_free, elem_occs) = self.occurrence_analysis(elem);
                     free.extend(elem_free);
                     occs = occs.merge(elem_occs)
@@ -279,7 +290,7 @@ impl<'i> OccuranceAnalyzer<'i> {
                 let (mut scrutinee_free, mut scrutinee_occs) = self.occurrence_analysis(scrutinee);
                 for branch in branches {
                     let (mut branch_free, branch_occs) = self.occurrence_analysis(&branch.body);
-                    branch_free.insert(branch.param.id);
+                    branch_free.remove(&branch.param.id);
                     scrutinee_free.extend(branch_free);
                     scrutinee_occs = scrutinee_occs.merge(branch_occs)
                 }
@@ -557,7 +568,8 @@ impl<'p> Simplifier<'p> {
             ),
             Occurrence::OnceInFun => ir.is_value() && self.some_benefit(ir, in_scope, ctx),
             Occurrence::Many => {
-                dbg!(ir.size());
+                // dbg!(&ir);
+                // dbg!(ir.size());
                 let small_enough = ir.size() <= self.inline_size_threshold;
                 ir.is_value() && small_enough && self.some_benefit(ir, in_scope, ctx)
             }
@@ -602,7 +614,17 @@ impl<'p> Simplifier<'p> {
             match entry {
                 ContextEntry::App(arg) => {
                     if let IR::Fun(var, body) = ir {
+                        // self.saturated_fun_count += 1;
                         self.saturated_fun_count += 1;
+                        // GENERATED: Claude
+                        // Inline the argument directly - do occurrence analysis on the fly
+                        let occ_analyzer = OccuranceAnalyzer::new(self.prev);
+                        let (_, body_occs) = occ_analyzer.occurrence_analysis(&body);
+                        let occ = body_occs.vars.get(&var.id).copied().unwrap_or(Occurrence::Dead);
+        
+                        // Add this variable's occurrence to our map before simplifying
+                        self.occs.vars.insert(var.id, occ);
+                        // END: Claude
                         return self.simplify(IR::local(var, arg, *body), in_scope, ctx);
                     } else {
                         let arg = self.simplify(arg, in_scope.clone(), vec![]);
@@ -614,7 +636,7 @@ impl<'p> Simplifier<'p> {
                         let field = irs[idx].clone();
                         return self.simplify(field, in_scope, ctx);
                     } else {
-                        dbg!(&ir);
+                        // dbg!(&ir);
                         let obj = self.simplify(ir, in_scope.clone(), vec![]);
                         ir = IR::field(obj, idx);
                     }

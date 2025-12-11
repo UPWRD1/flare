@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 use petgraph::{
@@ -18,7 +16,7 @@ type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 use crate::{
     passes::midend::{
         environment::Environment,
-        typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeVar},
+        typing::{ClosedRow, Type},
     },
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr},
@@ -52,11 +50,7 @@ pub struct Resolver<const N: usize> {
     current_dag_node: Option<NodeIndex>,
     pub dag: DiGraph<usize, ()>,
     main_dag_idx: Option<usize>,
-    unbound_ty_count: u32,
     intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
-    // rows: BTreeMap<RowVar, Row>,
-    unbound_row_count: u32, // new_rows: BTreeSet<RowVar>,
-    guess_evidence: Vec<Evidence>,
 }
 
 impl<const N: usize> Resolver<N> {
@@ -101,11 +95,10 @@ impl<const N: usize> Resolver<N> {
             current_dag_node: None,
             dag: DiGraph::new(),
             main_dag_idx: None,
-            unbound_ty_count: 0,
             intrinsics,
             // rows: BTreeMap::new(),
-            unbound_row_count: 0,
-            guess_evidence: vec![],
+            // unbound_row_count: 0,
+            // guess_evidence: vec![],
         }
     }
 
@@ -214,7 +207,7 @@ impl<const N: usize> Resolver<N> {
 
                     Ok(())
                 }
-                ItemKind::Type(n, t) => {
+                ItemKind::Type(_, t) => {
                     // Analyze the type
                     let t = self.in_context(|me| me.analyze_type(t), dag_idx)?;
 
@@ -229,7 +222,7 @@ impl<const N: usize> Resolver<N> {
                     }
                     Ok(())
                 }
-                ItemKind::Field { name, value } => {
+                ItemKind::Field { name: _, value } => {
                     // let t = self.in_context(|me| me.analyze_type(value), dag_idx)?;
                     let t = self.analyze_type(value)?;
                     // dbg!(value, t); // Write back the result
@@ -239,7 +232,7 @@ impl<const N: usize> Resolver<N> {
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
                     if let ItemKind::Field {
-                        name,
+                        name: _,
                         ref mut value,
                     } = item.kind
                     {
@@ -250,7 +243,7 @@ impl<const N: usize> Resolver<N> {
                     Ok(())
                 }
 
-                ItemKind::Extern { name, sig } => {
+                ItemKind::Extern { name: _, sig } => {
                     let old_sig = sig;
                     let t = self.in_context(|me| me.analyze_type(sig), dag_idx)?;
 
@@ -260,7 +253,11 @@ impl<const N: usize> Resolver<N> {
                         .graph
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
-                    if let ItemKind::Extern { name, ref mut sig } = item.kind {
+                    if let ItemKind::Extern {
+                        name: _,
+                        ref mut sig,
+                    } = item.kind
+                    {
                         *sig = old_sig.convert(t.0);
                     }
                     Ok(())
@@ -283,20 +280,7 @@ impl<const N: usize> Resolver<N> {
 
         let out = f(self);
         self.current_dag_node = old;
-        self.guess_evidence = vec![];
         out
-    }
-
-    fn new_rowvar(&mut self) -> RowVar {
-        let v = self.unbound_row_count;
-        self.unbound_row_count += 1;
-        RowVar(v)
-    }
-
-    fn new_typvar(&mut self) -> Intern<String> {
-        let v = self.unbound_ty_count;
-        self.unbound_ty_count += 1;
-        v.to_string().into()
     }
 
     fn analyze_func(
@@ -311,18 +295,18 @@ impl<const N: usize> Resolver<N> {
 
                 let body = me.analyze_expr(the_func.body, &[])?;
                 // dbg!(body);
-                the_func.unbound_rows = (0..me.unbound_row_count)
-                    .map(RowVar)
-                    .collect::<BTreeSet<_>>()
-                    .into();
+                // the_func.unbound_rows = (0..me.unbound_row_count)
+                //     .map(|x| RowVar(x.to_string().into()))
+                //     .collect::<BTreeSet<_>>()
+                //     .into();
 
-                the_func.unbound_types = (0..me.unbound_ty_count)
-                    .map(|x| TypeVar(x.to_string().into()))
-                    .collect::<BTreeSet<_>>()
-                    .into();
+                // the_func.unbound_types = (0..me.unbound_ty_count)
+                //     .map(|x| TypeVar(x.to_string().into()))
+                //     .collect::<BTreeSet<_>>()
+                //     .into();
 
                 the_func.sig = sig;
-                the_func.evidence = me.guess_evidence.clone().into();
+                // the_func.evidence = me.guess_evidence.clone().into();
 
                 the_func.body = body;
                 Ok(())
@@ -381,15 +365,8 @@ impl<const N: usize> Resolver<N> {
                         };
                         crate::passes::midend::typing::Row::Closed(cr)
                     }
-                    _ => unreachable!("All rows should be closed"),
+                    _ => r,
                 };
-                let left = Row::Open(self.new_rowvar());
-                let right = Row::Open(self.new_rowvar());
-                self.guess_evidence.push(Evidence::RowEquation {
-                    left,
-                    right,
-                    goal: new_r,
-                });
                 // self.rows.insert(, value)
                 Ok(t.modify(Type::Prod(new_r)))
             }

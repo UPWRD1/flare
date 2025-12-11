@@ -5,13 +5,14 @@ package Main =
     # let person_age p : {age: num} -> num =
             # p.age
 
-    # let x_getter r : {x: ?T} -> ?T =
-        # r.x
+    let x_getter r : {x: ?T} -> ?T =
+        r.x
 
     let combiner a b : ?T -> ?U -> {x: ?T, y: ?U} =
         {x = a, y = b}
 
-    let main : {x: num, y: str} = 
+    let main: {x: str, y: {x: bool, y: @ok}} =
+         let temp = combiner true @ok in
         # let rx = {x = 4} in 
-            combiner 3 "asdf" 
+           combiner "asdf" temp
                

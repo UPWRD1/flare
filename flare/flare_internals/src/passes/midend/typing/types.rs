@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, fmt, hash::Hash};
 
-use chumsky::span::{SimpleSpan, Span};
+use chumsky::span::SimpleSpan;
 use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
@@ -45,7 +45,7 @@ pub struct TypeVar(pub Intern<String>);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
-    Unknown,
+    Infer,
     Unifier(TyUniVar),
     Var(TypeVar),
     Particle(Spanned<Intern<String>>),
@@ -82,7 +82,14 @@ impl Ident for Type {
 
 impl Type {
     pub fn to_default_span(self) -> Spanned<Intern<Self>> {
-        Spanned(self.into(), SimpleSpan::new(0, 0..0))
+        Spanned(
+            Intern::from(self),
+            SimpleSpan {
+                start: 0,
+                end: 0,
+                context: 0,
+            },
+        )
     }
 
     pub fn occurs_check(&self, var: TyUniVar) -> Result<(), Self> {
@@ -168,6 +175,12 @@ impl Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Num => write!(f, "num"),
+            Self::Bool => write!(f, "bool"),
+            Self::String => write!(f, "str"),
+            Self::Unit => write!(f, "unit"),
+            Self::Particle(p) => write!(f, "@{p}"),
+
             Self::Unifier(u) => write!(f, "%var{}", u.0),
             Self::Var(v) => write!(f, "?{}", v.0),
             Self::Func(l, r) => write!(f, "{l} -> {r}"),

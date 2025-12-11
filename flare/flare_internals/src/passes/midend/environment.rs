@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 // use serde::{Deserialize, Serialize};
 // use std::cell::OnceCell;
 // use std::collections::HashMap;
-use std::{collections::BTreeSet, hash::RandomState};
+use std::hash::RandomState;
 
 use crate::{
     passes::midend::typing::{ClosedRow, Type},
@@ -18,15 +18,7 @@ use crate::{
         rep::{
             // concretetypes::{EnumVariant, Ty},
             Spanned,
-            ast::{
-                Definition,
-                Expr,
-                ImplDef,
-                Program,
-                Untyped,
-                Variable, // Untyped, Variable
-            },
-            common::{Ident, Named},
+            ast::{Definition, Expr, ImplDef, Program, Untyped},
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
         },
@@ -140,39 +132,17 @@ impl Environment {
                     Definition::Import(import_item) => {
                         deps.push(*import_item);
                     }
-                    // Definition::Struct(StructDef { the_ty, fields }) => {
-                    // me.build_struct(current_node, the_ty, fields)?;
-                    // }
-                    // Definition::Enum(EnumDef { the_ty, variants }) => {
-                    // me.build_enum(current_node, the_ty, variants)?;
-                    // }
                     Definition::Type(name, t) => {
                         me.build_type(current_node, *t, *name)?;
-                        // todo!()
                     }
-
                     Definition::Let(name, body, sig) => {
-                        // dbg!(sig);
                         let ident = QualifierFragment::Func(name.0.0);
                         let entry = Item::new(Function(FunctionItem {
                             name: *name,
                             sig: *sig,
                             body: *body,
-                            unbound_types: BTreeSet::new().into(),
-                            unbound_rows: BTreeSet::new().into(),
-                            evidence: vec![].into(),
                         }));
-                        let idx = me.add(current_node, ident, entry);
-
-                        // for arg in args {
-                        //     let arg_item = Item::new(
-                        //         ItemKind::Param {
-                        //             name: arg.0,
-                        //             value: arg.1,
-                        //         },
-                        //         false,
-                        //     );
-                        // }
+                        me.add(current_node, ident, entry);
                     }
                     Definition::Extern(n, ty) => {
                         let ident = QualifierFragment::Func(n.0);

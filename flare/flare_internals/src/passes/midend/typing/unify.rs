@@ -82,6 +82,8 @@ impl<'env> Solver<'env> {
         match (*left.0, *right.0) {
             (Type::Num, Type::Num) => Ok(()),
             (Type::String, Type::String) => Ok(()),
+            (Type::Bool, Type::Bool) => Ok(()),
+            (Type::Unit, Type::Unit) => Ok(()),
             (Type::Particle(p), Type::Particle(q)) if p == q => Ok(()),
 
             (Type::Var(a), Type::Var(b)) if a.0 == b.0 => Ok(()),
@@ -186,7 +188,7 @@ impl<'env> Solver<'env> {
     fn unify_row_row(&mut self, left: Row, right: Row) -> Result<(), UnificationError> {
         let left = self.normalize_row(left);
         let right = self.normalize_row(right);
-
+        // dbg!(left, right);
         match (left, right) {
             (Row::Open(left), Row::Open(right)) if left == right => Ok(()),
             (Row::Unifier(l), Row::Unifier(r)) => self
