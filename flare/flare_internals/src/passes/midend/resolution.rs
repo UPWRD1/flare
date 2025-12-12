@@ -28,7 +28,7 @@ use crate::{
         errors::{self, CompResult, CompilerErr, DynamicErr},
         rep::{
             Spanned,
-            ast::{Direction, Expr, ItemId, Kind, Label, LambdaInfo, Untyped},
+            ast::{ComparisonOp, Direction, Expr, ItemId, Kind, Label, LambdaInfo, Untyped},
             common::Ident,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
@@ -131,36 +131,29 @@ impl<const N: usize> Resolver<N> {
                     .ok()
                     .flatten()
             })
-            // .map(|x| if let Some(x) = x { x } else { unreachable!() })
             .collect();
 
         for (idx, p) in filtered {
-            // dbg!(&name);
             self.analyze_package(idx, p)?
         }
 
         self.dag = self.dag.clone().filter_map_owned(
-            |idx, n| {
+            |idx, dag_name| {
                 let var_name = self.dag.neighbors_undirected(idx).count();
-                // dbg!(n); // dbg!(self.env.value(NodeIndex::from(n as u32)), var_name);
-                if var_name > 0 || Some(n) == self.main_dag_idx {
-                    Some(n)
+                if var_name > 0 || Some(dag_name) == self.main_dag_idx {
+                    Some(dag_name)
                 } else {
                     None
                 }
             },
             |_, e| Some(e),
         );
-        // self.debug();
 
         let flat: Vec<NodeIndex> = Topo::new(&self.dag).iter(&self.dag).collect();
         let flat: Vec<NodeIndex> = flat
             .into_iter()
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
-        // self.env.debug();
-        // self.debug();
-        // dbg!(&flat);
         Ok(flat)
     }
 
@@ -298,22 +291,8 @@ impl<const N: usize> Resolver<N> {
         self.in_context(
             |me| {
                 let sig = me.analyze_type(the_func.sig)?;
-
                 let body = me.analyze_expr(the_func.body, &[])?;
-                // dbg!(body);
-                // the_func.unbound_rows = (0..me.unbound_row_count)
-                //     .map(|x| RowVar(x.to_string().into()))
-                //     .collect::<BTreeSet<_>>()
-                //     .into();
-
-                // the_func.unbound_types = (0..me.unbound_ty_count)
-                //     .map(|x| TypeVar(x.to_string().into()))
-                //     .collect::<BTreeSet<_>>()
-                //     .into();
-
                 the_func.sig = sig;
-                // the_func.evidence = me.guess_evidence.clone().into();
-
                 the_func.body = body;
                 Ok(())
             },
@@ -329,12 +308,10 @@ impl<const N: usize> Resolver<N> {
                 let l = self.analyze_type(l)?;
                 let r = self.analyze_type(r)?;
                 let new_t = t.modify(Type::Func(l, r));
-                // *t = new_t;
                 Ok(new_t)
             }
             Type::Label(l, the_r) => {
                 let new_t = self.analyze_type(the_r)?;
-                // *t = new_t;
                 Ok(t.modify(Type::Label(l, new_t)))
             }
             Type::User(name) => {
@@ -358,12 +335,6 @@ impl<const N: usize> Resolver<N> {
                                 self.analyze_type(*t)
                             })
                             .collect();
-
-                        // let new_values: CompResult<Vec<Intern<Type>>> = closed_row
-                        //     .values
-                        //     .iter()
-                        //     .map(|t| -> CompResult<Intern<Type>> { self.analyze_type(*t) })
-                        //     .collect();
                         let values = new_values?.leak();
                         let cr = ClosedRow {
                             values,
@@ -481,7 +452,22 @@ impl<const N: usize> Resolver<N> {
                 let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
                 self.analyze_expr(expr.convert(final_expr), vars)
             }
-            Expr::Comparison(spanned, comparison_op, spanned1) => todo!(),
+            Expr::Comparison(l, comparison_op, r) => {
+                let l = self.analyze_expr(l, vars)?;
+                let r = self.analyze_expr(r, vars)?;
+                let (id, f) = self.intrinsics[match comparison_op {
+                    ComparisonOp::Eq => INTRINSIC_FUNC_CEQ,
+                    ComparisonOp::Neq => INTRINSIC_FUNC_NEQ,
+                    ComparisonOp::Gt => INTRINSIC_FUNC_CGT,
+                    ComparisonOp::Lt => INTRINSIC_FUNC_CLT,
+                    ComparisonOp::Gte => INTRINSIC_FUNC_CGE,
+                    ComparisonOp::Lte => INTRINSIC_FUNC_CLE,
+                }];
+                self.dag_add(id.0);
+                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                self.analyze_expr(expr.convert(final_expr), vars)
+            }
+
             Expr::Call(func, arg) => {
                 let func = self.analyze_expr(func, vars)?;
 

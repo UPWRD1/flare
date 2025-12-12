@@ -98,8 +98,7 @@ impl<'a> Instantiate<'a> {
             Type::Func(arg, ret) => {
                 let arg = self.ty(arg);
                 let ret = self.ty(ret);
-                let s = arg.1.union(ret.1);
-                Spanned(Type::Func(arg, ret).into(), s)
+                Spanned(Type::Func(arg, ret).into(), ty.1)
             }
             Type::Prod(row) => ty.convert(Type::Prod(self.row(row))),
             Type::Sum(row) => ty.convert(Type::Sum(self.row(row))),

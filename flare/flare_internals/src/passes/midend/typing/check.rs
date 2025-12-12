@@ -67,6 +67,14 @@ impl<'env> Solver<'env> {
                     )),
                 )
             }
+            (Expr::If(cond, then, other), _) => {
+                let constraints = vec![];
+                let cond = self.check(env, cond, Type::Bool);
+                let then = self.check(env.clone(), then, the_ty);
+                let other = self.check(env, other, the_ty);
+                dbg!(then, other);
+                GenOut::new(constraints, the_ast.convert(Expr::If(cond, then, other)))
+            }
 
             // Row Types
             (Expr::Label(ast_lbl, term), Type::Label(ty_lbl, ty)) if ast_lbl.0.0 == ty_lbl.0.0 => {

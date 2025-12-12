@@ -145,10 +145,54 @@ impl<T: Target> Context<T> {
         let e = Environment::build(&program)?;
 
         let intrinsics = [
-            ("intrinsic_arith_add",Type::Func(Type::Num.to_default_span(), Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span()).to_default_span())) ,
-            ("intrinsic_arith_sub",Type::Func(Type::Num.to_default_span(), Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span()).to_default_span())),
-            ("intrinsic_arith_mul",Type::Func(Type::Num.to_default_span(), Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span()).to_default_span())),
-            ("intrinsic_arith_div",Type::Func(Type::Num.to_default_span(), Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span()).to_default_span())),
+            (
+                "intrinsic_arith_add",
+                Type::Func(
+                    Type::Num.to_default_span(),
+                    Type::Func(
+                        Type::Num.to_default_span(),
+                        Type::Num.to_default_span()
+                    ).to_default_span()
+                )
+            ) ,
+            (
+                "intrinsic_arith_sub",
+                Type::Func(
+                    Type::Num.to_default_span(),
+                    Type::Func(
+                        Type::Num.to_default_span(),
+                        Type::Num.to_default_span()
+                    ).to_default_span()
+                )
+            ),
+            (
+                "intrinsic_arith_mul",
+                Type::Func(
+                    Type::Num.to_default_span(),
+                    Type::Func(
+                        Type::Num.to_default_span(),
+                        Type::Num.to_default_span()
+                    ).to_default_span()
+                )
+            ),
+            ("intrinsic_arith_div",
+                Type::Func(
+                    Type::Num.to_default_span(),
+                    Type::Func(
+                        Type::Num.to_default_span(),
+                        Type::Num.to_default_span()
+                    ).to_default_span()
+                )
+            ),
+            ("intrinsic_compare_eq",
+                Type::Func(
+                    Type::Num.to_default_span(),
+                    Type::Func(
+                        Type::Num.to_default_span(),
+                        Type::Bool.to_default_span()
+                    ).to_default_span()
+                )
+            ),
         ];
         let mut resolver = Resolver::new(e, intrinsics);
         let order = resolver.build()?;
