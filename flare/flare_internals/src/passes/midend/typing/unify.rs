@@ -398,6 +398,13 @@ impl<'env> Solver<'env> {
                                 .extra("Defined here", left.1);
                             (l_id, err.into())
                         }
+                        Provenance::ConditionIsBool(c_id) => {
+                            let err = DynamicErr::new("Expected bool").label(
+                                format!("This condtio should be a bool, found {}", right.0),
+                                left.1,
+                            );
+                            (c_id, err.into())
+                        }
                     },
                     UnificationError::RowsNotEqual((l, r)) => {
                         dbg!(provenance);

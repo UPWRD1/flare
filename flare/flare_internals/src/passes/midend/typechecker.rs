@@ -44,18 +44,15 @@ impl Typechecker {
         }
     }
 
-    pub fn check(mut self) -> CompResult<(Vec<TypesOutput>, ItemSource)> {
-        let mut accum: Vec<TypesOutput> = vec![];
-        // self.env.debug();
+    pub fn check(mut self) -> CompResult<(Vec<(ItemId, TypesOutput)>, ItemSource)> {
         for item_idx in self.item_order {
             let item = self.env.value(*item_idx)?;
             match item.kind {
                 ItemKind::Function(f) => {
-                    let o = self.check_function(*item_idx, f)?;
-                    accum.push(o);
+                    self.register_function(*item_idx, f);
                 }
                 ItemKind::Type(_n, t) => {
-                    self.check_type(*item_idx, t)?;
+                    self.register_type(*item_idx, t)?;
                 }
                 ItemKind::Extern { name: _, sig } => {
                     let (unbound_types, unbound_rows, types_to_name, ty, _) =
@@ -71,17 +68,19 @@ impl Typechecker {
                         .insert(ItemId(item_idx.index()), scheme.clone());
                 }
                 ItemKind::Field { name: _, value } => {
-                    self.check_type(*item_idx, value)?;
+                    self.register_type(*item_idx, value)?;
                 }
 
                 _ => unreachable!(),
             };
         }
 
-        Ok((accum, self.context))
+        let out = self.check_items()?;
+
+        Ok((out, self.context))
     }
 
-    fn check_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
+    fn register_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
         let (unbound_types, unbound_rows, types_to_name, ty, _) = self.extract_generics(t);
         // TODO: Add support for rows and generics
         let scheme = TypeScheme {
@@ -199,11 +198,7 @@ impl Typechecker {
         (accum, row_accum, names, t, evidence)
     }
 
-    fn check_function(
-        &mut self,
-        item_idx: NodeIndex,
-        f: FunctionItem<Untyped>,
-    ) -> CompResult<TypesOutput> {
+    fn register_function(&mut self, item_idx: NodeIndex, f: FunctionItem<Untyped>) {
         // let unbound_types = BTreeSet::new();
         // let evidence = vec![];
         // let unbound_rows = (*f.unbound_rows).clone();
@@ -216,62 +211,59 @@ impl Typechecker {
             ty,
             types_to_name,
         };
-        // dbg!(&scheme);
         self.context
             .insert(ItemId(item_idx.index()), scheme.clone());
+    }
 
-        let solved = if matches!(*f.sig.0, Type::Infer) {
-            Solver::type_infer_with_items(&self.context, f.body)
-                .unwrap()
-                .to_typesoutput()
-        } else {
-            Solver::check_with_items(&self.context, f.body, scheme).map_err(|e| {
-                if let Some(e) = e.downcast_ref::<DynamicErr>() {
-                    e.clone()
-                        .label("in this let-definition", f.name.ident().unwrap().1)
-                        .into()
-                } else {
-                    e
-                }
-            })?
-        };
+    fn check_items(&mut self) -> CompResult<Vec<(ItemId, TypesOutput)>> {
+        self.item_order
+            .iter()
+            .map(|idx| {
+                let id = ItemId(idx.index());
+                let scheme = self.context.types.get(&id).unwrap().clone();
 
-        // let infer = Solver::type_infer_with_items(&self.context, f.body).unwrap();
-        // dbg!(infer.scheme);
-
-        if !solved.errors.is_empty() {
-            Err(ErrorCollection::new(
-                solved
-                    .errors
-                    .into_values()
-                    .map(|e| {
-                        if let Some(e) = e.downcast_ref::<DynamicErr>() {
-                            e.clone()
-                                .extra("in this let-definition", f.name.ident().unwrap().1)
-                                .into()
+                let item = self.env.value(*idx).unwrap();
+                let solved = match item.kind {
+                    ItemKind::Function(f) => {
+                        if matches!(*scheme.ty.0, Type::Infer) {
+                            Solver::type_infer_with_items(&self.context, f.body)
+                                .unwrap()
+                                .to_typesoutput()
                         } else {
-                            e
+                            Solver::check_with_items(&self.context, f.body, scheme).map_err(
+                                |e| {
+                                    if let Some(e) = e.downcast_ref::<DynamicErr>() {
+                                        e.clone()
+                                            .label(
+                                                "in this let-definition",
+                                                f.name.ident().unwrap().1,
+                                            )
+                                            .into()
+                                    } else {
+                                        e
+                                    }
+                                },
+                            )?
                         }
-                    })
-                    .collect(),
-            )
-            .into())
-        } else {
-            self.context
-                .insert(ItemId(item_idx.index()), solved.scheme.clone());
-            Ok(solved)
-        }
-        // dbg!(&checked);
+                    }
+                    ItemKind::Type(spanned, spanned1) => todo!(),
+                    ItemKind::Extern { name, sig } => todo!(),
+                    ItemKind::Field { name, value } => todo!(),
+                    _ => unreachable!(),
+                };
 
-        // Ok(infer.scheme)
-        // Ok(ItemKind::Function( FunctionItem {
-        //     name,
-        //     sig: f.sig,
-        //     body: checked_ast,
-        // }))
-        // let infer = Solver::type_infer_with_items(&self.context, f.body)?;
-        // info!("{}\n", check);
-        // info!("{:#?}", infer.scheme);
+                // let infer = Solver::type_infer_with_items(&self.context, f.body).unwrap();
+                // dbg!(infer.scheme);
+
+                if !solved.errors.is_empty() {
+                    Err(ErrorCollection::new(solved.errors.into_values().collect()).into())
+                } else {
+                    self.context
+                        .insert(ItemId(idx.index()), solved.scheme.clone());
+                    Ok((id, solved))
+                }
+            })
+            .collect()
     }
 
     pub fn finish(self) -> Environment {

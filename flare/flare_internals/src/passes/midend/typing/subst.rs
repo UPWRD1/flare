@@ -159,10 +159,11 @@ impl<'env> Solver<'env> {
             Expr::Particle(p) => SubstOut::new(ast.convert(Expr::Particle(p))),
 
             Expr::Add(l, r) => SubstOut::new(ast.convert(Expr::Add(l, r))),
-
             Expr::Sub(l, r) => SubstOut::new(ast.convert(Expr::Sub(l, r))),
             Expr::Mul(l, r) => SubstOut::new(ast.convert(Expr::Mul(l, r))),
             Expr::Div(l, r) => SubstOut::new(ast.convert(Expr::Div(l, r))),
+
+            Expr::Comparison(l, op, r) => SubstOut::new(ast.convert(Expr::Comparison(l, op, r))),
 
             Expr::Hole(v) => self
                 .substitute_ty(v.1)
@@ -178,6 +179,12 @@ impl<'env> Solver<'env> {
                 .merge(self.substitute_ast(arg), |fun, arg| {
                     ast.convert(Expr::Call(fun, arg))
                 }),
+
+            Expr::If(cond, then, otherwise) => self
+                .substitute_ast(then)
+                .merge(self.substitute_ast(otherwise), |t, o| (t, o))
+                .merge(self.substitute_ast(cond), |(t, o), c| (t, o, c))
+                .map(|(t, o, c)| ast.convert(Expr::If(c, t, o))),
 
             // Label constructor and destructor
             Expr::Label(label, ast) => self

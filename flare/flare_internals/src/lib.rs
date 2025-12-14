@@ -143,7 +143,7 @@ impl<T: Target> Context<T> {
         let program = self.parse_program(id)?;
 
         let e = Environment::build(&program)?;
-
+        let default_span = Type::Unit.to_default_span();
         let intrinsics = [
             (
                 "intrinsic_arith_add",
@@ -186,6 +186,26 @@ impl<T: Target> Context<T> {
             ),
             ("intrinsic_compare_eq",
                 Type::Func(
+                    Type::Generic(default_span.convert("?T".to_string())).to_default_span(),                    Type::Func(
+                        Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
+                        Type::Bool.to_default_span()
+                    ).to_default_span()
+                )
+            ),
+
+            ("intrinsic_compare_neq",
+                Type::Func(
+                    Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
+                    Type::Func(
+                        Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
+                        Type::Bool.to_default_span()
+                    ).to_default_span()
+                )
+            ),
+
+            
+            ("intrinsic_compare_clt",
+                Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(
                         Type::Num.to_default_span(),
@@ -193,7 +213,37 @@ impl<T: Target> Context<T> {
                     ).to_default_span()
                 )
             ),
-        ];
+
+            
+            ("intrinsic_compare_cle",
+                Type::Func(
+                    Type::Num.to_default_span(),
+                    Type::Func(
+                        Type::Num.to_default_span(),
+                        Type::Bool.to_default_span()
+                    ).to_default_span()
+                )
+            ),
+
+            ("intrinsic_compare_cgt",
+                Type::Func(
+                    Type::Num.to_default_span(),
+                    Type::Func(
+                        Type::Num.to_default_span(),
+                        Type::Bool.to_default_span()
+                    ).to_default_span()
+                )
+            ),
+
+            ("intrinsic_compare_cge",
+                Type::Func(
+                    Type::Num.to_default_span(),
+                    Type::Func(
+                        Type::Num.to_default_span(),
+                        Type::Bool.to_default_span()
+                    ).to_default_span()
+                )
+            ),        ];
         let mut resolver = Resolver::new(e, intrinsics);
         let order = resolver.build()?;
         let resolved_e = resolver.finish();
@@ -201,9 +251,9 @@ impl<T: Target> Context<T> {
         let tc = Typechecker::new(order.leak(), resolved_e);
         let (items, source) = tc.check()?;
         
-        let mut lowerer = Lowerer::new(items);
-        let ir = lowerer.lower(source);
-        let ir = simplify::simplify(ir);
+        let lowerer = Lowerer::new();
+        let ir = lowerer.lower(source, items);
+        // let ir = simplify::simplify(ir);
         let ir = monomorph::monomorph(ir);
         
         let g = Generator::new(self.target, ir);

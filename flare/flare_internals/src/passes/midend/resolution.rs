@@ -1,21 +1,24 @@
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 use petgraph::{
+    acyclic::Acyclic,
+    algo::{k_shortest_path, kosaraju_scc},
     dot::Config,
     graph::NodeIndex,
-    visit::{IntoNodeReferences, Topo, Walker},
+    visit::{Dfs, DfsPostOrder, IntoNodeReferences, Topo, UndirectedAdaptor, Walker},
 };
+use rustc_hash::FxHashSet;
 
-const INTRINSIC_FUNC_ADD: usize = 0;
-const INTRINSIC_FUNC_SUB: usize = 1;
-const INTRINSIC_FUNC_MUL: usize = 2;
-const INTRINSIC_FUNC_DIV: usize = 3;
-const INTRINSIC_FUNC_CEQ: usize = 4;
-const INTRINSIC_FUNC_NEQ: usize = 5;
-const INTRINSIC_FUNC_CLT: usize = 6;
-const INTRINSIC_FUNC_CLE: usize = 6;
-const INTRINSIC_FUNC_CGT: usize = 7;
-const INTRINSIC_FUNC_CGE: usize = 8;
+// const INTRINSIC_FUNC_ADD: usize = 0;
+// const INTRINSIC_FUNC_SUB: usize = 1;
+// const INTRINSIC_FUNC_MUL: usize = 2;
+// const INTRINSIC_FUNC_DIV: usize = 3;
+// const INTRINSIC_FUNC_CEQ: usize = 4;
+// const INTRINSIC_FUNC_NEQ: usize = 5;
+// const INTRINSIC_FUNC_CLT: usize = 6;
+// const INTRINSIC_FUNC_CLE: usize = 7;
+// const INTRINSIC_FUNC_CGT: usize = 8;
+// const INTRINSIC_FUNC_CGE: usize = 9;
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 
@@ -28,7 +31,7 @@ use crate::{
         errors::{self, CompResult, CompilerErr, DynamicErr},
         rep::{
             Spanned,
-            ast::{ComparisonOp, Direction, Expr, ItemId, Kind, Label, LambdaInfo, Untyped},
+            ast::{Direction, Expr, ItemId, Kind, Label, LambdaInfo, Untyped},
             common::Ident,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
@@ -54,10 +57,12 @@ pub struct Resolver<const N: usize> {
     env: Environment,
     current_parent: QualifierFragment,
     current_dag_node: Option<NodeIndex>,
-    pub dag: DiGraph<usize, ()>,
-    main_dag_idx: Option<usize>,
+    pub dag: DiGraph<DagIdx, ()>,
+    main_dag_idx: Option<NodeIndex>,
     intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
 }
+
+type DagIdx = usize;
 
 impl<const N: usize> Resolver<N> {
     pub fn new(
@@ -136,25 +141,25 @@ impl<const N: usize> Resolver<N> {
         for (idx, p) in filtered {
             self.analyze_package(idx, p)?
         }
+        self.dag.reverse();
 
-        self.dag = self.dag.clone().filter_map_owned(
-            |idx, dag_name| {
-                let var_name = self.dag.neighbors_undirected(idx).count();
-                if var_name > 0 || Some(dag_name) == self.main_dag_idx {
-                    Some(dag_name)
-                } else {
-                    None
-                }
-            },
-            |_, e| Some(e),
-        );
-
-        let flat: Vec<NodeIndex> = Topo::new(&self.dag).iter(&self.dag).collect();
-        let flat: Vec<NodeIndex> = flat
+        self.debug();
+        // let mut sorted: Vec<NodeIndex> = Dfs::new(&self.dag.clone(), self.main_dag_idx.unwrap())
+        //     .iter(&self.dag)
+        //     .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
+        //     .collect();
+        let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
             .into_iter()
+            .flatten()
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
-        Ok(flat)
+        dbg!(
+            sorted
+                .iter()
+                .map(|x| self.env.value(*x).unwrap().ident().unwrap().0)
+                .collect::<Vec<_>>()
+        );
+        Ok(sorted)
     }
 
     fn analyze_package(&mut self, idx: NodeIndex, p: PackageEntry) -> CompResult<()> {
@@ -168,13 +173,16 @@ impl<const N: usize> Resolver<N> {
 
         for child in children {
             let node_idx = NodeIndex::new(child);
-
+            // dbg!(child);
             let dag_idx = if let Some((node_idx, _)) =
                 self.dag.node_references().find(|(_, x)| **x == child)
             {
+                // dbg!(node_idx);
                 node_idx
             } else {
-                self.dag.add_node(child)
+                self.dag
+                    .try_add_node(child)
+                    .unwrap_or_else(|_| unreachable!("Graph overflow in resolution"))
             };
 
             // Extract the data we need to analyze (without holding a borrow)
@@ -189,8 +197,9 @@ impl<const N: usize> Resolver<N> {
                 ItemKind::Package(_) => Ok::<(), CompilerErr>(()),
                 ItemKind::Function(mut f) => {
                     if *f.name.0.0 == "main" {
-                        self.main_dag_idx = Some(child);
+                        self.main_dag_idx = Some(dag_idx);
                     }
+                    // dbg!(&f.name);
                     // Analyze the function (doesn't touch the graph)
                     self.analyze_func(&mut f, dag_idx)?;
 
@@ -422,50 +431,55 @@ impl<const N: usize> Resolver<N> {
             Expr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                let (id, f) = self.intrinsics[INTRINSIC_FUNC_MUL];
-                self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                // let (id, f) = self.intrinsics[INTRINSIC_FUNC_MUL];
+                // self.dag_add(id.0);
+                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                // self.analyze_expr(expr.convert(final_expr), vars)
 
-                self.analyze_expr(expr.convert(final_expr), vars)
+                Ok(expr.modify(Expr::Mul(l, r)))
             }
             Expr::Div(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                let (id, f) = self.intrinsics[INTRINSIC_FUNC_DIV];
-                self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                self.analyze_expr(expr.convert(final_expr), vars)
+                // let (id, f) = self.intrinsics[INTRINSIC_FUNC_DIV];
+                // self.dag_add(id.0);
+                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                // self.analyze_expr(expr.convert(final_expr), vars)
+                Ok(expr.modify(Expr::Div(l, r)))
             }
             Expr::Add(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                let (id, f) = self.intrinsics[INTRINSIC_FUNC_ADD];
-                self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                self.analyze_expr(expr.convert(final_expr), vars)
+                // let (id, f) = self.intrinsics[INTRINSIC_FUNC_ADD];
+                // self.dag_add(id.0);
+                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                // self.analyze_expr(expr.convert(final_expr), vars)
+                Ok(expr.modify(Expr::Add(l, r)))
             }
             Expr::Sub(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                let (id, f) = self.intrinsics[INTRINSIC_FUNC_SUB];
-                self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                self.analyze_expr(expr.convert(final_expr), vars)
+                // let (id, f) = self.intrinsics[INTRINSIC_FUNC_SUB];
+                // self.dag_add(id.0);
+                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                // self.analyze_expr(expr.convert(final_expr), vars)
+                Ok(expr.modify(Expr::Sub(l, r)))
             }
             Expr::Comparison(l, comparison_op, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                let (id, f) = self.intrinsics[match comparison_op {
-                    ComparisonOp::Eq => INTRINSIC_FUNC_CEQ,
-                    ComparisonOp::Neq => INTRINSIC_FUNC_NEQ,
-                    ComparisonOp::Gt => INTRINSIC_FUNC_CGT,
-                    ComparisonOp::Lt => INTRINSIC_FUNC_CLT,
-                    ComparisonOp::Gte => INTRINSIC_FUNC_CGE,
-                    ComparisonOp::Lte => INTRINSIC_FUNC_CLE,
-                }];
-                self.dag_add(id.0);
-                let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                self.analyze_expr(expr.convert(final_expr), vars)
+                // let (id, f) = self.intrinsics[match comparison_op {
+                //     ComparisonOp::Eq => INTRINSIC_FUNC_CEQ,
+                //     ComparisonOp::Neq => INTRINSIC_FUNC_NEQ,
+                //     ComparisonOp::Gt => INTRINSIC_FUNC_CGT,
+                //     ComparisonOp::Lt => INTRINSIC_FUNC_CLT,
+                //     ComparisonOp::Gte => INTRINSIC_FUNC_CGE,
+                //     ComparisonOp::Lte => INTRINSIC_FUNC_CLE,
+                // }];
+                // self.dag_add(id.0);
+                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
+                // self.analyze_expr(expr.convert(final_expr), vars)
+                Ok(expr.modify(Expr::Comparison(l, comparison_op, r)))
             }
 
             Expr::Call(func, arg) => {
@@ -665,9 +679,11 @@ impl<const N: usize> Resolver<N> {
             self.dag.add_node(env_node)
         };
 
+        // dbg!(self.current_dag_node, n);
+
         if let Some(current) = self.current_dag_node
             && n != current
-            && !self.dag.contains_edge(current, n)
+        // && !self.dag.contains_edge(current, n)
         {
             self.dag.update_edge(n, current, ());
         }

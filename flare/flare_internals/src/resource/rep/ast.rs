@@ -85,13 +85,34 @@ impl<V: Variable> Ident for Spanned<Pattern<V>> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum ComparisonOp {
+pub enum BinOp {
     Eq,
     Neq,
     Gt,
     Lt,
     Gte,
     Lte,
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+impl Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinOp::Eq => write!(f, "=="),
+            BinOp::Neq => write!(f, "!="),
+            BinOp::Gt => write!(f, ">"),
+            BinOp::Lt => write!(f, "<"),
+            BinOp::Gte => write!(f, ">="),
+            BinOp::Lte => write!(f, "<="),
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+            BinOp::Mul => write!(f, "*"),
+            BinOp::Div => write!(f, "/"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -177,7 +198,7 @@ where
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Sub(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Comparison(Spanned<Intern<Self>>, ComparisonOp, Spanned<Intern<Self>>),
+    Comparison(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
 
     // Access(Spanned<Intern<Self>>),
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),

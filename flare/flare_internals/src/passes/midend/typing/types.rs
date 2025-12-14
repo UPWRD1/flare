@@ -171,14 +171,14 @@ impl Type {
         }
         let mut v = vec![];
         worker(&t, &mut v);
-        let (ret, args) = v.split_last().unwrap();
+        let (ret, args) = v.split_last().expect("Could not destructure arrow");
         (args.to_vec(), *ret)
     }
 
     pub fn to_row(self) -> Row {
         match self {
-            Type::Prod(row) | Type::Sum(row) => row,
-            _ => panic!(),
+            Self::Prod(row) | Self::Sum(row) => row,
+            _ => unreachable!("expected row, found {self:?}"),
         }
     }
 }

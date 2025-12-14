@@ -11,7 +11,7 @@ use crate::{
         },
         midend::typing::{self, Evidence, TypesOutput},
     },
-    resource::rep::ast::{self},
+    resource::rep::ast::{self, ItemId},
 };
 
 pub mod ir;
@@ -77,22 +77,30 @@ impl ItemSource {
         self.items[&item].clone()
     }
 }
-
+#[derive(Default)]
 pub struct Lowerer {
-    items: Vec<TypesOutput>,
+    // items: Vec<TypesOutput>,
     // source: typing::ItemSource,
+    item_supply: ItemSupply,
 }
 impl Lowerer {
-    pub fn new(items: Vec<TypesOutput>) -> Self {
-        Self { items }
+    pub fn new() -> Self {
+        Self {
+            // items,
+            item_supply: ItemSupply::default(),
+        }
     }
 
-    pub fn lower(&mut self, source: typing::ItemSource) -> Vec<(IR, Type)> {
+    pub fn lower(
+        mut self,
+        source: typing::ItemSource,
+        items: Vec<(ast::ItemId, TypesOutput)>,
+    ) -> Vec<(IR, Type)> {
         // dbg!(&source);
         let source = Self::lower_item_source(source);
-        self.items
+        items
             .iter()
-            .map(|item| Self::lower_logic(&source, item))
+            .map(|(idx, item)| self.lower_logic(&source, item, idx))
             .collect()
     }
 
@@ -109,7 +117,12 @@ impl Lowerer {
         }
     }
 
-    fn lower_logic(item_source: &ItemSource, out: &TypesOutput) -> (IR, Type) {
+    fn lower_logic(
+        &mut self,
+        item_source: &ItemSource,
+        out: &TypesOutput,
+        item_id: &ItemId,
+    ) -> (IR, Type) {
         let lowered_scheme = lower_ty_scheme(out.scheme.clone());
 
         let mut var_supply = VarSupply::default();
@@ -124,7 +137,7 @@ impl Lowerer {
                 (ev, var)
             })
             .collect();
-        let mut item_supply = ItemSupply::default();
+        self.item_supply.supply_for(*item_id);
         let mut lower_ast = LowerAst::new(
             var_supply,
             lowered_scheme.lower_types,
@@ -133,7 +146,7 @@ impl Lowerer {
             &out.branch_to_ret_ty,
             &out.item_wrappers,
             item_source,
-            &mut item_supply,
+            &mut self.item_supply,
         );
         let ir = lower_ast.lower_ast(out.typed_ast);
         let solved_ir = lower_ast

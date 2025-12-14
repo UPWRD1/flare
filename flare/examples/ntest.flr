@@ -5,8 +5,8 @@ package Main =
     # let person_age p : {age: num} -> num =
             # p.age
 
-     let combiner a b : ?T -> ?U -> {x: ?T, y: ?U} =
-        {x = a, y = b}
+     # let combiner a b : ?T -> ?U -> {x: ?T, y: ?U} =
+        # {x = a, y = b}
 
     # let x_getter r : {x: ?T} -> ?T =
         # r.x
@@ -16,18 +16,18 @@ package Main =
             0
         else
             factorial(x - 1) + x
-            
 
-    let singleton x: {x: ?T} -> {y: ?T} =
-        let x = x.x in
-            {y = x}
 
-    # let y_getter r : {y: ?V} -> ?V =
-        # r.y
+    let thing1 x : num -> num =
+        if x < 10 then thing2 x else
+        x
 
-    let main: infer =
-        # let temp = combiner true @ok in
-        # let rx = {x = 4} in 
-        let v = combiner "asdf" 3 in
-            singleton {x = @ok}        
+    let thing2 x : num -> num =
+        let new_x = x + 1 in thing1 x
+
+    # let singleton x: ?T -> {y: ?T} =
+         # {y = x}
+
+    let main : num =
+        thing1 1         
                

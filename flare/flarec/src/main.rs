@@ -59,8 +59,9 @@ fn main() -> CompResult<()> {
     const VERSION: &str = "0.0.1";
     let prog_args: Vec<String> = env::args().collect();
     enable_loggin();
-
     panic_hook();
+
+    unsafe { backtrace_on_stack_overflow::enable() };
 
     match prog_args.len() {
         3 => match prog_args[1].as_str() {

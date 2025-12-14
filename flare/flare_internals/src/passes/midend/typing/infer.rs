@@ -1,4 +1,3 @@
-use chumsky::span::Span;
 use internment::Intern;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
@@ -10,7 +9,6 @@ use crate::{
     resource::rep::{
         Spanned,
         ast::{Direction, Expr, Untyped},
-        common::Ident,
     },
 };
 
@@ -21,7 +19,7 @@ impl<'env> Solver<'env> {
         ast: Spanned<Intern<Expr<Untyped>>>,
     ) -> (GenOut, Spanned<Intern<Type>>) {
         // dbg!(&env);
-        let id = ast.id();
+        // let id = ast.id();
         match *ast.0 {
             Expr::Number(n) => (
                 GenOut::new(vec![], ast.convert(Expr::Number(n))),
@@ -104,6 +102,132 @@ impl<'env> Solver<'env> {
                 let var = self.fresh_ty_var();
                 let t = ast.convert(Type::Unifier(var));
                 (GenOut::new(vec![], ast.convert(Expr::Hole(Typed(v, t)))), t)
+            }
+
+            Expr::If(c, t, o) => {
+                let (cond_out, cond_infer) = self.infer(env.clone(), c);
+                let mut constraints = cond_out.constraints;
+
+                let (then_out, then_infer) = self.infer(env.clone(), t);
+                constraints.extend(then_out.constraints);
+
+                let (other_out, other_infer) = self.infer(env, o);
+                constraints.extend(other_out.constraints);
+
+                constraints.push(Constraint::TypeEqual(
+                    Provenance::ConditionIsBool(c.1),
+                    cond_infer,
+                    cond_infer.convert(Type::Bool),
+                ));
+
+                constraints.push(Constraint::TypeEqual(
+                    Provenance::ExpectedUnify(t.1, o.1),
+                    then_infer,
+                    other_infer,
+                ));
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.convert(Expr::If(
+                            cond_out.typed_ast,
+                            then_out.typed_ast,
+                            other_out.typed_ast,
+                        )),
+                    ),
+                    then_infer,
+                )
+            }
+
+            Expr::Add(l, r) => {
+                let num_ty = ast.convert(Type::Num);
+                let left_out = self.check(env.clone(), l, num_ty);
+                let right_out = self.check(env.clone(), r, num_ty);
+
+                let mut constraints = left_out.constraints;
+                constraints.extend(right_out.constraints);
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.convert(Expr::Add(left_out.typed_ast, right_out.typed_ast)),
+                    ),
+                    num_ty,
+                )
+            }
+
+            Expr::Sub(l, r) => {
+                let num_ty = ast.convert(Type::Num);
+                let left_out = self.check(env.clone(), l, num_ty);
+                let right_out = self.check(env.clone(), r, num_ty);
+
+                let mut constraints = left_out.constraints;
+                constraints.extend(right_out.constraints);
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.convert(Expr::Sub(left_out.typed_ast, right_out.typed_ast)),
+                    ),
+                    num_ty,
+                )
+            }
+
+            Expr::Mul(l, r) => {
+                let num_ty = ast.convert(Type::Num);
+                let left_out = self.check(env.clone(), l, num_ty);
+                let right_out = self.check(env.clone(), r, num_ty);
+
+                let mut constraints = left_out.constraints;
+                constraints.extend(right_out.constraints);
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.convert(Expr::Mul(left_out.typed_ast, right_out.typed_ast)),
+                    ),
+                    num_ty,
+                )
+            }
+
+            Expr::Div(l, r) => {
+                let num_ty = ast.convert(Type::Num);
+                let left_out = self.check(env.clone(), l, num_ty);
+                let right_out = self.check(env.clone(), r, num_ty);
+
+                let mut constraints = left_out.constraints;
+                constraints.extend(right_out.constraints);
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.convert(Expr::Div(left_out.typed_ast, right_out.typed_ast)),
+                    ),
+                    num_ty,
+                )
+            }
+
+            Expr::Comparison(left, op, right) => {
+                let (l_out, l_ty) = self.infer(env.clone(), left);
+                let (r_out, r_ty) = self.infer(env, right);
+
+                let mut constraints = vec![];
+                constraints.extend(l_out.constraints);
+                constraints.extend(r_out.constraints);
+
+                constraints.push(Constraint::TypeEqual(
+                    Provenance::ExpectedUnify(left.1, right.1),
+                    l_ty,
+                    r_ty,
+                ));
+
+                (
+                    GenOut::new(
+                        constraints,
+                        ast.convert(Expr::Comparison(l_out.typed_ast, op, r_out.typed_ast)),
+                    ),
+                    ast.convert(Type::Bool),
+                )
             }
 
             Expr::Label(label, value) => {

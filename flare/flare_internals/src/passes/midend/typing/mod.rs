@@ -68,6 +68,8 @@ pub enum Provenance {
     ExpectedUnify(NodeId, NodeId),
     //
     ExpectedCombine(NodeId),
+
+    ConditionIsBool(NodeId),
 }
 
 impl Provenance {
@@ -76,6 +78,7 @@ impl Provenance {
             Self::UnexpectedFun(node_id)
             | Self::AppExpectedFun(node_id)
             | Self::ExpectedCombine(node_id)
+            | Self::ConditionIsBool(node_id)
             | Self::ExpectedUnify(node_id, _) => *node_id,
         }
     }
@@ -177,8 +180,8 @@ impl ItemSource {
     }
 
     fn type_of_item(&self, item_id: ItemId) -> TypeScheme {
-        // dbg!(item_id);
-        // dbg!(self);
+        // dbg!item_id);
+        // d cbg!(self);
         self.types[&item_id].clone()
     }
 

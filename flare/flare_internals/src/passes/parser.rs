@@ -4,7 +4,7 @@ use crate::{
         errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
             ast::{
-                ComparisonOp, Definition, Expr, Label, LambdaInfo, Package, Pattern, PatternAtom, Untyped // Untyped,
+                BinOp, Definition, Expr, Label, LambdaInfo, Package, Pattern, PatternAtom, Untyped // Untyped,
             },
             // concretetypes::{EnumVariant, PrimitiveType, Ty},
             files::FileID,
@@ -57,7 +57,7 @@ enum Token {
     Plus,
     Minus,
 
-    ComparisonOp(ComparisonOp),
+    ComparisonOp(BinOp),
     Ampersand,
     At,
     
@@ -109,15 +109,11 @@ impl std::fmt::Display for Token {
             Self::Slash => write!(f, "/"),
             Self::Plus => write!(f, "+"),
             Self::Minus => write!(f, "-"),
-            Self::ComparisonOp(c) => match c {
-                ComparisonOp::Eq => write!(f, "=="),
-                ComparisonOp::Neq => write!(f, "!="),
-                ComparisonOp::Gt => write!(f, ">"),
-                ComparisonOp::Lt => write!(f, "<"),
-                ComparisonOp::Gte => write!(f, ">="),
-                ComparisonOp::Lte => write!(f, "<="),
-            },
+            Self::ComparisonOp(c) => write!(f, "{c}"),
             Self::Ampersand => write!(f, "&"),
+
+            
+                
             Self::At => write!(f, "@"),
             Self::Fn => write!(f, "fn"),
             Self::True => write!(f, "true"),
@@ -202,12 +198,12 @@ where
     );
 
     let comparison_op = choice((
-        just("<").to(Token::ComparisonOp(ComparisonOp::Lt)),
-        just("<=").to(Token::ComparisonOp(ComparisonOp::Lte)),
-        just(">").to(Token::ComparisonOp(ComparisonOp::Gt)),
-        just(">=").to(Token::ComparisonOp(ComparisonOp::Gte)),
-        just("==").to(Token::ComparisonOp(ComparisonOp::Eq)),
-        just("!=").to(Token::ComparisonOp(ComparisonOp::Neq)),
+        just("<").to(Token::ComparisonOp(BinOp::Lt)),
+        just("<=").to(Token::ComparisonOp(BinOp::Lte)),
+        just(">").to(Token::ComparisonOp(BinOp::Gt)),
+        just(">=").to(Token::ComparisonOp(BinOp::Gte)),
+        just("==").to(Token::ComparisonOp(BinOp::Eq)),
+        just("!=").to(Token::ComparisonOp(BinOp::Neq)),
     ))
     .labelled("comparison operator");
 

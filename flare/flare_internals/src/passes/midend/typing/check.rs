@@ -68,12 +68,19 @@ impl<'env> Solver<'env> {
                 )
             }
             (Expr::If(cond, then, other), _) => {
-                let constraints = vec![];
-                let cond = self.check(env, cond, Type::Bool);
+                // dbg!(the_ty);
+                let mut constraints = vec![];
+                let cond = self.check(env.clone(), cond, cond.convert(Type::Bool));
                 let then = self.check(env.clone(), then, the_ty);
                 let other = self.check(env, other, the_ty);
-                dbg!(then, other);
-                GenOut::new(constraints, the_ast.convert(Expr::If(cond, then, other)))
+                constraints.extend(cond.constraints);
+                constraints.extend(then.constraints);
+                constraints.extend(other.constraints);
+
+                GenOut::new(
+                    constraints,
+                    the_ast.convert(Expr::If(cond.typed_ast, then.typed_ast, other.typed_ast)),
+                )
             }
 
             // Row Types

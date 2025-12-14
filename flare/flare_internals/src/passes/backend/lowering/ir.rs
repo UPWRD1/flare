@@ -3,7 +3,7 @@ use std::fmt::Display;
 use internment::Intern;
 use ordered_float::OrderedFloat;
 
-use crate::passes::backend::target::Target;
+use crate::{passes::backend::target::Target, resource::rep::ast::BinOp};
 use itertools::Itertools;
 use tiny_pretty::Doc;
 
@@ -43,7 +43,6 @@ pub enum Type {
     Unit,
     Str,
     Bool,
-
     Particle(Intern<String>),
 
     Var(TypeVar),
@@ -60,6 +59,9 @@ impl Type {
         // Technically, unit is zero-sized, so it doesn't alloc
         matches!(self, Self::Num | Self::Bool | Self::Str | Self::Unit)
     }
+}
+
+impl Render for Type {
     fn render(self) -> Doc<'static> {
         match self {
             Self::Num => Doc::text("num"),
@@ -196,14 +198,16 @@ impl Var {
         }
     }
 
+    fn render_n(self) -> Doc<'static> {
+        Doc::text(format!("${}", self.id.0))
+    }
+}
+
+impl Render for Var {
     fn render(self) -> Doc<'static> {
         Doc::text(format!("${}:", self.id.0))
             .append(Doc::space())
             .append(self.ty.render())
-    }
-
-    fn render_n(self) -> Doc<'static> {
-        Doc::text(format!("${}", self.id.0))
     }
 }
 
@@ -223,7 +227,9 @@ impl Branch {
     pub fn as_fun(&self) -> IR {
         IR::fun(self.param.clone(), self.body.clone())
     }
+}
 
+impl Render for Branch {
     fn render(self) -> Doc<'static> {
         Doc::text("|")
             .append(Doc::space())
@@ -252,8 +258,10 @@ impl TyApp {
             Self::Row(_) => false,
         }
     }
+}
 
-    pub fn render(self) -> Doc<'static> {
+impl Render for TyApp {
+    fn render(self) -> Doc<'static> {
         match self {
             Self::Ty(t) => t.render(),
             Self::Row(row) => row.render(", "),
@@ -278,6 +286,10 @@ pub enum IR {
     TyFun(Kind, Box<Self>),
     TyApp(Box<Self>, TyApp),
     Local(Var, Box<Self>, Box<Self>),
+
+    If(Box<Self>, Box<Self>, Box<Self>),
+
+    Bin(Box<Self>, BinOp, Box<Self>),
 
     Tuple(Vec<Self>),
     Field(Box<Self>, usize),
@@ -339,6 +351,28 @@ impl IR {
         Branch { param, body }
     }
 
+    pub fn r#if(c: Self, t: Self, o: Self) -> Self {
+        Self::If(c.into(), t.into(), o.into())
+    }
+
+    pub fn add(l: Self, r: Self) -> Self {
+        Self::Bin(Box::new(l), BinOp::Add, Box::new(r))
+    }
+
+    pub fn sub(l: Self, r: Self) -> Self {
+        Self::Bin(Box::new(l), BinOp::Sub, Box::new(r))
+    }
+    pub fn mul(l: Self, r: Self) -> Self {
+        Self::Bin(Box::new(l), BinOp::Mul, Box::new(r))
+    }
+    pub fn div(l: Self, r: Self) -> Self {
+        Self::Bin(Box::new(l), BinOp::Div, Box::new(r))
+    }
+
+    pub fn bin(l: Self, op: BinOp, r: Self) -> Self {
+        Self::Bin(Box::new(l), op, Box::new(r))
+    }
+
     pub fn type_of(&self) -> Type {
         match self {
             Self::Var(v) => v.ty.clone(),
@@ -360,6 +394,29 @@ impl IR {
                 }
                 *ret_ty
             }
+
+            // These should all be numbers
+            Self::Bin(l, op, r) => match op {
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                    let lty = l.type_of();
+                    let rty = r.type_of();
+                    if lty != rty || lty != Type::Num {
+                        unreachable!(
+                            "Expected number type in arithmatic operation while generating IR",
+                        )
+                    }
+                    Type::Num
+                }
+                BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte => {
+                    let lty = l.type_of();
+                    let rty = r.type_of();
+                    if lty != rty {
+                        unreachable!("Expected comparison operands to be equal",)
+                    }
+                    Type::Bool
+                }
+            },
+
             Self::TyFun(kind, body) => Type::ty_fun(*kind, body.type_of()),
             Self::TyApp(ty_fun, ty_app) => {
                 let Type::TyFun(kind, ret_ty) = ty_fun.type_of() else {
@@ -384,6 +441,19 @@ impl IR {
                     )
                 }
                 body.type_of()
+            }
+
+            Self::If(cond, then, other) => {
+                if cond.type_of() != Type::Bool {
+                    unreachable!("Cannot evaluate if expression with a non-bool condition")
+                }
+
+                let then_ty = then.type_of();
+
+                if then_ty != other.type_of() {
+                    unreachable!("If arms have differing types")
+                }
+                then_ty
             }
 
             Self::Tuple(elems) => {
@@ -449,8 +519,53 @@ impl IR {
             self.clone()
         }
     }
+}
 
-    pub fn render(self) -> Doc<'static> {
+trait DocExt<'a> {
+    fn parens(self) -> Self;
+    fn brackets(self) -> Self;
+    fn braces(self) -> Self;
+    fn space(self) -> Self;
+    fn text(self, t: impl Into<std::borrow::Cow<'a, str>>) -> Self;
+    fn hard_line(self) -> Self;
+    fn render(self, r: impl Render) -> Self;
+}
+
+impl<'a> DocExt<'a> for Doc<'a> {
+    fn parens(self) -> Self {
+        Self::text("(").append(self).append(Self::text(")"))
+    }
+
+    fn brackets(self) -> Self {
+        Self::text("[").append(self).append(Self::text("]"))
+    }
+
+    fn braces(self) -> Self {
+        Self::text("{").append(self).append(Self::text("}"))
+    }
+
+    fn space(self) -> Self {
+        self.append(Self::space())
+    }
+
+    fn text(self, t: impl Into<std::borrow::Cow<'a, str>>) -> Self {
+        self.append(Self::text(t.into()))
+    }
+    fn hard_line(self) -> Self {
+        self.append(Self::hard_line())
+    }
+
+    fn render(self, r: impl Render) -> Self {
+        self.append(r.render())
+    }
+}
+
+trait Render {
+    fn render(self) -> Doc<'static>;
+}
+
+impl Render for IR {
+    fn render(self) -> Doc<'static> {
         // dbg!(level);
         match self {
             Self::Var(var) => var.render_n(),
@@ -463,52 +578,44 @@ impl IR {
                 let ir = b.clone().collect_fun_vars(&mut vars);
                 Doc::text("fn")
                     // .append(Doc::space())
-                    .append(Doc::text("["))
-                    .append(
-                        Doc::list(
-                            Itertools::intersperse(
-                                vars.into_iter().map(|v| v.render()),
-                                Doc::text(",").append(Doc::space()),
-                            )
-                            .collect(),
+                    .append(Doc::list(
+                        Itertools::intersperse(
+                            vars.into_iter().map(|v| v.render()),
+                            Doc::text(",").space(),
                         )
-                        .append(Doc::text("]")),
-                    )
-                    .append(Doc::space())
-                    .append(Doc::text("=>"))
-                    // .append(Doc::)
+                        .collect(),
+                    ))
+                    .brackets()
+                    .space()
+                    .text("=>") // .append(Doc::)
                     .group()
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))
-                // .append(Doc::soft_line().append(Doc::text(")")))
             }
-            Self::App(l, r) => Doc::nil()
-                .append(l.render())
-                // .append(Doc::soft_line())
-                .append(Doc::text("("))
-                .append(r.render())
-                .append(Doc::text(")")),
+
+            Self::App(l, r) => l.render().append(r.render().parens()),
             Self::TyApp(t, k) => Doc::nil()
-                .append(Doc::text("["))
                 .append(match k {
                     TyApp::Ty(t) => t.render(),
                     TyApp::Row(row) => row.render(","),
                 })
-                .append(Doc::text("]::"))
-                .append(t.render()),
+                .brackets()
+                .append(Doc::text("::"))
+                .render(*t),
+
             Self::TyFun(k, b) => Doc::text("tyfn")
-                .append(Doc::space())
-                .append(Doc::text(format!("{k:?}")))
-                .append(Doc::space())
-                .append(Doc::text("=>"))
+                .space()
+                .text(format!("{k:?}"))
+                .space()
+                .text("=>")
                 .group()
                 .append(Doc::line_or_space().append(b.render()).group().nest(INC)),
-            // .append(Doc::hard_line().append(Doc::text(""))),
+
             Self::Local(v, b, i) => Doc::nil()
                 .append(
                     Doc::text("let")
-                        .append(Doc::space())
-                        .append(v.render())
-                        .append(Doc::space())
+                        .space()
+                        .render(v)
+                        .space()
                         .append(Doc::text("="))
                         .group(),
                 )
@@ -517,6 +624,19 @@ impl IR {
                 )
                 .append(Doc::line_or_space().append(Doc::text("in")))
                 .append(Doc::hard_line().append(i.render()).nest(INC)),
+
+            Self::If(cond, then, other) => Doc::text("if")
+                .space()
+                .render(*cond)
+                .space()
+                .text("then")
+                .append(Doc::nil().hard_line().render(*then).nest(INC).group())
+                .hard_line()
+                .text("else")
+                .append(Doc::nil().hard_line().render(*other).nest(INC)),
+
+            Self::Bin(l, op, r) => l.render().text(format!("{op}")).render(*r),
+
             Self::Tuple(v) => {
                 if v.is_empty() {
                     Doc::text("{}")
@@ -533,14 +653,14 @@ impl IR {
                             )
                             .group(),
                         )
-                        .append(Doc::hard_line())
+                        .hard_line()
                         .append(Doc::text("}"))
                 }
             }
             Self::Case(_, b, v) => Doc::text("match")
-                .append(Doc::space())
+                .space()
                 .append(b.render())
-                .append(Doc::text(":"))
+                .text(":")
                 .append(
                     Doc::list(
                         Itertools::intersperse(
@@ -559,9 +679,9 @@ impl IR {
                 .append(Doc::text(format!("{s}"))),
             Self::Tag(t, i, b) => Doc::nil()
                 .append(b.render())
-                .append(Doc::space())
+                .space()
                 .append(Doc::text("tag"))
-                .append(Doc::space())
+                .space()
                 .append(t.render())
                 .append(Doc::text(" variant "))
                 .append(Doc::text(format!("{i}"))),

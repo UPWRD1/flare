@@ -48,7 +48,7 @@ pub struct ItemSupply {
 }
 
 impl ItemSupply {
-    fn supply_for(&mut self, item: ast::ItemId) -> ItemId {
+    pub fn supply_for(&mut self, item: ast::ItemId) -> ItemId {
         self.cache
             .entry(item)
             .or_insert_with(|| {
@@ -396,6 +396,7 @@ impl<'source> LowerAst<'source> {
     }
 
     pub fn lower_ast(&mut self, ast: Spanned<Intern<Expr<Typed>>>) -> IR {
+        // dbg!(self.item_wrappers;
         let id = ast.1;
         match *ast.0 {
             Expr::Ident(Typed(var, ty)) => IR::Var(Var::new(
@@ -417,6 +418,39 @@ impl<'source> LowerAst<'source> {
                 let ir_fun = self.lower_ast(fun);
                 let ir_arg = self.lower_ast(arg);
                 IR::app(ir_fun, ir_arg)
+            }
+
+            Expr::If(c, t, o) => {
+                let cond = self.lower_ast(c);
+                let then = self.lower_ast(t);
+                let other = self.lower_ast(o);
+                IR::r#if(cond, then, other)
+            }
+
+            Expr::Add(l, r) => {
+                let ir_l = self.lower_ast(l);
+                let ir_r = self.lower_ast(r);
+                IR::add(ir_l, ir_r)
+            }
+            Expr::Sub(l, r) => {
+                let ir_l = self.lower_ast(l);
+                let ir_r = self.lower_ast(r);
+                IR::sub(ir_l, ir_r)
+            }
+            Expr::Mul(l, r) => {
+                let ir_l = self.lower_ast(l);
+                let ir_r = self.lower_ast(r);
+                IR::mul(ir_l, ir_r)
+            }
+            Expr::Div(l, r) => {
+                let ir_l = self.lower_ast(l);
+                let ir_r = self.lower_ast(r);
+                IR::div(ir_l, ir_r)
+            }
+            Expr::Comparison(l, op, r) => {
+                let ir_l = self.lower_ast(l);
+                let ir_r = self.lower_ast(r);
+                IR::bin(ir_l, op, ir_r)
             }
 
             Expr::Label(_, body) => self.lower_ast(body),
@@ -493,10 +527,12 @@ impl<'source> LowerAst<'source> {
             }
             Expr::Item(item_id, k) => {
                 let ty = self.item_source.lookup_item(item_id);
+                dbg!(item_id);
                 match k {
                     ast::Kind::Extern(s) => IR::Extern(s, ty),
                     ast::Kind::Func => {
                         let item_ir = IR::Item(ty, self.item_supply.supply_for(item_id));
+                        // let item_ir = IR::Item(ty, ItemId(item_id.0 as u32));
                         let wrapper = self
                             .item_wrappers
                             .get(&id)
