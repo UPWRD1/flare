@@ -1,14 +1,12 @@
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 use petgraph::{
-    acyclic::Acyclic,
-    algo::{k_shortest_path, kosaraju_scc},
+    algo::kosaraju_scc,
     dot::Config,
     graph::NodeIndex,
-    visit::{Dfs, DfsPostOrder, IntoNodeReferences, Topo, UndirectedAdaptor, Walker},
+    visit::{Dfs, IntoNodeReferences, Walker},
 };
 use rustc_hash::FxHashSet;
-
 // const INTRINSIC_FUNC_ADD: usize = 0;
 // const INTRINSIC_FUNC_SUB: usize = 1;
 // const INTRINSIC_FUNC_MUL: usize = 2;
@@ -141,24 +139,18 @@ impl<const N: usize> Resolver<N> {
         for (idx, p) in filtered {
             self.analyze_package(idx, p)?
         }
-        self.dag.reverse();
+        // self.dag.reverse();
 
-        self.debug();
-        // let mut sorted: Vec<NodeIndex> = Dfs::new(&self.dag.clone(), self.main_dag_idx.unwrap())
-        //     .iter(&self.dag)
-        //     .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
-        //     .collect();
+        let reachable: FxHashSet<NodeIndex> =
+            Dfs::new(&self.dag.clone(), self.main_dag_idx.unwrap())
+                .iter(&self.dag)
+                .collect();
         let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
             .into_iter()
             .flatten()
+            .filter(|x| reachable.contains(x))
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
-        dbg!(
-            sorted
-                .iter()
-                .map(|x| self.env.value(*x).unwrap().ident().unwrap().0)
-                .collect::<Vec<_>>()
-        );
         Ok(sorted)
     }
 
@@ -685,7 +677,7 @@ impl<const N: usize> Resolver<N> {
             && n != current
         // && !self.dag.contains_edge(current, n)
         {
-            self.dag.update_edge(n, current, ());
+            self.dag.update_edge(current, n, ());
         }
     }
 

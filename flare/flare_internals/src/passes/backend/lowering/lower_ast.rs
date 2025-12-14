@@ -527,7 +527,7 @@ impl<'source> LowerAst<'source> {
             }
             Expr::Item(item_id, k) => {
                 let ty = self.item_source.lookup_item(item_id);
-                dbg!(item_id);
+                // dbg!(item_id);
                 match k {
                     ast::Kind::Extern(s) => IR::Extern(s, ty),
                     ast::Kind::Func => {

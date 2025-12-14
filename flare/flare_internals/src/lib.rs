@@ -47,7 +47,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use internment::Intern;
 use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
@@ -66,7 +65,7 @@ use crate::{
                 Untyped,
                 // Untyped
             },
-            files::{FileID, FileSource}, Spanned,
+            files::{FileID, FileSource},
         },
     },
 };
@@ -253,7 +252,7 @@ impl<T: Target> Context<T> {
         
         let lowerer = Lowerer::new();
         let ir = lowerer.lower(source, items);
-        // let ir = simplify::simplify(ir);
+        let ir = simplify::simplify(ir);
         let ir = monomorph::monomorph(ir);
         
         let g = Generator::new(self.target, ir);

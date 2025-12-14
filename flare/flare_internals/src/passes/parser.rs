@@ -1,5 +1,5 @@
 use crate::{
-    passes::midend::typing::{ClosedRow, Row, RowVar, Type, TypeVar},
+    passes::midend::typing::{ClosedRow, Row, RowVar, Type},
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
@@ -403,7 +403,7 @@ where
 .allow_trailing().at_least(1)
                     .collect::<Vec<_>>()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-.map_with(|args, e| {
+.map_with(|args, _e| {
                         if args.is_empty() {
                             unreachable!()
                                                     } else {
@@ -420,7 +420,7 @@ where
                     })
 .labelled("table")
                     .as_context();
-                      let atom = recursive(|atom| {
+                      let atom = recursive(|_atom| {
 
                     
             choice((
@@ -763,55 +763,7 @@ where
                 .allow_trailing()
                 .collect::<Vec<_>>();
 
-            let grouping = Parser::nested_in(
-                ty.clone(),
-                select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
-            );
-            
-            // Atomic types (no arrows at this level)
-             choice((
-                // Primitive Types
-                just(Token::TyNum).map_with(|_, e| Spanned(Intern::from(Type::Num), e.span())),
-                just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
-                just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
-                just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
-                just(Token::TyInfer)
-.map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())),                // User Types
-                raw_ident
-                    .then(
-                        type_list
-                            .clone()
-                            .delimited_by(just(Token::LBracket), just(Token::RBracket))
-                            .or_not(),
-                    )
-                    .clone()
-                    .map_with(|(name, generics), e| {
-                        Spanned(Intern::from(Type::User(name)), e.span())
-                    }),
-
-                // Particles
-                just(Token::At).ignore_then(raw_ident).map_with(|name, e| {
-                    Spanned(Intern::from(Type::Particle(name)), e.span())
-                }),
-                
-
-                // Generic Types
-                just(Token::Question)
-                    .ignore_then(raw_ident)
-                    .map_with(|name, e| {
-                        Spanned(Intern::from(Type::Generic(name)), e.span())
-                    }),
-
-                // Row Vars
-                just(Token::Question)
-                    .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
-                    .map_with(|name, e| {
-                        Spanned(Intern::from(Type::Prod(Row::Open(RowVar(name.0)))), e.span())
-                    }),
-
-                // Tuple
-                type_list
-                    .clone()
+            let tuple = type_list.clone()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
                     .map_with(|types, e| {
                         let ty = Type::Prod(Row::Closed(ClosedRow {
@@ -824,9 +776,11 @@ where
                             values: types.leak(),
                         }));
                         Spanned(Intern::from(ty), e.span())
-                    }),
-// Table
-                raw_ident.then_ignore(just(Token::Colon)).then(ty).separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
+                    });
+            
+            let table = raw_ident
+    .then_ignore(just(Token::Colon)).then(ty.clone())
+    .separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
                     .clone().then(just(Token::TripleDot).or_not())
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
                     .map_with(|(types, is_open), e| {
@@ -857,20 +811,69 @@ let l_ty = Type::Prod(Row::Closed(ClosedRow {
                         }));
                         Spanned(Intern::from(ty), e.span())
                         }
-                                            }),
-                grouping,
-            ))
+                                            })    ;        
+            let grouping = Parser::nested_in(
+                ty.clone(),
+                select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
+            );
             
-            // Now apply pratt for function arrows
-                    },
-    ).pratt(vec![infix(
+            // Atomic types (no arrows at this level)
+             choice((
+                // Primitive Types
+                just(Token::TyNum).map_with(|_, e| Spanned(Intern::from(Type::Num), e.span())),
+                just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
+                just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
+                just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
+                just(Token::TyInfer)
+.map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())),                // User Types
+                raw_ident
+                    .then(
+                        type_list
+                            .clone()
+                            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                            .or_not(),
+                    )
+                    .clone()
+                    .map_with(|(name, _generics), e| {
+                        Spanned(Intern::from(Type::User(name)), e.span())
+                    }),
+
+                // Particles
+                just(Token::At).ignore_then(raw_ident).map_with(|name, e| {
+                    Spanned(Intern::from(Type::Particle(name)), e.span())
+                }),
+                
+
+                // Generic Types
+                just(Token::Question)
+                    .ignore_then(raw_ident)
+                    .map_with(|name, e| {
+                        Spanned(Intern::from(Type::Generic(name)), e.span())
+                    }),
+
+                // Row Vars
+                just(Token::Question)
+                    .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
+                    .map_with(|name, e| {
+                        Spanned(Intern::from(Type::Prod(Row::Open(RowVar(name.0)))), e.span())
+                    }),
+
+                // Tuple
+tuple,
+                // Table
+                table,
+                grouping,
+                ))
+            
+                                },
+    )
+.pratt(vec![infix(
                 right(9),
                 just(Token::Arrow),
                 |x: Spanned<Intern<Type>>, _, y, e| {
                     Spanned(Intern::from(Type::Func(x, y)), e.span())
                 },
-            )])
-    .boxed()
+            )])    .boxed()
     // dbg!("made it");
     }
 
@@ -1065,7 +1068,7 @@ mod tests {
 
         match ty_parser(&make_input)
             .parse(
-                make_input(SimpleSpan::new(0, 0..src.len()), tokens.unwrap().leak()),
+                make_input(SimpleSpan::new(0, 0..src.len()), tokens.expect("Could not parse test").leak()),
                            )
             .into_result()
         {

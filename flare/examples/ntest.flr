@@ -1,15 +1,5 @@
-package Main = 
-    # let id x : ?T -> ?T =
-        # x
-
-    # let person_age p : {age: num} -> num =
-            # p.age
-
-     # let combiner a b : ?T -> ?U -> {x: ?T, y: ?U} =
-        # {x = a, y = b}
-
-    # let x_getter r : {x: ?T} -> ?T =
-        # r.x
+package Main =
+    extern format: ?T -> str
 
     let factorial x : num -> num =
         if x == 0 then
@@ -17,17 +7,14 @@ package Main =
         else
             factorial(x - 1) + x
 
+    # for some property, CanTalk
+    
+    let speak x: {?T , ?T -> str} -> str =
+        x.1(x.0)
 
-    let thing1 x : num -> num =
-        if x < 10 then thing2 x else
-        x
+    let number_speak x: num -> str =
+        format x
 
-    let thing2 x : num -> num =
-        let new_x = x + 1 in thing1 x
-
-    # let singleton x: ?T -> {y: ?T} =
-         # {y = x}
-
-    let main : num =
-        thing1 1         
+    let main : str =
+        {3, number_speak }      
                
