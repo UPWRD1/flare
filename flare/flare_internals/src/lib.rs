@@ -45,6 +45,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chumsky::span::SimpleSpan;
 use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
@@ -63,6 +64,7 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, ErrorCollection},
         rep::{
+            Spanned,
             ast::{
                 Package,
                 Program,
@@ -147,9 +149,14 @@ impl<T: Target> Context<T> {
 
         let e = Environment::build(&program)?;
         let default_span = Type::Unit.to_default_span();
-        let intrinsics = [
+        let intrinsics: [(&str, &'static [Untyped], Type); 10] = [
             (
                 "intrinsic_arith_add",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
@@ -158,6 +165,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_arith_sub",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
@@ -166,6 +178,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_arith_mul",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
@@ -174,6 +191,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_arith_div",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
@@ -182,6 +204,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_compare_eq",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
                     Type::Func(
@@ -193,6 +220,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_compare_neq",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
                     Type::Func(
@@ -204,6 +236,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_compare_clt",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
@@ -212,6 +249,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_compare_cle",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
@@ -220,6 +262,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_compare_cgt",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
@@ -228,6 +275,11 @@ impl<T: Target> Context<T> {
             ),
             (
                 "intrinsic_compare_cge",
+                vec![
+                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+                ]
+                .leak(),
                 Type::Func(
                     Type::Num.to_default_span(),
                     Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())

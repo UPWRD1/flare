@@ -70,7 +70,7 @@ pub enum ItemKind<V: Variable> {
     ),
     Extern {
         name: Spanned<Intern<String>>,
-        // args: &'static [V],
+        args: &'static [V],
         sig: Spanned<Intern<Type>>,
     },
     Field {
@@ -101,7 +101,7 @@ impl<V: Variable> SpanWrapped for Item<V> {
                 )
             }
             ItemKind::Type(_, t) => t.1,
-            ItemKind::Extern { name, sig } => name.1.union(sig.1),
+            ItemKind::Extern { name, args: _, sig } => name.1.union(sig.1),
             ItemKind::Field { name, value: _ } => name.0.1,
 
             ItemKind::Dummy(_) => panic!(),
@@ -175,7 +175,7 @@ impl<V: Variable> Item<V> {
             ItemKind::Type(_, t) => Ok(*t),
             ItemKind::Extern {
                 name: _,
-                // args: _,
+                args: _,
                 sig,
             } => Ok(*sig),
             _ => Err(err(self)),

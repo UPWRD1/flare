@@ -110,9 +110,9 @@ impl LowerTypes {
     }
 }
 
-struct LoweredTyScheme {
-    scheme: Type,
-    lower_types: LowerTypes,
-    kinds: Vec<Kind>,
-    ev_to_ty: BTreeMap<Evidence, Type>,
+pub struct LoweredTyScheme {
+    pub scheme: Type,
+    pub lower_types: LowerTypes,
+    pub kinds: Vec<Kind>,
+    pub ev_to_ty: BTreeMap<Evidence, Type>,
 }

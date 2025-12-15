@@ -58,12 +58,6 @@ impl ItemSupply {
             })
             .to_owned()
     }
-
-    fn supply(&mut self) -> ItemId {
-        let ir_item = self.next;
-        self.next += 1;
-        ItemId(ir_item)
-    }
 }
 
 pub struct LowerAst<'source> {
@@ -151,7 +145,7 @@ impl LowerSolvedEv<'_> {
                 RowIndex::Right(i) => Self::unwrap_prj(*i, self.right.len(), right.clone()),
             });
             if self.goal_indices.len() == 1 {
-                elems.next().unwrap()
+                elems.next().expect("Expected  elements in goal indices")
             } else {
                 IR::tuple(elems)
             }
@@ -201,7 +195,10 @@ impl LowerSolvedEv<'_> {
                     })
                 });
                 if goal_len == 1 {
-                    IR::app(branches.next().unwrap().as_fun(), IR::Var(goal_var))
+                    IR::app(
+                        branches.next().expect("Expected branches").as_fun(),
+                        IR::Var(goal_var),
+                    )
                 } else {
                     IR::case(ret_ty, IR::Var(goal_var), branches)
                 }

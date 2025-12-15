@@ -26,7 +26,7 @@ impl<'env> Solver<'env> {
         match *ty.0 {
             Type::Num | Type::String | Type::Bool | Type::Unit | Type::Particle(_) => ty,
 
-            Type::Var(var) => ty,
+            Type::Var(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.normalize_ty(arg);
                 let ret = self.normalize_ty(ret);
@@ -220,7 +220,7 @@ impl<'env> Solver<'env> {
                     // type
                     let left_tys = l.values.iter();
                     let right_tys = r.values.iter();
-                    for (i, (left_ty, right_ty)) in left_tys.zip(right_tys).enumerate() {
+                    for (left_ty, right_ty) in left_tys.zip(right_tys) {
                         self.unify_ty_ty(*left_ty, *right_ty)?;
                     }
                     Ok(())
@@ -359,7 +359,6 @@ impl<'env> Solver<'env> {
                 Constraint::TypeEqual(p, left, right) => (p, self.unify_ty_ty(left, right)),
 
                 Constraint::RowCombine(p, row_comb) => (p, self.unify_row_comb(row_comb)),
-                _ => todo!(),
             };
 
             if let Err(kind) = uni_state {
@@ -409,7 +408,7 @@ impl<'env> Solver<'env> {
                         }
                     },
                     UnificationError::RowsNotEqual((l, r)) => {
-                        dbg!(provenance);
+                        // dbg!(provenance);
                         let err = DynamicErr::new(format!("Type mismatch between {l} and {r}"))
                             .label(format!("Expected {}, found {}", r, l), provenance.id());
                         (provenance.id(), err.into())

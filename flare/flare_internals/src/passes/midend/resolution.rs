@@ -57,7 +57,7 @@ pub struct Resolver<const N: usize> {
     current_dag_node: Option<NodeIndex>,
     pub dag: DiGraph<DagIdx, ()>,
     main_dag_idx: Option<NodeIndex>,
-    intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
+    // intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
 }
 
 type DagIdx = usize;
@@ -65,10 +65,18 @@ type DagIdx = usize;
 impl<const N: usize> Resolver<N> {
     pub fn new(
         mut env: Environment,
-        intrinsics: [(impl Into<String>, impl Into<Intern<Type>>); N],
+        intrinsics: [(
+            impl Into<String>,
+            &'static [Untyped],
+            impl Into<Intern<Type>>,
+        ); N],
     ) -> Self {
         fn register_intrinsic(
-            (id, sig): (impl Into<String>, impl Into<Intern<Type>>),
+            (id, args, sig): (
+                impl Into<String>,
+                &'static [Untyped],
+                impl Into<Intern<Type>>,
+            ),
             env: &mut Environment,
         ) -> (ItemId, Intern<Expr<Untyped>>) {
             let name = Intern::from(id.into());
@@ -80,23 +88,21 @@ impl<const N: usize> Resolver<N> {
                 Item {
                     kind: ItemKind::Extern {
                         name: Spanned(name, SimpleSpan::new(0, 0..0)),
+                        args,
                         sig: Spanned(sig.into(), SimpleSpan::new(0, 0..0)),
                     },
                 },
             );
             let itemid = ItemId(e.index());
-            // let ty = env
-            // .value(e)
-            // .expect("Impossible")
-            // .get_type_universal()
-            // .unwrap();
             (
                 itemid,
                 Expr::Item(itemid, Kind::Extern((*name).clone().leak())).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
             )
         }
 
-        let intrinsics = intrinsics.map(|id| register_intrinsic(id, &mut env));
+        intrinsics.into_iter().for_each(|id| {
+            register_intrinsic(id, &mut env);
+        });
 
         Self {
             env,
@@ -104,10 +110,7 @@ impl<const N: usize> Resolver<N> {
             current_dag_node: None,
             dag: DiGraph::new(),
             main_dag_idx: None,
-            intrinsics,
-            // rows: BTreeMap::new(),
-            // unbound_row_count: 0,
-            // guess_evidence: vec![],
+            // intrinsics,
         }
     }
 
@@ -248,7 +251,7 @@ impl<const N: usize> Resolver<N> {
                     Ok(())
                 }
 
-                ItemKind::Extern { name: _, sig } => {
+                ItemKind::Extern { sig, .. } => {
                     let old_sig = sig;
                     let t = self.in_context(|me| me.analyze_type(sig), dag_idx)?;
 
@@ -258,11 +261,7 @@ impl<const N: usize> Resolver<N> {
                         .graph
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
-                    if let ItemKind::Extern {
-                        name: _,
-                        ref mut sig,
-                    } = item.kind
-                    {
+                    if let ItemKind::Extern { ref mut sig, .. } = item.kind {
                         *sig = old_sig.convert(t.0);
                     }
                     Ok(())
@@ -598,7 +597,7 @@ impl<const N: usize> Resolver<N> {
                 }
             }
 
-            Expr::Branch(l, r) => todo!(),
+            Expr::Branch(_l, _r) => todo!(),
             Expr::Label(a, r) => {
                 if a.0.0 == id.0 {
                     Ok(())
@@ -614,23 +613,7 @@ impl<const N: usize> Resolver<N> {
                     self.row_addr_helper(&r, id, vars, accum)
                 }
             }
-            Expr::Ident(n) => {
-                // let ty = Type::Var(TypeVar(self.new_typvar())).into();
-                // let goal = Row::Open(self.new_rowvar());
-
-                // let right = Row::Open(self.new_rowvar());
-                // let left = Row::Open(self.new_rowvar());
-                // let remainder = Row::Open(self.new_rowvar());
-                // // evidence we can produce a row containing the field and other types
-                // let ev1 = Evidence::RowEquation {
-                //     left: Row::single(Label(id.ident()?), ty),
-                //     right: remainder,
-                //     goal,
-                // };
-
-                // let ev2 = Evidence::RowEquation { left, right, goal };
-                // self.guess_evidence.push(ev1);
-                // self.guess_evidence.push(ev2);
+            Expr::Ident(_) => {
                 accum.push(Direction::Left);
                 Ok(())
             }
@@ -645,6 +628,7 @@ impl<const N: usize> Resolver<N> {
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     #[deprecated]
+    /// Pretty-print GraphViz for the internal state of the dependancy graph.
     fn debug(&self) {
         let render = |_, (_, v): (_, &usize)| {
             format!(

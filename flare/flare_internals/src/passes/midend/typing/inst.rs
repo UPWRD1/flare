@@ -1,4 +1,3 @@
-use chumsky::span::Span;
 use internment::Intern;
 use rustc_hash::FxHashMap;
 

@@ -5,7 +5,7 @@ use std::{env, fs::File, io::Write, panic, path::PathBuf};
 
 use flare_internals::{
     Context, convert_path_to_id,
-    passes::backend::{c::C, lowering::ir::IRTarget, target::Target},
+    passes::backend::{lowering::ir::IRTarget, target::Target},
     resource::errors::CompResult,
 };
 fn enable_loggin() {

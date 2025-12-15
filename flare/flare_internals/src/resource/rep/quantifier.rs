@@ -62,6 +62,7 @@ impl QualifierFragment {
         self.name() == rhs.name()
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn from_expr<V: Variable>(
         expr: &Spanned<Intern<Expr<V>>>,
     ) -> CompResult<Vec<QualifierFragment>> {

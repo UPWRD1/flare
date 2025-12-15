@@ -45,7 +45,7 @@ impl Target for C {
         "c"
     }
 }
-
+#[allow(dead_code, unused_variables, clippy::dbg_macro)]
 impl C {
     pub fn new() -> Self {
         Self
@@ -70,7 +70,6 @@ impl C {
 
         //let output = format!("{} {}()", converted_ret, f.name.ident().unwrap().0);
         // dbg!(output);
-        todo!()
     }
     fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>) {
         todo!()

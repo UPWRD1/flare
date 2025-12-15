@@ -1,20 +1,27 @@
 package Main =
-    extern format: ?T -> str
-
+    extern format f: ?T -> str
+    
     # let factorial x : num -> num =
         # if x == 0 then
             # 0
         # else
             # factorial(x - 1) + x
 
+    let unwrap_or x default: {Some {?T} | None} -> ?T -> ?T =
+         match x =
+            | Some {x} then x,
+            | None then default
+
     # for some property, CanTalk
-    
+       
     let speak x: {?T , ?T -> str} -> str =
         x.1(x.0)
 
     let number_speak x: num -> str =
         format x
 
-    let main : str =
-        speak {3, fn x => format x}
+    let main x : num -> str =
+        # speak ({3 + x, number_speak})
+        let x = Some {3} in
+            unwrap_or x 0
               

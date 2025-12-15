@@ -1,8 +1,6 @@
 use std::fmt::Debug;
 
-use internment::Intern;
-
-use crate::passes::backend::lowering::ir::{IR, ItemId, Type};
+use crate::passes::backend::lowering::ir::{IR, Type};
 
 pub trait Target: Copy {
     type Partial: Default;

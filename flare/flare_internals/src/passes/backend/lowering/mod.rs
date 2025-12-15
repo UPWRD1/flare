@@ -7,9 +7,9 @@ use crate::{
         backend::lowering::{
             ir::{IR, Kind, Var},
             lower_ast::{ItemSupply, LowerAst, VarSupply},
-            lower_types::{AstTypeVar, LowerTypes},
+            lower_types::{AstTypeVar, LowerTypes, LoweredTyScheme},
         },
-        midend::typing::{self, Evidence, TypesOutput},
+        midend::typing::{self, TypesOutput},
     },
     resource::rep::ast::{self, ItemId},
 };
@@ -20,13 +20,6 @@ pub mod lower_types;
 pub mod subst;
 
 use ir::{Type, TypeVar};
-
-struct LoweredTyScheme {
-    scheme: Type,
-    lower_types: LowerTypes,
-    kinds: Vec<Kind>,
-    ev_to_ty: BTreeMap<Evidence, Type>,
-}
 
 fn lower_ty_scheme(scheme: typing::TypeScheme) -> LoweredTyScheme {
     let mut kinds = vec![Kind::Type; scheme.unbound_types.len() + scheme.unbound_rows.len()];

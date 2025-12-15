@@ -87,7 +87,7 @@ impl<'env> Solver<'env> {
                 let root = self.tables.row_unification_table.find(var);
 
                 match self.tables.row_unification_table.probe_value(root) {
-                    Some(Row::Unifier(_)) => panic!(
+                    Some(Row::Unifier(_)) => unreachable!(
                         "Unexpected open row found as value of row unification table. This variable should've been `unify_var_var()`, not `unify_var_value()`"
                     ),
                     Some(Row::Open(v)) => SubstOut::new(Row::Open(v)),

@@ -79,7 +79,7 @@ impl Ident for Type {
         match self {
             Self::Package(spanned) => Ok(*spanned),
             Self::Label(l, _) => Ok(l.0),
-            _ => panic!("{:?}", self),
+            _ => unreachable!("{:?}", self),
         }
     }
 }
@@ -154,7 +154,7 @@ impl Type {
         if let Self::Func(l, r) = self {
             (l, r)
         } else {
-            panic!()
+            unreachable!("Called on non-func type {self:?}")
         }
     }
     pub fn destructure_arrow(

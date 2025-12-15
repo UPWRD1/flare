@@ -144,11 +144,12 @@ impl Environment {
                         }));
                         me.add(current_node, ident, entry);
                     }
-                    Definition::Extern(n, ty) => {
+                    Definition::Extern(n, args, ty) => {
                         let ident = QualifierFragment::Func(n.0);
                         let entry = Item::new(Extern {
                             //parent: current_parent.clone(),
                             name: *n,
+                            args,
                             sig: *ty,
                         });
                         me.add(current_node, ident, entry);
@@ -200,6 +201,7 @@ impl Environment {
     /// Builds an impl definition
     /// # Errors
     /// On invalid names.
+    #[allow(dead_code, unused_variables)]
     fn build_impl_def(
         &mut self,
         package_quant: QualifierFragment,
@@ -262,7 +264,7 @@ impl Environment {
                     let ty_node_idx = self.add(current_node, qual, entry);
                     self.build_row(ty_node_idx, the_row)?;
                 }
-                _ => panic!(),
+                _ => unreachable!("All defined types should be closed rows"),
             },
             Type::Label(l, r) => {
                 let type_name = l.0;
@@ -460,7 +462,7 @@ impl Environment {
         //let _ = self.graph.edges(self.root).map(|x| dbg!(x));
         struct Rec<'s, 'graph, T> {
             f: &'s dyn Fn(
-                &Rec<'s, 'graph, T>,
+                &Self,
                 &'graph T,
                 NodeIndex,
                 &[QualifierFragment],

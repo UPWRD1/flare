@@ -6,12 +6,12 @@ use crate::{
     passes::backend::lowering::ir::{Branch, IR, ItemId, Kind, TyApp, Type, Var, VarId},
     resource::rep::ast::BinOp,
 };
-
+#[allow(dead_code)]
 enum Param {
     Ty(Kind),
     Val(Var),
 }
-
+#[allow(dead_code)]
 enum Arg<'a> {
     Val(&'a IR),
     Ty(&'a TyApp),
@@ -46,8 +46,8 @@ impl IR {
             Self::If(c, t, o) => c.size().max(t.size().max(o.size())),
             Self::Tuple(v) => v.iter().map(|x| x.size()).sum::<usize>(),
             Self::Field(ir, _) => ir.size(),
-            Self::Tag(t, _, ir) => ir.size(),
-            Self::Case(t, s, b) => s.size() + b.iter().map(|x| x.as_fun().size()).sum::<usize>(),
+            Self::Tag(_, _, ir) => ir.size(),
+            Self::Case(_, s, b) => s.size() + b.iter().map(|x| x.as_fun().size()).sum::<usize>(),
             Self::Item(_, _) | Self::Extern(_, _) => 100,
             // _ => todo!(),
         }
@@ -77,10 +77,9 @@ impl IR {
             Self::Bin(l, _, r) => l.is_value() && r.is_value(),
 
             Self::TyFun(_, ir) => ir.is_value(),
-            // Self:TyApp(ir, _) => ir.is_value(),
             Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
             Self::Tuple(s) => s.iter().all(|x| x.is_value()),
-            // Self::Tag(_, _, ir) =
+            Self::Tag(_, _, _) => true,
             Self::App(_, _) | Self::TyApp(_, _) => false,
 
             _ => todo!("{self:?}"),
@@ -207,20 +206,20 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
             subst_ty(*defn, payload.clone()),
             subst_ty(*body, payload),
         ),
-        IR::Field(ir, u) => {
-            if let IR::Tuple(content) = *ir {
-                let heads = &content[..u];
-                let i = content[u].clone();
-                let tails = &content[u + 1..];
-                let v = subst_ty(i, payload);
-                let new_tuple = IR::Tuple([heads, &[v], tails].concat());
-                // let (i, heads) = items.split_last().unwrap();
-                // dbg!(new_tuple);
-                todo!()
-            } else {
-                dbg!(&ir);
+        IR::Field(ir, _u) => {
+            // if let IR::Tuple(content) = *ir {
+            //     let heads = &content[..u];
+            //     let i = content[u].clone();
+            //     let tails = &content[u + 1..];
+            //     let v = subst_ty(i, payload);
+            //     let new_tuple = IR::Tuple([heads, &[v], tails].concat());
+            //     // let (i, heads) = items.split_last().unwrap();
+            //     // dbg!(new_tuple);
+            //     todo!()
+            // } else {
+                // dbg!(&ir);
                 subst_ty(*ir, payload)
-            }
+            // }
         }
 
         IR::Tuple(elements) => {
@@ -231,6 +230,11 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
                     .map(|elem| subst_ty(elem, payload.clone()))
                     .collect()
             )
+        }
+        IR::Extern(_, _) => haystack, // might be wrong
+
+        IR::Case(t, ir, branches) => {
+            IR::Case(t, Box::new(subst_ty(*ir, payload.clone())), branches.into_iter().map(|x| Branch{ param: x.param, body: subst_ty(x.body, payload.clone())}).collect())
         }
 
         _ => todo!("{haystack:?}"),
@@ -338,7 +342,7 @@ impl<'i> OccuranceAnalyzer<'i> {
             }
 
             IR::Tag(_, _, ir) => self.occurrence_analysis(ir, seen),
-            IR::Item(t, id) => {
+            IR::Item(_, id) => {
                 // dbg!(self.items.len(), id);
                 if seen.contains(id) {
                     // We are analyzing a recursive function
@@ -392,7 +396,7 @@ struct Simplifier<'p> {
     locals_inlined: usize,
     inline_size_threshold: usize,
     items: &'p Vec<(IR, Type)>,
-    current_item: Option<usize>,
+
     seen_items: FxHashSet<ItemId>,
 }
 
@@ -408,6 +412,7 @@ pub fn simplify(the_ir: Vec<(IR, Type)>) -> Vec<(IR, Type)> {
                 let mut simplifier = Simplifier::new(occs, &the_ir);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
+                    // println!("Simplified after {i} passes");
                     break;
                 }
             }
@@ -426,7 +431,7 @@ impl<'p> Simplifier<'p> {
             saturated_fun_count: Default::default(),
             saturated_ty_fun_count: Default::default(),
             locals_inlined: Default::default(),
-            current_item: None,
+
             seen_items: FxHashSet::default(),
         }
     }

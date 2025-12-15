@@ -8,7 +8,6 @@ use flare_internals::passes::midend::typechecker::Typechecker;
 use flare_internals::passes::midend::typing::Type;
 use flare_internals::*;
 use flare_internals::{passes::midend::environment::Environment, resource::rep::ast::Program};
-use internment::Intern;
 
 static TEST_FILE: LazyLock<&'static Path> = LazyLock::new(|| {
     let relative_path = PathBuf::from("benches/bench_code/bench1.flr");

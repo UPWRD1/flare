@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    passes::midend::typing::{Row, Type, TypeScheme},
+    passes::midend::typing::Type,
     resource::{
         errors::{CompResult, DynamicErr},
         rep::{
@@ -18,11 +18,7 @@ use chumsky::span::SimpleSpan;
 use internment::Intern;
 use ordered_float::OrderedFloat;
 
-use super::{
-    Spanned,
-    // concretetypes::{EnumVariant, Ty},
-    quantifier::QualifierFragment,
-};
+use super::Spanned;
 
 pub trait Variable:
     Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display
@@ -355,7 +351,7 @@ impl<V: Variable> fmt::Display for Expr<V> {
             Expr::Ident(n) => write!(f, "{}", n),
             Expr::Number(ordered_float) => write!(f, "{ordered_float}"),
             Expr::String(s) => write!(f, "\"{s}\""),
-            Expr::Bool(v) => todo!(),
+            Expr::Bool(v) => write!(f, "{v}"),
             Expr::Hole(_) => todo!(),
 
             Expr::Lambda(v, b, _) => write!(f, "|{v}| {b}"),
@@ -402,7 +398,7 @@ pub enum Definition<V: Variable> {
     Import(Spanned<Intern<Expr<V>>>),
     Type(Spanned<Intern<String>>, Spanned<Intern<Type>>),
     Let(V, Spanned<Intern<Expr<V>>>, Spanned<Intern<Type>>),
-    Extern(Spanned<Intern<String>>, Spanned<Intern<Type>>),
+    Extern(Spanned<Intern<String>>, &'static [V], Spanned<Intern<Type>>),
     ImplDef(ImplDef<V>),
 }
 

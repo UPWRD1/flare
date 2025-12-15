@@ -457,7 +457,7 @@ where
                 // Tuple Constructors
                 tuple,
                 table,
-                // idents
+                                // idents
                 ident,
                 just(Token::At)
                     .ignore_then(raw_ident)
@@ -703,10 +703,10 @@ where
             .map(Definition::Import);
 
         let extern_def = just(Token::Extern)
-            .ignore_then(raw_ident)
+            .ignore_then(raw_ident).then(raw_ident.repeated().collect::<Vec<_>>())
             .then_ignore(just(Token::Colon))
             .then(ty)
-            .map(|(name, ty)| Definition::Extern(name, ty));
+            .map(|((name, args), ty)| Definition::Extern(name, args.into_iter().map(Untyped).collect::<Vec<_>>().leak(), ty));
 
         // let impl_group = just(Token::Impl)
         //     .ignore_then(ty)

@@ -499,15 +499,6 @@ impl IR {
             }
             Self::Item(t, _) => t.clone(),
             Self::Extern(_, t) => t.clone(),
-            // These should all be numbers
-            // Self::Add(l, r) | Self::Sub(l, r) | Self::Mul(l, r) | Self::Div(l, r) => {
-            //     let lty = l.type_of();
-            //     let rty = r.type_of();
-            //     if lty != rty || lty != Type::Num {
-            //         unreachable!("Expected number type in arithmatic operation while generating IR",)
-            //     }
-            //     Type::Num
-            // }
         }
     }
 
@@ -517,6 +508,16 @@ impl IR {
             body.collect_fun_vars(vars)
         } else {
             self.clone()
+        }
+    }
+
+    fn collect_app_args(self, args: &mut Vec<Self>) -> Self {
+        if let Self::App(fun, arg) = self {
+            args.push(*arg);
+            fun.collect_app_args(args)
+        } else {
+            args.reverse();
+            self
         }
     }
 }
@@ -577,22 +578,39 @@ impl Render for IR {
                 let mut vars = vec![v.clone()];
                 let ir = b.clone().collect_fun_vars(&mut vars);
                 Doc::text("fn")
-                    // .append(Doc::space())
-                    .append(Doc::list(
-                        Itertools::intersperse(
-                            vars.into_iter().map(|v| v.render()),
-                            Doc::text(",").space(),
+                    .append(Doc::space())
+                    .append(
+                        Doc::list(
+                            Itertools::intersperse(
+                                vars.into_iter().map(|v| v.render()),
+                                Doc::text(",").space(),
+                            )
+                            .collect(),
                         )
-                        .collect(),
-                    ))
-                    .brackets()
+                        .brackets(),
+                    )
                     .space()
                     .text("=>") // .append(Doc::)
                     .group()
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))
             }
 
-            Self::App(l, r) => l.render().append(r.render().parens()),
+            Self::App(l, r) => {
+                let mut v = vec![];
+                r.collect_app_args(&mut v);
+                l.render().append(
+                    //l.render().append(r.render().parens()),
+                    Doc::nil()
+                        .append(Doc::list(
+                            Itertools::intersperse(
+                                v.into_iter().map(|v| v.render()),
+                                Doc::text(",").space(),
+                            )
+                            .collect(),
+                        ))
+                        .parens(),
+                )
+            }
             Self::TyApp(t, k) => Doc::nil()
                 .append(match k {
                     TyApp::Ty(t) => t.render(),
@@ -639,22 +657,18 @@ impl Render for IR {
 
             Self::Tuple(v) => {
                 if v.is_empty() {
-                    Doc::text("{}")
+                    Doc::nil().braces()
                 } else {
-                    Doc::text("{")
-                        .append(
-                            Doc::list(
-                                Itertools::intersperse(
-                                    v.into_iter()
-                                        .map(|x| Doc::hard_line().append(x.render()).nest(INC)),
-                                    Doc::text(","),
-                                )
-                                .collect(),
-                            )
-                            .group(),
+                    Doc::list(
+                        Itertools::intersperse(
+                            v.into_iter()
+                                .map(|x| Doc::hard_line().append(x.render()).nest(INC)),
+                            Doc::text(","),
                         )
-                        .hard_line()
-                        .append(Doc::text("}"))
+                        .collect(),
+                    )
+                    .group()
+                    .braces()
                 }
             }
             Self::Case(_, b, v) => Doc::text("match")
@@ -689,27 +703,7 @@ impl Render for IR {
             Self::Item(_, id) => Doc::text(format!("#{}", id.0)),
             // .append(Doc::space())
             // .append(t.render()),
-            Self::Extern(n, _) => Doc::text(format!("extern_{n}")), // Self::Add(l, r) => Doc::text("add")
-                                                                    //     .append(Doc::space())
-                                                                    //     .append(l.render())
-                                                                    //     .append(Doc::space())
-                                                                    //     .append(r.render()),
-
-                                                                    // Self::Sub(l, r) => Doc::text("sub")
-                                                                    //     .append(Doc::space())
-                                                                    //     .append(l.render())
-                                                                    //     .append(Doc::space())
-                                                                    //     .append(r.render()),
-                                                                    // Self::Mul(l, r) => Doc::text("mul")
-                                                                    //     .append(Doc::space())
-                                                                    //     .append(l.render())
-                                                                    //     .append(Doc::space())
-                                                                    //     .append(r.render()),
-                                                                    // Self::Div(l, r) => Doc::text("div")
-                                                                    //     .append(Doc::space())
-                                                                    //     .append(l.render())
-                                                                    //     .append(Doc::space())
-                                                                    //     .append(r.render()),
+            Self::Extern(n, _) => Doc::text(format!("extern_{n}")),
         }
     }
 }

@@ -17,7 +17,7 @@ use crate::{
         errors::{CompResult, DynamicErr, ErrorCollection},
         rep::{
             Spanned,
-            ast::{Expr, ItemId, Untyped},
+            ast::{Expr, ItemId, LambdaInfo, Untyped},
             common::Ident,
             entry::{FunctionItem, ItemKind},
         },
@@ -54,7 +54,7 @@ impl Typechecker {
                 ItemKind::Type(_n, t) => {
                     self.register_type(*item_idx, t)?;
                 }
-                ItemKind::Extern { name: _, sig } => {
+                ItemKind::Extern { sig, .. } => {
                     let (unbound_types, unbound_rows, types_to_name, ty, _) =
                         self.extract_generics(sig);
                     let scheme = TypeScheme {
@@ -123,7 +123,7 @@ impl Typechecker {
                 let sub = self.helper(sub, accum, row_accum, names, evidence);
                 let v = self.new_row_var();
                 // dbg!(&sub);
-                let g = self.new_row_var();
+                // let g = self.new_row_var();
                 evidence.push(Evidence::RowEquation {
                     left: sub.0.to_row(),
                     right: Row::Open(v),
@@ -134,7 +134,7 @@ impl Typechecker {
                 sub
             }
             Type::Generic(n) => {
-                let v = if let Some((v, _)) = names.iter().find(|(v, x)| x.0 == n.0) {
+                let v = if let Some((v, _)) = names.iter().find(|(_, x)| x.0 == n.0) {
                     *v
                 } else {
                     self.new_type_var()
@@ -169,8 +169,24 @@ impl Typechecker {
 
                 _ => todo!("Should be closed? todo"),
             })),
-            Type::Sum(row) => todo!(),
-            // Type::Sum(row) => todo!(),
+            Type::Sum(row) => t.modify(Type::Sum(match row {
+                Row::Closed(closed_row) => Row::Closed(ClosedRow {
+                    fields: closed_row.fields,
+                    values: closed_row
+                        .values
+                        .iter()
+                        .map(|t| self.helper(*t, accum, row_accum, names, evidence))
+                        .collect::<Vec<_>>()
+                        .leak(),
+                }),
+
+                Row::Open(o) => {
+                    row_accum.insert(o);
+                    row
+                }
+
+                _ => todo!("Should be closed? todo"),
+            })), // Type::Sum(row) => todo!(),
             Type::User(t) => {
                 unreachable!("Encountered user type {t} after resolution")
             }
@@ -220,14 +236,19 @@ impl Typechecker {
             .iter()
             .map(|idx| {
                 let id = ItemId(idx.index());
-                let scheme = self.context.types.get(&id).unwrap().clone();
+                let scheme = self
+                    .context
+                    .types
+                    .get(&id)
+                    .expect("Context should be loaded")
+                    .clone();
 
-                let item = self.env.value(*idx).unwrap();
+                let item = self.env.value(*idx).expect("Item should exist");
                 let solved = match item.kind {
                     ItemKind::Function(f) => {
                         if matches!(*scheme.ty.0, Type::Infer) {
                             Solver::type_infer_with_items(&self.context, f.body)
-                                .unwrap()
+                                .expect("Inference should not fail")
                                 .to_typesoutput()
                         } else {
                             Solver::check_with_items(&self.context, f.body, scheme).map_err(
@@ -236,7 +257,10 @@ impl Typechecker {
                                         e.clone()
                                             .label(
                                                 "in this let-definition",
-                                                f.name.ident().unwrap().1,
+                                                f.name
+                                                    .ident()
+                                                    .expect("Function should have a valid name")
+                                                    .1,
                                             )
                                             .into()
                                     } else {
@@ -246,17 +270,25 @@ impl Typechecker {
                             )?
                         }
                     }
-                    ItemKind::Type(spanned, spanned1) => todo!(),
-                    ItemKind::Extern { name, sig } => Solver::type_infer_with_items(
-                        &self.context,
-                        name.convert(Expr::Item(
+                    ItemKind::Type(_, _) => todo!(),
+                    ItemKind::Extern { name, args, sig: _ } => {
+                        let ex = name.convert(Expr::Item(
                             id,
                             crate::resource::rep::ast::Kind::Extern((*name.0).clone().leak()),
-                        )),
-                    )
-                    .unwrap()
-                    .to_typesoutput(),
-                    ItemKind::Field { name, value } => todo!(),
+                        ));
+                        let funcs = args.iter().fold(ex, |prev, arg| {
+                            prev.convert(Expr::Lambda(
+                                *arg,
+                                prev.convert(Expr::Call(prev, arg.0.convert(Expr::Ident(*arg)))),
+                                LambdaInfo::Curried,
+                            ))
+                        });
+
+                        Solver::type_infer_with_items(&self.context, funcs)
+                            .expect("Inference should succeed")
+                            .to_typesoutput()
+                    }
+                    ItemKind::Field { name: _, value: _ } => todo!(),
                     _ => unreachable!(),
                 };
 

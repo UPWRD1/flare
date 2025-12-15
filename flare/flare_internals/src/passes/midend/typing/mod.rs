@@ -6,7 +6,6 @@ mod subst;
 mod types;
 mod unify;
 
-use chumsky::span::SimpleSpan;
 pub use rows::{ClosedRow, Row, RowVar};
 use rows::{RowCombination, RowUniVar};
 pub use types::{TyUniVar, Type, TypeVar};

@@ -73,7 +73,7 @@ impl<'env> Solver<'env> {
                 let mut constraint = fun_out.constraints;
                 let (arg_ty, ret_ty) = match *supposed_fun_ty.0 {
                     Type::Func(arg, ret) => (arg, ret),
-                    ty => {
+                    _ => {
                         let arg_tyvar = self.fresh_ty_var();
                         let arg_ty = arg.convert(Type::Unifier(arg_tyvar));
                         let ret_tyvar = self.fresh_ty_var();
@@ -343,8 +343,9 @@ impl<'env> Solver<'env> {
                 )
             }
             Expr::Item(item_id, kind) => {
+                // dbg!(kind);
                 let ty_scheme = self.item_source.type_of_item(item_id);
-
+                // dbg!(&ty_scheme);
                 // Create fresh unifiers for each type and row variable in our type scheme.
                 let mut wrapper_tyvars: Vec<Spanned<Intern<Type>>> = vec![];
                 let tyvar_to_unifiers = ty_scheme

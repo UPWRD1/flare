@@ -20,9 +20,9 @@ mod templates {
             .into()
     }
 
-    pub fn bad_ident(item: impl Display) -> CompilerErr {
-        DynamicErr::new(format!("Cannot get an identifier from a {}", item)).into()
-    }
+    // pub fn bad_ident(item: impl Display) -> CompilerErr {
+    //     DynamicErr::new(format!("Cannot get an identifier from a {}", item)).into()
+    // }
 }
 
 use rustc_hash::FxHashMap;
@@ -48,7 +48,7 @@ pub struct CompilerErr(Box<dyn ReportableError>);
 use crate::{
     FileCtx, FileID,
     passes::midend::typing::{Row, TyUniVar, Type},
-    resource::rep::{ast::NodeId, files::FileSource},
+    resource::rep::files::FileSource,
 };
 
 impl Display for CompilerErr {

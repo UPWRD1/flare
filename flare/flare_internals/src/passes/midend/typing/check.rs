@@ -40,7 +40,7 @@ impl<'env> Solver<'env> {
                 let mut constraints = vec![];
                 let (arg_ty, ret_ty) = match ty {
                     Type::Func(arg, ret) => (arg, ret),
-                    ty => {
+                    _ => {
                         let arg_v = self.fresh_ty_var();
                         let ret_v = self.fresh_ty_var();
                         let arg = arg.0.convert(Type::Unifier(arg_v));
@@ -105,7 +105,7 @@ impl<'env> Solver<'env> {
                 Spanned(Type::Sum(Row::single(lbl, ty)).into(), lbl.0.1),
             ),
 
-            (Expr::Unlabel(term, lbl), ty) => self
+            (Expr::Unlabel(term, lbl), _) => self
                 .check(env, term, Spanned(Type::Label(lbl, the_ty).into(), lbl.0.1))
                 .with_typed_ast(|term| Spanned(Expr::Unlabel(term, lbl).into(), id)),
 
