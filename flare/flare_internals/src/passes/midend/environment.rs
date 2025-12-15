@@ -440,7 +440,12 @@ impl Environment {
                         .graph
                         .edges_connecting(*first, *second)
                         .next()
-                        .unwrap_or_else(|| unreachable!("Index {:?} is not a child of index {:?}; could not build dependancy graph.", first, second))
+                        .unwrap_or_else(|| {
+                            unreachable!(
+                                "Index {:?} is not a child of index {:?}; could not build dependancy graph.",
+                                first, second
+                            )
+                        })
                         .weight();
                     path.push(edge);
                 }

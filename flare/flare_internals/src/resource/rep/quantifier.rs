@@ -38,9 +38,9 @@ pub enum QualifierFragment {
 //     }
 // }
 use crate::resource::rep::{
+    Spanned,
     ast::{Expr, Variable},
     common::Ident,
-    Spanned,
 };
 
 impl QualifierFragment {

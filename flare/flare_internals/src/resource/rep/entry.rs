@@ -70,6 +70,7 @@ pub enum ItemKind<V: Variable> {
     ),
     Extern {
         name: Spanned<Intern<String>>,
+        // args: &'static [V],
         sig: Spanned<Intern<Type>>,
     },
     Field {
@@ -89,14 +90,16 @@ impl<V: Variable> SpanWrapped for Item<V> {
             ItemKind::Root => SimpleSpan::new(0, 0..0),
             ItemKind::Filename(_intern) => panic!(),
             ItemKind::Package(package_entry) => package_entry.name.1,
-            ItemKind::Function(function_item) => function_item.name.ident().unwrap().1.union(
-                function_item
-                    .sig
-                    // .get()
-                    // .unwrap()
-                    .1
-                    .union(function_item.body.1),
-            ),
+            ItemKind::Function(function_item) => {
+                function_item.name.ident().unwrap().1.union(
+                    function_item
+                        .sig
+                        // .get()
+                        // .unwrap()
+                        .1
+                        .union(function_item.body.1),
+                )
+            }
             ItemKind::Type(_, t) => t.1,
             ItemKind::Extern { name, sig } => name.1.union(sig.1),
             ItemKind::Field { name, value: _ } => name.0.1,
@@ -170,7 +173,11 @@ impl<V: Variable> Item<V> {
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
             ItemKind::Field { name: _, value } => Ok(*value),
             ItemKind::Type(_, t) => Ok(*t),
-            ItemKind::Extern { name: _, sig } => Ok(*sig),
+            ItemKind::Extern {
+                name: _,
+                // args: _,
+                sig,
+            } => Ok(*sig),
             _ => Err(err(self)),
         }
     }

@@ -17,7 +17,7 @@ use crate::{
         errors::{CompResult, DynamicErr, ErrorCollection},
         rep::{
             Spanned,
-            ast::{ItemId, Untyped},
+            ast::{Expr, ItemId, Untyped},
             common::Ident,
             entry::{FunctionItem, ItemKind},
         },
@@ -247,7 +247,15 @@ impl Typechecker {
                         }
                     }
                     ItemKind::Type(spanned, spanned1) => todo!(),
-                    ItemKind::Extern { name, sig } => todo!(),
+                    ItemKind::Extern { name, sig } => Solver::type_infer_with_items(
+                        &self.context,
+                        name.convert(Expr::Item(
+                            id,
+                            crate::resource::rep::ast::Kind::Extern((*name.0).clone().leak()),
+                        )),
+                    )
+                    .unwrap()
+                    .to_typesoutput(),
                     ItemKind::Field { name, value } => todo!(),
                     _ => unreachable!(),
                 };
@@ -258,8 +266,7 @@ impl Typechecker {
                 if !solved.errors.is_empty() {
                     Err(ErrorCollection::new(solved.errors.into_values().collect()).into())
                 } else {
-                    self.context
-                        .insert(ItemId(idx.index()), solved.scheme.clone());
+                    self.context.insert(id, solved.scheme.clone());
                     Ok((id, solved))
                 }
             })

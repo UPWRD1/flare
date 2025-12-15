@@ -1,20 +1,28 @@
 use crate::{
+    FileCtx,
     passes::midend::typing::{ClosedRow, Row, RowVar, Type},
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
+            Spanned,
             ast::{
-                BinOp, Definition, Expr, Label, LambdaInfo, Package, Pattern, PatternAtom, Untyped // Untyped,
+                BinOp,
+                Definition,
+                Expr,
+                Label,
+                LambdaInfo,
+                Package,
+                Pattern,
+                PatternAtom,
+                Untyped, // Untyped,
             },
             // concretetypes::{EnumVariant, PrimitiveType, Ty},
             files::FileID,
-            Spanned,
         },
     },
-    FileCtx,
 };
-use chumsky::{input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput}};
-use chumsky::pratt::{infix, left, right, Operator};
+use chumsky::input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput};
+use chumsky::pratt::{Operator, infix, left, right};
 use chumsky::prelude::*;
 use internment::Intern;
 // use lasso::{Interner, Rodeo};
@@ -60,7 +68,7 @@ enum Token {
     ComparisonOp(BinOp),
     Ampersand,
     At,
-    
+
     LBrace,
     RBrace,
     LBracket,
@@ -112,8 +120,6 @@ impl std::fmt::Display for Token {
             Self::ComparisonOp(c) => write!(f, "{c}"),
             Self::Ampersand => write!(f, "&"),
 
-            
-                
             Self::At => write!(f, "@"),
             Self::Fn => write!(f, "fn"),
             Self::True => write!(f, "true"),
@@ -264,20 +270,21 @@ where
             just("...").to(Token::TripleDot),
             just(".").to(Token::Dot),
             just(",").to(Token::Comma),
-            
             just("|").to(Token::Pipe),
             just("?").to(Token::Question),
-
             just("::").to(Token::DoubleColon),
             just(":").to(Token::Colon),
             // just(":")
-            
+
             // Numbers
             text::int(10)
                 .then(just('.').then(text::digits(10)).or_not())
                 .to_slice()
-                .try_map(|s: &str, span| Ok(Token::Num(s.parse().map_err(|_| Rich::custom(span, "Could not parse number"))?)))
-                
+                .try_map(|s: &str, span| {
+                    Ok(Token::Num(s.parse().map_err(|_| {
+                        Rich::custom(span, "Could not parse number")
+                    })?))
+                })
                 .labelled("number"),
             just('"')
                 .ignore_then(none_of('"').repeated().to_slice())
@@ -359,70 +366,75 @@ where
         // });
         // Path Access
         // This is super hacky, but it does give us a nice infix operator
-        let _ = ident.pratt(vec![infix(
-            right(9),
-            just(Token::Dot),
-            |x,
-             _,
-             y,
-             e: &mut MapExtra<
-                '_,
-                '_,
-                I,
-                extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
-            >| { Spanned(Intern::from(Expr::<Untyped>::FieldAccess(x, y)), e.span()) },
-        )
-        .boxed()]);
+        let _ = ident.pratt(vec![
+            infix(
+                right(9),
+                just(Token::Dot),
+                |x,
+                 _,
+                 y,
+                 e: &mut MapExtra<
+                    '_,
+                    '_,
+                    I,
+                    extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
+                >| {
+                    Spanned(Intern::from(Expr::<Untyped>::FieldAccess(x, y)), e.span())
+                },
+            )
+            .boxed(),
+        ]);
 
-    let tuple = expr.clone()
-                    .separated_by(just(Token::Comma))
-                    .allow_trailing().at_least(1)
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|args, _| {
-                                                   unsafe {
-                                args
-                                .into_iter()
-                                .enumerate()
-                                .map(|(i, arg ):
-                                    (_, Spanned<Intern<Expr<Untyped>>>)| {
-                                    Spanned(
-                                        Expr::Label(
-                                            Label(Spanned(
-                                                i.to_string().into(), arg.1)),
-                                            arg
-                                        ).into(),
-                                        arg.1)
-                                })
-                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()}
+        let tuple = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBrace), just(Token::RBrace))
+            .map_with(|args, _| unsafe {
+                args.into_iter()
+                    .enumerate()
+                    .map(|(i, arg): (_, Spanned<Intern<Expr<Untyped>>>)| {
+                        Spanned(
+                            Expr::Label(Label(Spanned(i.to_string().into(), arg.1)), arg).into(),
+                            arg.1,
+                        )
                     })
-                    .labelled("tuple")
-                    .as_context();
+                    .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1)))
+                    .unwrap_unchecked()
+            })
+            .labelled("tuple")
+            .as_context();
 
-    let table = raw_ident.then_ignore(just(Token::Eq)).then(expr.clone()).separated_by(just(Token::Comma))
-.allow_trailing().at_least(1)
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-.map_with(|args, _e| {
-                        if args.is_empty() {
-                            unreachable!()
-                                                    } else {
-                            unsafe {args
-                                .into_iter()
-                                .map(|(field_name, arg)| -> Spanned<Intern<Expr<Untyped>>> {
-                                    Spanned(
-                                        Expr::Label(Label(Spanned(field_name.0, arg.1)), arg).into(),
-                                        field_name.1.union(arg.1),
-                                    )
-                                })
-                                .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1))).unwrap_unchecked()}
-                                                    }
-                    })
-.labelled("table")
-                    .as_context();
-                      let atom = recursive(|_atom| {
-
-                    
+        let table = raw_ident
+            .then_ignore(just(Token::Eq))
+            .then(expr.clone())
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LBrace), just(Token::RBrace))
+            .map_with(|args, _e| {
+                if args.is_empty() {
+                    unreachable!()
+                } else {
+                    unsafe {
+                        args.into_iter()
+                            .map(|(field_name, arg)| -> Spanned<Intern<Expr<Untyped>>> {
+                                Spanned(
+                                    Expr::Label(Label(Spanned(field_name.0, arg.1)), arg).into(),
+                                    field_name.1.union(arg.1),
+                                )
+                            })
+                            .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1)))
+                            .unwrap_unchecked()
+                    }
+                }
+            })
+            .labelled("table")
+            .as_context();
+        let atom = recursive(|_atom| {
             choice((
                 // Numbers
                 select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
@@ -442,17 +454,14 @@ where
                 // False
                 just(Token::False)
                     .map_with(|_, e| Spanned(Intern::from(Expr::Bool(false)), e.span())),
-                                                                 
                 // Tuple Constructors
                 tuple,
-
                 table,
-
                 // idents
                 ident,
-
-                just(Token::At).ignore_then(raw_ident).map_with(|id, e| Spanned(Intern::from(Expr::Particle(id)), e.span())),
-
+                just(Token::At)
+                    .ignore_then(raw_ident)
+                    .map_with(|id, e| Spanned(Intern::from(Expr::Particle(id)), e.span())),
                 // let x = y in z
                 just(Token::Let)
                     //.ignore_then(ident)
@@ -572,15 +581,9 @@ where
         // Toplevel Let binding
         let let_binding = just(Token::Let)
             .ignore_then(raw_ident)
-            .then(
-                raw_ident
-                .repeated()
-                .collect::<Vec<_>>()
-                
-            )
-            .then_ignore(just(Token::Colon)  )
+            .then(raw_ident.repeated().collect::<Vec<_>>())
+            .then_ignore(just(Token::Colon))
             .then(ty.clone())
-            
             // .the  c_ignore(just(Token::Colon)).then(ty.clone())
             .then_ignore(just(Token::Eq))
             // .validate(|o, e, m| { dbg!(o)})
@@ -588,23 +591,25 @@ where
             .try_map_with(|(((name, args), ty), body), e| {
                 // let arg_types = ty.0.destructure_arrow().0;
                 // if arg_types.len() == args.len() {
-                    
-// dbg!(&args, &arg_types);
-                let value = args.iter().rev()
+
+                // dbg!(&args, &arg_types);
+                let value = args
+                    .iter()
+                    .rev()
                     // .zip(arg_types)
                     .fold(body, |acc, arg| {
-                    Spanned(
-                        Expr::Lambda(Untyped(*arg), acc, LambdaInfo::Curried).into(),
-                        e.span(),
-                    )
-                });
-                Ok(Definition::Let(Untyped(name),  value, ty))
-                
+                        Spanned(
+                            Expr::Lambda(Untyped(*arg), acc, LambdaInfo::Curried).into(),
+                            e.span(),
+                        )
+                    });
+                Ok(Definition::Let(Untyped(name), value, ty))
+
                 // } else {
-  
-                    // Err(Rich::custom(name.1, format!("{} expected {} arguments, but its signature implies {}", name.0, args.len(), arg_types.len())))
+
+                // Err(Rich::custom(name.1, format!("{} expected {} arguments, but its signature implies {}", name.0, args.len(), arg_types.len())))
                 // }
-                            })
+            })
             .labelled("let-definition")
             .as_context();
 
@@ -646,19 +651,19 @@ where
                             .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
                             .collect::<Vec<_>>()
                             .leak(),
-                        values: types.leak()
+                        values: types.leak(),
                     })));
                     let n = Label(name);
                     let variant_ty = Type::Label(Label(name), fields);
-                    (n, Spanned( Intern::from(variant_ty), e.span(),))
-                    
+                    (n, Spanned(Intern::from(variant_ty), e.span()))
                 }),
             raw_ident.map_with(|name, e| {
                 let n = Label(name);
                 let ty = Type::Label(n, name.convert(Type::Unit));
                 (n, Spanned(Intern::from(ty), e.span()))
             }),
-        )).boxed();
+        ))
+        .boxed();
 
         // Enum defintions
         let enum_def = just(Token::Enum)
@@ -672,7 +677,8 @@ where
                     .collect::<Vec<(Label, Spanned<Intern<Type>>)>>(),
             )
             .map_with(|(name, variants), _| {
-                let (fields, values): (Vec<Label>, Vec<Spanned<Intern<Type>>>) = variants.into_iter().unzip();
+                let (fields, values): (Vec<Label>, Vec<Spanned<Intern<Type>>>) =
+                    variants.into_iter().unzip();
 
                 let (fields, values) = (fields.leak(), values.leak());
 
@@ -687,10 +693,10 @@ where
 
         // Import
         let import_path = expression; //ident
-                                      // .clone()
-                                      // .separated_by(just(Token::Dot))
-                                      // .at_least(1)
-                                      // .collect::<Vec<_>>();
+        // .clone()
+        // .separated_by(just(Token::Dot))
+        // .at_least(1)
+        // .collect::<Vec<_>>();
 
         let import = just(Token::Use)
             .ignore_then(import_path)
@@ -742,10 +748,143 @@ where
         .then_ignore(end())
 }
 
+// fn ty_parser<'src, I, M>(
+//     make_input: &'src M,
+// ) -> impl Parser<'src, I, Spanned<Intern<Type>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
+// where
+//     I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
+//     M: Fn(SimpleSpan<usize, FileID>, &'src [Spanned<Token>]) -> I + 'src,
+// {
+//     let rname = select_ref! { Token::Ident(x) => *x };
+
+//     let raw_ident =
+//         rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| Spanned(Intern::from_ref(x), e.span()));
+
+//     recursive(
+//         |ty: Recursive<dyn Parser<'_, I, Spanned<Intern<Type>>, _>>| {
+//             let type_list = ty
+//                 .clone()
+//                 .separated_by(just(Token::Comma))
+//                 .allow_trailing()
+//                 .collect::<Vec<_>>();
+
+//             let tuple = type_list
+//                 .clone()
+//                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
+//                 .map_with(|types, e| {
+//                     let ty = Type::Prod(Row::Closed(ClosedRow {
+//                         fields: types
+//                             .iter()
+//                             .enumerate()
+//                             .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
+//                             .collect::<Vec<_>>()
+//                             .leak(),
+//                         values: types.leak(),
+//                     }));
+//                     Spanned(Intern::from(ty), e.span())
+//                 });
+
+//             let table = raw_ident
+//                 .then_ignore(just(Token::Colon))
+//                 .then(ty.clone())
+//                 .separated_by(just(Token::Comma))
+//                 .allow_trailing()
+//                 .collect::<Vec<_>>()
+//                 .clone()
+//                 .then(just(Token::TripleDot).or_not())
+//                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
+//                 .map_with(|(types, is_open), e| {
+//                     let (fields, values): (
+//                         Vec<Spanned<Intern<String>>>,
+//                         Vec<Spanned<Intern<Type>>>,
+//                     ) = types.into_iter().unzip();
+//                     if is_open.is_some() {
+//                         let l_ty = Type::Prod(Row::Closed(ClosedRow {
+//                             fields: fields
+//                                 .iter()
+//                                 .map(|name| Label(*name))
+//                                 .collect::<Vec<_>>()
+//                                 .leak(),
+//                             values: values.leak(),
+//                         }));
+//                         let l_ty = Spanned(Intern::from(l_ty), e.span());
+//                         let ty = Type::Subtable(l_ty);
+//                         Spanned(Intern::from(ty), e.span())
+//                     } else {
+//                         // types.reverse();
+//                         let ty = Type::Prod(Row::Closed(ClosedRow {
+//                             fields: fields
+//                                 .iter()
+//                                 .map(|name| Label(*name))
+//                                 .collect::<Vec<_>>()
+//                                 .leak(),
+//                             values: values.leak(),
+//                         }));
+//                         Spanned(Intern::from(ty), e.span())
+//                     }
+//                 });
+//             let grouping = Parser::nested_in(
+//                 ty.clone(),
+//                 select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
+//             );
+
+//             // Atomic types (no arrows at this level)
+//             choice((
+//                 // Primitive Types
+//                 just(Token::TyNum).map_with(|_, e| Spanned(Intern::from(Type::Num), e.span())),
+//                 just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
+//                 just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
+//                 just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
+//                 just(Token::TyInfer).map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())), // User Types
+//                 raw_ident
+//                     .then(
+//                         type_list
+//                             .clone()
+//                             .delimited_by(just(Token::LBracket), just(Token::RBracket))
+//                             .or_not(),
+//                     )
+//                     .clone()
+//                     .map_with(|(name, _generics), e| {
+//                         Spanned(Intern::from(Type::User(name)), e.span())
+//                     }),
+//                 // Particles
+//                 just(Token::At)
+//                     .ignore_then(raw_ident)
+//                     .map_with(|name, e| Spanned(Intern::from(Type::Particle(name)), e.span())),
+//                 // Generic Types
+//                 just(Token::Question)
+//                     .ignore_then(raw_ident)
+//                     .map_with(|name, e| Spanned(Intern::from(Type::Generic(name)), e.span())),
+//                 // Row Vars
+//                 just(Token::Question)
+//                     .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
+//                     .map_with(|name, e| {
+//                         Spanned(
+//                             Intern::from(Type::Prod(Row::Open(RowVar(name.0)))),
+//                             e.span(),
+//                         )
+//                     }),
+//                 // Tuple
+//                 tuple,
+//                 // Table
+//                 table,
+//                 grouping,
+//             ))
+//         },
+//     )
+//     .pratt(vec![infix(
+//         right(9),
+//         just(Token::Arrow),
+//         |x: Spanned<Intern<Type>>, _, y, e| Spanned(Intern::from(Type::Func(x, y)), e.span()),
+//     )])
+//     .boxed()
+//     // dbg!("made it");
+// }
+
 
 fn ty_parser<'src, I, M>(
     make_input: &'src M,
-    ) -> impl Parser<'src, I, Spanned<Intern<Type>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
+) -> impl Parser<'src, I, Spanned<Intern<Type>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
 where
     I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
     M: Fn(SimpleSpan<usize, FileID>, &'src [Spanned<Token>]) -> I + 'src,
@@ -755,7 +894,7 @@ where
     let raw_ident =
         rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| Spanned(Intern::from_ref(x), e.span()));
 
-     recursive(
+    recursive(
         |ty: Recursive<dyn Parser<'_, I, Spanned<Intern<Type>>, _>>| {
             let type_list = ty
                 .clone()
@@ -763,31 +902,38 @@ where
                 .allow_trailing()
                 .collect::<Vec<_>>();
 
-            let tuple = type_list.clone()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|types, e| {
-                        let ty = Type::Prod(Row::Closed(ClosedRow {
-                            fields: types
-                                .iter()
-                                .enumerate()
-                                .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
-                                .collect::<Vec<_>>()
-                                .leak(),
-                            values: types.leak(),
-                        }));
-                        Spanned(Intern::from(ty), e.span())
-                    });
-            
-            let table = raw_ident
-    .then_ignore(just(Token::Colon)).then(ty.clone())
-    .separated_by(just(Token::Comma)).allow_trailing().collect::<Vec<_>>()
-                    .clone().then(just(Token::TripleDot).or_not())
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map_with(|(types, is_open), e| {
-                        let (fields, values): (Vec<Spanned<Intern<String>>>, Vec<Spanned<Intern<Type>>>) = types.into_iter().unzip();
-                        if is_open.is_some() {
+            let tuple = type_list
+                .clone()
+                .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                .map_with(|types, e| {
+                    let ty = Type::Prod(Row::Closed(ClosedRow {
+                        fields: types
+                            .iter()
+                            .enumerate()
+                            .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
+                            .collect::<Vec<_>>()
+                            .leak(),
+                        values: types.leak(),
+                    }));
+                    Spanned(Intern::from(ty), e.span())
+                });
 
-let l_ty = Type::Prod(Row::Closed(ClosedRow {
+            let table = raw_ident
+                .then_ignore(just(Token::Colon))
+                .then(ty.clone())
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>()
+                .clone()
+                .then(just(Token::TripleDot).or_not())
+                .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                .map_with(|(types, is_open), e| {
+                    let (fields, values): (
+                        Vec<Spanned<Intern<String>>>,
+                        Vec<Spanned<Intern<Type>>>,
+                    ) = types.into_iter().unzip();
+                    if is_open.is_some() {
+                        let l_ty = Type::Prod(Row::Closed(ClosedRow {
                             fields: fields
                                 .iter()
                                 .map(|name| Label(*name))
@@ -795,12 +941,10 @@ let l_ty = Type::Prod(Row::Closed(ClosedRow {
                                 .leak(),
                             values: values.leak(),
                         }));
-                        let l_ty = Spanned(Intern::from(l_ty), e.span())                       ;
+                        let l_ty = Spanned(Intern::from(l_ty), e.span());
                         let ty = Type::Subtable(l_ty);
                         Spanned(Intern::from(ty), e.span())
-                                                   } else {
-                            
-// types.reverse();
+                    } else {
                         let ty = Type::Prod(Row::Closed(ClosedRow {
                             fields: fields
                                 .iter()
@@ -810,22 +954,21 @@ let l_ty = Type::Prod(Row::Closed(ClosedRow {
                             values: values.leak(),
                         }));
                         Spanned(Intern::from(ty), e.span())
-                        }
-                                            })    ;        
+                    }
+                });
             let grouping = Parser::nested_in(
                 ty.clone(),
                 select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
             );
-            
+
             // Atomic types (no arrows at this level)
-             choice((
+            let atom = choice((
                 // Primitive Types
                 just(Token::TyNum).map_with(|_, e| Spanned(Intern::from(Type::Num), e.span())),
                 just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
                 just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
                 just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
-                just(Token::TyInfer)
-.map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())),                // User Types
+                just(Token::TyInfer).map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())),
                 raw_ident
                     .then(
                         type_list
@@ -837,45 +980,35 @@ let l_ty = Type::Prod(Row::Closed(ClosedRow {
                     .map_with(|(name, _generics), e| {
                         Spanned(Intern::from(Type::User(name)), e.span())
                     }),
-
-                // Particles
-                just(Token::At).ignore_then(raw_ident).map_with(|name, e| {
-                    Spanned(Intern::from(Type::Particle(name)), e.span())
-                }),
-                
-
-                // Generic Types
+                just(Token::At)
+                    .ignore_then(raw_ident)
+                    .map_with(|name, e| Spanned(Intern::from(Type::Particle(name)), e.span())),
                 just(Token::Question)
                     .ignore_then(raw_ident)
-                    .map_with(|name, e| {
-                        Spanned(Intern::from(Type::Generic(name)), e.span())
-                    }),
-
-                // Row Vars
+                    .map_with(|name, e| Spanned(Intern::from(Type::Generic(name)), e.span())),
                 just(Token::Question)
                     .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
                     .map_with(|name, e| {
-                        Spanned(Intern::from(Type::Prod(Row::Open(RowVar(name.0)))), e.span())
+                        Spanned(
+                            Intern::from(Type::Prod(Row::Open(RowVar(name.0)))),
+                            e.span(),
+                        )
                     }),
-
-                // Tuple
-tuple,
-                // Table
+                tuple,
                 table,
                 grouping,
-                ))
-            
-                                },
-    )
-.pratt(vec![infix(
+            ));
+
+            // Apply pratt parser for arrows at this level
+            atom.pratt(vec![infix(
                 right(9),
                 just(Token::Arrow),
-                |x: Spanned<Intern<Type>>, _, y, e| {
-                    Spanned(Intern::from(Type::Func(x, y)), e.span())
-                },
-            )])    .boxed()
-    // dbg!("made it");
-    }
+                |x: Spanned<Intern<Type>>, _, y, e| Spanned(Intern::from(Type::Func(x, y)), e.span()),
+            )])
+        },
+    )
+    .boxed()
+}
 
 fn pattern_parser<'src, I>(
     ident: Boxed<
@@ -907,10 +1040,12 @@ where
         // let ty = ty_parser(ident).lazy().boxed();
         let path = ident
             .clone()
-            .pratt(vec![infix(left(10), just(Token::Dot), |x, _, y, e| {
-                Spanned(Intern::from(Expr::FieldAccess(x, y)), e.span())
-            })
-            .boxed()])
+            .pratt(vec![
+                infix(left(10), just(Token::Dot), |x, _, y, e| {
+                    Spanned(Intern::from(Expr::FieldAccess(x, y)), e.span())
+                })
+                .boxed(),
+            ])
             .or(ident)
             .memoized();
         choice((
@@ -947,7 +1082,6 @@ where
                 .map_with(|x, e| Spanned(Pattern::Atom(PatternAtom::Type(x)), e.span())),
         ))
     })
-    
 }
 
 /// Trait that extends `SimpleSpan` to permit adding `FileID` information
@@ -991,8 +1125,8 @@ fn parse_failure(
 /// Compiler black magic function that transforms the token vector into a parsable item.
 fn make_input(
     eoi: SimpleSpan<usize, FileID>,
-    toks: &'_ [Spanned<Token>],)
- -> impl BorrowInput<'_, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'_> {
+    toks: &'_ [Spanned<Token>],
+) -> impl BorrowInput<'_, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'_> {
     toks.map(eoi, |ts| (&ts.0, &ts.1))
 }
 
@@ -1000,12 +1134,7 @@ fn make_input(
 pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Package<Untyped>> {
     let input = ctx
         .get(&fid)
-        .unwrap_or_else(|| {
-            unreachable!(
-                "FileID {} does not exist in context: {:?}",
-                fid, ctx
-            )
-        })
+        .unwrap_or_else(|| unreachable!("FileID {} does not exist in context: {:?}", fid, ctx))
         .src_text;
     let tokens: Vec<Spanned<Token>> = match lexer(fid).parse(input).into_result() {
         Ok(tokens) => tokens,
@@ -1046,10 +1175,7 @@ mod tests {
     use super::*;
 
     fn make_tokens(src: &'static str) -> CompResult<Vec<Spanned<Token>>> {
-        match lexer(0)
-            .parse(src )
-            .into_result()
-        {
+        match lexer(0).parse(src).into_result() {
             Ok(tokens) => Ok(tokens),
             Err(errs) => {
                 Err(ErrorCollection::new(
@@ -1064,12 +1190,13 @@ mod tests {
     }
     /// Given a source str parse a type from it
     fn type_test(src: &'static str) -> Type {
-                        let tokens = make_tokens(src);
+        let tokens = make_tokens(src);
 
         match ty_parser(&make_input)
-            .parse(
-                make_input(SimpleSpan::new(0, 0..src.len()), tokens.expect("Could not parse test").leak()),
-                           )
+            .parse(make_input(
+                SimpleSpan::new(0, 0..src.len()),
+                tokens.expect("Could not parse test").leak(),
+            ))
             .into_result()
         {
             Ok(t) => *t.0,

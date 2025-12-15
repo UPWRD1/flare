@@ -338,7 +338,7 @@ impl<'i> OccuranceAnalyzer<'i> {
             }
 
             IR::Tag(_, _, ir) => self.occurrence_analysis(ir, seen),
-            IR::Item(_, id) => {
+            IR::Item(t, id) => {
                 // dbg!(self.items.len(), id);
                 if seen.contains(id) {
                     // We are analyzing a recursive function
@@ -457,7 +457,9 @@ impl<'p> Simplifier<'p> {
                 IR::Str(i) => break self.rebuild(IR::Str(i), in_scope, ctx),
                 IR::Bool(b) => break self.rebuild(IR::Bool(b), in_scope, ctx),
                 IR::Unit => break self.rebuild(IR::Unit, in_scope, ctx),
-                IR::Particle(p) => break self.rebuild(IR::Particle(p), in_scope, ctx),
+                IR::Particle(p) => {
+                    break self.rebuild(IR::Particle(p), in_scope, ctx);
+                }
 
                 IR::Fun(var, body) => {
                     let body =
@@ -467,7 +469,9 @@ impl<'p> Simplifier<'p> {
                 IR::Local(var, defn, body) => self.simplify_local(var, *defn, *body, &mut ctx),
                 IR::Var(var) => match self.simplify_var(var, in_scope.clone(), &ctx) {
                     ControlFlow::Continue(ir) => ir,
-                    ControlFlow::Break(var) => break self.rebuild(IR::Var(var), in_scope, ctx),
+                    ControlFlow::Break(var) => {
+                        break self.rebuild(IR::Var(var), in_scope, ctx);
+                    }
                 },
 
                 IR::If(c, t, o) => {
@@ -532,7 +536,9 @@ impl<'p> Simplifier<'p> {
                     // break self.rebuild(ir, in_scope, ctx);
                     match self.item_inline(itemid, in_scope.clone()) {
                         ControlFlow::Continue(c) => c,
-                        ControlFlow::Break(_) => break self.rebuild(ir, in_scope, ctx),
+                        ControlFlow::Break(_) => {
+                            break self.rebuild(ir, in_scope, ctx);
+                        }
                     }
                 }
             }

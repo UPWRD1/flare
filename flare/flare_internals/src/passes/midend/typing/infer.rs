@@ -395,7 +395,6 @@ impl<'env> Solver<'env> {
                     ty,
                 )
             }
-
             _ => unreachable!(
                 "Encountered unknown/invalid expression during inference: {:?}",
                 ast.0

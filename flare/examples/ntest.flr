@@ -1,11 +1,11 @@
 package Main =
     extern format: ?T -> str
 
-    let factorial x : num -> num =
-        if x == 0 then
-            0
-        else
-            factorial(x - 1) + x
+    # let factorial x : num -> num =
+        # if x == 0 then
+            # 0
+        # else
+            # factorial(x - 1) + x
 
     # for some property, CanTalk
     
@@ -16,5 +16,5 @@ package Main =
         format x
 
     let main : str =
-        {3, number_speak }      
-               
+        speak {3, fn x => format x}
+              

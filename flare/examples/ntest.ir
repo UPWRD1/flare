@@ -1,19 +1,92 @@
 item #0: is
-[fn$0: num] =>
-  if $0<10 then
-    #1($0)
-  else
-    $0
+tyfn Type => extern_format
 end item #0
 
 item #1: is
-[fn$0: num] => #2($0)
+tyfn Type =>
+  let $1: {
+    ?0 -> ?0 -> str -> {?0 *
+        ?0 -> str} *
+    TyFunc Type ?1 -> ?0 -> ?1 -> str -> ?0 -> {?1 |
+        ?1 -> str} -> ?0 *
+    {{?0 * ?0 -> str} -> ?0 *
+        ?0 -> {?0 | ?0 -> str}} *
+    {{?0 *
+            ?0 -> str} -> ?0 -> str *
+        ?0 -> str -> {?0 |
+            ?0 -> str}}
+  } = {
+      [fn$2: ?0, $3: ?0 -> str] =>
+        {
+          $2,
+          $3
+        },
+      tyfn Type =>
+        [fn$4: ?1 -> ?0, $5: ?1 -> str -> ?0, $6: {?1 |
+          ?1 -> str}] =>
+          match $6:
+            | $7 then $4($7),
+            | $8 then $5($8),
+      {
+        [fn$9: {?0 * ?0 -> str}] =>
+          $9.0,
+        [fn$10: ?0] =>
+          $10 tag {?0 |
+            ?0 -> str} variant 0
+      },
+      {
+        [fn$12: {?0 *
+          ?0 -> str}] => $12.1,
+        [fn$13: ?0 -> str] =>
+          $13 tag {?0 |
+            ?0 -> str} variant 1
+      }
+    }
+  in
+    [fn$0: {?0 * ?0 -> str}] =>
+      $1.2.0($0)($1.2.0($0))
 end item #1
 
 item #2: is
-[fn$0: num] => #0($0)+1
+let $0: {
+  num -> num -> str -> {num *
+      num -> str} *
+  TyFunc Type num -> ?0 -> num -> str -> ?0 -> {num |
+      num -> str} -> ?0 *
+  {{num * num -> str} -> num *
+      num -> {num | num -> str}} *
+  {{num *
+          num -> str} -> num -> str *
+      num -> str -> {num |
+          num -> str}}
+} = {
+    [fn$1: num, $2: num -> str] =>
+      {
+        $1,
+        $2
+      },
+    tyfn Type =>
+      [fn$3: num -> ?0, $4: num -> str -> ?0, $5: {num |
+        num -> str}] =>
+        match $5:
+          | $6 then $3($6),
+          | $7 then $4($7),
+    {
+      [fn$8: {num * num -> str}] =>
+        $8.0,
+      [fn$9: num] =>
+        $9 tag {num |
+          num -> str} variant 0
+    },
+    {
+      [fn$11: {num *
+        num -> str}] => $11.1,
+      [fn$12: num -> str] =>
+        $12 tag {num |
+          num -> str} variant 1
+    }
+  }
+in
+  [num]::#1($0.0(3)([fn$14: num] =>
+    [num]::#0($14)))
 end item #2
-
-item #3: is
-#0(1)
-end item #3

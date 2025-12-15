@@ -136,13 +136,17 @@ impl<const N: usize> Resolver<N> {
             })
             .collect();
 
+        let err_no_main = DynamicErr::new("Could not find a main function").label(
+            "not found in this package",
+            filtered.first().expect("No packages").1.name.1,
+        );
         for (idx, p) in filtered {
             self.analyze_package(idx, p)?
         }
         // self.dag.reverse();
 
         let reachable: FxHashSet<NodeIndex> =
-            Dfs::new(&self.dag.clone(), self.main_dag_idx.unwrap())
+            Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
                 .iter(&self.dag)
                 .collect();
         let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
@@ -151,6 +155,7 @@ impl<const N: usize> Resolver<N> {
             .filter(|x| reachable.contains(x))
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
+
         Ok(sorted)
     }
 
@@ -397,6 +402,7 @@ impl<const N: usize> Resolver<N> {
                 {
                     Ok(expr)
                 } else {
+                    // dbg!(expr);
                     self.resolve_name_expr(expr)
                 }
             }
@@ -412,12 +418,12 @@ impl<const N: usize> Resolver<N> {
                 Ok(expr.convert(Expr::Inject(direction, ex)))
             }
             // Expr::Branch(spanned, spanned1) => todo!(),
-            // Expr::Label(l, v) => {
-            //     let new_vars = [vars, &[(l.0 .0, v)]].concat();
+            Expr::Label(l, v) => {
+                let new_vars = [vars, &[(l.0.0, v)]].concat();
 
-            //     let v = self.analyze_expr(v, &new_vars)?;
-            //     Ok(expr.update(Expr::Label(l, v)))
-            // }
+                let v = self.analyze_expr(v, &new_vars)?;
+                Ok(expr.convert(Expr::Label(l, v)))
+            }
             // Expr::Unlabel(spanned, label) => todo!(),
             Expr::Pat(spanned) => todo!(),
             Expr::Mul(l, r) => {

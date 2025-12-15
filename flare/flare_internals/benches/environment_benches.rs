@@ -1,5 +1,5 @@
 #![cfg(feature = "testing")]
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 // use iai::{black_box, main};
 
 use flare_internals::{

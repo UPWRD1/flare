@@ -31,7 +31,9 @@ impl LowerTypes {
         match row {
             typing::Row::Open(var) => Row::Open(self.env[&AstTypeVar::Row(var)]),
             typing::Row::Closed(closed_row) => Row::Closed(self.lower_closed_row_ty(closed_row)),
-            typing::Row::Unifier(_) => unreachable!("Encountered unification row during lowering"),
+            typing::Row::Unifier(_) => {
+                unreachable!("Encountered unification row during lowering")
+            }
         }
     }
 

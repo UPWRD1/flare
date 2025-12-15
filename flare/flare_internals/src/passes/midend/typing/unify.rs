@@ -32,11 +32,13 @@ impl<'env> Solver<'env> {
                 let ret = self.normalize_ty(ret);
                 ty.modify(Type::Func(arg, ret))
             }
-            Type::Unifier(v) => match self.tables.unification_table.probe_value(v) {
-                Some(ty) => self.normalize_ty(ty),
-                // None => Type::Unifier(self.tables.unification_table.find(v)).into(),
-                None => ty.modify(Type::Unifier(self.tables.unification_table.find(v))),
-            },
+            Type::Unifier(v) => {
+                match self.tables.unification_table.probe_value(v) {
+                    Some(ty) => self.normalize_ty(ty),
+                    // None => Type::Unifier(self.tables.unification_table.find(v)).into(),
+                    None => ty.modify(Type::Unifier(self.tables.unification_table.find(v))),
+                }
+            }
 
             Type::Label(label, t) => {
                 let t = self.normalize_ty(t);

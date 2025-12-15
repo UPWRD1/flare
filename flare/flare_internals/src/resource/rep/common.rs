@@ -4,8 +4,8 @@ use internment::Intern;
 use crate::resource::{
     errors::CompResult,
     rep::{
-        ast::{Expr, Variable},
         Spanned,
+        ast::{Expr, Variable},
     },
 };
 

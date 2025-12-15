@@ -189,7 +189,7 @@ where
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
 
-    ExternFunc(ItemId, &'static str, Spanned<Intern<Type>>),
+    ExternFunc(ItemId, Spanned<Intern<String>>, Spanned<Intern<Type>>),
     Unit,
 
     Pat(Spanned<Pattern<V>>),

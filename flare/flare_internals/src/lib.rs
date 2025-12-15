@@ -27,9 +27,7 @@
     clippy::large_stack_frames,
     clippy::panic,
     clippy::dbg_macro,
-   
-
-clippy::unwrap_used,
+    clippy::unwrap_used,
     // clippy::restriction
 )]
 #[allow(
@@ -52,8 +50,14 @@ use rustc_hash::{FxHashMap, FxHasher};
 use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
-        backend::{lowering::Lowerer, monomorph, simplify, target::{Generator, Target}},
-        midend::{environment::Environment, resolution::Resolver, typechecker::Typechecker, typing::Type, },
+        backend::{
+            lowering::Lowerer,
+            monomorph, simplify,
+            target::{Generator, Target},
+        },
+        midend::{
+            environment::Environment, resolution::Resolver, typechecker::Typechecker, typing::Type,
+        },
         parser,
     },
     resource::{
@@ -148,113 +152,101 @@ impl<T: Target> Context<T> {
                 "intrinsic_arith_add",
                 Type::Func(
                     Type::Num.to_default_span(),
-                    Type::Func(
-                        Type::Num.to_default_span(),
-                        Type::Num.to_default_span()
-                    ).to_default_span()
-                )
-            ) ,
+                    Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
+                        .to_default_span(),
+                ),
+            ),
             (
                 "intrinsic_arith_sub",
                 Type::Func(
                     Type::Num.to_default_span(),
-                    Type::Func(
-                        Type::Num.to_default_span(),
-                        Type::Num.to_default_span()
-                    ).to_default_span()
-                )
+                    Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
+                        .to_default_span(),
+                ),
             ),
             (
                 "intrinsic_arith_mul",
                 Type::Func(
                     Type::Num.to_default_span(),
-                    Type::Func(
-                        Type::Num.to_default_span(),
-                        Type::Num.to_default_span()
-                    ).to_default_span()
-                )
+                    Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
+                        .to_default_span(),
+                ),
             ),
-            ("intrinsic_arith_div",
+            (
+                "intrinsic_arith_div",
                 Type::Func(
                     Type::Num.to_default_span(),
-                    Type::Func(
-                        Type::Num.to_default_span(),
-                        Type::Num.to_default_span()
-                    ).to_default_span()
-                )
+                    Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
+                        .to_default_span(),
+                ),
             ),
-            ("intrinsic_compare_eq",
-                Type::Func(
-                    Type::Generic(default_span.convert("?T".to_string())).to_default_span(),                    Type::Func(
-                        Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
-                        Type::Bool.to_default_span()
-                    ).to_default_span()
-                )
-            ),
-
-            ("intrinsic_compare_neq",
+            (
+                "intrinsic_compare_eq",
                 Type::Func(
                     Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
                     Type::Func(
                         Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
-                        Type::Bool.to_default_span()
-                    ).to_default_span()
-                )
+                        Type::Bool.to_default_span(),
+                    )
+                    .to_default_span(),
+                ),
             ),
-
-            
-            ("intrinsic_compare_clt",
+            (
+                "intrinsic_compare_neq",
+                Type::Func(
+                    Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
+                    Type::Func(
+                        Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
+                        Type::Bool.to_default_span(),
+                    )
+                    .to_default_span(),
+                ),
+            ),
+            (
+                "intrinsic_compare_clt",
                 Type::Func(
                     Type::Num.to_default_span(),
-                    Type::Func(
-                        Type::Num.to_default_span(),
-                        Type::Bool.to_default_span()
-                    ).to_default_span()
-                )
+                    Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
+                        .to_default_span(),
+                ),
             ),
-
-            
-            ("intrinsic_compare_cle",
+            (
+                "intrinsic_compare_cle",
                 Type::Func(
                     Type::Num.to_default_span(),
-                    Type::Func(
-                        Type::Num.to_default_span(),
-                        Type::Bool.to_default_span()
-                    ).to_default_span()
-                )
+                    Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
+                        .to_default_span(),
+                ),
             ),
-
-            ("intrinsic_compare_cgt",
+            (
+                "intrinsic_compare_cgt",
                 Type::Func(
                     Type::Num.to_default_span(),
-                    Type::Func(
-                        Type::Num.to_default_span(),
-                        Type::Bool.to_default_span()
-                    ).to_default_span()
-                )
+                    Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
+                        .to_default_span(),
+                ),
             ),
-
-            ("intrinsic_compare_cge",
+            (
+                "intrinsic_compare_cge",
                 Type::Func(
                     Type::Num.to_default_span(),
-                    Type::Func(
-                        Type::Num.to_default_span(),
-                        Type::Bool.to_default_span()
-                    ).to_default_span()
-                )
-            ),        ];
+                    Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
+                        .to_default_span(),
+                ),
+            ),
+        ];
         let mut resolver = Resolver::new(e, intrinsics);
         let order = resolver.build()?;
         let resolved_e = resolver.finish();
 
         let tc = Typechecker::new(order.leak(), resolved_e);
         let (items, source) = tc.check()?;
-        
+        // dbg!(&items);
         let lowerer = Lowerer::new();
         let ir = lowerer.lower(source, items);
         let ir = simplify::simplify(ir);
         let ir = monomorph::monomorph(ir);
-        
+
         let g = Generator::new(self.target, ir);
 
         let out = g.generate();
