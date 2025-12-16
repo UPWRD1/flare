@@ -6,15 +6,7 @@ use crate::{
         rep::{
             Spanned,
             ast::{
-                BinOp,
-                Definition,
-                Expr,
-                Label,
-                LambdaInfo,
-                Package,
-                Pattern,
-                PatternAtom,
-                Untyped, // Untyped,
+                self, BinOp, Definition, Expr, Label, LambdaInfo, Package, Pattern, Untyped // Untyped,
             },
             // concretetypes::{EnumVariant, PrimitiveType, Ty},
             files::FileID,
@@ -353,9 +345,8 @@ where
 
     let ty = ty_parser(make_input).boxed();
 
-    let pattern = pattern_parser(ident.boxed(), ty.clone()).boxed();
-
-    // Expression parser
+    // let pattern = pattern_parser(ident.boxed(), ty.clone()).boxed();
+    let pattern = destructure_pattern_parser(ident.boxed(), ty.clone()).boxed();    // Expression parser
     let expression = recursive(|expr| {
         // let rname = select_ref! { Token::Ident(x) => *x };
         // let ident = rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
@@ -434,6 +425,36 @@ where
             })
             .labelled("table")
             .as_context();
+        let sum = raw_ident
+            .or_not()
+            .then(expr.clone())
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::Pipe), just(Token::Pipe))
+            .map_with(|variants, e| {
+                if variants.is_empty() {
+                    unreachable!()
+                }
+                unsafe{
+                    variants.into_iter()
+                        .enumerate()
+                        .map(|(i, (name, val))| -> Spanned<Intern<Expr<Untyped>>> {
+                            Spanned(
+                                Expr::Label(
+                                    Label(name.unwrap_or(
+                                        Spanned(i.to_string().into(),val.1)
+                                    )),
+                                    val).into(),
+                                e.span()                            )
+                        })
+                        .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
+                        .unwrap_unchecked()}
+                            
+                                                            
+        }).labelled("sum").as_context();
+
         let atom = recursive(|_atom| {
             choice((
                 // Numbers
@@ -457,6 +478,7 @@ where
                 // Tuple Constructors
                 tuple,
                 table,
+                sum,
                                 // idents
                 ident,
                 just(Token::At)
@@ -487,22 +509,22 @@ where
                     .as_context(),
                 // Match Expression
                 just(Token::Match)
-                    .ignore_then(expr.clone())
+                    .ignore_then(expr.clone()).then_ignore(just(Token::In))
                     .then(
-                        just(Token::Pipe)
-                            .ignore_then(pattern)
-                            .then_ignore(just(Token::Then))
+                        
+                    pattern
+                                                        .then_ignore(just(Token::Then))
                             .then(expr.clone())
-                            .map(|(p, e)| (p, e))
                             .separated_by(just(Token::Comma))
+                            // .repeated()
                             .allow_trailing()
-                            //                            .allow_trailing()
-                            //.repeated()
+                            .at_least(1)
                             .collect::<Vec<_>>(),
                     )
                     .map_with(|(matchee, arms), e| {
                         Spanned(
-                            Intern::from(Expr::Match(matchee, Intern::from(arms))),
+                            Intern::from(Expr::Match(matchee, arms.leak())),
+                            
                             e.span(),
                         )
                     }),
@@ -523,6 +545,11 @@ where
                     )
                 },
             )),
+           // expr.clone().then(expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LParen), just(Token::RParen))).map_with(|(func, args), e| {
+           //     args.iter().fold(func, |prev, arg| Spanned(Intern::from(Expr::Call(prev, *arg)), e.span()))
+               
+
+           // }),
             // ( x )
             expr.nested_in(select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) }),
         ))
@@ -634,6 +661,7 @@ where
                 let ty = ty_body;
                 Definition::Type(name, ty)
             });
+
         let enum_variant = choice((
             raw_ident
                 .then(
@@ -748,140 +776,6 @@ where
         .then_ignore(end())
 }
 
-// fn ty_parser<'src, I, M>(
-//     make_input: &'src M,
-// ) -> impl Parser<'src, I, Spanned<Intern<Type>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
-// where
-//     I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
-//     M: Fn(SimpleSpan<usize, FileID>, &'src [Spanned<Token>]) -> I + 'src,
-// {
-//     let rname = select_ref! { Token::Ident(x) => *x };
-
-//     let raw_ident =
-//         rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| Spanned(Intern::from_ref(x), e.span()));
-
-//     recursive(
-//         |ty: Recursive<dyn Parser<'_, I, Spanned<Intern<Type>>, _>>| {
-//             let type_list = ty
-//                 .clone()
-//                 .separated_by(just(Token::Comma))
-//                 .allow_trailing()
-//                 .collect::<Vec<_>>();
-
-//             let tuple = type_list
-//                 .clone()
-//                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-//                 .map_with(|types, e| {
-//                     let ty = Type::Prod(Row::Closed(ClosedRow {
-//                         fields: types
-//                             .iter()
-//                             .enumerate()
-//                             .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
-//                             .collect::<Vec<_>>()
-//                             .leak(),
-//                         values: types.leak(),
-//                     }));
-//                     Spanned(Intern::from(ty), e.span())
-//                 });
-
-//             let table = raw_ident
-//                 .then_ignore(just(Token::Colon))
-//                 .then(ty.clone())
-//                 .separated_by(just(Token::Comma))
-//                 .allow_trailing()
-//                 .collect::<Vec<_>>()
-//                 .clone()
-//                 .then(just(Token::TripleDot).or_not())
-//                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-//                 .map_with(|(types, is_open), e| {
-//                     let (fields, values): (
-//                         Vec<Spanned<Intern<String>>>,
-//                         Vec<Spanned<Intern<Type>>>,
-//                     ) = types.into_iter().unzip();
-//                     if is_open.is_some() {
-//                         let l_ty = Type::Prod(Row::Closed(ClosedRow {
-//                             fields: fields
-//                                 .iter()
-//                                 .map(|name| Label(*name))
-//                                 .collect::<Vec<_>>()
-//                                 .leak(),
-//                             values: values.leak(),
-//                         }));
-//                         let l_ty = Spanned(Intern::from(l_ty), e.span());
-//                         let ty = Type::Subtable(l_ty);
-//                         Spanned(Intern::from(ty), e.span())
-//                     } else {
-//                         // types.reverse();
-//                         let ty = Type::Prod(Row::Closed(ClosedRow {
-//                             fields: fields
-//                                 .iter()
-//                                 .map(|name| Label(*name))
-//                                 .collect::<Vec<_>>()
-//                                 .leak(),
-//                             values: values.leak(),
-//                         }));
-//                         Spanned(Intern::from(ty), e.span())
-//                     }
-//                 });
-//             let grouping = Parser::nested_in(
-//                 ty.clone(),
-//                 select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
-//             );
-
-//             // Atomic types (no arrows at this level)
-//             choice((
-//                 // Primitive Types
-//                 just(Token::TyNum).map_with(|_, e| Spanned(Intern::from(Type::Num), e.span())),
-//                 just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
-//                 just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
-//                 just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
-//                 just(Token::TyInfer).map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())), // User Types
-//                 raw_ident
-//                     .then(
-//                         type_list
-//                             .clone()
-//                             .delimited_by(just(Token::LBracket), just(Token::RBracket))
-//                             .or_not(),
-//                     )
-//                     .clone()
-//                     .map_with(|(name, _generics), e| {
-//                         Spanned(Intern::from(Type::User(name)), e.span())
-//                     }),
-//                 // Particles
-//                 just(Token::At)
-//                     .ignore_then(raw_ident)
-//                     .map_with(|name, e| Spanned(Intern::from(Type::Particle(name)), e.span())),
-//                 // Generic Types
-//                 just(Token::Question)
-//                     .ignore_then(raw_ident)
-//                     .map_with(|name, e| Spanned(Intern::from(Type::Generic(name)), e.span())),
-//                 // Row Vars
-//                 just(Token::Question)
-//                     .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
-//                     .map_with(|name, e| {
-//                         Spanned(
-//                             Intern::from(Type::Prod(Row::Open(RowVar(name.0)))),
-//                             e.span(),
-//                         )
-//                     }),
-//                 // Tuple
-//                 tuple,
-//                 // Table
-//                 table,
-//                 grouping,
-//             ))
-//         },
-//     )
-//     .pratt(vec![infix(
-//         right(9),
-//         just(Token::Arrow),
-//         |x: Spanned<Intern<Type>>, _, y, e| Spanned(Intern::from(Type::Func(x, y)), e.span()),
-//     )])
-//     .boxed()
-//     // dbg!("made it");
-// }
-
-
 fn ty_parser<'src, I, M>(
     make_input: &'src M,
 ) -> impl Parser<'src, I, Spanned<Intern<Type>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
@@ -956,6 +850,31 @@ where
                         Spanned(Intern::from(ty), e.span())
                     }
                 });
+
+            let sum = raw_ident.or_not().then(ty.clone())
+                .separated_by(just(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::Pipe), just(Token::Pipe))
+                .map_with(|types, e| {
+                    let (fields, values): (
+                        Vec<Option<Spanned<Intern<String>>>>,
+                        Vec<Spanned<Intern<Type>>>,
+                    ) = types.into_iter().unzip();
+                        let ty = Type::Sum(Row::Closed(ClosedRow {
+                            fields: fields
+                                .iter().enumerate()
+                                .map(|(i, name)| Label(name.unwrap_or(values[i].convert(Intern::from(i.to_string())))))
+                                .collect::<Vec<_>>()
+                                .leak(),
+                            values: values.leak(),
+                        }));
+                        Spanned(Intern::from(ty), e.span())
+                    
+                });
+            
+            
+            
             let grouping = Parser::nested_in(
                 ty.clone(),
                 select_ref! { Token::Parens(ts) = e => make_input(e.span(), ts) },
@@ -969,6 +888,9 @@ where
                 just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
                 just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
                 just(Token::TyInfer).map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())),
+
+
+
                 raw_ident
                     .then(
                         type_list
@@ -994,8 +916,10 @@ where
                             e.span(),
                         )
                     }),
+                
                 tuple,
                 table,
+                sum,
                 grouping,
             ));
 
@@ -1010,7 +934,7 @@ where
     .boxed()
 }
 
-fn pattern_parser<'src, I>(
+fn destructure_pattern_parser<'src, I>(
     ident: Boxed<
         'src,
         'src,
@@ -1025,64 +949,39 @@ fn pattern_parser<'src, I>(
         Spanned<Intern<Type>>,
         extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
-) -> impl Parser<
-    'src,
-    I,
-    Spanned<Pattern<Untyped>>,
-    extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
->
-where
-    I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
-{
+) -> impl Parser<'src, I, Spanned<Intern<Expr<Untyped>>>, extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
+> where I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize,FileID>> + ValueInput<'src> {
+
+let rname = select_ref! { Token::Ident(x) => *x };
+
+    let raw_ident =
+        rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| Spanned(Intern::from_ref(x), e.span()));
+
     recursive(|pat| {
-        // Path Access
-        // This is super hacky, but it does give us a nice infix operator
-        // let ty = ty_parser(ident).lazy().boxed();
-        let path = ident
-            .clone()
-            .pratt(vec![
-                infix(left(10), just(Token::Dot), |x, _, y, e| {
-                    Spanned(Intern::from(Expr::FieldAccess(x, y)), e.span())
-                })
-                .boxed(),
-            ])
-            .or(ident)
-            .memoized();
         choice((
-            pat.clone()
-                .separated_by(just(Token::Comma))
-                .collect::<Vec<Spanned<Pattern<_>>>>()
-                .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                //.map_with(|p, e| (Pattern::Tuple(p), e.span())),
-                .map_with(|p, e| Spanned(Pattern::Tuple(Intern::from(p)), e.span())),
-            path.then(
-                pat.separated_by(just(Token::Comma))
-                    .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .or_not(),
-            )
-            .map_with(|(name, args), e| {
-                if let Some(args) = args {
-                    Spanned(Pattern::Variant(name, Intern::from(args)), e.span())
-                } else {
-                    Spanned(Pattern::Atom(PatternAtom::Variable(name)), e.span())
-                }
-            }),
-            // Numbers
-            select_ref! { Token::Num(x) => OrderedFloat(*x) }
-                .map_with(|x, e| Spanned(Pattern::Atom(PatternAtom::Num(x)), e.span())),
-            // Strings
-            select_ref! { Token::Strlit(x) => *x }.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
-                Spanned(
-                    Pattern::Atom(PatternAtom::Strlit(Intern::from_ref(x))),
-                    e.span(),
-                )
-            }),
-            ty.clone()
-                .map_with(|x, e| Spanned(Pattern::Atom(PatternAtom::Type(x)), e.span())),
-        ))
-    })
+            
+just(Token::Pipe)
+                .ignore_then(choice((
+                    // Labeled variant: Some x
+                    raw_ident.then(pat.clone())
+                        .map_with(|(label, term), e| 
+                            Spanned(Expr::Unlabel(term, ast::Label(label)).into(), e.span())
+                        ),
+                    // Particle variant: @None
+                    pat
+                        
+                )))
+                .then_ignore(just(Token::Pipe)),
+    // .map_with(|term, e| term) 
+
+ just(Token::At)
+                    .ignore_then(raw_ident)
+                    .map_with(|id, e| Spanned(Intern::from(Expr::Particle(id)), e.span())) ,           ident
+     ))
+    }
+    )
 }
+
 
 /// Trait that extends `SimpleSpan` to permit adding `FileID` information
 pub trait AnnotateRange: std::fmt::Display {

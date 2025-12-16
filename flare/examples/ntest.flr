@@ -7,21 +7,25 @@ package Main =
         # else
             # factorial(x - 1) + x
 
-    let unwrap_or x default: {Some {?T} | None} -> ?T -> ?T =
-         match x =
-            | Some {x} then x,
-            | None then default
+        # for some property, CanTalk
 
-    # for some property, CanTalk
+    let unwrap_or o default : |Some ?T, @None| -> ?T -> ?T =
+        match o in
+            | Some x | then x,
+            | @None  | then default,
        
-    let speak x: {?T , ?T -> str} -> str =
-        x.1(x.0)
+    # let speak x: {?T , ?T -> str} -> str =
+        # x.1(x.0)
 
-    let number_speak x: num -> str =
-        format x
+    # let number_speak x: num -> str =
+        # format(x)
 
-    let main x : num -> str =
-        # speak ({3 + x, number_speak})
-        let x = Some {3} in
-            unwrap_or x 0
-              
+    # let speak_wrapper f x : (?T -> str) -> ?T -> {?T , ?T -> str} =
+        # {x, f}
+
+    let main: str =
+        # speak {3, number_speak}
+        # let x = {3, number_speak} in
+            # speak x
+        unwrap_or |Some 3| 0
+                      

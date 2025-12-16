@@ -357,11 +357,11 @@ impl<const N: usize> Resolver<N> {
                 let new_r = match r {
                     super::typing::Row::Closed(closed_row) => {
                         let new_values: CompResult<Vec<Spanned<Intern<Type>>>> = closed_row
-                            .fields
+                            .values
                             .iter()
-                            .map(|n| -> CompResult<Spanned<Intern<Type>>> {
-                                let t = self.resolve_name_generic(&n.0)?.get_ty()?;
-                                self.analyze_type(t)
+                            .map(|t| -> CompResult<Spanned<Intern<Type>>> {
+                                // let t = self.resolve_name_generic(&n.0)?.get_ty()?;
+                                self.analyze_type(*t)
                             })
                             .collect();
                         let values = new_values?.leak();
@@ -416,14 +416,19 @@ impl<const N: usize> Resolver<N> {
                 let ex = self.analyze_expr(ex, vars)?;
                 Ok(expr.convert(Expr::Inject(direction, ex)))
             }
-            // Expr::Branch(spanned, spanned1) => todo!(),
+            Expr::Branch(l, r) => {
+                let l = self.analyze_expr(l, vars)?;
+                let r = self.analyze_expr(r, vars)?;
+
+                Ok(expr.convert(Expr::Branch(l, r)))
+            }
             Expr::Label(l, v) => {
                 let new_vars = [vars, &[(l.0.0, v)]].concat();
 
                 let v = self.analyze_expr(v, &new_vars)?;
                 Ok(expr.convert(Expr::Label(l, v)))
             }
-            // Expr::Unlabel(spanned, label) => todo!(),
+            Expr::Unlabel(spanned, label) => todo!(),
             Expr::Pat(spanned) => todo!(),
             Expr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
@@ -548,7 +553,12 @@ impl<const N: usize> Resolver<N> {
                 let otherwise = self.analyze_expr(otherwise, otherwise_vars)?;
                 Ok(expr.convert(Expr::If(cond, then, otherwise)))
             }
-            Expr::Match(spanned, intern) => {
+            Expr::Match(matchee, branches) => {
+                let matchee = self.analyze_expr(matchee, vars);
+                // let branches = branches
+                //     .iter()
+                //     .map(|x| x.0.convert(Expr::(x.0, x.1, LambdaInfo::Curried)))
+                //     .collect();
                 todo!()
             }
             Expr::Lambda(arg, body, is_anon) => {
@@ -563,11 +573,11 @@ impl<const N: usize> Resolver<N> {
 
                 let new_vars = [vars, &[(id.0.0, body)]].concat();
                 let and_in = self.analyze_expr(and_in, &new_vars)?;
-                let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
+                // let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
 
-                Ok(expr.convert(Expr::Call(lambda, body)))
+                // Ok(expr.convert(Expr::Call(lambda, body)))
 
-                // Ok(expr.replace(Expr::Let(id, body, and_in)))
+                Ok(expr.modify(Expr::Let(id, body, and_in)))
             }
 
             _ => Ok(expr),

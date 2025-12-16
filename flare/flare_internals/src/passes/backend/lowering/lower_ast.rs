@@ -423,6 +423,13 @@ impl<'source> LowerAst<'source> {
                 let other = self.lower_ast(o);
                 IR::r#if(cond, then, other)
             }
+            Expr::Let(Typed(var, ty), def, body) => {
+                let ir_ty = self.types.lower_ty(*ty.0);
+                let ir_var = self.var_supply.supply_for(var);
+                let ir_def = self.lower_ast(def);
+                let ir_body = self.lower_ast(body);
+                IR::local(Var::new(ir_var, ir_ty), ir_def, ir_body)
+            }
 
             Expr::Add(l, r) => {
                 let ir_l = self.lower_ast(l);

@@ -43,42 +43,52 @@ impl Display for Untyped {
     }
 }
 
-/// Type representing an atomic value within a pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum PatternAtom<V: Variable> {
-    // #[serde(deserialize_with = "deserialize_static_str")]
-    Strlit(Intern<String>),
-    Num(OrderedFloat<f64>),
-
-    // #[serde(deserialize_with = "deserialize_static_str")]
-    Variable(Spanned<Intern<Expr<V>>>),
-
-    // #[serde(deserialize_with = "deserialize_static")]
-    Type(Spanned<Intern<Type>>),
-}
+//GENERATED: Claude
 
 /// Type representing a Pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Pattern<V: Variable> {
-    Atom(PatternAtom<V>),
+    Wildcard,
 
-    Tuple(Intern<Vec<Spanned<Self>>>),
+    // Variable pattern: matches anything, binds to variable
+    Var(V),
 
-    Variant(Spanned<Intern<Expr<V>>>, Intern<Vec<Spanned<Self>>>),
+    // Literal patterns: match exact values
+    Number(ordered_float::OrderedFloat<f64>),
+    String(Intern<String>),
+    Bool(bool),
+    Unit,
+
+    // Constructor pattern: matches labeled variant
+    // Pattern::Ctor(label, inner_pattern)
+    // Examples: Some(x), None, Ok(y), Err(msg)
+    Ctor(Label, Spanned<Intern<Self>>),
+
+    // Record pattern: matches record fields
+    // Pattern::Record(fields, is_open)
+    // Closed: {x, y} matches exactly x and y fields
+    // Open: {x, y, ..} matches at least x and y fields
+    Record {
+        fields: &'static [(Label, Spanned<Intern<Self>>)],
+        open: bool, // true for {x, ..}, false for {x}
+    },
+
+    // Tuple pattern: matches fixed-size products
+    Tuple(&'static [Spanned<Intern<Self>>]),
+
+    // As pattern: matches and binds to variable
+    // x @ Some(y) matches Some variant, binds whole to x, inner to y
+    As(V, Spanned<Intern<Self>>),
+
+    // Or pattern: matches if any sub-pattern matches
+    // Some(0) | None matches either
+    Or(&'static [Pattern<V>]),
+
+    // Guard pattern: pattern with boolean condition
+    // x when x > 0
+    Guard(Spanned<Intern<Self>>, Spanned<Intern<Expr<V>>>),
 }
-
-impl<V: Variable> Ident for Spanned<Pattern<V>> {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        match self.0 {
-            Pattern::Variant(n, _) => n.ident(),
-            Pattern::Atom(a) => match a {
-                PatternAtom::Variable(s) => s.ident(),
-                _ => panic!(), // errors::bad_ident(expr, s),
-            },
-            Pattern::Tuple(_) => panic!(),
-        }
-    }
-}
+/// End Claude
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOp {
@@ -209,7 +219,7 @@ where
     ),
     Match(
         Spanned<Intern<Self>>,
-        Intern<Vec<(Spanned<Pattern<V>>, Spanned<Intern<Self>>)>>,
+        &'static [(Spanned<Intern<Self>>, Spanned<Intern<Self>>)],
     ),
     Lambda(V, Spanned<Intern<Self>>, LambdaInfo),
     Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -233,13 +243,6 @@ impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
 
             // Expr::Access(expr) => expr.name().ok(),
             Expr::Call(func, _) => func.name().ok(),
-            Expr::Pat(p) => {
-                if let Pattern::Atom(PatternAtom::Variable(s)) = &p.0 {
-                    s.name().ok()
-                } else {
-                    None
-                }
-            }
             _ => None,
         }
     }

@@ -4,10 +4,6 @@ tyfn Type =>
 end item #0
 
 item #1: is
-fn [$0: num] => [num]::#0()
-end item #1
-
-item #2: is
 tyfn Type =>
   let $1: {
     ?0 -> ?0 -> str -> {?0 *
@@ -46,6 +42,10 @@ tyfn Type =>
   in
     fn [$0: {?0 * ?0 -> str}] =>
       $1.2.0()($0)
+end item #1
+
+item #2: is
+fn [$0: num] => [num]::#0()
 end item #2
 
 item #3: is
@@ -84,6 +84,8 @@ let $1: {
         $13 tag {num |
           num -> str} variant 1}}
 in
-  fn [$0: num] =>
-    [num]::#2(3+$0, #1)
+  let $0: {num * num -> str} =
+    $1.0()()
+  in
+    [num]::#1()
 end item #3

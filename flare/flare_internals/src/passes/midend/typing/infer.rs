@@ -139,6 +139,20 @@ impl<'env> Solver<'env> {
                 )
             }
 
+            Expr::Let(name, def, body) => {
+                let (mut def_out, def_ty) = self.infer(env.clone(), def);
+                // dbg!(def_ty);
+                let env = env.update(name.0.0, def_ty);
+                let (body_out, body_ty) = self.infer(env, body);
+                def_out.constraints.extend(body_out.constraints);
+                (
+                    def_out.with_typed_ast(|def| {
+                        ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
+                    }),
+                    body_ty,
+                )
+            }
+
             Expr::Add(l, r) => {
                 let num_ty = ast.convert(Type::Num);
                 let left_out = self.check(env.clone(), l, num_ty);

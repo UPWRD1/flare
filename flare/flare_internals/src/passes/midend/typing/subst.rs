@@ -185,6 +185,12 @@ impl<'env> Solver<'env> {
                 .merge(self.substitute_ast(otherwise), |t, o| (t, o))
                 .merge(self.substitute_ast(cond), |(t, o), c| (t, o, c))
                 .map(|(t, o, c)| ast.convert(Expr::If(c, t, o))),
+            Expr::Let(var, def, body) => self
+                .substitute_ty(var.1)
+                .map(|ty| Typed(var.0, ty))
+                .merge(self.substitute_ast(def), |v, d| (v, d))
+                .merge(self.substitute_ast(body), |(v, def), body| (v, def, body))
+                .map(|(v, def, body)| ast.convert(Expr::Let(v, def, body))),
 
             // Label constructor and destructor
             Expr::Label(label, ast) => self

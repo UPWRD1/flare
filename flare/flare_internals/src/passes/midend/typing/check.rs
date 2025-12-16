@@ -222,6 +222,15 @@ impl<'env> Solver<'env> {
                 self.tables.row_to_combo.insert(id, row_comb);
                 out.with_typed_ast(|ast| Spanned(Expr::Inject(dir, ast).into(), id))
             }
+            // (Expr::Let(name, def, body), _) => {
+            //     let (mut def_out, def_ty) = self.infer(env.clone(), def);
+            //     let env = env.update(name.0.0, def_ty);
+            //     let body_out = self.check(env, body, the_ty);
+            //     def_out.constraints.extend(body_out.constraints);
+            //     def_out.with_typed_ast(|def| {
+            //         the_ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
+            //     })
+            // }
 
             // Wildcard
             (_, _) => {
