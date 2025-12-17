@@ -393,7 +393,7 @@ impl<'env> Solver<'env> {
                 .into_values()
                 .collect::<Vec<_>>()
                 .into());
-        };
+        }
 
         // We still need to substitute, but only our ast.
         let subst_out = self.substitute_ast(out.typed_ast);

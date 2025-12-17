@@ -100,9 +100,9 @@ impl<const N: usize> Resolver<N> {
             )
         }
 
-        intrinsics.into_iter().for_each(|id| {
+        for id in intrinsics {
             register_intrinsic(id, &mut env);
-        });
+        }
 
         Self {
             env,
@@ -146,6 +146,7 @@ impl<const N: usize> Resolver<N> {
         for (idx, p) in filtered {
             self.analyze_package(idx, p)?
         }
+        // self.debug();
         // self.dag.reverse();
 
         let reachable: FxHashSet<NodeIndex> =
@@ -168,7 +169,7 @@ impl<const N: usize> Resolver<N> {
             .env
             .graph
             .neighbors_directed(idx, petgraph::Direction::Outgoing)
-            .map(|x| x.index())
+            .map(NodeIndex::index)
             .collect::<Vec<usize>>();
 
         for child in children {
@@ -225,7 +226,7 @@ impl<const N: usize> Resolver<N> {
                         .graph
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
-                    if let ItemKind::Type(_, g, ref mut ty) = item.kind {
+                    if let ItemKind::Type(_, _, ref mut ty) = item.kind {
                         *ty = t;
                     }
                     Ok(())
@@ -477,7 +478,11 @@ impl<const N: usize> Resolver<N> {
                 // let t = Type::Prod(crate::passes::midend::typing::Row::Closed(());
                 Ok(expr.convert(Expr::Concat(l, r)))
             }
-            // Expr::Project(direction, spanned) => todo!(),
+            Expr::Project(direction, ex) => {
+                let ex = self.analyze_expr(ex, vars)?;
+                Ok(expr.convert(Expr::Project(direction, ex)))
+            }
+
             Expr::Inject(direction, ex) => {
                 let ex = self.analyze_expr(ex, vars)?;
                 Ok(expr.convert(Expr::Inject(direction, ex)))
@@ -499,54 +504,27 @@ impl<const N: usize> Resolver<N> {
             Expr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                // let (id, f) = self.intrinsics[INTRINSIC_FUNC_MUL];
-                // self.dag_add(id.0);
-                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                // self.analyze_expr(expr.convert(final_expr), vars)
 
                 Ok(expr.modify(Expr::Mul(l, r)))
             }
             Expr::Div(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                // let (id, f) = self.intrinsics[INTRINSIC_FUNC_DIV];
-                // self.dag_add(id.0);
-                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                // self.analyze_expr(expr.convert(final_expr), vars)
                 Ok(expr.modify(Expr::Div(l, r)))
             }
             Expr::Add(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                // let (id, f) = self.intrinsics[INTRINSIC_FUNC_ADD];
-                // self.dag_add(id.0);
-                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                // self.analyze_expr(expr.convert(final_expr), vars)
                 Ok(expr.modify(Expr::Add(l, r)))
             }
             Expr::Sub(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                // let (id, f) = self.intrinsics[INTRINSIC_FUNC_SUB];
-                // self.dag_add(id.0);
-                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                // self.analyze_expr(expr.convert(final_expr), vars)
                 Ok(expr.modify(Expr::Sub(l, r)))
             }
             Expr::Comparison(l, comparison_op, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                // let (id, f) = self.intrinsics[match comparison_op {
-                //     ComparisonOp::Eq => INTRINSIC_FUNC_CEQ,
-                //     ComparisonOp::Neq => INTRINSIC_FUNC_NEQ,
-                //     ComparisonOp::Gt => INTRINSIC_FUNC_CGT,
-                //     ComparisonOp::Lt => INTRINSIC_FUNC_CLT,
-                //     ComparisonOp::Gte => INTRINSIC_FUNC_CGE,
-                //     ComparisonOp::Lte => INTRINSIC_FUNC_CLE,
-                // }];
-                // self.dag_add(id.0);
-                // let final_expr = Expr::Call(expr.convert(Expr::Call(expr.convert(f), l)), r);
-                // self.analyze_expr(expr.convert(final_expr), vars)
                 Ok(expr.modify(Expr::Comparison(l, comparison_op, r)))
             }
 
@@ -572,27 +550,13 @@ impl<const N: usize> Resolver<N> {
                             let id = r.ident()?;
 
                             {
-                                let mut path = Vec::new();
-                                self.row_addr_helper(&combo, id, vars, &mut path)
-                                    .map_err(|e| {
-                                        if let Some(err) = e.downcast_ref::<DynamicErr>() {
-                                            err.clone()
-                                                .extra_labels(vec![(
-                                                    "in this object".to_string(),
-                                                    combo.1,
-                                                )])
-                                                .into()
-                                        } else {
-                                            e
-                                        }
-                                    })?;
                                 // dbg!(&path);
 
-                                let ex = path.into_iter().fold(combo, |prev, dir| {
-                                    combo.convert(Expr::Project(dir, prev))
-                                });
+                                // let ex = path.into_iter().fold(combo, |prev, dir| {
+                                let ex = combo.convert(Expr::Project(Direction::Right, combo));
+                                // });
 
-                                ex.convert(Expr::Unlabel(ex, Label(id)))
+                                combo.convert(Expr::Unlabel(ex, Label(id)))
                             }
 
                             // dbg!(combo);
@@ -671,8 +635,8 @@ impl<const N: usize> Resolver<N> {
                 vars,
             ),
             Pattern::Var(v) => (p.convert(Expr::Ident(v)), [vars, [v].to_vec()].concat()),
-            Pattern::Number(ordered_float) => todo!(),
-            Pattern::String(spanned) => todo!(),
+            Pattern::Number(_) => todo!(),
+            Pattern::String(_) => todo!(),
             Pattern::Particle(p) => (p.convert(Expr::Particle(p)), vars),
             Pattern::Bool(_) => todo!(),
             Pattern::Unit => todo!(),
@@ -680,11 +644,7 @@ impl<const N: usize> Resolver<N> {
                 let (ex, vars) = self.resolve_pattern(ex, vars)?;
                 (p.convert(Expr::Unlabel(ex, label)), vars)
             }
-            Pattern::Record { fields, open } => todo!(),
-            Pattern::Tuple(spanneds) => todo!(),
-            Pattern::As(_, spanned) => todo!(),
-            Pattern::Or(patterns) => todo!(),
-            Pattern::Guard(spanned, spanned1) => todo!(),
+            _ => todo!(),
         };
         Ok(res)
     }
@@ -707,61 +667,6 @@ impl<const N: usize> Resolver<N> {
         self.analyze_expr(body, vars)
 
         // dbg!(arm);
-    }
-
-    fn row_addr_helper(
-        &mut self,
-        combo: &Spanned<Intern<Expr<Untyped>>>,
-        id: Spanned<Intern<String>>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-        accum: &mut Vec<Direction>,
-    ) -> CompResult<()> {
-        match *combo.0 {
-            Expr::Concat(l, r) => {
-                if matches!(*r.0, Expr::Label(a, _) if a.0.0 == id.0) {
-                    accum.push(Direction::Right);
-                    Ok(())
-                } else {
-                    accum.push(Direction::Left);
-                    let l = self.analyze_expr(l, vars)?;
-                    self.row_addr_helper(&l, id, vars, accum)
-                }
-            }
-
-            Expr::Branch(_l, _r) => todo!(),
-            Expr::Label(a, r) => {
-                if a.0.0 == id.0 {
-                    Ok(())
-                } else {
-                    let r = self.analyze_expr(r, vars)?;
-                    self.row_addr_helper(&r, id, vars, accum)
-                }
-            }
-            Expr::Call(l, r) => {
-                let _ = self.row_addr_helper(&l, id, vars, accum);
-                // let l = self.analyze_expr(l, vars)?;
-                // if matches!(*l.0, Expr::Item(_, Kind::Func)) {
-                //     Ok(())
-                // } else {
-                //     self.row_addr_helper(&r, id, vars, accum)
-                // }
-                Ok(())
-            }
-            Expr::Ident(_) => {
-                accum.push(Direction::Left);
-                Ok(())
-            }
-            Expr::Item(_, _) => {
-                dbg!(self.analyze_expr(*combo, vars));
-                todo!()
-            }
-
-            _ => Err(
-                DynamicErr::new(format!("The field {} is not available here", id.0))
-                    .label("this", id.1)
-                    .into(),
-            ),
-        }
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]

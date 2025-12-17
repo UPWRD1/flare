@@ -21,12 +21,15 @@ enum UnificationError {
 
 pub struct UnificationFailure;
 
-impl<'env> Solver<'env> {
+impl Solver<'_> {
     pub fn normalize_ty(&mut self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
         match *ty.0 {
-            Type::Num | Type::String | Type::Bool | Type::Unit | Type::Particle(_) => ty,
-
-            Type::Var(_) => ty,
+            Type::Num
+            | Type::String
+            | Type::Bool
+            | Type::Unit
+            | Type::Particle(_)
+            | Type::Var(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.normalize_ty(arg);
                 let ret = self.normalize_ty(ret);
@@ -82,10 +85,10 @@ impl<'env> Solver<'env> {
         let left = self.normalize_ty(unnorm_left);
         let right = self.normalize_ty(unnorm_right);
         match (*left.0, *right.0) {
-            (Type::Num, Type::Num) => Ok(()),
-            (Type::String, Type::String) => Ok(()),
-            (Type::Bool, Type::Bool) => Ok(()),
-            (Type::Unit, Type::Unit) => Ok(()),
+            (Type::Num, Type::Num)
+            | (Type::String, Type::String)
+            | (Type::Bool, Type::Bool)
+            | (Type::Unit, Type::Unit) => Ok(()),
             (Type::Particle(p), Type::Particle(q)) if p == q => Ok(()),
 
             (Type::Var(a), Type::Var(b)) if a.0 == b.0 => Ok(()),
@@ -127,10 +130,8 @@ impl<'env> Solver<'env> {
                 self.unify_row_row(left, right)
             }
 
-            (Type::Label(field, ty), Type::Prod(row))
-            | (Type::Prod(row), Type::Label(field, ty))
-            | (Type::Label(field, ty), Type::Sum(row))
-            | (Type::Sum(row), Type::Label(field, ty)) => self.unify_row_row(
+            (Type::Label(field, ty), Type::Prod(row) | Type::Sum(row))
+            | (Type::Prod(row) | Type::Sum(row), Type::Label(field, ty)) => self.unify_row_row(
                 Row::Closed(ClosedRow {
                     fields: vec![field].leak(),
                     values: vec![ty].leak(),
@@ -266,14 +267,11 @@ impl<'env> Solver<'env> {
         let mut diff_fields: Vec<Label> = vec![];
         let mut diff_values = vec![];
         for (field, value) in goal.fields.iter().zip(goal.values.iter()) {
-            match sub.fields.binary_search(field) {
-                Ok(indx) => {
-                    self.unify_ty_ty(*value, sub.values[indx])?;
-                }
-                Err(_) => {
-                    diff_fields.push(*field);
-                    diff_values.push(*value);
-                }
+            if let Ok(indx) = sub.fields.binary_search(field) {
+                self.unify_ty_ty(*value, sub.values[indx])?;
+            } else {
+                diff_fields.push(*field);
+                diff_values.push(*value);
             }
         }
         Ok(ClosedRow {
@@ -418,10 +416,10 @@ impl<'env> Solver<'env> {
                 self.tables.errors.insert(node_id, mark);
             }
         }
-        if !self.tables.errors.is_empty() {
-            Err(UnificationFailure)
-        } else {
+        if self.tables.errors.is_empty() {
             Ok(())
+        } else {
+            Err(UnificationFailure)
         }
         // dbg!()
     }

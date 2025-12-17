@@ -87,7 +87,7 @@ pub struct ClosedRow {
 impl hash::Hash for ClosedRow {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.fields.hash(state);
-        self.values.iter().for_each(|x| x.0.hash(state))
+        self.values.iter().for_each(|x| x.0.hash(state));
     }
 }
 
@@ -142,7 +142,7 @@ impl ClosedRow {
                 .find(|(_, other_label)| other_label.0.0 == me_label.0.0)
                 && other.values[idx] == *me_v
             {
-                accum.push((me_label, me_v))
+                accum.push((me_label, me_v));
             } else {
                 return None;
             }
@@ -207,7 +207,7 @@ impl ClosedRow {
         unbound_tys: &BTreeSet<TyUniVar>,
         unbound_rows: &BTreeSet<RowUniVar>,
     ) -> bool {
-        for ty in self.values.iter() {
+        for ty in self.values {
             if ty.0.mentions(unbound_tys, unbound_rows) {
                 return true;
             }

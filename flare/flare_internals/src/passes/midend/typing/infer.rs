@@ -12,7 +12,7 @@ use crate::{
     },
 };
 
-impl<'env> Solver<'env> {
+impl Solver<'_> {
     pub fn infer(
         &mut self,
         env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
@@ -75,21 +75,20 @@ impl<'env> Solver<'env> {
                 let fun_id = fun.id();
                 let (fun_out, supposed_fun_ty) = self.infer(env.clone(), fun);
                 let mut constraint = fun_out.constraints;
-                let (arg_ty, ret_ty) = match *supposed_fun_ty.0 {
-                    Type::Func(arg, ret) => (arg, ret),
-                    _ => {
-                        let arg_tyvar = self.fresh_ty_var();
-                        let arg_ty = arg.convert(Type::Unifier(arg_tyvar));
-                        let ret_tyvar = self.fresh_ty_var();
-                        let ret_ty = arg.convert(Type::Unifier(ret_tyvar));
-                        constraint.push(Constraint::TypeEqual(
-                            Provenance::AppExpectedFun(fun_id),
-                            supposed_fun_ty,
-                            fun_out.typed_ast.convert(Type::Func(arg_ty, ret_ty)),
-                        ));
+                let (arg_ty, ret_ty) = if let Type::Func(arg, ret) = *supposed_fun_ty.0 {
+                    (arg, ret)
+                } else {
+                    let arg_tyvar = self.fresh_ty_var();
+                    let arg_ty = arg.convert(Type::Unifier(arg_tyvar));
+                    let ret_tyvar = self.fresh_ty_var();
+                    let ret_ty = arg.convert(Type::Unifier(ret_tyvar));
+                    constraint.push(Constraint::TypeEqual(
+                        Provenance::AppExpectedFun(fun_id),
+                        supposed_fun_ty,
+                        fun_out.typed_ast.convert(Type::Func(arg_ty, ret_ty)),
+                    ));
 
-                        (arg_ty, ret_ty)
-                    }
+                    (arg_ty, ret_ty)
                 };
 
                 let arg_out = self.check(env, arg, arg_ty);

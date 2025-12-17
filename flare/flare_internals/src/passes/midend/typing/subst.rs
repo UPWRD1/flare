@@ -21,8 +21,8 @@ pub struct SubstOut<T> {
 impl<T> SubstOut<T> {
     pub(super) fn new(value: T) -> Self {
         Self {
-            unbound_tys: Default::default(),
-            unbound_rows: Default::default(),
+            unbound_tys: BTreeSet::default(),
+            unbound_rows: BTreeSet::default(),
             value,
         }
     }
@@ -60,7 +60,7 @@ impl<T> SubstOut<T> {
     }
 }
 
-impl<'env> Solver<'env> {
+impl Solver<'_> {
     fn substitute_closedrow(&mut self, row: ClosedRow) -> SubstOut<ClosedRow> {
         let mut row_out = SubstOut::new(());
         let values = row
@@ -267,7 +267,7 @@ impl<'env> Solver<'env> {
                 wrapper
                     .evidence
                     .into_iter()
-                    .map(|ev| self.substitute_evidence(ev))
+                    .map(|ev| self.substitute_evidence(&ev))
                     .collect(),
             ),
             |(types, rows), evidence| ItemWrapper {
@@ -278,12 +278,12 @@ impl<'env> Solver<'env> {
         )
     }
 
-    pub(crate) fn substitute_evidence(&mut self, ev: Evidence) -> SubstOut<Evidence> {
+    pub(crate) fn substitute_evidence(&mut self, ev: &Evidence) -> SubstOut<Evidence> {
         match ev {
             Evidence::RowEquation { left, right, goal } => self
-                .substitute_row(left)
-                .merge(self.substitute_row(right), |l, r| (l, r))
-                .merge(self.substitute_row(goal), |(left, right), goal| {
+                .substitute_row(*left)
+                .merge(self.substitute_row(*right), |l, r| (l, r))
+                .merge(self.substitute_row(*goal), |(left, right), goal| {
                     Evidence::RowEquation { left, right, goal }
                 }),
         }

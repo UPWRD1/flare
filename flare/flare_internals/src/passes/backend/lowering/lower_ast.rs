@@ -379,7 +379,7 @@ impl<'source> LowerAst<'source> {
                 };
 
                 let term = lower_solved_ev.lower_ev_term();
-                let ty = self.types.lower_ev_ty(ev.clone());
+                let ty = self.types.lower_ev_ty(ev);
                 debug_assert_eq!(
                     ty,
                     term.type_of(),
@@ -461,8 +461,7 @@ impl<'source> LowerAst<'source> {
                 IR::bin(ir_l, op, ir_r)
             }
 
-            Expr::Label(_, body) => self.lower_ast(body),
-            Expr::Unlabel(body, _) => self.lower_ast(body),
+            Expr::Label(_, body) | Expr::Unlabel(body, _) => self.lower_ast(body),
             Expr::Concat(left, right) => {
                 let param = self
                     .row_to_ev
@@ -482,18 +481,15 @@ impl<'source> LowerAst<'source> {
                 IR::app(IR::app(concat, left), right)
             }
             Expr::Branch(left, right) => {
-                let param = self
-                    .row_to_ev
-                    .get(&id)
-                    .cloned()
-                    .map(|ev| self.lookup_ev(ev))
-                    .unwrap_or_else(|| unreachable!(" Branch AST node lacks an expected evidence"));
+                let param = self.row_to_ev.get(&id).cloned().map_or_else(
+                    || unreachable!(" Branch AST node lacks an expected evidence"),
+                    |ev| self.lookup_ev(ev),
+                );
 
-                let ret_ty = self
-                    .branch_to_ret_ty
-                    .get(&id)
-                    .map(|ty| self.types.lower_ty(*ty.0))
-                    .unwrap_or_else(|| unreachable!("Branch AST node lacks expected type"));
+                let ret_ty = self.branch_to_ret_ty.get(&id).map_or_else(
+                    || unreachable!("Branch AST node lacks expected type"),
+                    |ty| self.types.lower_ty(*ty.0),
+                );
                 let branch = IR::ty_app(IR::field(IR::Var(param), 1), TyApp::Ty(ret_ty));
 
                 let left = self.lower_ast(left);

@@ -24,7 +24,7 @@ impl Target for IRTarget {
     fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
         p.into_iter()
             .enumerate()
-            .map(|(i, x)| format!("item #{i}: is\n{}\nend item #{i}", x))
+            .map(|(i, x)| format!("item #{i}: is\n{x}\nend item #{i}"))
             .collect::<Vec<String>>()
             .join("\n\n")
     }
@@ -55,6 +55,7 @@ pub enum Type {
 }
 
 impl Type {
+    #[must_use]
     pub fn is_cheap_alloc(&self) -> bool {
         // Technically, unit is zero-sized, so it doesn't alloc
         matches!(self, Self::Num | Self::Bool | Self::Str | Self::Unit)
@@ -135,19 +136,23 @@ impl Row {
 }
 
 impl Type {
+    #[must_use]
     pub fn fun(l: Self, r: Self) -> Self {
         Self::Fun(Box::new(l), Box::new(r))
     }
-
+    #[must_use]
     pub fn funs(args: impl Into<Vec<Self>>, ret: Self) -> Self {
         args.into()
             .into_iter()
             .rfold(ret, |ret, arg| Self::Fun(Box::new(arg), Box::new(ret)))
     }
+
+    #[must_use]
     pub fn ty_fun(k: Kind, t: Self) -> Self {
         Self::TyFun(k, Box::new(t))
     }
 
+    #[must_use]
     pub fn prod(row: Row) -> Self {
         match row {
             Row::Closed(elems) if elems.len() == 1 => unsafe {
@@ -157,6 +162,7 @@ impl Type {
         }
     }
 
+    #[must_use]
     pub fn sum(row: Row) -> Self {
         match row {
             Row::Closed(elems) if elems.len() == 1 => unsafe {
@@ -187,10 +193,12 @@ impl Display for Var {
 }
 
 impl Var {
+    #[must_use]
     pub fn new(id: VarId, ty: Type) -> Self {
         Self { id, ty }
     }
 
+    #[must_use]
     pub fn map_ty(self, f: impl FnOnce(Type) -> Type) -> Self {
         Self {
             ty: f(self.ty),
@@ -224,6 +232,7 @@ pub struct Branch {
 }
 
 impl Branch {
+    #[must_use]
     pub fn as_fun(&self) -> IR {
         IR::fun(self.param.clone(), self.body.clone())
     }
@@ -457,7 +466,7 @@ impl IR {
             }
 
             Self::Tuple(elems) => {
-                Type::Prod(Row::Closed(elems.iter().map(|ir| ir.type_of()).collect()))
+                Type::Prod(Row::Closed(elems.iter().map(Self::type_of).collect()))
             }
             Self::Field(body, field) => {
                 let Type::Prod(Row::Closed(elems)) = body.type_of() else {
@@ -472,7 +481,7 @@ impl IR {
 
                 if body.type_of() != elems[*tag] {
                     unreachable!("Tagged value has element with the wrong type")
-                };
+                }
 
                 ty.clone()
             }
@@ -497,8 +506,7 @@ impl IR {
 
                 ty.clone()
             }
-            Self::Item(t, _) => t.clone(),
-            Self::Extern(_, t) => t.clone(),
+            Self::Item(t, _) | Self::Extern(_, t) => t.clone(),
         }
     }
 
@@ -582,7 +590,7 @@ impl Render for IR {
                     .append(
                         Doc::list(
                             Itertools::intersperse(
-                                vars.into_iter().map(|v| v.render()),
+                                vars.into_iter().map(Render::render),
                                 Doc::text(",").space(),
                             )
                             .collect(),
@@ -603,7 +611,7 @@ impl Render for IR {
                     Doc::nil()
                         .append(Doc::list(
                             Itertools::intersperse(
-                                v.into_iter().map(|v| v.render()),
+                                v.into_iter().map(Render::render),
                                 Doc::text(",").space(),
                             )
                             .collect(),

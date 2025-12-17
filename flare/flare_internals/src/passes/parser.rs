@@ -697,7 +697,7 @@ Spanned(
                 .or(definition.clone().repeated().collect::<Vec<_>>()),
         )
         .map_with(|(name, items), _| Package {
-            name: name.to_owned(),
+            name ,
             items,
         })
         .labelled("package")
@@ -874,14 +874,14 @@ where
 }
 
 fn destructure_pattern_parser<'src, I>(
-    ident: Boxed<
+    _ident: Boxed<
         'src,
         'src,
         I,
         Spanned<Intern<Expr<Untyped>>>,
         extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
-    ty: Boxed<
+    _ty: Boxed<
         'src,
         'src,
         I,

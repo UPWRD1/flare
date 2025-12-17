@@ -7,7 +7,7 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
-            ast::{Label, Variable},
+            ast::Variable,
             common::{Ident, SpanWrapped},
             files::FileID,
         },
@@ -48,6 +48,7 @@ pub struct FunctionItem<V: Variable> {
     pub name: V,
     pub sig: Spanned<Intern<Type>>,
     pub body: Spanned<Intern<Expr<V>>>,
+    // extra_vars: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -97,7 +98,7 @@ impl<V: Variable> SpanWrapped for Item<V> {
                         .union(function_item.body.1),
                 )
             }
-            ItemKind::Type(_, g, t) => t.1,
+            ItemKind::Type(_, _, t) => t.1,
             ItemKind::Extern { name, args: _, sig } => name.1.union(sig.1),
 
             ItemKind::Dummy(_) => panic!(),

@@ -31,21 +31,21 @@ impl<'a> Instantiate<'a> {
         let constraints = ty_scheme
             .evidence
             .into_iter()
-            .map(|ev| self.evidence(ev))
+            .map(|ev| self.evidence(&ev))
             .collect();
         let ty = self.ty(ty_scheme.ty);
         (constraints, ty)
     }
 
-    fn evidence(&self, ev: Evidence) -> Constraint {
+    fn evidence(&self, ev: &Evidence) -> Constraint {
         // dbg!(&ev);
         match ev {
             Evidence::RowEquation { left, right, goal } => Constraint::RowCombine(
                 Provenance::ExpectedCombine(self.id),
                 RowCombination {
-                    left: self.row(left),
-                    right: self.row(right),
-                    goal: self.row(goal),
+                    left: self.row(*left),
+                    right: self.row(*right),
+                    goal: self.row(*goal),
                 },
             ),
         }

@@ -31,6 +31,8 @@
     // clippy::restriction
 )]
 #[allow(
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
     clippy::type_complexity,
     clippy::diverging_sub_expression,
     clippy::missing_panics_doc
@@ -297,9 +299,9 @@ impl<T: Target> Context<T> {
         let (items, source) = tc.check()?;
         // dbg!(&items);
         let lowerer = Lowerer::new();
-        let ir = lowerer.lower(source, items);
-        let ir = simplify::simplify(ir);
-        let ir = monomorph::monomorph(ir);
+        let ir = lowerer.lower(source, &items);
+        let ir = simplify::simplify(&ir);
+        // let ir = monomorph::monomorph(ir);
 
         let g = Generator::new(self.target, ir);
 

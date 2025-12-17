@@ -38,15 +38,14 @@ impl IR {
 
             Self::Fun(_, body) => 10 + body.size(),
             Self::App(fun, arg) => arg.size() + size_app(fun, 1),
-            Self::TyFun(_, ir) => ir.size(),
-            Self::TyApp(ir, _) => ir.size(),
+            Self::TyFun(_, ir) | Self::TyApp(ir, _) | Self::Field(ir, _) | Self::Tag(_, _, ir) => {
+                ir.size()
+            }
             Self::Local(var, defn, body) => {
                 defn.size() + body.size() + (if var.ty.is_cheap_alloc() { 0 } else { 10 })
             }
             Self::If(c, t, o) => c.size().max(t.size().max(o.size())),
-            Self::Tuple(v) => v.iter().map(|x| x.size()).sum::<usize>(),
-            Self::Field(ir, _) => ir.size(),
-            Self::Tag(_, _, ir) => ir.size(),
+            Self::Tuple(v) => v.iter().map(Self::size).sum::<usize>(),
             Self::Case(_, s, b) => s.size() + b.iter().map(|x| x.as_fun().size()).sum::<usize>(),
             Self::Item(_, _) | Self::Extern(_, _) => 100,
             // _ => todo!(),
@@ -66,20 +65,19 @@ impl IR {
     }
     pub fn is_value(&self) -> bool {
         match self {
+            Self::Bin(l, _, r) => l.is_value() && r.is_value(),
+
+            Self::TyFun(_, ir) => ir.is_value(),
+            Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
+            Self::Tuple(s) => s.iter().all(Self::is_value),
             Self::Var(_)
             | Self::Num(_)
             | Self::Str(_)
             | Self::Unit
             | Self::Bool(_)
             | Self::Particle(_)
-            | Self::Fun(_, _) => true,
-
-            Self::Bin(l, _, r) => l.is_value() && r.is_value(),
-
-            Self::TyFun(_, ir) => ir.is_value(),
-            Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
-            Self::Tuple(s) => s.iter().all(|x| x.is_value()),
-            Self::Tag(_, _, _) => true,
+            | Self::Fun(_, _)
+            | Self::Tag(_, _, _) => true,
             Self::App(_, _) | Self::TyApp(_, _) => false,
 
             _ => todo!("{self:?}"),
@@ -192,7 +190,7 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
         | IR::Unit
         | IR::Particle(_)
         // c IR::Tuple(_)
-        | IR::Tag(_, _, _) => haystack,
+        | IR::Tag(_, _, _) | IR::Extern(_, _) => haystack,
 
         IR::Fun(var, ir) => IR::fun(
             var.map_ty(|ty| ty.subst_app(payload.clone())),
@@ -231,7 +229,7 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
                     .collect()
             )
         }
-        IR::Extern(_, _) => haystack, // might be wrong
+        // might be wrong
 
         IR::Case(t, ir, branches) => {
             IR::Case(t, Box::new(subst_ty(*ir, payload.clone())), branches.into_iter().map(|x| Branch{ param: x.param, body: subst_ty(x.body, payload.clone())}).collect())
@@ -244,10 +242,10 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
 }
 
 struct OccuranceAnalyzer<'i> {
-    items: &'i Vec<(IR, Type)>,
+    items: &'i [(IR, Type)],
 }
 impl<'i> OccuranceAnalyzer<'i> {
-    pub fn new(items: &'i Vec<(IR, Type)>) -> Self {
+    pub fn new(items: &'i [(IR, Type)]) -> Self {
         Self { items }
     }
 
@@ -397,39 +395,40 @@ struct Simplifier<'p> {
     saturated_ty_fun_count: usize,
     locals_inlined: usize,
     inline_size_threshold: usize,
-    items: &'p Vec<(IR, Type)>,
+    items: &'p [(IR, Type)],
 
     seen_items: FxHashSet<ItemId>,
 }
 
-pub fn simplify(the_ir: Vec<(IR, Type)>) -> Vec<(IR, Type)> {
+pub fn simplify(the_ir: &[(IR, Type)]) -> Vec<(IR, Type)> {
     the_ir
-        .clone()
-        .into_iter()
-        .fold(vec![], |mut prev, (mut ir, t)| {
+        // .clone()
+        .iter()
+        .map(|(ir, t)| {
+            let mut ir = ir.clone();
             for _ in 0..2 {
-                let occ_a = OccuranceAnalyzer::new(&the_ir);
+                let occ_a = OccuranceAnalyzer::new(the_ir);
                 let (_, occs) =
                     occ_a.occurrence_analysis(&ir, &im::HashSet::with_hasher(FxBuildHasher));
-                let mut simplifier = Simplifier::new(occs, &the_ir);
+                let mut simplifier = Simplifier::new(occs, the_ir);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
                     // println!("Simplified after {i} passes");
                     break;
                 }
             }
-            prev.push((ir, t));
-            prev
+            (ir, t.clone())
         })
+        .collect()
 }
 
 impl<'p> Simplifier<'p> {
-    fn new(occs: Occurrences, prev: &'p Vec<(IR, Type)>) -> Self {
+    fn new(occs: Occurrences, prev: &'p [(IR, Type)]) -> Self {
         Self {
             occs,
             items: prev,
             inline_size_threshold: 60, // GHC magic number is 60
-            subst: Default::default(),
+            subst: FxHashMap::default(),
             saturated_fun_count: Default::default(),
             saturated_ty_fun_count: Default::default(),
             locals_inlined: Default::default(),
@@ -474,7 +473,7 @@ impl<'p> Simplifier<'p> {
                     break self.rebuild(IR::fun(var, body), in_scope, ctx);
                 }
                 IR::Local(var, defn, body) => self.simplify_local(var, *defn, *body, &mut ctx),
-                IR::Var(var) => match self.simplify_var(var, in_scope.clone(), &ctx) {
+                IR::Var(var) => match self.simplify_var(&var, &in_scope, &ctx) {
                     ControlFlow::Continue(ir) => ir,
                     ControlFlow::Break(var) => {
                         break self.rebuild(IR::Var(var), in_scope, ctx);
@@ -483,19 +482,16 @@ impl<'p> Simplifier<'p> {
 
                 IR::If(c, t, o) => {
                     let cond = self.simplify(*c, in_scope.clone(), vec![]);
-                    let new_ir = match cond {
-                        IR::Bool(b) => {
-                            if b {
-                                self.simplify(*t, in_scope.clone(), vec![])
-                            } else {
-                                self.simplify(*o, in_scope.clone(), vec![])
-                            }
+                    let new_ir = if let IR::Bool(b) = cond {
+                        if b {
+                            self.simplify(*t, in_scope.clone(), vec![])
+                        } else {
+                            self.simplify(*o, in_scope.clone(), vec![])
                         }
-                        _ => {
-                            let then = self.simplify(*t, in_scope.clone(), vec![]);
-                            let other = self.simplify(*o, in_scope.clone(), vec![]);
-                            IR::r#if(cond, then, other)
-                        }
+                    } else {
+                        let then = self.simplify(*t, in_scope.clone(), vec![]);
+                        let other = self.simplify(*o, in_scope.clone(), vec![]);
+                        IR::r#if(cond, then, other)
                     };
 
                     break self.rebuild(new_ir, in_scope, ctx);
@@ -520,15 +516,14 @@ impl<'p> Simplifier<'p> {
                 IR::Case(ty, scrutinee, branches) => {
                     if branches.is_empty() {
                         break self.rebuild(*scrutinee, in_scope, ctx);
-                    } else {
-                        let branches: Vec<Branch> = branches
-                            .into_iter()
-                            .map(|b| self.simplify_branch(b, in_scope.clone(), vec![]))
-                            .collect();
-
-                        ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
-                        *scrutinee
                     }
+                    let branches: Vec<Branch> = branches
+                        .into_iter()
+                        .map(|b| self.simplify_branch(b, &in_scope, vec![]))
+                        .collect();
+
+                    ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
+                    *scrutinee
                 }
 
                 IR::Tag(ty, idx, ir) => {
@@ -541,7 +536,7 @@ impl<'p> Simplifier<'p> {
                 IR::Item(_, itemid) => {
                     // dbg!(self.items.len());
                     // break self.rebuild(ir, in_scope, ctx);
-                    match self.item_inline(itemid, in_scope.clone()) {
+                    match self.item_inline(itemid, &in_scope) {
                         ControlFlow::Continue(c) => c,
                         ControlFlow::Break(_) => {
                             break self.rebuild(ir, in_scope, ctx);
@@ -552,7 +547,7 @@ impl<'p> Simplifier<'p> {
         }
     }
 
-    fn simplify_branch(&mut self, b: Branch, in_scope: InScope, ctx: SimplifierContext) -> Branch {
+    fn simplify_branch(&mut self, b: Branch, in_scope: &InScope, ctx: SimplifierContext) -> Branch {
         Branch {
             body: self.simplify(
                 b.body,
@@ -584,8 +579,8 @@ impl<'p> Simplifier<'p> {
 
     fn simplify_var(
         &mut self,
-        var: Var,
-        in_scope: InScope,
+        var: &Var,
+        in_scope: &InScope,
         ctx: &SimplifierContext,
     ) -> ControlFlow<Var, IR> {
         match self.subst.remove(&var.id) {
@@ -603,15 +598,15 @@ impl<'p> Simplifier<'p> {
 
     fn callsite_inline(
         &mut self,
-        var: Var,
-        in_scope: InScope,
+        var: &Var,
+        in_scope: &InScope,
         ctx: &SimplifierContext,
     ) -> ControlFlow<Var, IR> {
         in_scope
             .get(&var.id)
             .map(|bind| match bind {
                 Definition::BoundTo(definition, occ)
-                    if self.should_inline(definition, *occ, &in_scope, ctx) =>
+                    if self.should_inline(definition, *occ, in_scope, ctx) =>
                 {
                     self.subst = Subst::default();
                     if let Occurrence::OnceInFun = occ {
@@ -629,7 +624,7 @@ impl<'p> Simplifier<'p> {
             })
     }
 
-    fn item_inline(&mut self, itemid: ItemId, in_scope: InScope) -> ControlFlow<ItemId, IR> {
+    fn item_inline(&mut self, itemid: ItemId, in_scope: &InScope) -> ControlFlow<ItemId, IR> {
         if self.seen_items.contains(&itemid) {
             ControlFlow::Break(itemid)
         } else {
@@ -637,7 +632,7 @@ impl<'p> Simplifier<'p> {
             self.items
                 .get(itemid.0 as usize)
                 .map(|(definition, _)| {
-                    if definition.size() < self.inline_size_threshold * 1000 {
+                    if definition.size() < self.inline_size_threshold {
                         self.subst = Subst::default();
                         ControlFlow::Continue(definition.clone())
                     } else {

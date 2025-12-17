@@ -44,7 +44,7 @@ fn lower_ty_scheme(scheme: typing::TypeScheme) -> LoweredTyScheme {
         .evidence
         .into_iter()
         .map(|ev| {
-            let ty = lower_types.lower_ev_ty(ev.clone());
+            let ty = lower_types.lower_ev_ty(&ev);
             ev_to_ty.insert(ev, ty.clone());
             ty
         })
@@ -88,13 +88,13 @@ impl Lowerer {
     pub fn lower(
         mut self,
         source: typing::ItemSource,
-        items: Vec<(ast::ItemId, TypesOutput)>,
+        items: &[(ast::ItemId, TypesOutput)],
     ) -> Vec<(IR, Type)> {
         // dbg!(&source);
         let source = Self::lower_item_source(source);
         items
             .iter()
-            .map(|(idx, item)| self.lower_logic(&source, item, idx))
+            .map(|(idx, item)| self.lower_logic(&source, item, *idx))
             .collect()
     }
 
@@ -115,7 +115,7 @@ impl Lowerer {
         &mut self,
         item_source: &ItemSource,
         out: &TypesOutput,
-        item_id: &ItemId,
+        item_id: ItemId,
     ) -> (IR, Type) {
         let lowered_scheme = lower_ty_scheme(out.scheme.clone());
 
@@ -131,7 +131,7 @@ impl Lowerer {
                 (ev, var)
             })
             .collect();
-        self.item_supply.supply_for(*item_id);
+        self.item_supply.supply_for(item_id);
         let mut lower_ast = LowerAst::new(
             var_supply,
             lowered_scheme.lower_types,

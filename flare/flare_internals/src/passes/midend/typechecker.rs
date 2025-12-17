@@ -308,9 +308,6 @@ impl Typechecker {
                     _ => unreachable!(),
                 };
 
-                // let infer = Solver::type_infer_with_items(&self.context, f.body).unwrap();
-                // dbg!(infer.scheme);
-
                 if !solved.errors.is_empty() {
                     Err(ErrorCollection::new(solved.errors.into_values().collect()).into())
                 } else {

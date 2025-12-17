@@ -66,16 +66,16 @@ impl LowerTypes {
         }
     }
 
-    pub fn lower_ev_ty(&self, evidence: typing::Evidence) -> Type {
+    pub fn lower_ev_ty(&self, evidence: &typing::Evidence) -> Type {
         let typing::Evidence::RowEquation { left, right, goal } = evidence;
 
-        let left = self.lower_row_ty(left);
+        let left = self.lower_row_ty(*left);
         let (left_prod, left_sum) = (Type::prod(left.clone()), Type::sum(left));
 
-        let right = self.lower_row_ty(right);
+        let right = self.lower_row_ty(*right);
         let (right_prod, right_sum) = (Type::prod(right.clone()), Type::sum(right));
 
-        let goal = self.lower_row_ty(goal);
+        let goal = self.lower_row_ty(*goal);
         let (goal_prod, goal_sum) = (Type::prod(goal.clone()), Type::sum(goal));
 
         let concat = Type::funs([left_prod.clone(), right_prod.clone()], goal_prod.clone());

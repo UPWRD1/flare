@@ -105,7 +105,6 @@ impl Type {
 
     pub fn occurs_check(&self, var: TyUniVar) -> Result<(), Self> {
         match self {
-            Self::Num | Self::String | Self::Bool | Self::Unit | Self::Particle(_) => Ok(()),
             Self::Unifier(v) => {
                 if *v == var {
                     Err(Self::Unifier(*v))
@@ -113,7 +112,12 @@ impl Type {
                     Ok(())
                 }
             }
-            Self::Var(_) => Ok(()),
+            Self::Num
+            | Self::String
+            | Self::Bool
+            | Self::Unit
+            | Self::Particle(_)
+            | Self::Var(_) => Ok(()),
             Self::Func(arg, ret) => {
                 arg.0.occurs_check(var).map_err(|_| *self)?;
                 ret.0.occurs_check(var).map_err(|_| *self)
@@ -121,11 +125,10 @@ impl Type {
 
             Self::Label(_, ty) => ty.0.occurs_check(var).map_err(|_| *self),
             Self::Prod(row) | Self::Sum(row) => match row {
-                Row::Open(_) => Ok(()),
-                Row::Unifier(_) => Ok(()),
+                Row::Open(_) | Row::Unifier(_) => Ok(()),
                 Row::Closed(closed_row) => {
-                    for ty in closed_row.values.iter() {
-                        ty.0.occurs_check(var).map_err(|_| *self)?
+                    for ty in closed_row.values {
+                        ty.0.occurs_check(var).map_err(|_| *self)?;
                     }
                     Ok(())
                 }
@@ -140,9 +143,8 @@ impl Type {
         unbound_rows: &BTreeSet<RowUniVar>,
     ) -> bool {
         match self {
-            Self::Num => false,
             Self::Unifier(v) => unbound_tys.contains(v),
-            Self::Var(_) => false,
+            Self::Num | Self::Var(_) => false,
             Self::Func(arg, ret) => {
                 arg.0.mentions(unbound_tys, unbound_rows)
                     || ret.0.mentions(unbound_tys, unbound_rows)

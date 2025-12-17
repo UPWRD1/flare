@@ -18,8 +18,8 @@ package Main =
 
     let map res f g : Result[?T, ?E] -> (?T -> ?U) -> (?E -> ?F) -> Result[?U, ?F] =
             match res in
-            |Ok v| then Ok (f(v)),
-            |Err e| then Err (g(e)),
+                |Ok v| then Ok (f(v)),
+                |Err e| then Err (g(e)),
 
     let unwrap_or_res res default: Result[?T, ?E] -> ?T -> ?T =
         match res in
@@ -35,28 +35,44 @@ package Main =
         name = n, age = a
     }
 
-    let main: Result[num, bool] =
-        let p = {name= "joe", age = 10000} in
-        let status = Ok p.age in
-            # unwrap_or_res status 0
-            map status (fn x => x * 3) (fn x => x )        #     unwrap_or (Some 3) 0
+    let identity var : ?T -> ?T =
+        var
 
+    let creator a b : ?T -> ?U -> {a: ?T, b:?U} =
+        {a = a, b = b}
 
+    # let thing1 x = thing2 x
 
-
-package Hidden = 
-    extern format f: ?T -> str    
-
-    let speak x: {?T , ?T -> str} -> str =
-        x.1(x.0)
-
-
+    # t
+    
     let factorial x : num -> num =
         if x == 0 then
             0
         else
             factorial(x - 1) + x
 
+    let thing1 x :num -> num = thing2 x
+    let thing2 x :num -> num = thing1 x
+
+    let main: infer =
+        demo
+       # identity (creator 3 true)
+        # let status = let p = {name= "joe", age = 10000, iscool = true} in Ok p.age in
+        
+            # unwrap_or_res status 0
+            # map status (fn x => x * 3) (fn x => x )        #     unwrap_or (Some 3) 0
+
+
+
+
+# package Hidden = 
+    extern format f: ?T -> str    
+
+    let speak x: {?T , ?T -> str} -> str =
+        x.1(x.0)
+
+
+    
     # for some property, CanTalk
 
     let number_speak x: num -> str =
