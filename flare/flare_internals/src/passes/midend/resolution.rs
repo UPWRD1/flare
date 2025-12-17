@@ -738,6 +738,7 @@ impl<const N: usize> Resolver<N> {
                 }
             }
             Expr::Call(l, r) => {
+                let _ = self.row_addr_helper(&l, id, vars, accum);
                 // let l = self.analyze_expr(l, vars)?;
                 // if matches!(*l.0, Expr::Item(_, Kind::Func)) {
                 //     Ok(())
@@ -749,6 +750,10 @@ impl<const N: usize> Resolver<N> {
             Expr::Ident(_) => {
                 accum.push(Direction::Left);
                 Ok(())
+            }
+            Expr::Item(_, _) => {
+                dbg!(self.analyze_expr(*combo, vars));
+                todo!()
             }
 
             _ => Err(

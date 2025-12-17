@@ -107,9 +107,11 @@ impl<'env> Solver<'env> {
                 Spanned(Type::Sum(Row::single(lbl, ty)).into(), lbl.0.1),
             ),
 
-            (Expr::Unlabel(term, lbl), _) => self
-                .check(env, term, Spanned(Type::Label(lbl, the_ty).into(), lbl.0.1))
-                .with_typed_ast(|term| Spanned(Expr::Unlabel(term, lbl).into(), id)),
+            (Expr::Unlabel(term, lbl), _) => {
+                dbg!(term);
+                self.check(env, term, Spanned(Type::Label(lbl, the_ty).into(), lbl.0.1))
+                    .with_typed_ast(|term| Spanned(Expr::Unlabel(term, lbl).into(), id))
+            }
 
             (Expr::Concat(left, right), Type::Prod(goal_row)) => {
                 let left_row = Row::Unifier(self.fresh_row_var());
