@@ -6,7 +6,7 @@ use petgraph::{
     graph::NodeIndex,
     visit::{Dfs, IntoNodeReferences, Walker},
 };
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashSet};
 // const INTRINSIC_FUNC_ADD: usize = 0;
 // const INTRINSIC_FUNC_SUB: usize = 1;
 // const INTRINSIC_FUNC_MUL: usize = 2;
@@ -215,7 +215,7 @@ impl<const N: usize> Resolver<N> {
 
                     Ok(())
                 }
-                ItemKind::Type(_, g, t) => {
+                ItemKind::Type(_, _, t) => {
                     // Analyze the type
                     let t = self.in_context(|me| me.analyze_type(t), dag_idx)?;
 
@@ -738,11 +738,13 @@ impl<const N: usize> Resolver<N> {
                 }
             }
             Expr::Call(l, r) => {
-                if matches!(*l.0, Expr::Item(_, Kind::Ty)) {
-                    todo!()
-                } else {
-                    self.row_addr_helper(&r, id, vars, accum)
-                }
+                // let l = self.analyze_expr(l, vars)?;
+                // if matches!(*l.0, Expr::Item(_, Kind::Func)) {
+                //     Ok(())
+                // } else {
+                //     self.row_addr_helper(&r, id, vars, accum)
+                // }
+                Ok(())
             }
             Expr::Ident(_) => {
                 accum.push(Direction::Left);

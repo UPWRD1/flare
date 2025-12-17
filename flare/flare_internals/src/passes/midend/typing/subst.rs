@@ -147,7 +147,7 @@ impl<'env> Solver<'env> {
         ast: Spanned<Intern<Expr<Typed>>>,
     ) -> SubstOut<Spanned<Intern<Expr<Typed>>>> {
         let id = ast.1;
-        let res = match *ast.0 {
+        match *ast.0 {
             Expr::Ident(v) => self
                 .substitute_ty(v.1)
                 .map(|ty| Spanned(Expr::Ident(Typed(v.0, ty)).into(), id)),
@@ -230,8 +230,8 @@ impl<'env> Solver<'env> {
                 .map(|nast| ast.convert(Expr::Inject(dir, nast))),
             Expr::Item(id, item) => SubstOut::new(ast.convert(Expr::Item(id, item))),
             _ => todo!("{ast:?}"),
-        };
-        dbg!(res)
+        }
+        // dbg!(res)
     }
 
     pub(crate) fn substitute_wrapper(&mut self, wrapper: ItemWrapper) -> SubstOut<ItemWrapper> {

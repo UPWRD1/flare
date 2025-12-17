@@ -236,7 +236,9 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
         IR::Case(t, ir, branches) => {
             IR::Case(t, Box::new(subst_ty(*ir, payload.clone())), branches.into_iter().map(|x| Branch{ param: x.param, body: subst_ty(x.body, payload.clone())}).collect())
         }
-
+        IR::Item(t, id) => {
+            IR::Item(t.subst_app(payload), id)
+        }
         _ => todo!("{haystack:?}"),
     }
 }
@@ -635,7 +637,7 @@ impl<'p> Simplifier<'p> {
             self.items
                 .get(itemid.0 as usize)
                 .map(|(definition, _)| {
-                    if definition.size() < self.inline_size_threshold {
+                    if definition.size() < self.inline_size_threshold * 1000 {
                         self.subst = Subst::default();
                         ControlFlow::Continue(definition.clone())
                     } else {

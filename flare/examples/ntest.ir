@@ -55,8 +55,73 @@ tyfn Type =>
 end item #2
 
 item #3: is
-let $0: {num | num} =
-  [num]::[num]::#0()
+let $0: {bool | num} = let $1: {
+    bool -> num -> {num * bool} *
+    TyFunc Type bool -> ?0 -> num -> ?0 -> {num |
+        bool} -> ?0 *
+    {{num * bool} -> bool *
+        bool -> {num | bool}} *
+    {{num * bool} -> num *
+        num -> {num | bool}}
+  } = {
+      fn [$2: bool, $3: num] =>
+        {
+          $3,
+          $2},
+      tyfn Type =>
+        fn [$4: num -> bool, $5: ?0 -> bool, $6: {?0 |
+          num}] =>
+          match $6:
+            | $7 then $5(),
+            | $8 then $4(),
+      {
+        fn [$9: {num * bool}] =>
+          $9,
+        fn [$10: bool] =>
+          $10 tag {?1 |
+            ?0} variant 1},
+      {
+        fn [$12: {num * bool}] =>
+          $12,
+        fn [$13: num] =>
+          $13 tag {?1 |
+            ?0} variant 0}}
+  in
+    fn [$0: num] => $1()()
 in
-  [num]::[num]::[num]::[num]::#2()()()
+  let $3: {
+    num -> bool -> {bool * num} *
+    TyFunc Type num -> ?0 -> bool -> ?0 -> {bool |
+        num} -> ?0 *
+    {{bool * num} -> num *
+        num -> {bool | num}} *
+    {{bool * num} -> bool *
+        bool -> {bool | num}}
+  } = {
+      fn [$4: num, $5: bool] =>
+        {
+          $5,
+          $4},
+      tyfn Type =>
+        fn [$6: bool -> bool, $7: ?0 -> bool, $8: {?0 |
+          bool}] =>
+          match $8:
+            | $9 then $7(),
+            | $10 then $6(),
+      {
+        fn [$11: {bool * num}] =>
+          $11,
+        fn [$12: num] =>
+          $12 tag {?3 |
+            ?2} variant 1},
+      {
+        fn [$14: {bool * num}] =>
+          $14,
+        fn [$15: bool] =>
+          $15 tag {?3 |
+            ?2} variant 0}}
+  in
+    fn [$0: {bool |
+      num}, $1: num -> num, $2: bool -> bool] =>
+      [bool]::$3()()()()()()
 end item #3

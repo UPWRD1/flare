@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 use std::hash::RandomState;
 
 use crate::{
-    passes::midend::typing::{ClosedRow, Type},
+    passes::midend::typing::Type,
     resource::{
         errors::{self, CompResult, DynamicErr},
         rep::{

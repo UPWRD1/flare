@@ -35,11 +35,11 @@ package Main =
         name = n, age = a
     }
 
-    let main: Result[num, num] =
-        # let p = Person_cons "joe" 10000 in
-        let status = Ok 3 in
+    let main: Result[num, bool] =
+        let p = Person_cons "joe" 10000 in
+        let status = Ok p.age in
             # unwrap_or_res status 0
-            map status (fn x => x * 3) (fn x => x + 3)        #     unwrap_or (Some 3) 0
+            map status (fn x => x * 3) (fn x => x )        #     unwrap_or (Some 3) 0
 
 
 
