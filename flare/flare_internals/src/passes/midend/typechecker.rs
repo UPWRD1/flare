@@ -232,9 +232,10 @@ impl Typechecker {
     }
 
     fn check_items(&mut self) -> CompResult<Vec<(ItemId, TypesOutput)>> {
-        self.item_order
+        let to_check: Vec<_> = self
+            .item_order
             .iter()
-            .map(|idx| {
+            .filter_map(|idx| {
                 let id = ItemId(idx.index());
                 let scheme = self
                     .context
@@ -244,8 +245,24 @@ impl Typechecker {
                     .clone();
 
                 let item = self.env.value(*idx).expect("Item should exist");
+
+                match item.kind {
+                    ItemKind::Function(_)
+                    | ItemKind::Extern {
+                        name: _,
+                        args: _,
+                        sig: _,
+                    } => Some((id, scheme, item)),
+                    _ => None,
+                }
+            })
+            .collect();
+        to_check
+            .into_iter()
+            .map(|(id, scheme, item)| {
                 let solved = match item.kind {
                     ItemKind::Function(f) => {
+                        dbg!(scheme.ty);
                         if matches!(*scheme.ty.0, Type::Infer) {
                             Solver::type_infer_with_items(&self.context, f.body)
                                 .map_err(|x| ErrorCollection::new(x.into_values().collect()))?
@@ -271,7 +288,7 @@ impl Typechecker {
                             )?
                         }
                     }
-                    ItemKind::Type(_, _) => todo!(),
+
                     ItemKind::Extern { name, args, sig: _ } => {
                         let ex = name.convert(Expr::Item(
                             id,

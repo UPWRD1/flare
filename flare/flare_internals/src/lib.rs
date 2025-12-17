@@ -62,7 +62,7 @@ use crate::{
         parser,
     },
     resource::{
-        errors::{CompResult, CompilerErr, ErrorCollection},
+        errors::{CompResult, CompilerErr},
         rep::{
             Spanned,
             ast::{

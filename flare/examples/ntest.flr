@@ -1,11 +1,12 @@
 package Main =
+    type Option = |Some ?T, None|
     
-    let Some x : ?T -> |Some ?T, None| =
+    let Some x : ?T -> Option =
       |Some x|
 
-    # let None : |None| = |None|
+    let None : Option = |None|
 
-    let unwrap_or o default : |Some ?T, None| -> ?T -> ?T =
+    let unwrap_or o default : Option -> ?T -> ?T =
         match o in
             |Some x1| then x1,
             |None| then default,

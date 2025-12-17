@@ -71,7 +71,7 @@ enum Token {
 
     Def,
     Else,
-    Enum,
+    // Enum,
     Extern,
     False,
     Fn,
@@ -82,9 +82,10 @@ enum Token {
     Match,
     Package,
     Pub,
-    Struct,
+    // Struct,
     Then,
     True,
+    Type,
     Use,
 
     TyNum,
@@ -139,9 +140,9 @@ impl std::fmt::Display for Token {
             Self::RParen => write!(f, ")"),
             Self::Package => write!(f, "package"),
             Self::Use => write!(f, "use"),
-            Self::Struct => write!(f, "struct"),
+            // Self::Struct => write!(f, "struct"),
             Self::Else => write!(f, "else"),
-            Self::Enum => write!(f, "enum"),
+            // Self::Enum => write!(f, "enum"),
             Self::Extern => write!(f, "extern"),
             Self::Impl => write!(f, "impl"),
             Self::If => write!(f, "if"),
@@ -150,6 +151,7 @@ impl std::fmt::Display for Token {
             Self::Then => {
                 write!(f, "then")
             }
+            Self::Type => write!(f, "type"),
             Self::Def => write!(f, "def"),
             Self::TyInfer => write!(f, "infer"),
             Self::TyNum => write!(f, "num"),
@@ -218,7 +220,7 @@ where
             text::ident().map(|s| match s {
                 "def" => Token::Def,
                 "else" => Token::Else,
-                "enum" => Token::Enum,
+                // "enum" => Token::Enum,
                 "extern" => Token::Extern,
                 "false" => Token::False,
                 "fn" => Token::Fn,
@@ -230,8 +232,9 @@ where
                 "match" => Token::Match,
                 "package" => Token::Package,
                 "pub" => Token::Pub,
-                "struct" => Token::Struct,
+                // "struct" => Token::Struct,
                 "then" => Token::Then,
+                "type" => Token::Type,
                 "true" => Token::True,
                 "use" => Token::Use,
                 "num" => Token::TyNum,
@@ -648,86 +651,10 @@ Spanned(
             .labelled("let-definition")
             .as_context();
 
-        // Struct definition
-        let struct_field = raw_ident.then_ignore(just(Token::Colon)).then(ty.clone());
-        let struct_def = just(Token::Struct)
-            .ignore_then(raw_ident)
-            //.then(ident.separated_by(just(Token::Comma)).delimited_by(just(Token::LBracket), just(Token::RBracket)).collect::<Vec<_>>())
-            .then_ignore(just(Token::Eq))
-            .then(
-                struct_field
-                    .separated_by(just(Token::Comma))
-                    .allow_trailing()
-                    .collect::<Vec<(Spanned<Intern<String>>, Spanned<Intern<Type>>)>>(),
-            )
-            .map_with(|(name, fields), _| {
-                let (fields, values): (Vec<Spanned<_>>, Vec<_>) = fields.into_iter().unzip();
-                let fields = fields.iter().map(|x| Label(*x)).collect::<Vec<_>>().leak();
-                let values = values.leak();
-                let ty_body = name.convert(Type::Prod(Row::Closed(ClosedRow { fields, values })));
-                // let ty = Type::Label(Label(name), ty_body.into());
-                let ty = ty_body;
-                Definition::Type(name, ty)
-            });
-
-        let enum_variant = choice((
-            raw_ident
-                .then(
-                    ty.clone()
-                        .separated_by(just(Token::Comma))
-                        .allow_trailing()
-                        .collect::<Vec<_>>()
-                        .delimited_by(just(Token::LBrace), just(Token::RBrace)),
-                )
-                .map_with(|(name, types), e| {
-                    
-                    let fields = name.convert(Type::Prod(Row::Closed(ClosedRow {
-                        fields: types
-                            .iter()
-                            .enumerate()
-                            .map(|(i, x)| Label(Spanned(i.to_string().into(), x.1)))
-                            .collect::<Vec<_>>()
-                            .leak(),
-                        values: types.leak(),
-                    })));
-                    let n = Label(name);
-                    let variant_ty = Type::Label(Label(name), fields);
-                    (n, Spanned(Intern::from(variant_ty), e.span()))
-                }),
-            raw_ident.map_with(|name, e| {
-                let n = Label(name);
-                let ty = Type::Label(n, name.convert(Type::Unit));
-                (n, Spanned(Intern::from(ty), e.span()))
-            }),
-        ))
-        .boxed();
-
-        // Enum defintions
-        let enum_def = just(Token::Enum)
-            .ignore_then(raw_ident)
-            .then_ignore(just(Token::Eq))
-            .then(
-                enum_variant
-                    .clone()
-                    .separated_by(just(Token::Comma))
-                    .allow_trailing()
-                    .collect::<Vec<(Label, Spanned<Intern<Type>>)>>(),
-            )
-            .map_with(|(name, variants), _| {
-                let (fields, values): (Vec<Label>, Vec<Spanned<Intern<Type>>>) =
-                    variants.into_iter().unzip();
-                
-                let (fields, values) = (fields.leak(), values.leak());
-
-                let ty_body = name.convert(Type::Sum(Row::Closed(ClosedRow { fields, values })));
-                // let ty = Definition::Type(Type::Label(
-                //     Label(name),
-                //     ty_body.into(),
-                // ));
-                let ty = ty_body;
-                Definition::Type(name, ty)
-            });
-
+        let type_def = just(Token::Type).ignore_then(raw_ident).then_ignore(just(Token::Eq)).then(ty.clone()).map(|(name, ty)| {
+            Definition::Type(name, ty)
+        });
+        
         // Import
         let import_path = expression; //ident
         // .clone()
@@ -754,10 +681,9 @@ Spanned(
         choice((
             import,
             let_binding,
-            struct_def,
+            type_def,
             extern_def,
-            enum_def,
-            // impl_group,
+                        // impl_group,
         ))
     });
 

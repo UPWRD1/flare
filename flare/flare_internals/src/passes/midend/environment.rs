@@ -254,27 +254,10 @@ impl Environment {
         the_ty: Spanned<Intern<Type>>,
         name: Spanned<Intern<String>>,
     ) -> CompResult<()> {
-        // dbg!(the_ty);
-        match *the_ty.0 {
-            Type::Prod(row) | Type::Sum(row) => match row {
-                crate::passes::midend::typing::Row::Closed(the_row) => {
-                    // let type_name = l.0;
-                    let qual = QualifierFragment::Type(name.0);
-                    let entry = Item::new(ItemKind::Type(name, the_ty));
-                    let ty_node_idx = self.add(current_node, qual, entry);
-                    self.build_row(ty_node_idx, the_row)?;
-                }
-                _ => unreachable!("All defined types should be closed rows"),
-            },
-            Type::Label(l, r) => {
-                let type_name = l.0;
-                let qual = QualifierFragment::Type(type_name.0);
-                let entry = Item::new(ItemKind::Type(name, the_ty));
-                let ty_node_idx = self.add(current_node, qual, entry);
-                self.build_type(ty_node_idx, r, l.0)?;
-            }
-            _ => (),
-        };
+        let qual = QualifierFragment::Type(name.0);
+        let entry = Item::new(ItemKind::Type(name, the_ty));
+        self.add(current_node, qual, entry);
+
         Ok(())
     }
 
