@@ -296,7 +296,7 @@ impl<const N: usize> Resolver<N> {
         self.in_context(
             |me| {
                 let sig = me.analyze_type(the_func.sig)?;
-                dbg!(sig);
+                // dbg!(sig);
                 let body = me.analyze_expr(the_func.body, &[])?;
                 the_func.sig = sig;
                 the_func.body = body;
@@ -413,12 +413,12 @@ impl<const N: usize> Resolver<N> {
                 let ex = self.analyze_expr(ex, vars)?;
                 Ok(expr.convert(Expr::Inject(direction, ex)))
             }
-            // Expr::Branch(l, r) => {
-            // let l = self.analyze_expr(l, vars)?;
-            // let r = self.analyze_expr(r, vars)?;
+            Expr::Branch(l, r) => {
+                let l = self.analyze_expr(l, vars)?;
+                let r = self.analyze_expr(r, vars)?;
 
-            // Ok(expr.convert(Expr::Branch(l, r)))
-            // }
+                Ok(expr.convert(Expr::Branch(l, r)))
+            }
             Expr::Label(l, v) => {
                 let new_vars = [vars, &[(l.0.0, v)]].concat();
 
@@ -624,12 +624,17 @@ impl<const N: usize> Resolver<N> {
         b: MatchArm<Untyped>,
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
         let (pat, vars) = self.resolve_pattern(b.pat, vec![])?;
-        let body = vars.into_iter().fold(pat, |prev, v| {
-            prev.modify(Expr::Lambda(v, prev, LambdaInfo::Anon))
+        // dbg!(pat);
+        // dbg!(&vars);
+        // dbg!(b.body);
+
+        let body = vars.into_iter().fold(b.body, |prev, v| {
+            let unwrapped = prev.modify(Expr::Let(v, pat, prev));
+            prev.modify(Expr::Lambda(v, unwrapped, LambdaInfo::Anon))
         });
-        let arm = body.modify(Expr::Call(body, b.body));
+
         // dbg!(arm);
-        Ok(arm)
+        Ok(body)
     }
 
     fn row_addr_helper(

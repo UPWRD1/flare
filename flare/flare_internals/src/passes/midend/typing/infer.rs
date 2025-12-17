@@ -44,7 +44,7 @@ impl<'env> Solver<'env> {
                 ast.convert(Type::Unit),
             ),
             Expr::Ident(v) => {
-                // dbg!(v);
+                // dbg!(v.0.0);
                 // dbg!(env.keys().collect::<Vec<_>>());
                 let ty = &env[&v.0.0];
                 (

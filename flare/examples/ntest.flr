@@ -1,24 +1,17 @@
 package Main =
     
-    let L x : num -> |Left num, Right bool| =
-      |Left x|
+    let Some x : ?T -> |Some ?T, None| =
+      |Some x|
 
     # let None : |None| = |None|
 
-    # let unwrap_or o default : |Some ?T, @None| -> ?T -> ?T =
-    #     match o in
-    #         |Some x| then x,
-    #         |@None| then default,
+    let unwrap_or o default : |Some ?T, None| -> ?T -> ?T =
+        match o in
+            |Some x1| then x1,
+            |None| then default,
 
-    
-    # let num_unwrap_or o default : |Some ?T, @None| -> ?T -> ?T =
-    #     match o in
-    #         |Some x| then x * 2,
-    #         |@None| then default,
-       
-    
-    let main: infer =
-       L 3
+    let main: num =
+       unwrap_or (Some 3) 0
 
 
 package Demo =

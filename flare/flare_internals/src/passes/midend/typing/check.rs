@@ -23,7 +23,7 @@ impl<'env> Solver<'env> {
         let the_ty = ty.into();
         let id = the_ast.id();
 
-        dbg!(the_ast, the_ty);
+        // dbg!(the_ast, the_ty);
         match (*the_ast.0, *the_ty.0) {
             // Primitives
             (Expr::Number(n), Type::Num) => {
