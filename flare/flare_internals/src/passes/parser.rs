@@ -428,33 +428,38 @@ where
         let sum = raw_ident
             
             .then(expr.clone().or_not())
-            .separated_by(just(Token::Comma))
-            .allow_trailing()
-            .at_least(1)
-            .collect::<Vec<_>>()
+            // .separated_by(just(Token::Comma))
+            // .allow_trailing()
+            // .at_least(1)
+            // .collect::<Vec<_>>()
             .delimited_by(just(Token::Pipe), just(Token::Pipe))
-            .map_with(|variants, e| {
-                if variants.is_empty() {
-                    unreachable!()
-                }
-                unsafe{
+            .map_with(|(name, val), e| {
+                // if variants.is_empty() {
+                //     unreachable!()
+                // }
+                // unsafe{
 
-// dbg!(&variants);
-                    variants.into_iter()
-                        .enumerate()
-                        .map(|(i, (name, val))| -> Spanned<Intern<Expr<Untyped>>> {
-                            Spanned(
-                                Expr::Label(
-                                    Label(name),
-                                    val.unwrap_or(name.convert(Expr::Unit))).into(),
-                                e.span()                            )
-                        })
-                        // .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
-                        .reduce(|l, r| Spanned(Expr::Call(l, Spanned(Expr::Inject(Direction::Right, r).into(), r.1)).into(), l.1.union(r.1)))
-                        .unwrap_unchecked()
+                //    variants.into_iter()
+                //         .enumerate()
+                //         .map(|(i, (name, val))| -> Spanned<Intern<Expr<Untyped>>> {
+                //             Spanned(
+                //                 Expr::Label(
+                //                     Label(name),
+                //                     val.unwrap_or(name.convert(Expr::Unit))).into(),
+                //                 e.span()                            )
+                //         })
+                //         // .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
+                //         .reduce(|l, r| Spanned(Expr::Call(l, Spanned(Expr::Inject(Direction::Right, r).into(), r.1)).into(), l.1.union(r.1)))
+                //         .unwrap_unchecked()
                     
-                }
-                            
+                // }
+
+Spanned(
+                                Expr::Inject(Direction::Right,name.convert(Expr::Label(
+                                    Label(name),
+                                    val.unwrap_or(name.convert(Expr::Unit))))).into(),
+                                e.span()                            )
+              
                                                             
         }).labelled("sum").as_context();
 

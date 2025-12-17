@@ -1,7 +1,8 @@
 item #0: is
-fn [$0: num] => $0
+fn [$0: num] =>
+  $0 tag {num | bool} variant 0
 end item #0
 
 item #1: is
-3
+#0()
 end item #1

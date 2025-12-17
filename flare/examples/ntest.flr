@@ -1,8 +1,7 @@
 package Main =
     
-    let L x : num -> |Left num, Right num| =
-      # |Left x|
-      |x, 0|
+    let L x : num -> |Left num, Right bool| =
+      |Left x|
 
     # let None : |None| = |None|
 
