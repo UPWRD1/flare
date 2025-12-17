@@ -345,7 +345,8 @@ impl<const N: usize> Resolver<N> {
                         let cr = ClosedRow {
                             values,
                             ..closed_row
-                        };
+                        }
+                        .sort();
                         crate::passes::midend::typing::Row::Closed(cr)
                     }
                     _ => r,
@@ -369,7 +370,8 @@ impl<const N: usize> Resolver<N> {
                         let cr = ClosedRow {
                             values,
                             ..closed_row
-                        };
+                        }
+                        .sort();
                         crate::passes::midend::typing::Row::Closed(cr)
                     }
                     _ => unreachable!("All rows should be closed"),
@@ -495,7 +497,6 @@ impl<const N: usize> Resolver<N> {
                 let l = self.analyze_expr(l, vars)?;
                 if let Expr::Item(id, k) = *l.0 {
                     let res = self.resolve_name_expr(r)?;
-
                     Ok(res)
                 } else if let Expr::Ident(n) = *l.0 {
                     if let Some((variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {

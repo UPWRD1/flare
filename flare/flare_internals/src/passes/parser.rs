@@ -769,7 +769,7 @@ where
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: values.leak(),
-                        }));
+                        }.sort()));
                         let l_ty = Spanned(Intern::from(l_ty), e.span());
                         let ty = Type::Subtable(l_ty);
                         Spanned(Intern::from(ty), e.span())
@@ -781,7 +781,7 @@ where
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: values.leak(),
-                        }));
+                        }.sort()));
                         Spanned(Intern::from(ty), e.span())
                     }
                 });
@@ -805,7 +805,7 @@ where
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: values.iter().enumerate().map(|(i, x)| x.unwrap_or(fields[i].convert(Type::Unit))).collect::<Vec<_>>().leak(),
-                        }));
+                        }.sort()));
                         // dbg!(ty);
                         Spanned(Intern::from(ty), e.span())
                     

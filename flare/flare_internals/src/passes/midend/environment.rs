@@ -234,20 +234,6 @@ impl Environment {
         // Ok(())
     }
 
-    fn build_row(&mut self, current_node: NodeIndex, the_row: ClosedRow) -> CompResult<()> {
-        // dbg!(current_node);
-        for (name, value) in the_row.fields.iter().zip(the_row.values) {
-            // dbg!(name);
-            let entry = Item::new(ItemKind::Field {
-                name: *name,
-                value: *value,
-            });
-            let val_idx = self.add(current_node, QualifierFragment::Field(name.0.0), entry);
-            self.build_type(val_idx, *value, name.0)?;
-        }
-        Ok(())
-    }
-
     fn build_type(
         &mut self,
         current_node: NodeIndex,

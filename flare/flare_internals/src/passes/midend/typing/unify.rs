@@ -212,7 +212,9 @@ impl<'env> Solver<'env> {
                 self.dispatch_any_solved(var, row)
             }
             (Row::Closed(l), Row::Closed(r)) => {
-                if l.fields == r.fields {
+                if l.fields == r.fields
+                // || l.fields.to_vec() == r.fields.into_iter().rev().collect::<Vec<_>>()
+                {
                     // let offenders = FxHashSet::from_iter(l.fields);
                     // let d = offenders.difference(&FxHashSet::from_iter(r.fields));
 
@@ -235,7 +237,6 @@ impl<'env> Solver<'env> {
                 //         self.unify_ty_ty(*left_ty, *right_ty)?;
                 //     }
                 //     Ok(())
-                // } else if let Some(r) = r.is_subtype_of(&l) {
                 //     // let res = self.diff_and_unify(r, l)?;
                 //     // dbg!(res);
 

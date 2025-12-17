@@ -71,7 +71,7 @@ impl Typechecker {
                     self.register_type(*item_idx, value)?;
                 }
 
-                _ => unreachable!(),
+                _ => unreachable!("{:?}", item.kind),
             };
         }
 
@@ -262,7 +262,7 @@ impl Typechecker {
             .map(|(id, scheme, item)| {
                 let solved = match item.kind {
                     ItemKind::Function(f) => {
-                        dbg!(scheme.ty);
+                        // dbg!(scheme.ty);
                         if matches!(*scheme.ty.0, Type::Infer) {
                             Solver::type_infer_with_items(&self.context, f.body)
                                 .map_err(|x| ErrorCollection::new(x.into_values().collect()))?

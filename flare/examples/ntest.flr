@@ -1,21 +1,32 @@
 package Main =
     type Option = |Some ?T, None|
     
-    let Some x : ?T -> Option =
-      |Some x|
+    let Some x : ?T -> Option = |Some x|
 
     let None : Option = |None|
 
-    let unwrap_or o default : Option -> ?T -> ?T =
-        match o in
+    let unwrap_or option default : Option -> ?T -> ?T =
+        match option in
             |Some x1| then x1,
             |None| then default,
 
+    type Person = {
+        name: str,
+        age: num
+    }
+
+    let Person_cons n a : str -> num -> Person = {
+        name = n, age = a
+    }
+
     let main: num =
-       unwrap_or (Some 3) 0
+        let p = Person_cons "joe" 10000 in 
+            unwrap_or (Some 3) 0
 
 
-package Demo =
+
+
+package Hidden = 
     extern format f: ?T -> str    
 
     let speak x: {?T , ?T -> str} -> str =

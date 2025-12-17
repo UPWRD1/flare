@@ -214,6 +214,18 @@ impl ClosedRow {
         }
         false
     }
+
+    pub fn sort(self) -> Self {
+        let (fields, values): (Vec<Label>, Vec<Spanned<Intern<Type>>>) = self
+            .fields
+            .iter()
+            .zip(self.values.iter())
+            .sorted_by_key(|x| x.0.0.0)
+            .unzip();
+        let fields = fields.leak();
+        let values = values.leak();
+        Self { fields, values }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
