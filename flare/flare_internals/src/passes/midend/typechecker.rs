@@ -248,7 +248,8 @@ impl Typechecker {
                     ItemKind::Function(f) => {
                         if matches!(*scheme.ty.0, Type::Infer) {
                             Solver::type_infer_with_items(&self.context, f.body)
-                                .expect("Inference should not fail")
+                                .map_err(|x| ErrorCollection::new(x.into_values().collect()))?
+                                // .expect("Inference should not fail")
                                 .to_typesoutput()
                         } else {
                             Solver::check_with_items(&self.context, f.body, scheme).map_err(

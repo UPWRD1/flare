@@ -55,7 +55,8 @@ pub enum Pattern<V: Variable> {
 
     // Literal patterns: match exact values
     Number(ordered_float::OrderedFloat<f64>),
-    String(Intern<String>),
+    String(Spanned<Intern<String>>),
+    Particle(Spanned<Intern<String>>),
     Bool(bool),
     Unit,
 
@@ -77,7 +78,7 @@ pub enum Pattern<V: Variable> {
     Tuple(&'static [Spanned<Intern<Self>>]),
 
     // As pattern: matches and binds to variable
-    // x @ Some(y) matches Some variant, binds whole to x, inner to y
+    // x as Some(y) matches Some variant, binds whole to x, inner to y
     As(V, Spanned<Intern<Self>>),
 
     // Or pattern: matches if any sub-pattern matches
@@ -217,12 +218,15 @@ where
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
     ),
-    Match(
-        Spanned<Intern<Self>>,
-        &'static [(Spanned<Intern<Self>>, Spanned<Intern<Self>>)],
-    ),
+    Match(Spanned<Intern<Self>>, &'static [MatchArm<V>]),
     Lambda(V, Spanned<Intern<Self>>, LambdaInfo),
     Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MatchArm<V: Variable> {
+    pub pat: Spanned<Intern<Pattern<V>>>,
+    pub body: Spanned<Intern<Expr<V>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

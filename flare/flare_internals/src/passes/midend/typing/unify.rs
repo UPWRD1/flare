@@ -138,7 +138,7 @@ impl<'env> Solver<'env> {
                 row,
             ),
             (_, _) => {
-                // dbg!();
+                // dbg!(l, r);
                 Err(UnificationError::TypeNotEqual(left, right))
             }
         }

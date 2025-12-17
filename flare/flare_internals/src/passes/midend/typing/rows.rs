@@ -69,7 +69,7 @@ impl Row {
 impl Display for Row {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Open(row_var) => write!(f, "?{{{}}}", row_var.0),
+            Self::Open(row_var) => write!(f, "?{}", row_var.0),
             Self::Unifier(row_uni_var) => write!(f, "unifier{}", row_uni_var.0),
             Self::Closed(closed_row) => write!(f, "{closed_row}"),
         }
@@ -121,12 +121,12 @@ impl Display for ClosedRow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{{{}}}",
+            "{}",
             self.fields
                 .iter()
                 .zip(self.values.iter())
                 .map(|(label, field)| format!("{}: {}", label.0.0, field))
-                .join(",")
+                .join(", ")
         )
     }
 }

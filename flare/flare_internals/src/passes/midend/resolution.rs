@@ -29,7 +29,7 @@ use crate::{
         errors::{self, CompResult, CompilerErr, DynamicErr},
         rep::{
             Spanned,
-            ast::{Direction, Expr, ItemId, Kind, Label, LambdaInfo, Untyped},
+            ast::{Direction, Expr, ItemId, Kind, Label, LambdaInfo, MatchArm, Pattern, Untyped},
             common::Ident,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
@@ -296,6 +296,7 @@ impl<const N: usize> Resolver<N> {
         self.in_context(
             |me| {
                 let sig = me.analyze_type(the_func.sig)?;
+                dbg!(sig);
                 let body = me.analyze_expr(the_func.body, &[])?;
                 the_func.sig = sig;
                 the_func.body = body;
@@ -375,11 +376,9 @@ impl<const N: usize> Resolver<N> {
                 };
                 Ok(t.modify(Type::Sum(new_r)))
             }
+
             _ => Ok(t),
         }
-        // .inspect(|x| {
-        //     dbg!(t, x);
-        // })
     }
 
     #[allow(unused_variables)]
@@ -392,8 +391,6 @@ impl<const N: usize> Resolver<N> {
 
         match *expr.0 {
             Expr::Ident(u) => {
-                // dbg!(vars);
-
                 if vars
                     .iter()
                     .rev()
@@ -416,12 +413,12 @@ impl<const N: usize> Resolver<N> {
                 let ex = self.analyze_expr(ex, vars)?;
                 Ok(expr.convert(Expr::Inject(direction, ex)))
             }
-            Expr::Branch(l, r) => {
-                let l = self.analyze_expr(l, vars)?;
-                let r = self.analyze_expr(r, vars)?;
+            // Expr::Branch(l, r) => {
+            // let l = self.analyze_expr(l, vars)?;
+            // let r = self.analyze_expr(r, vars)?;
 
-                Ok(expr.convert(Expr::Branch(l, r)))
-            }
+            // Ok(expr.convert(Expr::Branch(l, r)))
+            // }
             Expr::Label(l, v) => {
                 let new_vars = [vars, &[(l.0.0, v)]].concat();
 
@@ -554,12 +551,17 @@ impl<const N: usize> Resolver<N> {
                 Ok(expr.convert(Expr::If(cond, then, otherwise)))
             }
             Expr::Match(matchee, branches) => {
-                let matchee = self.analyze_expr(matchee, vars);
-                // let branches = branches
-                //     .iter()
-                //     .map(|x| x.0.convert(Expr::(x.0, x.1, LambdaInfo::Curried)))
-                //     .collect();
-                todo!()
+                let matchee = self.analyze_expr(matchee, vars)?;
+
+                let branches: CompResult<Vec<_>> =
+                    branches.iter().map(|b| self.resolve_branch(*b)).collect();
+
+                let branches = branches?
+                    .into_iter()
+                    .reduce(|l, r| l.modify(Expr::Branch(l, r)))
+                    .unwrap();
+
+                Ok(expr.convert(Expr::Call(branches, matchee)))
             }
             Expr::Lambda(arg, body, is_anon) => {
                 let new_vars =
@@ -586,6 +588,48 @@ impl<const N: usize> Resolver<N> {
 
         // dbg!(x);
         // })
+    }
+
+    fn resolve_pattern(
+        &mut self,
+        p: Spanned<Intern<Pattern<Untyped>>>,
+        vars: Vec<Untyped>,
+    ) -> CompResult<(Spanned<Intern<Expr<Untyped>>>, Vec<Untyped>)> {
+        let res = match *p.0 {
+            Pattern::Wildcard => (
+                p.convert(Expr::Ident(Untyped(p.convert(p.1.to_string())))),
+                vars,
+            ),
+            Pattern::Var(v) => (p.convert(Expr::Ident(v)), [vars, [v].to_vec()].concat()),
+            Pattern::Number(ordered_float) => todo!(),
+            Pattern::String(spanned) => todo!(),
+            Pattern::Particle(p) => (p.convert(Expr::Particle(p)), vars),
+            Pattern::Bool(_) => todo!(),
+            Pattern::Unit => todo!(),
+            Pattern::Ctor(label, ex) => {
+                let (ex, vars) = self.resolve_pattern(ex, vars)?;
+                (p.convert(Expr::Unlabel(ex, label)), vars)
+            }
+            Pattern::Record { fields, open } => todo!(),
+            Pattern::Tuple(spanneds) => todo!(),
+            Pattern::As(_, spanned) => todo!(),
+            Pattern::Or(patterns) => todo!(),
+            Pattern::Guard(spanned, spanned1) => todo!(),
+        };
+        Ok(res)
+    }
+
+    fn resolve_branch(
+        &mut self,
+        b: MatchArm<Untyped>,
+    ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
+        let (pat, vars) = self.resolve_pattern(b.pat, vec![])?;
+        let body = vars.into_iter().fold(pat, |prev, v| {
+            prev.modify(Expr::Lambda(v, prev, LambdaInfo::Anon))
+        });
+        let arm = body.modify(Expr::Call(body, b.body));
+        // dbg!(arm);
+        Ok(arm)
     }
 
     fn row_addr_helper(

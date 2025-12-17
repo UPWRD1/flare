@@ -93,7 +93,12 @@ impl<'a> Instantiate<'a> {
                         var
                     )
                 }),
-            Type::Num | Type::Bool | Type::String | Type::Unit | Type::Unifier(_) => ty,
+            Type::Num
+            | Type::Bool
+            | Type::String
+            | Type::Unit
+            | Type::Unifier(_)
+            | Type::Particle(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.ty(arg);
                 let ret = self.ty(ret);

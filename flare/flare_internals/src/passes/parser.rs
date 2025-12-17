@@ -6,7 +6,7 @@ use crate::{
         rep::{
             Spanned,
             ast::{
-                self, BinOp, Definition, Expr, Label, LambdaInfo, Package, Pattern, Untyped // Untyped,
+                self, BinOp, Definition, Direction, Expr, Label, LambdaInfo, MatchArm, Package, Pattern, Untyped // Untyped,
             },
             // concretetypes::{EnumVariant, PrimitiveType, Ty},
             files::FileID,
@@ -312,7 +312,7 @@ fn parser<I, M>(
 ) -> impl Parser<
     'static,
     I,
-    Package<Untyped>,
+    Vec<Package<Untyped>>,
     extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
     // extra::Full<Rich<'static, Token<'static>, SimpleSpan<usize, FileID>>, RodeoState, ()>,
 >
@@ -426,8 +426,8 @@ where
             .labelled("table")
             .as_context();
         let sum = raw_ident
-            .or_not()
-            .then(expr.clone())
+            
+            .then(expr.clone().or_not())
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .at_least(1)
@@ -438,19 +438,22 @@ where
                     unreachable!()
                 }
                 unsafe{
+
+// dbg!(&variants);
                     variants.into_iter()
                         .enumerate()
                         .map(|(i, (name, val))| -> Spanned<Intern<Expr<Untyped>>> {
                             Spanned(
                                 Expr::Label(
-                                    Label(name.unwrap_or(
-                                        Spanned(i.to_string().into(),val.1)
-                                    )),
-                                    val).into(),
+                                    Label(name),
+                                    val.unwrap_or(name.convert(Expr::Unit))).into(),
                                 e.span()                            )
                         })
-                        .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
-                        .unwrap_unchecked()}
+                        // .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
+                        .reduce(|l, r| Spanned(Expr::Call(l, Spanned(Expr::Inject(Direction::Right, r).into(), r.1)).into(), l.1.union(r.1)))
+                        .unwrap_unchecked()
+                    
+                }
                             
                                                             
         }).labelled("sum").as_context();
@@ -515,7 +518,7 @@ where
                     pattern
                                                         .then_ignore(just(Token::Then))
                             .then(expr.clone())
-                            .separated_by(just(Token::Comma))
+.map(|(pat, body)| {MatchArm{pat, body}})                            .separated_by(just(Token::Comma))
                             // .repeated()
                             .allow_trailing()
                             .at_least(1)
@@ -672,6 +675,7 @@ where
                         .delimited_by(just(Token::LBrace), just(Token::RBrace)),
                 )
                 .map_with(|(name, types), e| {
+                    
                     let fields = name.convert(Type::Prod(Row::Closed(ClosedRow {
                         fields: types
                             .iter()
@@ -707,7 +711,7 @@ where
             .map_with(|(name, variants), _| {
                 let (fields, values): (Vec<Label>, Vec<Spanned<Intern<Type>>>) =
                     variants.into_iter().unzip();
-
+                
                 let (fields, values) = (fields.leak(), values.leak());
 
                 let ty_body = name.convert(Type::Sum(Row::Closed(ClosedRow { fields, values })));
@@ -769,9 +773,9 @@ where
     //
     // Program
     package
-        // .repeated()
-        // .at_least(1)
-        // .collect::<Vec<_>>()
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<_>>()
         // .map(|packages| Program { packages })
         .then_ignore(end())
 }
@@ -851,24 +855,27 @@ where
                     }
                 });
 
-            let sum = raw_ident.or_not().then(ty.clone())
+            let sum = raw_ident.then(ty.clone().or_not())
                 .separated_by(just(Token::Comma))
                 .at_least(1)
                 .collect::<Vec<_>>()
                 .delimited_by(just(Token::Pipe), just(Token::Pipe))
                 .map_with(|types, e| {
+
+                    
                     let (fields, values): (
-                        Vec<Option<Spanned<Intern<String>>>>,
-                        Vec<Spanned<Intern<Type>>>,
+                        Vec<Spanned<Intern<String>>>,
+                        Vec<Option<Spanned<Intern<Type>>>>,
                     ) = types.into_iter().unzip();
                         let ty = Type::Sum(Row::Closed(ClosedRow {
                             fields: fields
-                                .iter().enumerate()
-                                .map(|(i, name)| Label(name.unwrap_or(values[i].convert(Intern::from(i.to_string())))))
+                                .iter()
+                                .map(|name| Label(*name))
                                 .collect::<Vec<_>>()
                                 .leak(),
-                            values: values.leak(),
+                            values: values.iter().enumerate().map(|(i, x)| x.unwrap_or(fields[i].convert(Type::Unit))).collect::<Vec<_>>().leak(),
                         }));
+                        dbg!(ty);
                         Spanned(Intern::from(ty), e.span())
                     
                 });
@@ -949,7 +956,7 @@ fn destructure_pattern_parser<'src, I>(
         Spanned<Intern<Type>>,
         extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
-) -> impl Parser<'src, I, Spanned<Intern<Expr<Untyped>>>, extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
+) -> impl Parser<'src, I, Spanned<Intern<Pattern<Untyped>>>, extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
 > where I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize,FileID>> + ValueInput<'src> {
 
 let rname = select_ref! { Token::Ident(x) => *x };
@@ -965,7 +972,7 @@ just(Token::Pipe)
                     // Labeled variant: Some x
                     raw_ident.then(pat.clone())
                         .map_with(|(label, term), e| 
-                            Spanned(Expr::Unlabel(term, ast::Label(label)).into(), e.span())
+                            Spanned(Pattern::Ctor(ast::Label(label), term).into(), e.span())
                         ),
                     // Particle variant: @None
                     pat
@@ -976,7 +983,7 @@ just(Token::Pipe)
 
  just(Token::At)
                     .ignore_then(raw_ident)
-                    .map_with(|id, e| Spanned(Intern::from(Expr::Particle(id)), e.span())) ,           ident
+                    .map_with(|id, e| Spanned(Intern::from(Pattern::Particle(id)), e.span())) ,           raw_ident.map_with(|x, e| Spanned(Pattern::Var(Untyped(x)).into(), e.span()))
      ))
     }
     )
@@ -1030,7 +1037,7 @@ fn make_input(
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Package<Untyped>> {
+pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
     let input = ctx
         .get(&fid)
         .unwrap_or_else(|| unreachable!("FileID {} does not exist in context: {:?}", fid, ctx))
@@ -1049,7 +1056,7 @@ pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Package<Untyped>> {
 
     // dbg!(&tokens);
 
-    let packg: Result<Package<Untyped>, CompilerErr> = match parser(&make_input)
+    let packg: Result<Vec<Package<Untyped>>, CompilerErr> = match parser(&make_input)
         .parse(make_input(
             SimpleSpan::new(fid, 0..input.len()),
             tokens.leak(),

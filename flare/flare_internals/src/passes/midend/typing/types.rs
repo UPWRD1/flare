@@ -85,6 +85,13 @@ impl Ident for Type {
 }
 
 impl Type {
+    pub fn unit() -> Self {
+        Self::Prod(Row::Closed(super::ClosedRow {
+            fields: vec![].leak(),
+            values: vec![].leak(),
+        }))
+    }
+
     pub fn to_default_span(self) -> Spanned<Intern<Self>> {
         Spanned(
             Intern::from(self),
@@ -195,7 +202,9 @@ impl fmt::Display for Type {
             Self::Unifier(u) => write!(f, "%var{}", u.0),
             Self::Var(v) => write!(f, "?{}", v.0),
             Self::Func(l, r) => write!(f, "{l} -> {r}"),
-            Self::Prod(r) | Self::Sum(r) => write!(f, "{r}"),
+            Self::Prod(r) => write!(f, "{{{r}}}"),
+            Self::Sum(r) => write!(f, "|{r}|"),
+            Self::Label(l, t) => write!(f, "{}: {t}", l.0.0),
             _ => write!(f, "{self:#?}"),
         }
     }

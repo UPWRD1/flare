@@ -39,6 +39,10 @@ impl<'env> Solver<'env> {
                 ast.convert(Type::Particle(p)),
             ),
 
+            Expr::Unit => (
+                GenOut::new(vec![], ast.convert(Expr::Unit)),
+                ast.convert(Type::Unit),
+            ),
             Expr::Ident(v) => {
                 // dbg!(v);
                 // dbg!(env.keys().collect::<Vec<_>>());
@@ -410,6 +414,7 @@ impl<'env> Solver<'env> {
                     ty,
                 )
             }
+
             _ => unreachable!(
                 "Encountered unknown/invalid expression during inference: {:?}",
                 ast.0

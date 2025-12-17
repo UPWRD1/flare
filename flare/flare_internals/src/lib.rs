@@ -100,7 +100,7 @@ impl<T: Target> Context<T> {
         }
     }
 
-    pub fn parse_file(&mut self, id: FileID) -> CompResult<Package<Untyped>> {
+    pub fn parse_file(&mut self, id: FileID) -> CompResult<Vec<Package<Untyped>>> {
         parser::parse(&mut self.filectx, id)
     }
 
@@ -122,23 +122,25 @@ impl<T: Target> Context<T> {
                 }
             })
             .collect::<Vec<_>>();
-        let mut processed: Vec<Result<(Package<Untyped>, FileID), CompilerErr>> = vec![];
+        let mut processed: Vec<(Vec<Package<Untyped>>, FileID)> = vec![];
         for entry in dir_contents {
             let converted_id = convert_path_to_id(entry.filename);
             self.filectx.insert(converted_id, entry.clone());
             let pack = self.parse_file(converted_id)?;
-            processed.push(Ok((pack, converted_id)))
+            processed.push((pack, converted_id))
         }
 
-        let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
-        let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();
-        let errors: Vec<_> = errors.into_iter().map(Result::unwrap_err).collect();
+        let v: Vec<_> = processed
+            .into_iter()
+            .flat_map(|(packages, id)| {
+                packages
+                    .into_iter()
+                    .map(|p| (p, id))
+                    .collect::<Vec<(Package<_>, FileID)>>()
+            })
+            .collect::<Vec<_>>();
 
-        if errors.is_empty() {
-            Ok(Program { packages: v })
-        } else {
-            Err(ErrorCollection::new(errors).into())
-        }
+        Ok(Program { packages: v })
     }
 
     pub fn compile_program(&mut self, id: FileID) -> CompResult<(T::Output, Duration)> {
@@ -148,7 +150,7 @@ impl<T: Target> Context<T> {
         let program = self.parse_program(id)?;
 
         let e = Environment::build(&program)?;
-        let default_span = Type::Unit.to_default_span();
+        let default_span = Type::Infer.to_default_span();
         let intrinsics: [(&str, &'static [Untyped], Type); 10] = [
             (
                 "intrinsic_arith_add",

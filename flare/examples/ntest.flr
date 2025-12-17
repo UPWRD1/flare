@@ -1,31 +1,49 @@
 package Main =
-    extern format f: ?T -> str
     
-    # let factorial x : num -> num =
-        # if x == 0 then
-            # 0
-        # else
-            # factorial(x - 1) + x
+    let L x : num -> |Left num, Right num| =
+      # |Left x|
+      |x, 0|
 
-        # for some property, CanTalk
+    # let None : |None| = |None|
 
-    let unwrap_or o default : |Some ?T, @None| -> ?T -> ?T =
-        match o in
-            | Some x | then x,
-            | @None  | then default,
+    # let unwrap_or o default : |Some ?T, @None| -> ?T -> ?T =
+    #     match o in
+    #         |Some x| then x,
+    #         |@None| then default,
+
+    
+    # let num_unwrap_or o default : |Some ?T, @None| -> ?T -> ?T =
+    #     match o in
+    #         |Some x| then x * 2,
+    #         |@None| then default,
        
-    # let speak x: {?T , ?T -> str} -> str =
-        # x.1(x.0)
+    
+    let main: infer =
+       L 3
 
-    # let number_speak x: num -> str =
-        # format(x)
 
-    # let speak_wrapper f x : (?T -> str) -> ?T -> {?T , ?T -> str} =
-        # {x, f}
+package Demo =
+    extern format f: ?T -> str    
 
-    let main: str =
-        # speak {3, number_speak}
-        # let x = {3, number_speak} in
-            # speak x
-        unwrap_or |Some 3| 0
-                      
+    let speak x: {?T , ?T -> str} -> str =
+        x.1(x.0)
+
+
+    let factorial x : num -> num =
+        if x == 0 then
+            0
+        else
+            factorial(x - 1) + x
+
+    # for some property, CanTalk
+
+    let number_speak x: num -> str =
+      format(x)
+
+    let speak_wrapper f x : (?T -> str) -> ?T -> {?T , ?T -> str} =
+      {x, f}
+        
+    let demo : str =
+        let x = {3, number_speak} in
+          speak x
+           

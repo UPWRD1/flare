@@ -58,6 +58,10 @@ impl<T> Spanned<T> {
     pub fn convert<U>(self, value: impl Into<U>) -> Spanned<U> {
         Spanned(value.into(), self.1)
     }
+
+    pub fn with(self, f: impl FnOnce(Self) -> Self) -> Self {
+        (f)(self)
+    }
 }
 
 impl<T> From<(T, SimpleSpan<usize, u64>)> for Spanned<T> {
