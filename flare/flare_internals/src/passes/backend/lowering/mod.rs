@@ -37,6 +37,7 @@ fn lower_ty_scheme(scheme: typing::TypeScheme) -> LoweredTyScheme {
         .collect();
 
     let lower_types = LowerTypes { env: ty_env };
+    // dbg!(scheme.ty);
     let lower_ty = lower_types.lower_ty(*scheme.ty.0);
     let mut ev_to_ty = BTreeMap::new();
     let ev_tys = scheme

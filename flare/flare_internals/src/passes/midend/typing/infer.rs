@@ -353,6 +353,7 @@ impl<'env> Solver<'env> {
                     Provenance::ExpectedCombine(value.1),
                     row_comb,
                 ));
+
                 self.tables.row_to_combo.insert(ast.1, row_comb);
                 (
                     out.with_typed_ast(|ast| ast.convert(Expr::Inject(dir, ast))),

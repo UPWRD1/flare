@@ -51,7 +51,7 @@ impl Typechecker {
                 ItemKind::Function(f) => {
                     self.register_function(*item_idx, f);
                 }
-                ItemKind::Type(_n, t) => {
+                ItemKind::Type(_n, g, t) => {
                     self.register_type(*item_idx, t)?;
                 }
                 ItemKind::Extern { sig, .. } => {
@@ -66,9 +66,6 @@ impl Typechecker {
                     };
                     self.context
                         .insert(ItemId(item_idx.index()), scheme.clone());
-                }
-                ItemKind::Field { name: _, value } => {
-                    self.register_type(*item_idx, value)?;
                 }
 
                 _ => unreachable!("{:?}", item.kind),
@@ -187,8 +184,8 @@ impl Typechecker {
 
                 _ => todo!("Should be closed? todo"),
             })), // Type::Sum(row) => todo!(),
-            Type::User(t) => {
-                unreachable!("Encountered user type {t} after resolution")
+            Type::User(t, g) => {
+                unreachable!("Encountered user type {t}[{g:?}] after resolution")
             }
             _ => t,
         }
@@ -220,6 +217,8 @@ impl Typechecker {
         // let unbound_rows = (*f.unbound_rows).clone();
         let (unbound_types, unbound_rows, types_to_name, ty, evidence) =
             self.extract_generics(f.sig);
+        // dbg!(ty);
+
         let scheme = TypeScheme {
             unbound_types,
             unbound_rows,
@@ -306,7 +305,6 @@ impl Typechecker {
                             .expect("Inference should succeed")
                             .to_typesoutput()
                     }
-                    ItemKind::Field { name: _, value: _ } => todo!(),
                     _ => unreachable!(),
                 };
 

@@ -132,8 +132,8 @@ impl Environment {
                     Definition::Import(import_item) => {
                         deps.push(*import_item);
                     }
-                    Definition::Type(name, t) => {
-                        me.build_type(current_node, *t, *name)?;
+                    Definition::Type(name, generics, t) => {
+                        me.build_type(current_node, *t, generics.to_vec(), *name)?;
                     }
                     Definition::Let(name, body, sig) => {
                         let ident = QualifierFragment::Func(name.0.0);
@@ -238,10 +238,11 @@ impl Environment {
         &mut self,
         current_node: NodeIndex,
         the_ty: Spanned<Intern<Type>>,
+        generics: Vec<Spanned<Intern<Type>>>,
         name: Spanned<Intern<String>>,
     ) -> CompResult<()> {
         let qual = QualifierFragment::Type(name.0);
-        let entry = Item::new(ItemKind::Type(name, the_ty));
+        let entry = Item::new(ItemKind::Type(name, generics.leak(), the_ty));
         self.add(current_node, qual, entry);
 
         Ok(())

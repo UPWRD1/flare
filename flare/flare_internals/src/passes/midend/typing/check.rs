@@ -208,6 +208,7 @@ impl<'env> Solver<'env> {
                 let sub_row = self.fresh_row_var();
                 let mut out =
                     self.check(env, value, value.convert(Type::Sum(Row::Unifier(sub_row))));
+
                 let (left, right) = match dir {
                     Direction::Left => (sub_row, self.fresh_row_var()),
                     Direction::Right => (self.fresh_row_var(), sub_row),
@@ -221,6 +222,7 @@ impl<'env> Solver<'env> {
                     Provenance::ExpectedCombine(id),
                     row_comb,
                 ));
+
                 self.tables.row_to_combo.insert(id, row_comb);
                 out.with_typed_ast(|ast| Spanned(Expr::Inject(dir, ast).into(), id))
             }
@@ -239,35 +241,14 @@ impl<'env> Solver<'env> {
                 // dbg!(the_ast, the_ty);
                 let (mut out, actual_ty) = self.infer(env, the_ast);
 
-                match *actual_ty.0 {
-                    // Type::Prod(row) | Type::Sum(row) => {
-                    //     let mut fresh_comb = self.fresh_row_combination();
-                    //     fresh_comb.left = row;
-
-                    //     out.constraints.push(Constraint::RowCombine(
-                    //         Provenance::ExpectedCombine(id),
-                    //         fresh_comb,
-                    //     ));
-                    //     out
-                    // }
-                    Type::Label(l, _) => {
-                        out.constraints.push(Constraint::TypeEqual(
-                            Provenance::ExpectedUnify(id, l.0.1),
-                            the_ty,
-                            actual_ty,
-                        ));
-                        out
-                    }
-                    _ => {
-                        out.constraints.push(Constraint::TypeEqual(
-                            Provenance::ExpectedUnify(id, the_ast.1),
-                            the_ty,
-                            actual_ty,
-                        ));
-                        out
-                    }
+                {
+                    out.constraints.push(Constraint::TypeEqual(
+                        Provenance::ExpectedUnify(id, the_ast.1),
+                        the_ty,
+                        actual_ty,
+                    ));
+                    out
                 }
-                // if matches!(the_ast.0, Expr:)
             }
         }
     }

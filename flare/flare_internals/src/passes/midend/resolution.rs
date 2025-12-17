@@ -6,7 +6,7 @@ use petgraph::{
     graph::NodeIndex,
     visit::{Dfs, IntoNodeReferences, Walker},
 };
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 // const INTRINSIC_FUNC_ADD: usize = 0;
 // const INTRINSIC_FUNC_SUB: usize = 1;
 // const INTRINSIC_FUNC_MUL: usize = 2;
@@ -23,7 +23,7 @@ type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 use crate::{
     passes::midend::{
         environment::Environment,
-        typing::{ClosedRow, Type},
+        typing::{ClosedRow, Row, Type},
     },
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr},
@@ -215,7 +215,7 @@ impl<const N: usize> Resolver<N> {
 
                     Ok(())
                 }
-                ItemKind::Type(_, t) => {
+                ItemKind::Type(_, g, t) => {
                     // Analyze the type
                     let t = self.in_context(|me| me.analyze_type(t), dag_idx)?;
 
@@ -225,28 +225,8 @@ impl<const N: usize> Resolver<N> {
                         .graph
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
-                    if let ItemKind::Type(_, ref mut ty) = item.kind {
+                    if let ItemKind::Type(_, g, ref mut ty) = item.kind {
                         *ty = t;
-                    }
-                    Ok(())
-                }
-                ItemKind::Field { name: _, value } => {
-                    // let t = self.in_context(|me| me.analyze_type(value), dag_idx)?;
-                    let t = self.analyze_type(value)?;
-                    // dbg!(value, t); // Write back the result
-                    let item = self
-                        .env
-                        .graph
-                        .node_weight_mut(node_idx)
-                        .expect("Node should exist");
-                    if let ItemKind::Field {
-                        name: _,
-                        ref mut value,
-                    } = item.kind
-                    {
-                        *value = t;
-                    } else {
-                        unreachable!()
                     }
                     Ok(())
                 }
@@ -306,6 +286,71 @@ impl<const N: usize> Resolver<N> {
         )
     }
 
+    fn subst_generic_type(
+        &mut self,
+        t: Spanned<Intern<Type>>,
+        gens: im::HashMap<Intern<Type>, Spanned<Intern<Type>>, FxBuildHasher>,
+        // mut gens: &[Spanned<Intern<Type>>],
+    ) -> CompResult<Spanned<Intern<Type>>> {
+        let mut accum: Spanned<Intern<Type>> = t;
+
+        match *t.0 {
+            Type::Func(l, r) => {
+                accum = accum.modify(Type::Func(
+                    self.subst_generic_type(l, gens.clone())?,
+                    self.subst_generic_type(r, gens)?,
+                ));
+            }
+            Type::Generic(_) => {
+                if let Some(g) = gens.get(&t.0) {
+                    accum = *g
+                } else {
+                    accum = t
+                }
+            }
+            Type::Prod(r) => {
+                let r = match r {
+                    Row::Closed(closed_row) => {
+                        let values: Vec<_> = closed_row
+                            .values
+                            .iter()
+                            .map(|x| self.subst_generic_type(*x, gens.clone()).unwrap())
+                            .collect();
+
+                        Row::Closed(ClosedRow {
+                            values: values.leak(),
+                            ..closed_row
+                        })
+                    }
+                    _ => r,
+                };
+                accum = accum.modify(Type::Prod(r))
+            }
+
+            Type::Sum(r) => {
+                let r = match r {
+                    Row::Closed(closed_row) => {
+                        let values: Vec<_> = closed_row
+                            .values
+                            .iter()
+                            .map(|x| self.subst_generic_type(*x, gens.clone()).unwrap())
+                            .collect();
+
+                        Row::Closed(ClosedRow {
+                            values: values.leak(),
+                            ..closed_row
+                        })
+                    }
+                    _ => r,
+                };
+                accum = accum.modify(Type::Sum(r))
+            }
+            _ => accum = t,
+        }
+
+        Ok(accum)
+    }
+
     fn analyze_type(&mut self, t: Spanned<Intern<Type>>) -> CompResult<Spanned<Intern<Type>>> {
         // dbg!(self.current_node);
         // dbg!(t);
@@ -320,10 +365,32 @@ impl<const N: usize> Resolver<N> {
                 let new_t = self.analyze_type(the_r)?;
                 Ok(t.modify(Type::Label(l, new_t)))
             }
-            Type::User(name) => {
+            Type::User(name, instanced_generics) => {
                 let the_item = self.resolve_name_generic(&name)?;
-                if let ItemKind::Type(_, new_t) = the_item.kind {
-                    self.analyze_type(new_t)
+                if let ItemKind::Type(_, generics, new_t) = the_item.kind {
+                    let t = if !instanced_generics.is_empty() {
+                        // First, analyze each instanced generic type
+                        let analyzed_instances: CompResult<Vec<_>> = instanced_generics
+                            .iter()
+                            .map(|ty| self.analyze_type(*ty))
+                            .collect();
+                        let analyzed_instances = analyzed_instances?;
+
+                        let generic_instances: im::HashMap<
+                            Intern<Type>,
+                            Spanned<Intern<Type>>,
+                            FxBuildHasher,
+                        > = generics
+                            .iter()
+                            .zip(analyzed_instances.iter())
+                            .map(|(l, r)| (l.0, *r))
+                            .collect();
+
+                        self.subst_generic_type(new_t, generic_instances)?
+                    } else {
+                        new_t
+                    };
+                    self.analyze_type(t) // This recursively analyzes the substituted type
                 } else {
                     Err(DynamicErr::new(format!("{} is not a type", name.0))
                         .label("", name.1)
@@ -427,7 +494,7 @@ impl<const N: usize> Resolver<N> {
                 let v = self.analyze_expr(v, &new_vars)?;
                 Ok(expr.convert(Expr::Label(l, v)))
             }
-            Expr::Unlabel(spanned, label) => todo!(),
+            Expr::Unlabel(v, l) => Ok(expr.convert(Expr::Unlabel(v, l))),
             Expr::Pat(spanned) => todo!(),
             Expr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
@@ -554,8 +621,10 @@ impl<const N: usize> Resolver<N> {
             Expr::Match(matchee, branches) => {
                 let matchee = self.analyze_expr(matchee, vars)?;
 
-                let branches: CompResult<Vec<_>> =
-                    branches.iter().map(|b| self.resolve_branch(*b)).collect();
+                let branches: CompResult<Vec<_>> = branches
+                    .iter()
+                    .map(|b| self.resolve_branch(*b, vars))
+                    .collect();
 
                 let branches = branches?
                     .into_iter()
@@ -623,19 +692,21 @@ impl<const N: usize> Resolver<N> {
     fn resolve_branch(
         &mut self,
         b: MatchArm<Untyped>,
+        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
-        let (pat, vars) = self.resolve_pattern(b.pat, vec![])?;
+        let (pat, bindings) = self.resolve_pattern(b.pat, vec![])?;
         // dbg!(pat);
         // dbg!(&vars);
         // dbg!(b.body);
 
-        let body = vars.into_iter().fold(b.body, |prev, v| {
+        let body = bindings.into_iter().fold(b.body, |prev, v| {
             let unwrapped = prev.modify(Expr::Let(v, pat, prev));
             prev.modify(Expr::Lambda(v, unwrapped, LambdaInfo::Anon))
         });
 
+        self.analyze_expr(body, vars)
+
         // dbg!(arm);
-        Ok(body)
     }
 
     fn row_addr_helper(

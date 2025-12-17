@@ -1,14 +1,30 @@
 package Main =
-    type Option = |Some ?T, None|
+    type Option[?T] = |Some ?T, None|
     
-    let Some x : ?T -> Option = |Some x|
+    let Some x : ?T -> Option[?T] = |Some x|
 
-    let None : Option = |None|
+    let None : Option[?T] = |None|
 
-    let unwrap_or option default : Option -> ?T -> ?T =
+    let unwrap_or option default : Option[?U] -> ?U -> ?U =
         match option in
             |Some x1| then x1,
             |None| then default,
+
+    type Result[?T, ?E] = |Ok ?T, Err ?E|
+
+    let Ok x : ?T -> Result[?T, ?E] = |Ok x|
+
+    let Err e : ?E -> Result[?T, ?E] = |Err e|
+
+    let map res f g : Result[?T, ?E] -> (?T -> ?U) -> (?E -> ?F) -> Result[?U, ?F] =
+            match res in
+            |Ok v| then Ok (f(v)),
+            |Err e| then Err (g(e)),
+
+    let unwrap_or_res res default: Result[?T, ?E] -> ?T -> ?T =
+        match res in
+            |Ok v| then v,
+            |Err e| then default,
 
     type Person = {
         name: str,
@@ -19,9 +35,11 @@ package Main =
         name = n, age = a
     }
 
-    let main: num =
-        let p = Person_cons "joe" 10000 in 
-            unwrap_or (Some 3) 0
+    let main: Result[num, num] =
+        # let p = Person_cons "joe" 10000 in
+        let status = Ok 3 in
+            # unwrap_or_res status 0
+            map status (fn x => x * 3) (fn x => x + 3)        #     unwrap_or (Some 3) 0
 
 
 

@@ -63,7 +63,7 @@ pub enum Type {
     Package(Spanned<Intern<String>>),
     Item(ItemId),
 
-    User(Spanned<Intern<String>>),
+    User(Spanned<Intern<String>>, &'static [Spanned<Intern<Self>>]),
     Prod(Row),
     Sum(Row),
     Label(Label, Spanned<Intern<Self>>),

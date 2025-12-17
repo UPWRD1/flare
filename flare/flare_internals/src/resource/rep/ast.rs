@@ -403,7 +403,11 @@ pub struct ImplDef<V: Variable> {
 #[derive(Debug, PartialEq)]
 pub enum Definition<V: Variable> {
     Import(Spanned<Intern<Expr<V>>>),
-    Type(Spanned<Intern<String>>, Spanned<Intern<Type>>),
+    Type(
+        Spanned<Intern<String>>,
+        Vec<Spanned<Intern<Type>>>,
+        Spanned<Intern<Type>>,
+    ),
     Let(V, Spanned<Intern<Expr<V>>>, Spanned<Intern<Type>>),
     Extern(Spanned<Intern<String>>, &'static [V], Spanned<Intern<Type>>),
     ImplDef(ImplDef<V>),

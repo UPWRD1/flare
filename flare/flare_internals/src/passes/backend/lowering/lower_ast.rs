@@ -394,12 +394,16 @@ impl<'source> LowerAst<'source> {
 
     pub fn lower_ast(&mut self, ast: Spanned<Intern<Expr<Typed>>>) -> IR {
         // dbg!(self.item_wrappers;
+        // dbg!( )
         let id = ast.1;
         match *ast.0 {
-            Expr::Ident(Typed(var, ty)) => IR::Var(Var::new(
-                self.var_supply.supply_for(var),
-                self.types.lower_ty(*ty.0),
-            )),
+            Expr::Ident(Typed(var, ty)) => {
+                // dbg!(ty);
+                IR::Var(Var::new(
+                    self.var_supply.supply_for(var),
+                    self.types.lower_ty(*ty.0),
+                ))
+            }
             Expr::Number(n) => IR::Num(n),
             Expr::String(n) => IR::Str(n.0),
             Expr::Bool(b) => IR::Bool(b),

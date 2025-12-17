@@ -109,14 +109,6 @@ impl GenOut {
             // inference_base_loc: self.inference_base_loc,
         }
     }
-
-    // fn with_infer_loc(self, loc: SimpleSpan<usize, u64>) -> Self {
-    //     Self {
-    //         constraints: self.constraints,
-    //         typed_ast: self.typed_ast,
-    //         inference_base_loc: Some(loc),
-    //     }
-    // }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -239,8 +231,6 @@ impl<'env> Solver<'env> {
                 let next = self.tables.next_tyvar;
                 self.tables.next_tyvar += 1;
 
-                // self.tables.hasher.write_u32(next);
-                // let out = self.tables.hasher.finish().to_string().into();
                 TypeVar(next)
             })
     }
@@ -256,11 +246,6 @@ impl<'env> Solver<'env> {
                 RowVar(next.to_string().into())
             })
     }
-
-    // pub fn type_infer(ast: Spanned<Intern<Expr<Untyped>>>) -> CompResult<TypeInferOut> {
-    //     let ctx = Self{ default();
-    //     ctx.type_infer_logic(ast)
-    // }
 
     fn normalize_mentioned_row_combs<T>(
         &mut self,
@@ -389,10 +374,11 @@ impl<'env> Solver<'env> {
         ast: Spanned<Intern<Expr<Untyped>>>,
         signature: TypeScheme,
     ) -> CompResult<TypesOutput> {
+        // dbg!(&signature);
         let id = ast.id();
         // We start with `check` instead of `infer`.
         let mut out = self.check(im::HashMap::default(), ast, signature.ty);
-        // dbg!(&out.constraints);
+
         // Add any evidence in our type annotation to be used during solving.
         out.constraints
             .extend(signature.evidence.iter().map(|ev| match *ev {
@@ -411,7 +397,7 @@ impl<'env> Solver<'env> {
 
         // We still need to substitute, but only our ast.
         let subst_out = self.substitute_ast(out.typed_ast);
-
+        // dbg!(&self.tables.row_to_combo);
         // Here we have to make sure we didn't invent new constraints or types
         // during unification, and if we did that's an error.
         let mut evidence_subst = self.normalize_mentioned_row_combs(subst_out);

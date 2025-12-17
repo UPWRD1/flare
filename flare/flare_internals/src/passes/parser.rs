@@ -651,8 +651,9 @@ Spanned(
             .labelled("let-definition")
             .as_context();
 
-        let type_def = just(Token::Type).ignore_then(raw_ident).then_ignore(just(Token::Eq)).then(ty.clone()).map(|(name, ty)| {
-            Definition::Type(name, ty)
+        let type_def = just(Token::Type).ignore_then(raw_ident).then(just(Token::Question).ignore_then(raw_ident).separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).then_ignore(just(Token::Eq)).then(ty.clone()).map(|((name, generics), ty)| {
+            let generics = generics.unwrap_or_default().into_iter().map(|x| x.convert(Type::Generic(x))).collect();
+            Definition::Type(name, generics, ty)
         });
         
         // Import
@@ -837,8 +838,8 @@ where
                             .or_not(),
                     )
                     .clone()
-                    .map_with(|(name, _generics), e| {
-                        Spanned(Intern::from(Type::User(name)), e.span())
+                    .map_with(|(name, generics), e| {
+                        Spanned(Intern::from(Type::User(name, generics.unwrap_or_default().leak())), e.span())
                     }),
                 just(Token::At)
                     .ignore_then(raw_ident)

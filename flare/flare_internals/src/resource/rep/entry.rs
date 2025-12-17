@@ -65,6 +65,7 @@ pub enum ItemKind<V: Variable> {
     Function(FunctionItem<V>),
     Type(
         Spanned<Intern<String>>,
+        &'static [Spanned<Intern<Type>>],
         Spanned<Intern<Type>>,
         // SimpleSpan<usize, u64>,
     ),
@@ -72,10 +73,6 @@ pub enum ItemKind<V: Variable> {
         name: Spanned<Intern<String>>,
         args: &'static [V],
         sig: Spanned<Intern<Type>>,
-    },
-    Field {
-        name: Label,
-        value: Spanned<Intern<Type>>,
     },
     Dummy(&'static str),
 }
@@ -100,9 +97,8 @@ impl<V: Variable> SpanWrapped for Item<V> {
                         .union(function_item.body.1),
                 )
             }
-            ItemKind::Type(_, t) => t.1,
+            ItemKind::Type(_, g, t) => t.1,
             ItemKind::Extern { name, args: _, sig } => name.1.union(sig.1),
-            ItemKind::Field { name, value: _ } => name.0.1,
 
             ItemKind::Dummy(_) => panic!(),
         }
@@ -124,8 +120,7 @@ impl<V: Variable> Ident for Item<V> {
             // ItemKind::Field((name, ..)) => Ok(name),
             ItemKind::Function(FunctionItem { name, .. }) => Ok(name.ident()?),
             ItemKind::Extern { name, .. } => Ok(name),
-            ItemKind::Type(name, _) => Ok(name),
-            ItemKind::Field { name, value: _ } => Ok(name.0),
+            ItemKind::Type(name, _, _) => Ok(name),
             _ => panic!(),
         }
     }
@@ -158,8 +153,7 @@ impl<V: Variable> Item<V> {
             // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
             // ItemKind::Field((_, ty)) => Ok(*ty),
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
-            ItemKind::Field { name: _, value } => Ok(*value),
-            ItemKind::Type(_, t) => Ok(*t),
+            ItemKind::Type(_, _, t) => Ok(*t),
             _ => Err(err(self)),
         }
     }
@@ -171,8 +165,7 @@ impl<V: Variable> Item<V> {
         match &self.kind {
             ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
             ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
-            ItemKind::Field { name: _, value } => Ok(*value),
-            ItemKind::Type(_, t) => Ok(*t),
+            ItemKind::Type(_, _, t) => Ok(*t),
             ItemKind::Extern {
                 name: _,
                 args: _,

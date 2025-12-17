@@ -147,7 +147,7 @@ impl<'env> Solver<'env> {
         ast: Spanned<Intern<Expr<Typed>>>,
     ) -> SubstOut<Spanned<Intern<Expr<Typed>>>> {
         let id = ast.1;
-        match *ast.0 {
+        let res = match *ast.0 {
             Expr::Ident(v) => self
                 .substitute_ty(v.1)
                 .map(|ty| Spanned(Expr::Ident(Typed(v.0, ty)).into(), id)),
@@ -158,11 +158,22 @@ impl<'env> Solver<'env> {
 
             Expr::Particle(p) => SubstOut::new(ast.convert(Expr::Particle(p))),
 
-            Expr::Add(l, r) => SubstOut::new(ast.convert(Expr::Add(l, r))),
-            Expr::Sub(l, r) => SubstOut::new(ast.convert(Expr::Sub(l, r))),
-            Expr::Mul(l, r) => SubstOut::new(ast.convert(Expr::Mul(l, r))),
-            Expr::Div(l, r) => SubstOut::new(ast.convert(Expr::Div(l, r))),
-
+            // Expr::Add(l, r) => SubstOut::new(ast.convert(Expr::Add(l, r))),
+            // Expr::Sub(l, r) => SubstOut::new(ast.convert(Expr::Sub(l, r))),
+            // Expr::Mul(l, r) => SubstOut::new(ast.convert(Expr::Mul(l, r))),
+            // Expr::Div(l, r) => SubstOut::new(ast.convert(Expr::Div(l, r))),
+            Expr::Add(l, r) => self
+                .substitute_ast(l)
+                .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Add(l, r))),
+            Expr::Sub(l, r) => self
+                .substitute_ast(l)
+                .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Sub(l, r))),
+            Expr::Mul(l, r) => self
+                .substitute_ast(l)
+                .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Mul(l, r))),
+            Expr::Div(l, r) => self
+                .substitute_ast(l)
+                .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Mul(l, r))),
             Expr::Comparison(l, op, r) => SubstOut::new(ast.convert(Expr::Comparison(l, op, r))),
 
             Expr::Hole(v) => self
@@ -219,7 +230,8 @@ impl<'env> Solver<'env> {
                 .map(|nast| ast.convert(Expr::Inject(dir, nast))),
             Expr::Item(id, item) => SubstOut::new(ast.convert(Expr::Item(id, item))),
             _ => todo!("{ast:?}"),
-        }
+        };
+        dbg!(res)
     }
 
     pub(crate) fn substitute_wrapper(&mut self, wrapper: ItemWrapper) -> SubstOut<ItemWrapper> {
