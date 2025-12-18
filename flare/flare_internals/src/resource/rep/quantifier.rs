@@ -2,6 +2,7 @@ use super::super::errors::CompResult;
 
 // use chumsky::input::ValueInput;
 use internment::Intern;
+use rustc_hash::FxHashSet;
 
 // use rkyv::with::{ArchiveWith, DeserializeWith, With};
 // use rkyv::{Archive, Deserialize, Serialize};
@@ -65,36 +66,54 @@ impl QualifierFragment {
     #[allow(clippy::type_complexity)]
     pub fn from_expr<V: Variable>(
         expr: &Spanned<Intern<Expr<V>>>,
-    ) -> CompResult<Vec<QualifierFragment>> {
-        struct CheckFieldAccess<'s, V: Variable> {
-            f: &'s dyn Fn(
-                &'s Self,
-                &'s Spanned<Intern<Expr<V>>>,
-                Vec<QualifierFragment>,
+    ) -> CompResult<FxHashSet<Vec<QualifierFragment>>> {
+        struct CheckFieldAccess<'rec, V: Variable> {
+            f: &'rec dyn Fn(
+                &'rec Self,
+                &'rec Spanned<Intern<Expr<V>>>,
+                &[QualifierFragment],
+                &mut FxHashSet<Vec<QualifierFragment>>,
             ) -> CompResult<Vec<QualifierFragment>>,
         }
+        let mut paths = FxHashSet::default();
         let cfa = CheckFieldAccess {
             f: &|cfa: &CheckFieldAccess<'_, V>,
                  e: &Spanned<Intern<Expr<V>>>,
-                 mut accum: Vec<QualifierFragment>|
+                 accum: &[QualifierFragment],
+                 paths: &mut FxHashSet<Vec<QualifierFragment>>|
              -> CompResult<Vec<QualifierFragment>> {
-                //dbg!(&q);
                 match &*e.0 {
                     Expr::FieldAccess(l, r) => {
-                        accum.push(Self::Wildcard(l.ident()?.0));
+                        let accum = [accum, &[(Self::Wildcard(l.ident()?.0))]].concat();
 
-                        (cfa.f)(cfa, r, accum)
+                        (cfa.f)(cfa, r, &accum, paths)
                         //self.graph.node_weight(n).cloned()
+                    }
+                    Expr::Concat(l, r) => {
+                        (cfa.f)(cfa, l, accum, paths)?;
+                        (cfa.f)(cfa, r, accum, paths)?;
+                        // paths.insert(l_path);
+                        // paths.insert(r_path);
+                        Ok(accum.to_vec())
+                    }
+
+                    Expr::Label(_, v) => {
+                        let accum = [accum, &[(Self::Wildcard(v.ident()?.0))]].concat();
+                        paths.insert(accum.clone());
+                        Ok(accum.to_vec())
                     }
 
                     _ => {
-                        accum.push(Self::Wildcard(e.ident()?.0));
-                        Ok(accum)
+                        let accum = [accum, &[(Self::Wildcard(e.ident()?.0))]].concat();
+                        paths.insert(accum.clone());
+                        Ok(accum.to_vec())
                     }
                 }
             },
         };
-        (cfa.f)(&cfa, expr, vec![])
+        (cfa.f)(&cfa, expr, &[], &mut paths)?;
+        // dbg!(&paths);
+        Ok(paths)
     }
 }
 impl std::fmt::Display for QualifierFragment {

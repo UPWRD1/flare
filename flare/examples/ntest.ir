@@ -49,6 +49,26 @@ fn [$0: num] => [num]::#0()
 end item #2
 
 item #3: is
+tyfn Type =>
+  tyfn Type =>
+    fn [$0: ?1] =>
+      $0 tag {?1 | ?0} variant 0
+end item #3
+
+item #4: is
+tyfn Type =>
+  tyfn Type =>
+    fn [$0: {?1 | ?0}, $1: ?0] =>
+      match $0:
+        | $8 then $1,
+        | $9 then $9
+end item #4
+
+item #5: is
+extern_concat
+end item #5
+
+item #6: is
 let $1: {
   num -> num -> str -> {num *
       num -> str} *
@@ -88,8 +108,63 @@ in
     $1.0()()
   in
     [num]::#1()
-end item #3
+end item #6
 
-item #4: is
-#3
-end item #4
+item #7: is
+tyfn Type =>
+  tyfn Type =>
+    fn [$0: ?1] =>
+      $0 tag {?0 | ?1} variant 1
+end item #7
+
+item #8: is
+tyfn Type =>
+  tyfn Type =>
+    tyfn Type =>
+      let $2: {
+        ?1 -> ?2 -> {?2 * ?1} *
+        TyFunc Type ?2 -> ?0 -> ?3 -> ?0 -> {?3 |
+            ?2} -> ?0 *
+        {{?2 * ?1} -> ?1 *
+            ?1 -> {?2 | ?1}} *
+        {{?2 * ?1} -> ?2 *
+            ?2 -> {?2 | ?1}}
+      } = {
+          fn [$3: ?1, $4: ?2] =>
+            {
+              $4,
+              $3},
+          tyfn Type =>
+            fn [$5: ?2 -> ?0, $6: ?3 -> ?0, $7: {?3 |
+              ?2}] =>
+              match $7:
+                | $8 then $6(),
+                | $9 then $5(),
+          {
+            fn [$10: {?2 * ?1}] =>
+              $10.1,
+            fn [$11: ?1] =>
+              $11 tag {?2 |
+                ?1} variant 1},
+          {
+            fn [$13: {?2 * ?1}] =>
+              $13.0,
+            fn [$14: ?2] =>
+              $14 tag {?2 |
+                ?1} variant 0}}
+      in
+        fn [$0: {?2 |
+          ?1}, $1: ?1 -> ?0] =>
+          [{?2 | ?0}]::$2.1()()()
+end item #8
+
+item #9: is
+tyfn Type =>
+  let $0: {?0 | str} =
+    [?0]::[str]::#7()
+  in
+    let $1: {?0 | str} =
+      [str]::[str]::[?0]::#8()()
+    in
+      [str]::[?0]::#4()()
+end item #9

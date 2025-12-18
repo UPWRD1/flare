@@ -17,7 +17,7 @@ use crate::resource::rep::common::SpanWrapped;
 // use rkyv::{with::ArchiveWith, Archive, Deserialize, Serialize};
 // use rkyv_with::ArchiveWith;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Spanned<T>(pub T, pub SimpleSpan<usize, FileID>);
 
 impl<T: PartialEq> PartialEq for Spanned<T> {

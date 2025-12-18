@@ -111,7 +111,7 @@ impl GenOut {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug, Default)]
 pub struct TypeScheme {
     pub unbound_types: BTreeSet<TypeVar>,
     pub unbound_rows: BTreeSet<RowVar>,

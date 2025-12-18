@@ -51,7 +51,7 @@ impl Typechecker {
                 ItemKind::Function(f) => {
                     self.register_function(*item_idx, f);
                 }
-                ItemKind::Type(_n, g, t) => {
+                ItemKind::Type(_n, _, t) => {
                     self.register_type(*item_idx, t)?;
                 }
                 ItemKind::Extern { sig, .. } => {
@@ -64,8 +64,11 @@ impl Typechecker {
                         ty,
                         types_to_name,
                     };
-                    self.context
-                        .insert(ItemId(item_idx.index()), scheme.clone());
+                    self.context.insert(ItemId(item_idx.index()), scheme);
+                }
+                ItemKind::Package(_) => {
+                    let scheme = TypeScheme::default();
+                    self.context.insert(ItemId(item_idx.index()), scheme);
                 }
 
                 _ => unreachable!("{:?}", item.kind),
@@ -134,11 +137,12 @@ impl Typechecker {
                 let v = if let Some((v, _)) = names.iter().find(|(_, x)| x.0 == n.0) {
                     *v
                 } else {
-                    self.new_type_var()
+                    let v = self.new_type_var();
+                    names.insert(v, n);
+                    v
                 };
 
                 accum.insert(v);
-                names.insert(v, n);
                 t.modify(Type::Var(v))
             }
 
@@ -183,7 +187,7 @@ impl Typechecker {
                 }
 
                 _ => todo!("Should be closed? todo"),
-            })), // Type::Sum(row) => todo!(),
+            })),
             Type::User(t, g) => {
                 unreachable!("Encountered user type {t}[{g:?}] after resolution")
             }
@@ -217,7 +221,7 @@ impl Typechecker {
         // let unbound_rows = (*f.unbound_rows).clone();
         let (unbound_types, unbound_rows, types_to_name, ty, evidence) =
             self.extract_generics(f.sig);
-        // dbg!(ty);
+        dbg!(&unbound_types);
 
         let scheme = TypeScheme {
             unbound_types,

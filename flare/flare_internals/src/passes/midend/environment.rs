@@ -130,6 +130,7 @@ impl Environment {
             for item in &package.0.items {
                 match item {
                     Definition::Import(import_item) => {
+                        // dbg!(import_item);
                         deps.push(*import_item);
                     }
                     Definition::Type(name, generics, t) => {
@@ -169,17 +170,27 @@ impl Environment {
                 .map_err(|_| errors::not_defined(name.0, &name.1))?;
 
             for dep in deps {
-                // dbg!(dep);
-                let path = QualifierFragment::from_expr(dep);
-                // dbg!(&path);
-                let imports: Vec<NodeIndex> = if let Ok(n) = me.get(&path?) {
-                    vec![n]
-                } else {
-                    return Err(DynamicErr::new("Import does not exist")
-                        .label("this", dep.1)
-                        .into());
-                };
-                for import in imports {
+                // dbg!(package, dep);
+                let paths = QualifierFragment::from_expr(dep)?;
+                // dbg!(&paths);
+                let imports: CompResult<Vec<_>> = paths
+                    .iter()
+                    .map(|path| {
+                        // dbg!(path);
+                        // let path = if path.len() > 1 { &path[1..] } else { path };
+
+                        if let Ok(n) = me.get(path) {
+                            // dbg!(n);
+                            Ok(n)
+                        } else {
+                            Err(DynamicErr::new("Import does not exist")
+                                .label("this", dep.1)
+                                .into())
+                        }
+                    })
+                    .collect();
+
+                for import in imports? {
                     let the_name = me
                         .graph
                         .edges_directed(import, petgraph::Direction::Incoming)
@@ -190,8 +201,12 @@ impl Environment {
                             DynamicErr::new("Could not locate import within graph")
                                 .label("here", dep.1)
                         })?;
-                    me.graph.add_edge(package, import, the_name);
+                    // dbg!(the_name);
+                    me.graph.update_edge(package, import, the_name);
                 }
+                // me.debug();
+
+                // dbg!(&path);
             }
         }
 
@@ -257,6 +272,7 @@ impl Environment {
         let err = || DynamicErr::new(format!("{} does not exist in {}", frag, packctx));
         let paths = self.search_for_edge(frag);
         for path in &paths {
+            // dbg!(path);
             if path.first().ok_or_else(err)?.is(packctx) {
                 return self.get(path);
             }
@@ -377,7 +393,10 @@ impl Environment {
         &'envi self,
         frag: &'fragment QualifierFragment,
     ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'fragment> {
-        let edges = self.graph.edge_references().filter(|x| x.weight().is(frag));
+        let edges = self
+            .graph
+            .edge_references()
+            .filter(move |x| x.weight() == (frag));
         edges.map(|x| x.target())
     }
 

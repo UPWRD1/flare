@@ -44,7 +44,7 @@ impl UnifyKey for TyUniVar {
 // pub struct TypeVar(pub Intern<String>);
 pub struct TypeVar(pub usize);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Type {
     Infer,
     Subtable(Spanned<Intern<Self>>),
@@ -53,7 +53,7 @@ pub enum Type {
     Generic(Spanned<Intern<String>>),
     Var(TypeVar),
     Particle(Spanned<Intern<String>>),
-
+    #[default]
     Unit,
     Num,
     Bool,

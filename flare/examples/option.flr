@@ -1,0 +1,22 @@
+package Option = 
+    type Option[?X] = |Some ?X, None|
+    
+    let Some x : ?X -> Option[?X] = |Some x|
+
+    let None : Option[?X] = |None|
+
+    let unwrap_or option default : |Some ?T, None| -> ?T -> ?T =
+        match option in
+            |Some x1| then x1,
+            |None| then default
+          
+    let is_some x : Option[?T] -> bool =
+        match x in
+            | Some _v| then true,
+            | None | then false
+
+    let map o f : Option[?W] -> (?W -> ?U) -> Option[?U] =
+            match o in
+                |Some v| then Some (f(v)),
+                |None| then None,
+                   

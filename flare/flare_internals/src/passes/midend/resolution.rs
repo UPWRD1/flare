@@ -4,7 +4,7 @@ use petgraph::{
     algo::kosaraju_scc,
     dot::Config,
     graph::NodeIndex,
-    visit::{Dfs, IntoNodeReferences, Walker},
+    visit::{Dfs, IntoNodeReferences, NodeRef, Walker},
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
 // const INTRINSIC_FUNC_ADD: usize = 0;
@@ -218,8 +218,9 @@ impl<const N: usize> Resolver<N> {
                 }
                 ItemKind::Type(_, _, t) => {
                     // Analyze the type
+                    // dbg!(t);
                     let t = self.in_context(|me| me.analyze_type(t), dag_idx)?;
-
+                    // dbg!(t);
                     // Write back the result
                     let item = self
                         .env
@@ -277,7 +278,6 @@ impl<const N: usize> Resolver<N> {
         self.in_context(
             |me| {
                 let sig = me.analyze_type(the_func.sig)?;
-                // dbg!(sig);
                 let body = me.analyze_expr(the_func.body, &[])?;
                 the_func.sig = sig;
                 the_func.body = body;
@@ -306,7 +306,8 @@ impl<const N: usize> Resolver<N> {
                 if let Some(g) = gens.get(&t.0) {
                     accum = *g
                 } else {
-                    accum = t
+                    panic!()
+                    // accum = t
                 }
             }
             Type::Prod(r) => {
@@ -367,7 +368,8 @@ impl<const N: usize> Resolver<N> {
                 Ok(t.modify(Type::Label(l, new_t)))
             }
             Type::User(name, instanced_generics) => {
-                let the_item = self.resolve_name_generic(&name)?;
+                let the_item = self.resolve_name_type(&name)?;
+                // dbg!(the_item.get_type_universal());
                 if let ItemKind::Type(_, generics, new_t) = the_item.kind {
                     let t = if !instanced_generics.is_empty() {
                         // First, analyze each instanced generic type
@@ -538,9 +540,10 @@ impl<const N: usize> Resolver<N> {
                 Ok(expr.convert(Expr::Call(func, arg)))
             }
             Expr::FieldAccess(l, r) => {
-                // dbg!(expr, l);
+                // dbg!(l, r);
                 let l = self.analyze_expr(l, vars)?;
                 if let Expr::Item(id, k) = *l.0 {
+                    dbg!(id, k);
                     let res = self.resolve_name_expr(r)?;
                     Ok(res)
                 } else if let Expr::Ident(n) = *l.0 {
@@ -548,10 +551,7 @@ impl<const N: usize> Resolver<N> {
                         let projection: Spanned<Intern<Expr<Untyped>>> = {
                             let combo = *val;
                             let id = r.ident()?;
-
                             {
-                                // dbg!(&path);
-
                                 // let ex = path.into_iter().fold(combo, |prev, dir| {
                                 let ex = combo.convert(Expr::Project(Direction::Right, combo));
                                 // });
@@ -719,6 +719,7 @@ impl<const N: usize> Resolver<N> {
         q: &QualifierFragment,
         s: &SimpleSpan<usize, u64>,
     ) -> CompResult<ItemId> {
+        // dbg!(self.current_parent, q);
         // self.env.debug();
         let search = self.env.get_from_context(q, &self.current_parent);
         search.map_or_else(
@@ -735,11 +736,14 @@ impl<const N: usize> Resolver<N> {
         expr: Spanned<Intern<Expr<Untyped>>>,
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
         let name = expr.ident()?;
+        // self.env.debug();
 
         if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name.0), &expr.1) {
             Ok(expr.convert(Expr::Item(e, Kind::Func)))
         } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &expr.1) {
             Ok(expr.convert(Expr::Item(e, Kind::Ty)))
+        } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Package(name.0), &expr.1) {
+            Ok(expr.convert(Expr::Item(e, Kind::Package)))
         } else {
             Err(errors::not_defined(
                 QualifierFragment::Wildcard(name.0),
@@ -748,12 +752,10 @@ impl<const N: usize> Resolver<N> {
         }
     }
 
-    fn resolve_name_generic(&mut self, name: &impl Ident) -> CompResult<&Item<Untyped>> {
+    fn resolve_name_type(&mut self, name: &impl Ident) -> CompResult<&Item<Untyped>> {
         let name = name.ident()?;
 
-        if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name.0), &name.1) {
-            self.env.value(NodeIndex::from(e.0 as u32))
-        } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &name.1) {
+        if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &name.1) {
             self.env.value(NodeIndex::from(e.0 as u32))
         } else {
             Err(errors::not_defined(

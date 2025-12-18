@@ -1,62 +1,17 @@
 package Main =
-    type Option[?T] = |Some ?T, None|
+    use Hidden
+    # use Option.{Option, map, unwrap_or, Some, None}
+    use Option
     
-    let Some x : ?T -> Option[?T] = |Some x|
-
-    let None : Option[?T] = |None|
-
-    let unwrap_or option default : Option[?U] -> ?U -> ?U =
-        match option in
-            |Some x1| then x1,
-            |None| then default,
-
-    type Result[?T, ?E] = |Ok ?T, Err ?E|
-
-    let Ok x : ?T -> Result[?T, ?E] = |Ok x|
-
-    let Err e : ?E -> Result[?T, ?E] = |Err e|
-
-    let map res f g : Result[?T, ?E] -> (?T -> ?U) -> (?E -> ?F) -> Result[?U, ?F] =
-            match res in
-                |Ok v| then Ok (f(v)),
-                |Err e| then Err (g(e)),
-
-    let unwrap_or_res res default: Result[?T, ?E] -> ?T -> ?T =
-        match res in
-            |Ok v| then v,
-            |Err e| then default,
-
-    type Person = {
-        name: str,
-        age: num
-    }
-
-    let Person_cons n a : str -> num -> Person = {
-        name = n, age = a
-    }
-
-    let identity var : ?T -> ?T =
-        var
-
-    let creator a b : ?T -> ?U -> {a: ?T, b:?U} =
-        {a = a, b = b}
-
-    # let thing1 x = thing2 x
-
-    # t
+    extern concat: str -> str -> str
     
-    let factorial x : num -> num =
-        if x == 0 then
-            0
-        else
-            factorial(x - 1) + x
-
-    let thing1 x :num -> num = thing2 x
-    let thing2 x :num -> num = thing1 x
-
+    
+        
     let main: infer =
-        demo
-       # identity (creator 3 true)
+        let val =  Some Hidden.demo in
+        let mapped = map val (fn x => concat x " asdf") in
+        unwrap_or mapped "err"
+              # identity (creator 3 true)
         # let status = let p = {name= "joe", age = 10000, iscool = true} in Ok p.age in
         
             # unwrap_or_res status 0
@@ -65,7 +20,7 @@ package Main =
 
 
 
-# package Hidden = 
+package Hidden = 
     extern format f: ?T -> str    
 
     let speak x: {?T , ?T -> str} -> str =

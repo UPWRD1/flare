@@ -166,6 +166,7 @@ pub enum Kind {
     Func,
     Param,
     Extern(&'static str),
+    Package,
 }
 
 /// Type representing an Expression.

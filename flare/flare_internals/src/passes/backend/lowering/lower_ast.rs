@@ -498,20 +498,25 @@ impl<'source> LowerAst<'source> {
             }
 
             Expr::Project(direction, body) => {
-                let param = self
-                    .row_to_ev
-                    .get(&id)
-                    .cloned()
-                    .map(|ev| self.lookup_ev(ev))
-                    .expect("Project AST node lacks an expected evidence");
+                if matches!(*body.0, Expr::Label(_, _)) {
+                    self.lower_ast(body)
+                } else {
+                    let term = self.lower_ast(body);
+                    // dbg!(&term);
 
-                let term = self.lower_ast(body);
-                let direction_field = match direction {
-                    Direction::Left => 2,
-                    Direction::Right => 3,
-                };
-                let prj_direction = IR::field(IR::field(IR::Var(param), direction_field), 0);
-                IR::app(prj_direction, term)
+                    let param = self
+                        .row_to_ev
+                        .get(&id)
+                        .cloned()
+                        .map(|ev| self.lookup_ev(ev))
+                        .expect("Project AST node lacks an expected evidence");
+                    let direction_field = match direction {
+                        Direction::Left => 2,
+                        Direction::Right => 3,
+                    };
+                    let prj_direction = IR::field(IR::field(IR::Var(param), direction_field), 0);
+                    IR::app(prj_direction, term)
+                }
             }
             Expr::Inject(direction, body) => {
                 let param = self
