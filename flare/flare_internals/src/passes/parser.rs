@@ -431,40 +431,22 @@ where
         let sum = raw_ident
             
             .then(expr.clone().or_not())
-            // .separated_by(just(Token::Comma))
-            // .allow_trailing()
-            // .at_least(1)
-            // .collect::<Vec<_>>()
             .delimited_by(just(Token::Pipe), just(Token::Pipe))
             .map_with(|(name, val), e| {
-                // if variants.is_empty() {
-                //     unreachable!()
-                // }
-                // unsafe{
-
-                //    variants.into_iter()
-                //         .enumerate()
-                //         .map(|(i, (name, val))| -> Spanned<Intern<Expr<Untyped>>> {
-                //             Spanned(
-                //                 Expr::Label(
-                //                     Label(name),
-                //                     val.unwrap_or(name.convert(Expr::Unit))).into(),
-                //                 e.span()                            )
-                //         })
-                //         // .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
-                //         .reduce(|l, r| Spanned(Expr::Call(l, Spanned(Expr::Inject(Direction::Right, r).into(), r.1)).into(), l.1.union(r.1)))
-                //         .unwrap_unchecked()
-                    
-                // }
-
-Spanned(
-                                Expr::Inject(Direction::Right,name.convert(Expr::Label(
-                                    Label(name),
-                                    val.unwrap_or(name.convert(Expr::Unit))))).into(),
-                                e.span()                            )
-              
-                                                            
-        }).labelled("sum").as_context();
+                // dbg!(e.span());
+                Spanned(
+                    Expr::Inject(
+                        Direction::Right,
+                        name.convert(
+                            Expr::Label(
+                                Label(name),
+                                val.unwrap_or(Spanned(Expr::Unit.into(), e.span()))
+                            )
+                        )
+                    ).into(),
+                    e.span()
+                )
+              }).labelled("sum").as_context();
 
         let atom = recursive(|_atom| {
             choice((
@@ -898,24 +880,28 @@ let rname = select_ref! { Token::Ident(x) => *x };
 
     recursive(|pat| {
         choice((
-            
-just(Token::Pipe)
+            just(Token::Pipe)
                 .ignore_then(choice((
-                    // Labeled variant: Some x
                     raw_ident.then(pat.clone())
-                        .map_with(|(label, term), e| 
-                            Spanned(Pattern::Ctor(ast::Label(label), term).into(), e.span())
+                        .map(|(label, term)| 
+                            Pattern::Ctor(ast::Label(label), term)
                         ),
-                    // Particle variant: @None
-                    pat
+                    
+                    raw_ident.map(|label| {
+                        Pattern::Ctor(ast::Label(label), label.convert(Pattern::Unit))
+                    
+                    })
                         
                 )))
-                .then_ignore(just(Token::Pipe)),
-    // .map_with(|term, e| term) 
+                .then_ignore(just(Token::Pipe))
+                .map_with(|term, e| Spanned(term.into(), e.span())), 
 
- just(Token::At)
-                    .ignore_then(raw_ident)
-                    .map_with(|id, e| Spanned(Intern::from(Pattern::Particle(id)), e.span())) ,           raw_ident.map_with(|x, e| Spanned(Pattern::Var(Untyped(x)).into(), e.span()))
+             just(Token::At)
+                .ignore_then(raw_ident)
+                .map_with(|id, e| Spanned(Intern::from(Pattern::Particle(id)), e.span())),
+
+            raw_ident
+                .map_with(|x, e| Spanned(Pattern::Var(Untyped(x)).into(), e.span()))
      ))
     }
     )

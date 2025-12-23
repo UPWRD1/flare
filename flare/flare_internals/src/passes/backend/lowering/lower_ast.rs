@@ -393,8 +393,6 @@ impl<'source> LowerAst<'source> {
     }
 
     pub fn lower_ast(&mut self, ast: Spanned<Intern<Expr<Typed>>>) -> IR {
-        // dbg!(self.item_wrappers;
-        // dbg!( )
         let id = ast.1;
         match *ast.0 {
             Expr::Ident(Typed(var, ty)) => {
@@ -407,6 +405,7 @@ impl<'source> LowerAst<'source> {
             Expr::Number(n) => IR::Num(n),
             Expr::String(n) => IR::Str(n.0),
             Expr::Bool(b) => IR::Bool(b),
+            Expr::Unit => IR::Unit,
 
             Expr::Particle(p) => IR::Particle(p.0),
             Expr::Lambda(Typed(var, ty), body, _) => {
@@ -519,6 +518,7 @@ impl<'source> LowerAst<'source> {
                 }
             }
             Expr::Inject(direction, body) => {
+                dbg!(id, self.row_to_ev);
                 let param = self
                     .row_to_ev
                     .get(&id)

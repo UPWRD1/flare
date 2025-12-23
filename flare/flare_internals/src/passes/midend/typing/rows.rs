@@ -42,7 +42,7 @@ impl Row {
     pub fn render(&self, scheme: &TypeScheme) -> String {
         match self {
             Self::Open(row_var) => todo!(),
-            Self::Unifier(row_uni_var) => todo!(),
+            Self::Unifier(uni_var) => format!("rowunifier{}", uni_var.0),
             Self::Closed(closed_row) => closed_row
                 .fields
                 .iter()

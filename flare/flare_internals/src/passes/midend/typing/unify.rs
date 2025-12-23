@@ -192,7 +192,7 @@ impl Solver<'_> {
         // dbg!(&self.tables.row_unification_table);
         let left = self.normalize_row(left);
         let right = self.normalize_row(right);
-        dbg!(left, right);
+        // dbg!(left, right);
         match (left, right) {
             (Row::Open(left), Row::Open(right)) if left == right => Ok(()),
             (Row::Unifier(l), Row::Unifier(r)) => self
@@ -223,7 +223,7 @@ impl Solver<'_> {
                 if l.fields == r.fields
                 // || l.fields.to_vec() == r.fields.into_iter().rev().collect::<Vec<_>>()
                 {
-                    dbg!(l, r);
+                    // dbg!(l, r);
                     // let offenders = FxHashSet::from_iter(l.fields);
                     // let d = offenders.difference(&FxHashSet::from_iter(r.fields));
 

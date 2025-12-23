@@ -17,7 +17,7 @@ package Option =
 
     let map o f : |Some ?W, None| -> (?W -> ?U) -> |Some ?U, None| =
             match o in
-                |Some v| then
-                    let v = f(v) in |Some v|,
-                |None| then |None|,
+                |Some v| then Some (f(v)),
+                    # let v = f(v) in |Some v|,
+                |None| then None,
                    

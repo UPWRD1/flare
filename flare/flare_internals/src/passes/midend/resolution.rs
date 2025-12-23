@@ -652,6 +652,7 @@ impl<const N: usize> Resolver<N> {
         p: Spanned<Intern<Pattern<Untyped>>>,
         vars: Vec<Untyped>,
     ) -> CompResult<(Spanned<Intern<Expr<Untyped>>>, Vec<Untyped>)> {
+        // dbg!(&p);
         let res = match *p.0 {
             Pattern::Wildcard => (
                 p.convert(Expr::Ident(Untyped(p.convert(p.1.to_string())))),
@@ -662,10 +663,20 @@ impl<const N: usize> Resolver<N> {
             Pattern::String(_) => todo!(),
             Pattern::Particle(p) => (p.convert(Expr::Particle(p)), vars),
             Pattern::Bool(_) => todo!(),
-            Pattern::Unit => todo!(),
+            Pattern::Unit => (p.convert(Expr::Unit), vars),
             Pattern::Ctor(label, ex) => {
-                let (ex, vars) = self.resolve_pattern(ex, vars)?;
-                (p.convert(Expr::Unlabel(ex, label)), vars)
+                if *ex.0 == Pattern::Unit {
+                    let inaccessible = Untyped(p.convert("%INACCESSIBLE%".to_string()));
+
+                    (
+                        p.convert(Expr::Unit),
+                        [vars, [inaccessible].to_vec()].concat(),
+                    )
+                } else {
+                    let (ex, vars) = self.resolve_pattern(ex, vars)?;
+
+                    (p.convert(Expr::Unlabel(ex, label)), vars)
+                }
             }
             _ => todo!(),
         };
@@ -677,14 +688,19 @@ impl<const N: usize> Resolver<N> {
         b: MatchArm<Untyped>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
-        let (pat, bindings) = self.resolve_pattern(b.pat, vec![])?;
+        let (pat_expr, bindings) = self.resolve_pattern(b.pat, vec![])?;
 
         let body = bindings.into_iter().fold(b.body, |prev, v| {
-            let unwrapped = prev.modify(Expr::Let(v, pat, prev));
-            prev.modify(Expr::Lambda(v, unwrapped, LambdaInfo::Anon))
+            if *v.0.0 == "%INACCESSIBLE%%" {
+                prev.modify(Expr::Lambda(v, prev, LambdaInfo::Anon))
+            } else {
+                let unwrapped = prev.modify(Expr::Let(v, pat_expr, prev));
+                prev.modify(Expr::Lambda(v, unwrapped, LambdaInfo::Anon))
+            }
         });
+        // dbg!(body);
+        // let body = self.analyze_expr(body, vars)?;
         Ok(body)
-        // self.analyze_expr(body, vars)
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
