@@ -79,7 +79,7 @@ impl IR {
             | Self::Fun(_, _)
             | Self::Tag(_, _, _) => true,
             Self::App(_, _) | Self::TyApp(_, _) => false,
-
+            Self::Case(_, _, _) => true,
             _ => todo!("{self:?}"),
         }
     }
@@ -536,7 +536,7 @@ impl<'p> Simplifier<'p> {
                 IR::Item(_, itemid) => {
                     // dbg!(self.items.len());
                     // break self.rebuild(ir, in_scope, ctx);
-                    match self.item_inline(itemid, &in_scope) {
+                    match self.item_inline(itemid, &in_scope, &ctx) {
                         ControlFlow::Continue(c) => c,
                         ControlFlow::Break(_) => {
                             break self.rebuild(ir, in_scope, ctx);
@@ -624,7 +624,12 @@ impl<'p> Simplifier<'p> {
             })
     }
 
-    fn item_inline(&mut self, itemid: ItemId, in_scope: &InScope) -> ControlFlow<ItemId, IR> {
+    fn item_inline(
+        &mut self,
+        itemid: ItemId,
+        in_scope: &InScope,
+        ctx: &SimplifierContext,
+    ) -> ControlFlow<ItemId, IR> {
         if self.seen_items.contains(&itemid) {
             ControlFlow::Break(itemid)
         } else {
@@ -632,7 +637,9 @@ impl<'p> Simplifier<'p> {
             self.items
                 .get(itemid.0 as usize)
                 .map(|(definition, _)| {
-                    if definition.size() < self.inline_size_threshold {
+                    if definition.size() < self.inline_size_threshold * 2
+                        && self.some_benefit(definition, in_scope, ctx)
+                    {
                         self.subst = Subst::default();
                         ControlFlow::Continue(definition.clone())
                     } else {
@@ -712,7 +719,7 @@ impl<'p> Simplifier<'p> {
                         if self.seen_items.contains(id) {
                             ir = IR::app(ir, arg);
                         } else {
-                            todo!()
+                            panic!()
                         }
                     } else {
                         // dbg!(&ir, &arg);

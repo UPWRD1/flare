@@ -302,6 +302,7 @@ impl<T: Target> Context<T> {
         let ir = lowerer.lower(source, &items);
         let ir = simplify::simplify(&ir);
         let ir = monomorph::monomorph(ir);
+        let ir = simplify::simplify(&ir);
 
         let g = Generator::new(self.target, ir);
 

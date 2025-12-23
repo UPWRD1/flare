@@ -520,6 +520,7 @@ impl IR {
     }
 
     fn collect_app_args(self, args: &mut Vec<Self>) -> Self {
+        // dbg!(&self);
         if let Self::App(fun, arg) = self {
             args.push(*arg);
             fun.collect_app_args(args)
@@ -542,7 +543,7 @@ trait DocExt<'a> {
 
 impl<'a> DocExt<'a> for Doc<'a> {
     fn parens(self) -> Self {
-        Self::text("(").append(self).append(Self::text(")"))
+        Self::text("(").append(self).text(")")
     }
 
     fn brackets(self) -> Self {
@@ -603,12 +604,12 @@ impl Render for IR {
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))
             }
 
-            Self::App(l, r) => {
-                let mut v = vec![];
-                r.collect_app_args(&mut v);
-                l.render().append(
-                    //l.render().append(r.render().parens()),
-                    Doc::nil()
+            Self::App(fun, r) => {
+                let mut v = vec![*r];
+                let fun = fun.collect_app_args(&mut v);
+
+                fun.render().append(
+                    Doc::line_or_nil()
                         .append(Doc::list(
                             Itertools::intersperse(
                                 v.into_iter().map(Render::render),
@@ -702,7 +703,7 @@ impl Render for IR {
             Self::Tag(t, i, b) => Doc::nil()
                 .append(b.render())
                 .space()
-                .append(Doc::text("tag"))
+                .append(Doc::text("as"))
                 .space()
                 .append(t.render())
                 .append(Doc::text(" variant "))
@@ -725,7 +726,7 @@ impl Display for IR {
             tiny_pretty::print(
                 &doc,
                 &tiny_pretty::PrintOptions {
-                    width: 35,
+                    width: 80,
                     ..Default::default()
                 }
             )

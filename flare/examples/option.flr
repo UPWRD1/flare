@@ -1,9 +1,9 @@
 package Option = 
-    type Option[?X] = |Some ?X, None|
+    type Option[?T] = |Some ?T, None|
     
-    let Some x : ?X -> Option[?X] = |Some x|
+    let Some x : ?T -> Option[?T] = |Some x|
 
-    let None : Option[?X] = |None|
+    let None : Option[?T] = |None|
 
     let unwrap_or option default : Option[?T] -> ?T -> ?T =
         match option in
@@ -15,7 +15,7 @@ package Option =
             | Some _v| then true,
             | None | then false
 
-    let map o f : |Some ?W, None| -> (?W -> ?U) -> |Some ?U, None| =
+    let map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
             match o in
                 |Some v| then Some (f(v)),
                     # let v = f(v) in |Some v|,

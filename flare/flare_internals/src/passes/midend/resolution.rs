@@ -149,7 +149,7 @@ impl<const N: usize> Resolver<N> {
         for (idx, p) in filtered {
             self.analyze_package(idx, p)?
         }
-        self.debug();
+        // self.debug();
         // self.dag.reverse();
 
         let reachable: FxHashSet<NodeIndex> =

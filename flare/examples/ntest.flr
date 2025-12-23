@@ -5,12 +5,17 @@ package Main =
     
     extern to_num: str ->num
 
-    # type Wrapper[?T] = {data: ?T}
-    
-    # let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
-        # let  = f(w.data) in 
-        # {data = v}
+    type Wrapper[?T] = {data: ?T}
 
+    let new_Wrapper t : ?T -> Wrapper[?T] =
+        {data = t}
+
+    let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
+        let v = f(w.data) in 
+        {data = v}
+
+    let extract w : Wrapper[?T] -> ?T =
+        w.data
     
     # let map_wrapper w f : Wrapper[str] -> (str -> num) -> Wrapper[num] =
         # let v = f(w.data) in 
@@ -24,14 +29,14 @@ package Main =
     # let map item f : ?T -> (?T -> ?U) -> ?U =
         # f(item)
         
-    let main: Option[num] =
+    let main: num =
         # let val = {data= "3"} in
         # let mapped = map_wrapper val (fn x => to_num x) in
         # mapped.data
-        let val =  Some "10" in
-        let mapped = map val (fn x => to_num x) in
-        mapped
-        # unwrap_or mapped 0
+        let val =  Some (new_Wrapper "10") in
+        let mapped = map val (fn x => map_wrapper x (fn data => to_num data )) in    
+        let unwrapped = unwrap_or mapped (new_Wrapper 0) in
+        extract unwrapped
               # identity (creator 3 true)
         # let status = let p = {name= "joe", age = 10000, iscool = true} in Ok p.age in
         
