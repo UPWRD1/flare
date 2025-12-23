@@ -81,16 +81,16 @@ impl Typechecker {
     }
 
     fn register_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
-        let (unbound_types, unbound_rows, types_to_name, ty, _) = self.extract_generics(t);
-        // TODO: Add support for rows and generics
-        let scheme = TypeScheme {
-            unbound_types,
-            unbound_rows,
-            evidence: Vec::new(),
-            types_to_name,
-            ty,
-        };
-        self.context.insert(ItemId(item_idx.index()), scheme);
+        // let (unbound_types, unbound_rows, types_to_name, ty, _) = self.extract_generics(t);
+        // // TODO: Add support for rows and generics
+        // let scheme = TypeScheme {
+        //     unbound_types,
+        //     unbound_rows,
+        //     evidence: Vec::new(),
+        //     types_to_name,
+        //     ty,
+        // };
+        // self.context.insert(ItemId(item_idx.index()), scheme);
         Ok(())
     }
 
@@ -111,7 +111,7 @@ impl Typechecker {
         t: Spanned<Intern<Type>>,
         accum: &mut BTreeSet<TypeVar>,
         row_accum: &mut BTreeSet<RowVar>,
-        names: &mut FxHashMap<TypeVar, Spanned<Intern<String>>>,
+        names: &mut FxHashMap<TypeVar, Intern<String>>,
         evidence: &mut Vec<Evidence>,
     ) -> Spanned<Intern<Type>> {
         match *t.0 {
@@ -134,11 +134,11 @@ impl Typechecker {
                 sub
             }
             Type::Generic(n) => {
-                let v = if let Some((v, _)) = names.iter().find(|(_, x)| x.0 == n.0) {
+                let v = if let Some((v, _)) = names.iter().find(|(_, x)| **x == n.0) {
                     *v
                 } else {
                     let v = self.new_type_var();
-                    names.insert(v, n);
+                    names.insert(v, n.0);
                     v
                 };
 
@@ -201,7 +201,7 @@ impl Typechecker {
     ) -> (
         BTreeSet<TypeVar>,
         BTreeSet<RowVar>,
-        FxHashMap<TypeVar, Spanned<Intern<String>>>,
+        FxHashMap<TypeVar, Intern<String>>,
         Spanned<Intern<Type>>,
         Vec<Evidence>,
     ) {
@@ -221,7 +221,7 @@ impl Typechecker {
         // let unbound_rows = (*f.unbound_rows).clone();
         let (unbound_types, unbound_rows, types_to_name, ty, evidence) =
             self.extract_generics(f.sig);
-        dbg!(&unbound_types);
+        // dbg!(&ty);
 
         let scheme = TypeScheme {
             unbound_types,
@@ -266,30 +266,29 @@ impl Typechecker {
                 let solved = match item.kind {
                     ItemKind::Function(f) => {
                         // dbg!(scheme.ty);
-                        if matches!(*scheme.ty.0, Type::Infer) {
-                            Solver::type_infer_with_items(&self.context, f.body)
-                                .map_err(|x| ErrorCollection::new(x.into_values().collect()))?
-                                // .expect("Inference should not fail")
-                                .to_typesoutput()
-                        } else {
-                            Solver::check_with_items(&self.context, f.body, scheme).map_err(
-                                |e| {
-                                    if let Some(e) = e.downcast_ref::<DynamicErr>() {
-                                        e.clone()
-                                            .label(
-                                                "in this let-definition",
-                                                f.name
-                                                    .ident()
-                                                    .expect("Function should have a valid name")
-                                                    .1,
-                                            )
-                                            .into()
-                                    } else {
-                                        e
-                                    }
-                                },
-                            )?
-                        }
+                        Solver::check_with_items(&self.context, f.body, scheme)
+                            .map_err(|e| {
+                                if let Some(e) = e.downcast_ref::<DynamicErr>() {
+                                    e.clone()
+                                        .label(
+                                            "in this let-definition",
+                                            f.name
+                                                .ident()
+                                                .expect("Function should have a valid name")
+                                                .1,
+                                        )
+                                        .into()
+                                } else {
+                                    e
+                                }
+                            })
+                            .inspect(|x| {
+                                println!(
+                                    "Checked {} : {}",
+                                    f.name.0,
+                                    x.scheme.ty.0.render(&x.scheme)
+                                )
+                            })?
                     }
 
                     ItemKind::Extern { name, args, sig: _ } => {
@@ -297,6 +296,7 @@ impl Typechecker {
                             id,
                             crate::resource::rep::ast::Kind::Extern((*name.0).clone().leak()),
                         ));
+
                         let funcs = args.iter().fold(ex, |prev, arg| {
                             prev.convert(Expr::Lambda(
                                 *arg,
@@ -305,9 +305,8 @@ impl Typechecker {
                             ))
                         });
 
-                        Solver::type_infer_with_items(&self.context, funcs)
+                        Solver::check_with_items(&self.context, funcs, scheme)
                             .expect("Inference should succeed")
-                            .to_typesoutput()
                     }
                     _ => unreachable!(),
                 };

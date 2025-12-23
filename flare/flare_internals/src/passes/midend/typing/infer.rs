@@ -144,7 +144,7 @@ impl Solver<'_> {
 
             Expr::Let(name, def, body) => {
                 let (mut def_out, def_ty) = self.infer(env.clone(), def);
-                // dbg!(def_ty);
+                // dbg!(name, def_ty);
                 let env = env.update(name.0.0, def_ty);
                 let (body_out, body_ty) = self.infer(env, body);
                 def_out.constraints.extend(body_out.constraints);

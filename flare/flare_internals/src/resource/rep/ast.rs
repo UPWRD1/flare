@@ -181,7 +181,7 @@ where
     Number(ordered_float::OrderedFloat<f64>),
     String(Spanned<Intern<String>>),
     Bool(bool),
-
+    Unit,
     Particle(Spanned<Intern<String>>),
 
     Hole(V),
@@ -196,9 +196,6 @@ where
 
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
-
-    ExternFunc(ItemId, Spanned<Intern<String>>, Spanned<Intern<Type>>),
-    Unit,
 
     Pat(Spanned<Pattern<V>>),
 

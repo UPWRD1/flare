@@ -5,7 +5,7 @@ use internment::Intern;
 use itertools::Itertools;
 
 use crate::{
-    passes::midend::typing::{Evidence, TyUniVar, types::Type},
+    passes::midend::typing::{Evidence, TyUniVar, TypeScheme, types::Type},
     resource::rep::{Spanned, ast::Label},
 };
 
@@ -39,6 +39,18 @@ pub enum Row {
 }
 
 impl Row {
+    pub fn render(&self, scheme: &TypeScheme) -> String {
+        match self {
+            Self::Open(row_var) => todo!(),
+            Self::Unifier(row_uni_var) => todo!(),
+            Self::Closed(closed_row) => closed_row
+                .fields
+                .iter()
+                .zip(closed_row.values)
+                .map(|(l, t)| format!("{}: {}", l.0.0, t.0.render(scheme)))
+                .join(", "),
+        }
+    }
     pub fn single(lbl: Label, ty: Spanned<Intern<Type>>) -> Self {
         Self::Closed(ClosedRow {
             fields: vec![lbl].leak(),

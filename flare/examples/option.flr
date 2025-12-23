@@ -5,7 +5,7 @@ package Option =
 
     let None : Option[?X] = |None|
 
-    let unwrap_or option default : |Some ?T, None| -> ?T -> ?T =
+    let unwrap_or option default : Option[?T] -> ?T -> ?T =
         match option in
             |Some x1| then x1,
             |None| then default
@@ -15,8 +15,9 @@ package Option =
             | Some _v| then true,
             | None | then false
 
-    let map o f : Option[?W] -> (?W -> ?U) -> Option[?U] =
+    let map o f : |Some ?W, None| -> (?W -> ?U) -> |Some ?U, None| =
             match o in
-                |Some v| then Some (f(v)),
-                |None| then None,
+                |Some v| then
+                    let v = f(v) in |Some v|,
+                |None| then |None|,
                    

@@ -117,7 +117,7 @@ pub struct TypeScheme {
     pub unbound_rows: BTreeSet<RowVar>,
     pub evidence: Vec<Evidence>,
     pub ty: Spanned<Intern<Type>>,
-    pub types_to_name: FxHashMap<TypeVar, Spanned<Intern<String>>>,
+    pub types_to_name: FxHashMap<TypeVar, Intern<String>>,
 }
 
 #[derive(Debug)]
@@ -276,81 +276,81 @@ impl<'env> Solver<'env> {
         subst_out
     }
 
-    pub fn type_infer_with_items(
-        item_source: &'env ItemSource,
-        ast: Spanned<Intern<Expr<Untyped>>>,
-    ) -> Result<TypeInferOut, FxHashMap<NodeId, CompilerErr>> {
-        let ctx = Self {
-            item_source,
-            tables: Default::default(),
-        };
-        ctx.type_infer_logic(ast)
-    }
+    // pub fn type_infer_with_items(
+    //     item_source: &'env ItemSource,
+    //     ast: Spanned<Intern<Expr<Untyped>>>,
+    // ) -> Result<TypeInferOut, FxHashMap<NodeId, CompilerErr>> {
+    //     let ctx = Self {
+    //         item_source,
+    //         tables: Default::default(),
+    //     };
+    //     ctx.type_infer_logic(ast)
+    // }
 
-    pub fn type_infer_logic(
-        mut self,
-        ast: Spanned<Intern<Expr<Untyped>>>,
-    ) -> Result<TypeInferOut, FxHashMap<NodeId, CompilerErr>> {
-        // Constraint generation
-        let (out, ty) = self.infer(im::HashMap::with_hasher(FxBuildHasher), ast);
+    // pub fn type_infer_logic(
+    //     mut self,
+    //     ast: Spanned<Intern<Expr<Untyped>>>,
+    // ) -> Result<TypeInferOut, FxHashMap<NodeId, CompilerErr>> {
+    //     // Constraint generation
+    //     let (out, ty) = self.infer(im::HashMap::with_hasher(FxBuildHasher), ast);
 
-        // Constraint solving
+    //     // Constraint solving
 
-        if self.unification(out.constraints).is_err() {
-            return Err(std::mem::take(&mut self.tables.errors));
-        }; // Apply our substition to our inferred types
-        let subst_out = self
-            .substitute_ty(ty)
-            .merge(self.substitute_ast(out.typed_ast), |ty, ast| (ty, ast));
+    //     if self.unification(out.constraints, ).is_err() {
+    //         return Err(std::mem::take(&mut self.tables.errors));
+    //     }; // Apply our substition to our inferred types
+    //     let subst_out = self
+    //         .substitute_ty(ty)
+    //         .merge(self.substitute_ast(out.typed_ast), |ty, ast| (ty, ast));
 
-        let mut evidence_subst = self.normalize_mentioned_row_combs(subst_out);
-        let row_to_ev = std::mem::take(&mut self.tables.row_to_combo)
-            .into_iter()
-            .map(|(id, combo)| {
-                let out = self.substitute_row_comb(combo);
-                evidence_subst.unbound_rows.extend(out.unbound_rows);
-                evidence_subst.unbound_tys.extend(out.unbound_tys);
-                (id, out.value)
-            })
-            .collect();
+    //     let mut evidence_subst = self.normalize_mentioned_row_combs(subst_out);
+    //     let row_to_ev = std::mem::take(&mut self.tables.row_to_combo)
+    //         .into_iter()
+    //         .map(|(id, combo)| {
+    //             let out = self.substitute_row_comb(combo);
+    //             evidence_subst.unbound_rows.extend(out.unbound_rows);
+    //             evidence_subst.unbound_tys.extend(out.unbound_tys);
+    //             (id, out.value)
+    //         })
+    //         .collect();
 
-        let item_wrappers = std::mem::take(&mut self.tables.item_wrappers)
-            .into_iter()
-            .map(|(id, wrapper)| {
-                let out = self.substitute_wrapper(wrapper);
-                evidence_subst.unbound_rows.extend(out.unbound_rows);
-                evidence_subst.unbound_tys.extend(out.unbound_tys);
-                (id, out.value)
-            })
-            .collect();
+    //     let item_wrappers = std::mem::take(&mut self.tables.item_wrappers)
+    //         .into_iter()
+    //         .map(|(id, wrapper)| {
+    //             let out = self.substitute_wrapper(wrapper);
+    //             evidence_subst.unbound_rows.extend(out.unbound_rows);
+    //             evidence_subst.unbound_tys.extend(out.unbound_tys);
+    //             (id, out.value)
+    //         })
+    //         .collect();
 
-        let branch_to_ret_ty = std::mem::take(&mut self.tables.branch_to_ret_ty)
-            .into_iter()
-            .map(|(id, ty)| {
-                let out = self.substitute_ty(ty);
-                evidence_subst.unbound_rows.extend(out.unbound_rows);
-                evidence_subst.unbound_tys.extend(out.unbound_tys);
-                (id, out.value)
-            })
-            .collect();
+    //     let branch_to_ret_ty = std::mem::take(&mut self.tables.branch_to_ret_ty)
+    //         .into_iter()
+    //         .map(|(id, ty)| {
+    //             let out = self.substitute_ty(ty);
+    //             evidence_subst.unbound_rows.extend(out.unbound_rows);
+    //             evidence_subst.unbound_tys.extend(out.unbound_tys);
+    //             (id, out.value)
+    //         })
+    //         .collect();
 
-        // Return our typed ast and it's type scheme
-        let ((ty, ast), evidence) = evidence_subst.value;
-        Ok(TypeInferOut {
-            ast,
-            errors: self.tables.errors,
-            scheme: TypeScheme {
-                unbound_rows: evidence_subst.unbound_rows,
-                unbound_types: evidence_subst.unbound_tys,
-                evidence,
-                ty,
-                types_to_name: FxHashMap::default(),
-            },
-            row_to_ev,
-            branch_to_ret_ty,
-            item_wrappers,
-        })
-    }
+    //     // Return our typed ast and it's type scheme
+    //     let ((ty, ast), evidence) = evidence_subst.value;
+    //     Ok(TypeInferOut {
+    //         ast,
+    //         errors: self.tables.errors,
+    //         scheme: TypeScheme {
+    //             unbound_rows: evidence_subst.unbound_rows,
+    //             unbound_types: evidence_subst.unbound_tys,
+    //             evidence,
+    //             ty,
+    //             types_to_name: FxHashMap::default(),
+    //         },
+    //         row_to_ev,
+    //         branch_to_ret_ty,
+    //         item_wrappers,
+    //     })
+    // }
 
     pub fn check_with_items(
         item_source: &'env ItemSource,
@@ -388,7 +388,7 @@ impl<'env> Solver<'env> {
                 ),
             }));
         // dbg!(&out.constraints);
-        if self.unification(out.constraints).is_err() {
+        if self.unification(out.constraints, &signature).is_err() {
             return Err(std::mem::take(&mut self.tables.errors)
                 .into_values()
                 .collect::<Vec<_>>()

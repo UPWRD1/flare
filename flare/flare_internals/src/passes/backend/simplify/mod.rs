@@ -706,7 +706,6 @@ impl<'p> Simplifier<'p> {
             match entry {
                 ContextEntry::App(arg) => {
                     if let IR::Fun(var, body) = ir {
-                        // self.saturated_fun_count += 1;
                         self.saturated_fun_count += 1;
                         return self.simplify(IR::local(var, arg, *body), in_scope, ctx);
                     } else if let IR::Item(_, ref id) = ir {

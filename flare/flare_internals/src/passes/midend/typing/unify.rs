@@ -2,7 +2,7 @@ use internment::Intern;
 
 use crate::{
     passes::midend::typing::{
-        Constraint, Provenance, Solver, TyUniVar, Type,
+        Constraint, Provenance, Solver, TyUniVar, Type, TypeScheme,
         rows::{ClosedRow, Row, RowCombination, RowUniVar},
     },
     resource::{
@@ -189,9 +189,10 @@ impl Solver<'_> {
     }
 
     fn unify_row_row(&mut self, left: Row, right: Row) -> Result<(), UnificationError> {
+        // dbg!(&self.tables.row_unification_table);
         let left = self.normalize_row(left);
         let right = self.normalize_row(right);
-        // dbg!(left, right);
+        dbg!(left, right);
         match (left, right) {
             (Row::Open(left), Row::Open(right)) if left == right => Ok(()),
             (Row::Unifier(l), Row::Unifier(r)) => self
@@ -206,6 +207,7 @@ impl Solver<'_> {
                 .unify_var_value(var, Some(Row::Open(row)))
                 .map_err(UnificationError::RowsNotEqual),
             (Row::Unifier(var), Row::Closed(row)) | (Row::Closed(row), Row::Unifier(var)) => {
+                // dbg!(&self.tables.row_unification_table);
                 self.tables
                     .row_unification_table
                     .unify_var_value(var, Some(Row::Closed(row)))
@@ -213,9 +215,15 @@ impl Solver<'_> {
                 self.dispatch_any_solved(var, row)
             }
             (Row::Closed(l), Row::Closed(r)) => {
+                // dbg!(l, r);
+                // if l.fields
+                //     .iter()
+                //     .zip(r.fields)
+                //     .all(|(lf, rf)| lf.0.0 == rf.0.0)
                 if l.fields == r.fields
                 // || l.fields.to_vec() == r.fields.into_iter().rev().collect::<Vec<_>>()
                 {
+                    dbg!(l, r);
                     // let offenders = FxHashSet::from_iter(l.fields);
                     // let d = offenders.difference(&FxHashSet::from_iter(r.fields));
 
@@ -227,27 +235,6 @@ impl Solver<'_> {
                         self.unify_ty_ty(*left_ty, *right_ty)?;
                     }
                     Ok(())
-                // } else if let Some(l) = l.is_subtype_of(&r) {
-                //     // let res = self.diff_and_unify(r, l)?;
-                //     // dbg!(res);
-
-                //     let left_tys = l.values.iter();
-                //     let right_tys = r.values.iter();
-
-                //     for (i, (left_ty, right_ty)) in left_tys.zip(right_tys).enumerate() {
-                //         self.unify_ty_ty(*left_ty, *right_ty)?;
-                //     }
-                //     Ok(())
-                //     // let res = self.diff_and_unify(r, l)?;
-                //     // dbg!(res);
-
-                //     let left_tys = l.values.iter();
-                //     let right_tys = r.values.iter();
-
-                //     for (i, (left_ty, right_ty)) in left_tys.zip(right_tys).enumerate() {
-                //         self.unify_ty_ty(*left_ty, *right_ty)?;
-                //     }
-                //     Ok(())
                 } else {
                     Err(UnificationError::RowsNotEqual((left, right)))
                 }
@@ -275,16 +262,8 @@ impl Solver<'_> {
             }
         }
         Ok(ClosedRow {
-            fields: diff_fields
-                // .into_iter()
-                // .map(|x| x.to_owned())
-                // .collect::<Vec<_>>()
-                .leak(),
-            values: diff_values
-                // .into_iter()
-                // .map(|x| x.to_owned())
-                // .collect::<Vec<_>>()
-                .leak(),
+            fields: diff_fields.leak(),
+            values: diff_values.leak(),
         })
     }
 
@@ -300,6 +279,7 @@ impl Solver<'_> {
             (Row::Unifier(var), Row::Closed(sub), Row::Closed(goal))
             | (Row::Closed(sub), Row::Unifier(var), Row::Closed(goal)) => {
                 let diff_row = self.diff_and_unify(goal, sub)?;
+
                 self.unify_row_row(Row::Unifier(var), Row::Closed(diff_row))
             }
 
@@ -351,7 +331,11 @@ impl Solver<'_> {
         }
     }
 
-    pub fn unification(&mut self, constraints: Vec<Constraint>) -> Result<(), UnificationFailure> {
+    pub fn unification(
+        &mut self,
+        constraints: Vec<Constraint>,
+        scheme: &TypeScheme,
+    ) -> Result<(), UnificationFailure> {
         for constr in constraints {
             // dbg!(&constr);
             let (provenance, uni_state) = match constr {
@@ -366,50 +350,84 @@ impl Solver<'_> {
                         provenance.id(),
                         TypeErr::InfiniteType { type_var, ty }.into(),
                     ),
-                    UnificationError::TypeNotEqual(left, right) => match provenance {
-                        Provenance::UnexpectedFun(node_id) => (
-                            node_id,
-                            DynamicErr::new("Encountered an unexpected function".to_string())
-                                .label("This is a function", node_id)
-                                .extra(format!("This is {}", left.0), left.1)
-                                .extra(format!("This is {}", right.0), right.1)
+                    UnificationError::TypeNotEqual(left, right) => {
+                        match provenance {
+                            Provenance::UnexpectedFun(node_id) => (
+                                node_id,
+                                DynamicErr::new("Encountered an unexpected function".to_string())
+                                    .label("This is a function", node_id)
+                                    .extra(format!("This is {}", left.0.render(scheme)), left.1)
+                                    .extra(format!("This is {}", right.0.render(scheme)), right.1)
+                                    .into(),
+                            ),
+                            Provenance::AppExpectedFun(node_id) => (
+                                node_id,
+                                DynamicErr::new("Expected a function".to_string())
+                                    .label("This is not a function", node_id)
+                                    .extra(format!("This is {}", left.0), left.1)
+                                    .extra(format!("This is {}", right.0), right.1)
+                                    .into(),
+                            ),
+                            Provenance::ExpectedUnify(l_id, r_id) => {
+                                let left_rendered = left.0.render(scheme);
+                                let right_rendered = right.0.render(scheme);
+                                (
+                                l_id,
+                                DynamicErr::new(format!(
+                                    "Type mismatch between {left_rendered} and {right_rendered}"
+                                ))
+                                .label(format!("expected '{right_rendered}' here, found '{left_rendered}'"), l_id)
+                                .extra(format!("This is {}", left_rendered), left.1)
+                                .extra(format!("This is {}", right_rendered), right.1)
                                 .into(),
-                        ),
-                        Provenance::AppExpectedFun(node_id) => (
-                            node_id,
-                            DynamicErr::new("Expected a function".to_string())
-                                .label("This is not a function", node_id)
-                                .extra(format!("This is {}", left.0), left.1)
-                                .extra(format!("This is {}", right.0), right.1)
-                                .into(),
-                        ),
-                        Provenance::ExpectedUnify(l_id, r_id) => (
-                            l_id,
-                            DynamicErr::new(format!("Type mismatch between {left} and {right}"))
-                                .label(format!("expected '{right}' here, found '{left}'"), left.1)
-                                .extra(format!("This is {}", left), r_id)
-                                .extra(format!("This is {}", right), right.1)
-                                .into(),
-                        ),
-                        // FIXME: Use actual rows and not types...
-                        Provenance::ExpectedCombine(l_id) => {
-                            let err = DynamicErr::new("Could not combine types")
-                                .label(format!("Expected {}, found {}", left.0, right.0), left.1)
-                                .extra("Defined here", left.1);
-                            (l_id, err.into())
+                            )
+                            }
+                            // FIXME: Use actual rows and not types...
+                            Provenance::ExpectedCombine(l_id) => {
+                                let err = DynamicErr::new("Could not combine types")
+                                    .label(
+                                        format!("Expected {}, found {}", left.0, right.0),
+                                        left.1,
+                                    )
+                                    .extra("Defined here", left.1);
+                                (l_id, err.into())
+                            }
+                            Provenance::ConditionIsBool(c_id) => {
+                                let err = DynamicErr::new("Expected bool").label(
+                                    format!("This condtio should be a bool, found {}", right.0),
+                                    left.1,
+                                );
+                                (c_id, err.into())
+                            }
                         }
-                        Provenance::ConditionIsBool(c_id) => {
-                            let err = DynamicErr::new("Expected bool").label(
-                                format!("This condtio should be a bool, found {}", right.0),
-                                left.1,
-                            );
-                            (c_id, err.into())
-                        }
-                    },
+                    }
                     UnificationError::RowsNotEqual((l, r)) => {
                         // dbg!(provenance);
-                        let err = DynamicErr::new(format!("Type mismatch between {l} and {r}"))
-                            .label(format!("Expected {}, found {}", r, l), provenance.id());
+                        let err = match provenance {
+                            Provenance::ExpectedUnify(l_span, r_span) => {
+                                DynamicErr::new(format!("Row mismatch between {l} and {r}"))
+                                    .label(
+                                        format!(
+                                            "Expected {}, found {}",
+                                            r.render(scheme),
+                                            l.render(scheme)
+                                        ),
+                                        provenance.id(),
+                                    )
+                                    .extra("here", l_span)
+                                    .extra("and here", r_span)
+                            }
+
+                            _ => DynamicErr::new(format!("Row mismatch between {l} and {r}"))
+                                .label(
+                                    format!(
+                                        "Expected {}, found {}",
+                                        r.render(scheme),
+                                        l.render(scheme)
+                                    ),
+                                    provenance.id(),
+                                ),
+                        };
                         (provenance.id(), err.into())
                     }
                 };

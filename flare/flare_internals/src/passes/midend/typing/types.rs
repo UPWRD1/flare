@@ -5,7 +5,10 @@ use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
 use crate::{
-    passes::midend::typing::rows::{Row, RowUniVar},
+    passes::midend::typing::{
+        TypeScheme,
+        rows::{Row, RowUniVar},
+    },
     resource::{
         errors::CompResult,
         rep::{
@@ -85,6 +88,15 @@ impl Ident for Type {
 }
 
 impl Type {
+    pub fn render(&self, scheme: &TypeScheme) -> String {
+        match self {
+            Self::Var(v) => format!("?{}", scheme.types_to_name.get(v).unwrap()),
+            Self::Func(l, r) => format!("{} -> {}", l.0.render(scheme), r.0.render(scheme)),
+            Self::Prod(r) => format!("{{{}}}", r.render(scheme)),
+            Self::Sum(r) => format!("|{}|", r.render(scheme)),
+            _ => format!("{self}"),
+        }
+    }
     pub fn unit() -> Self {
         Self::Prod(Row::Closed(super::ClosedRow {
             fields: vec![].leak(),

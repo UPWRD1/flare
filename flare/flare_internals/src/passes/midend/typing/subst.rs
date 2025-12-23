@@ -155,13 +155,9 @@ impl Solver<'_> {
             Expr::Number(i) => SubstOut::new(ast.convert(Expr::Number(i))),
             Expr::String(s) => SubstOut::new(ast.convert(Expr::String(s))),
             Expr::Bool(b) => SubstOut::new(ast.convert(Expr::Bool(b))),
-
+            Expr::Unit => SubstOut::new(ast.convert(Expr::Unit)),
             Expr::Particle(p) => SubstOut::new(ast.convert(Expr::Particle(p))),
 
-            // Expr::Add(l, r) => SubstOut::new(ast.convert(Expr::Add(l, r))),
-            // Expr::Sub(l, r) => SubstOut::new(ast.convert(Expr::Sub(l, r))),
-            // Expr::Mul(l, r) => SubstOut::new(ast.convert(Expr::Mul(l, r))),
-            // Expr::Div(l, r) => SubstOut::new(ast.convert(Expr::Div(l, r))),
             Expr::Add(l, r) => self
                 .substitute_ast(l)
                 .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Add(l, r))),

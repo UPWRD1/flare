@@ -57,6 +57,8 @@ pub struct Resolver<const N: usize> {
     current_dag_node: Option<NodeIndex>,
     pub dag: DiGraph<DagIdx, ()>,
     main_dag_idx: Option<NodeIndex>,
+
+    generic_scope: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
     // intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
 }
 
@@ -110,6 +112,7 @@ impl<const N: usize> Resolver<N> {
             current_dag_node: None,
             dag: DiGraph::new(),
             main_dag_idx: None,
+            generic_scope: im::HashMap::with_hasher(FxBuildHasher),
             // intrinsics,
         }
     }
@@ -146,7 +149,7 @@ impl<const N: usize> Resolver<N> {
         for (idx, p) in filtered {
             self.analyze_package(idx, p)?
         }
-        // self.debug();
+        self.debug();
         // self.dag.reverse();
 
         let reachable: FxHashSet<NodeIndex> =
@@ -219,17 +222,17 @@ impl<const N: usize> Resolver<N> {
                 ItemKind::Type(_, _, t) => {
                     // Analyze the type
                     // dbg!(t);
-                    let t = self.in_context(|me| me.analyze_type(t), dag_idx)?;
-                    // dbg!(t);
-                    // Write back the result
-                    let item = self
-                        .env
-                        .graph
-                        .node_weight_mut(node_idx)
-                        .expect("Node should exist");
-                    if let ItemKind::Type(_, _, ref mut ty) = item.kind {
-                        *ty = t;
-                    }
+                    // let t = self.in_context(|me| me.analyze_type(t), dag_idx)?;
+                    // // dbg!(t);
+                    // // Write back the result
+                    // let item = self
+                    //     .env
+                    //     .graph
+                    //     .node_weight_mut(node_idx)
+                    //     .expect("Node should exist");
+                    // if let ItemKind::Type(_, _, ref mut ty) = item.kind {
+                    //     *ty = t;
+                    // }
                     Ok(())
                 }
 
@@ -277,10 +280,12 @@ impl<const N: usize> Resolver<N> {
         // let f_old = *the_func;
         self.in_context(
             |me| {
+                me.generic_scope.clear();
                 let sig = me.analyze_type(the_func.sig)?;
                 let body = me.analyze_expr(the_func.body, &[])?;
                 the_func.sig = sig;
                 the_func.body = body;
+                me.generic_scope.clear();
                 Ok(())
             },
             idx,
@@ -306,8 +311,8 @@ impl<const N: usize> Resolver<N> {
                 if let Some(g) = gens.get(&t.0) {
                     accum = *g
                 } else {
-                    panic!()
-                    // accum = t
+                    // panic!()
+                    accum = t
                 }
             }
             Type::Prod(r) => {
@@ -347,6 +352,11 @@ impl<const N: usize> Resolver<N> {
                 };
                 accum = accum.modify(Type::Sum(r))
             }
+
+            Type::Label(l, the_r) => {
+                accum = accum.modify(Type::Label(l, self.subst_generic_type(the_r, gens)?))
+            }
+
             _ => accum = t,
         }
 
@@ -357,6 +367,17 @@ impl<const N: usize> Resolver<N> {
         // dbg!(self.current_node);
         // dbg!(t);
         match *t.0 {
+            Type::Generic(name) => {
+                // Check if we've already seen this generic parameter name
+                if let Some(existing) = self.generic_scope.get(&name.0) {
+                    // Reuse the existing Type::Generic instance
+                    Ok(*existing)
+                } else {
+                    // First time seeing it - register it
+                    self.generic_scope.insert(name.0, t);
+                    Ok(t)
+                }
+            }
             Type::Func(l, r) => {
                 let l = self.analyze_type(l)?;
                 let r = self.analyze_type(r)?;
@@ -372,13 +393,14 @@ impl<const N: usize> Resolver<N> {
                 // dbg!(the_item.get_type_universal());
                 if let ItemKind::Type(_, generics, new_t) = the_item.kind {
                     let t = if !instanced_generics.is_empty() {
-                        // First, analyze each instanced generic type
                         let analyzed_instances: CompResult<Vec<_>> = instanced_generics
                             .iter()
                             .map(|ty| self.analyze_type(*ty))
                             .collect();
                         let analyzed_instances = analyzed_instances?;
 
+                        // Don't expand - keep as Type::User with generic params
+                        // Expand with substitution
                         let generic_instances: im::HashMap<
                             Intern<Type>,
                             Spanned<Intern<Type>>,
@@ -393,7 +415,8 @@ impl<const N: usize> Resolver<N> {
                     } else {
                         new_t
                     };
-                    self.analyze_type(t) // This recursively analyzes the substituted type
+                    Ok(t)
+                    // self.analyze_type(t) // This recursively analyzes the substituted type
                 } else {
                     Err(DynamicErr::new(format!("{} is not a type", name.0))
                         .label("", name.1)
@@ -592,7 +615,7 @@ impl<const N: usize> Resolver<N> {
 
                 let branches = branches?
                     .into_iter()
-                    .reduce(|l, r| l.modify(Expr::Branch(l, r)))
+                    .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
                     .unwrap();
 
                 Ok(expr.convert(Expr::Call(branches, matchee)))
@@ -655,18 +678,13 @@ impl<const N: usize> Resolver<N> {
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> CompResult<Spanned<Intern<Expr<Untyped>>>> {
         let (pat, bindings) = self.resolve_pattern(b.pat, vec![])?;
-        // dbg!(pat);
-        // dbg!(&vars);
-        // dbg!(b.body);
 
         let body = bindings.into_iter().fold(b.body, |prev, v| {
             let unwrapped = prev.modify(Expr::Let(v, pat, prev));
             prev.modify(Expr::Lambda(v, unwrapped, LambdaInfo::Anon))
         });
-
-        self.analyze_expr(body, vars)
-
-        // dbg!(arm);
+        Ok(body)
+        // self.analyze_expr(body, vars)
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
@@ -725,7 +743,9 @@ impl<const N: usize> Resolver<N> {
         search.map_or_else(
             |_| Err(errors::not_defined(q, s)),
             |node| {
-                self.dag_add(node.index());
+                if !matches!(q, QualifierFragment::Type(_)) {
+                    self.dag_add(node.index());
+                }
                 Ok(ItemId(node.index()))
             },
         )

@@ -1,16 +1,37 @@
 package Main =
-    use Hidden
-    # use Option.{Option, map, unwrap_or, Some, None}
-    use Option
+    # use Hidden
+    use Option.{Option, map, unwrap_or, Some, None}
+    # use Option
     
-    extern concat: str -> str -> str
+    extern to_num: str ->num
+
+    # type Wrapper[?T] = {data: ?T}
     
+    # let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
+        # let  = f(w.data) in 
+        # {data = v}
+
     
+    # let map_wrapper w f : Wrapper[str] -> (str -> num) -> Wrapper[num] =
+        # let v = f(w.data) in 
+        # {data = v}
+
+    
+    # let map_wrapper w f : {data: ?T, extra: bool} -> (?T -> ?U) -> {data: ?U, extra: bool} =
+        # let v = f(w.data) in
+        # {data = v, extra = w.extra}
+            
+    # let map item f : ?T -> (?T -> ?U) -> ?U =
+        # f(item)
         
-    let main: infer =
-        let val =  Some Hidden.demo in
-        let mapped = map val (fn x => concat x " asdf") in
-        unwrap_or mapped "err"
+    let main: num =
+        # let val = {data= "3"} in
+        # let mapped = map_wrapper val (fn x => to_num x) in
+        # mapped.data
+        let val =  Some "10" in
+        let mapped = map val (fn x => to_num x) in
+
+        unwrap_or mapped 0
               # identity (creator 3 true)
         # let status = let p = {name= "joe", age = 10000, iscool = true} in Ok p.age in
         
@@ -26,8 +47,6 @@ package Hidden =
     let speak x: {?T , ?T -> str} -> str =
         x.1(x.0)
 
-
-    
     # for some property, CanTalk
 
     let number_speak x: num -> str =
