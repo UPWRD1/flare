@@ -16,33 +16,13 @@ package Main =
 
     let extract w : Wrapper[?T] -> ?T =
         w.data
-    
-    # let map_wrapper w f : Wrapper[str] -> (str -> num) -> Wrapper[num] =
-        # let v = f(w.data) in 
-        # {data = v}
-
-    
-    # let map_wrapper w f : {data: ?T, extra: bool} -> (?T -> ?U) -> {data: ?U, extra: bool} =
-        # let v = f(w.data) in
-        # {data = v, extra = w.extra}
-            
-    # let map item f : ?T -> (?T -> ?U) -> ?U =
-        # f(item)
-        
+           
     let main: num =
-        # let val = {data= "3"} in
-        # let mapped = map_wrapper val (fn x => to_num x) in
-        # mapped.data
         let val =  Some (new_Wrapper "10") in
         let mapped = map val (fn x => map_wrapper x (fn data => to_num data )) in    
         let unwrapped = unwrap_or mapped (new_Wrapper 0) in
         extract unwrapped
-              # identity (creator 3 true)
-        # let status = let p = {name= "joe", age = 10000, iscool = true} in Ok p.age in
-        
-            # unwrap_or_res status 0
-            # map status (fn x => x * 3) (fn x => x )        #     unwrap_or (Some 3) 0
-
+      
 
 
 

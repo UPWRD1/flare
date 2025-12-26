@@ -6,7 +6,7 @@ use crate::{
         rep::{
             Spanned,
             ast::{
-                self, BinOp, Definition, Direction, Expr, Label, LambdaInfo, MatchArm, Package, Pattern, Untyped // Untyped,
+                self, BinOp, Definition, Direction, Expr, ItemDefinition, Label, LambdaInfo, MatchArm, Package, Pattern, Untyped // Untyped,
             },
             // concretetypes::{EnumVariant, PrimitiveType, Ty},
             files::FileID,
@@ -634,7 +634,7 @@ where
             .as_context();
 
         let type_def = just(Token::Type).ignore_then(raw_ident).then(just(Token::Question).ignore_then(raw_ident).separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).then_ignore(just(Token::Eq)).then(ty.clone()).map(|((name, generics), ty)| {
-            let generics = generics.unwrap_or_default().into_iter().map(|x| x.convert(Type::Generic(x))).collect();
+            let generics = generics.unwrap_or_default().into_iter().map(|x| x.convert(Type::Generic(x))).collect::<Vec<_>>().leak();
             Definition::Type(name, generics, ty)
         });
         
@@ -675,13 +675,22 @@ where
         .then_ignore(just(Token::Eq))
         .then(
             just(Token::Pub)
-                .ignore_then(definition.clone().repeated().collect::<Vec<_>>())
-                .or(definition.clone().repeated().collect::<Vec<_>>()),
+                .or_not()
+                .then(definition.clone()
+        ).repeated().collect::<Vec<_>>()                ,
         )
-        .map_with(|(name, items), _| Package {
+        .map_with(|(name, items), _| {
+            let items = items.into_iter().map(|(is_pub, def)| {
+                ItemDefinition {
+                    def,
+                    is_pub: is_pub.is_some()
+                }
+                
+            }).collect();
+            Package {
             name ,
             items,
-        })
+        }})
         .labelled("package")
         .as_context();
     //

@@ -5,7 +5,7 @@ use petgraph::{
     graph::{DiGraph, EdgeReference, NodeIndex},
     visit::EdgeRef as _,
 };
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 // use serde::{Deserialize, Serialize};
 // use std::cell::OnceCell;
 // use std::collections::HashMap;
@@ -19,6 +19,7 @@ use crate::{
             // concretetypes::{EnumVariant, Ty},
             Spanned,
             ast::{Definition, Expr, ImplDef, Program, Untyped},
+            common::Ident,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
         },
@@ -105,16 +106,23 @@ impl Environment {
             graph,
             root: current_node,
         };
-        let mut pack_imports: FxHashMap<
+        let mut package_to_imports: FxHashMap<
             Spanned<QualifierFragment>,
-            Vec<Spanned<Intern<Expr<Untyped>>>>,
+            FxHashSet<Spanned<Intern<Expr<Untyped>>>>,
+        > = FxHashMap::default();
+
+        let mut package_to_exports: FxHashMap<
+            Spanned<QualifierFragment>,
+            FxHashSet<QualifierFragment>,
         > = FxHashMap::default();
 
         // Start building each package's contents
         for package in &program.packages {
             let package_name = package.0.name;
 
-            let mut deps = Vec::new();
+            let mut imports = FxHashSet::default();
+            let mut exports = FxHashSet::default();
+
             let package_entry = Item::new(Package(PackageEntry {
                 name: package.0.name,
                 id: package.1, // file: fsource.filename,
@@ -128,50 +136,86 @@ impl Environment {
             current_node = p_id;
 
             for item in &package.0.items {
-                match item {
+                let qual: Option<QualifierFragment>;
+                match item.def {
                     Definition::Import(import_item) => {
                         // dbg!(import_item);
-                        deps.push(*import_item);
+                        qual = None;
+                        imports.insert(import_item);
                     }
                     Definition::Type(name, generics, t) => {
-                        me.build_type(current_node, *t, generics.to_vec(), *name)?;
+                        let qfrag = QualifierFragment::Type(name.0);
+                        qual = Some(qfrag);
+                        let entry = Item::new(ItemKind::Type(name, generics, t));
+                        me.add(current_node, qfrag, entry);
                     }
                     Definition::Let(name, body, sig) => {
-                        let ident = QualifierFragment::Func(name.0.0);
-                        let entry = Item::new(Function(FunctionItem {
-                            name: *name,
-                            sig: *sig,
-                            body: *body,
-                        }));
-                        me.add(current_node, ident, entry);
+                        let qfrag = QualifierFragment::Func(name.0.0);
+                        qual = Some(qfrag);
+                        let entry = Item::new(Function(FunctionItem { name, sig, body }));
+                        me.add(current_node, qfrag, entry);
                     }
-                    Definition::Extern(n, args, ty) => {
-                        let ident = QualifierFragment::Func(n.0);
+                    Definition::Extern(name, args, sig) => {
+                        let qfrag = QualifierFragment::Func(name.0);
+                        qual = Some(qfrag);
                         let entry = Item::new(Extern {
                             //parent: current_parent.clone(),
-                            name: *n,
+                            name,
                             args,
-                            sig: *ty,
+                            sig,
                         });
-                        me.add(current_node, ident, entry);
+                        me.add(current_node, qfrag, entry);
                     }
                     Definition::ImplDef(ImplDef { the_ty, methods }) => {
+                        qual = None;
                         me.build_impl_def(package_quant, the_ty, methods)?;
                     }
                 }
+                if let Some(qual) = qual
+                    && item.is_pub
+                {
+                    exports.insert(qual);
+                }
             }
             current_node = old_current;
-            pack_imports.insert(Spanned(package_quant, package_name.1), deps);
+            let name = Spanned(package_quant, package_name.1);
+            package_to_imports.insert(name, imports);
+            package_to_exports.insert(name, exports);
         }
 
-        for (name, deps) in &pack_imports {
-            let package = me
-                .get(&[name.0][..])
-                .map_err(|_| errors::not_defined(name.0, &name.1))?;
+        let new_package_to_imports: FxHashMap<
+            Spanned<QualifierFragment>,
+            FxHashSet<Vec<QualifierFragment>>,
+        > = package_to_imports
+            .clone()
+            .into_iter()
+            .map(|(package_name, package_imports)| {
+                // let package = me
+                //     .get(&[package_name.0][..])
+                //     .map_err(|_| errors::not_defined(package_name.0, &package_name.1))?;
+                let new_package_imports: FxHashSet<_> = package_imports
+                    .into_iter()
+                    .flat_map(|import_expr| QualifierFragment::from_expr(&import_expr).unwrap())
+                    .collect();
+                // let last_new_package_imports = new_package_imports
+                //     .into_iter()
+                //     .map(|x| *x.last().unwrap())
+                //     .collect();
+                Ok((package_name, new_package_imports))
+            })
+            .collect::<CompResult<_>>()?;
 
-            for dep in deps {
+        dbg!(&new_package_to_imports);
+        dbg!(&package_to_exports);
+
+        for (package_name, package_imports) in &package_to_imports {
+            let package = me
+                .get(&[package_name.0][..])
+                .map_err(|_| errors::not_defined(package_name.0, &package_name.1))?;
+
+            for import_expr in package_imports {
                 // dbg!(package, dep);
-                let paths = QualifierFragment::from_expr(dep)?;
+                let paths = QualifierFragment::from_expr(import_expr)?;
                 // dbg!(&paths);
                 let imports: CompResult<Vec<_>> = paths
                     .iter()
@@ -184,7 +228,7 @@ impl Environment {
                             Ok(n)
                         } else {
                             Err(DynamicErr::new("Import does not exist")
-                                .label("this", dep.1)
+                                .label("this", import_expr.1)
                                 .into())
                         }
                     })
@@ -199,14 +243,11 @@ impl Environment {
                         .copied()
                         .ok_or_else(|| {
                             DynamicErr::new("Could not locate import within graph")
-                                .label("here", dep.1)
+                                .label("here", import_expr.1)
                         })?;
                     // dbg!(the_name);
                     me.graph.update_edge(package, import, the_name);
                 }
-                // me.debug();
-
-                // dbg!(&path);
             }
         }
 
@@ -220,7 +261,7 @@ impl Environment {
     fn build_impl_def(
         &mut self,
         package_quant: QualifierFragment,
-        the_ty: &Spanned<Intern<String>>,
+        the_ty: Spanned<Intern<String>>,
         methods: &[(
             Spanned<Intern<String>>,
             Spanned<Intern<Expr<Untyped>>>,
@@ -247,20 +288,6 @@ impl Environment {
         //     self.add(type_node, method_qual, the_method);
         // }
         // Ok(())
-    }
-
-    fn build_type(
-        &mut self,
-        current_node: NodeIndex,
-        the_ty: Spanned<Intern<Type>>,
-        generics: Vec<Spanned<Intern<Type>>>,
-        name: Spanned<Intern<String>>,
-    ) -> CompResult<()> {
-        let qual = QualifierFragment::Type(name.0);
-        let entry = Item::new(ItemKind::Type(name, generics.leak(), the_ty));
-        self.add(current_node, qual, entry);
-
-        Ok(())
     }
 
     #[inline]

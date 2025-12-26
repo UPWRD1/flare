@@ -1,21 +1,21 @@
 package Option = 
-    type Option[?T] = |Some ?T, None|
+    pub type Option[?T] = |Some ?T, None|
     
-    let Some x : ?T -> Option[?T] = |Some x|
+    pub let Some x : ?T -> Option[?T] = |Some x|
 
-    let None : Option[?T] = |None|
+    pub let None : Option[?T] = |None|
 
-    let unwrap_or option default : Option[?T] -> ?T -> ?T =
+    pub let unwrap_or option default : Option[?T] -> ?T -> ?T =
         match option in
             |Some x1| then x1,
             |None| then default
           
-    let is_some x : Option[?T] -> bool =
+    pub let is_some x : Option[?T] -> bool =
         match x in
             | Some _v| then true,
             | None | then false
 
-    let map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
+    pub let map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
             match o in
                 |Some v| then Some (f(v)),
                     # let v = f(v) in |Some v|,

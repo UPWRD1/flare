@@ -84,7 +84,11 @@ impl QualifierFragment {
              -> CompResult<Vec<QualifierFragment>> {
                 match &*e.0 {
                     Expr::FieldAccess(l, r) => {
-                        let accum = [accum, &[(Self::Wildcard(l.ident()?.0))]].concat();
+                        let accum = if accum.is_empty() {
+                            [(Self::Package(l.ident()?.0))].to_vec()
+                        } else {
+                            [accum, &[(Self::Wildcard(l.ident()?.0))]].concat()
+                        };
 
                         (cfa.f)(cfa, r, &accum, paths)
                         //self.graph.node_weight(n).cloned()

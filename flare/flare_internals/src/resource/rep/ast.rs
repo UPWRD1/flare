@@ -388,33 +388,38 @@ pub struct ImportItem<V: Variable> {
     pub items: Vec<Spanned<Intern<Expr<V>>>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImplDef<V: Variable> {
     pub the_ty: Spanned<Intern<String>>,
-    pub methods: Vec<(
+    pub methods: &'static [(
         Spanned<Intern<String>>,
         Spanned<Intern<Expr<V>>>,
         Spanned<Intern<Type>>,
-    )>,
+    )],
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Definition<V: Variable> {
     Import(Spanned<Intern<Expr<V>>>),
     Type(
         Spanned<Intern<String>>,
-        Vec<Spanned<Intern<Type>>>,
+        &'static [Spanned<Intern<Type>>],
         Spanned<Intern<Type>>,
     ),
     Let(V, Spanned<Intern<Expr<V>>>, Spanned<Intern<Type>>),
     Extern(Spanned<Intern<String>>, &'static [V], Spanned<Intern<Type>>),
     ImplDef(ImplDef<V>),
 }
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ItemDefinition<V: Variable> {
+    pub def: Definition<V>,
+    pub is_pub: bool,
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Package<V: Variable> {
     pub name: Spanned<Intern<String>>,
-    pub items: Vec<Definition<V>>,
+    pub items: Vec<ItemDefinition<V>>,
 }
 
 #[derive(Debug, PartialEq)]
