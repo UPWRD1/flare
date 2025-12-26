@@ -964,7 +964,7 @@ fn make_input(
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(ctx: &mut FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
+pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
     let input = ctx
         .get(&fid)
         .unwrap_or_else(|| unreachable!("FileID {} does not exist in context: {:?}", fid, ctx))

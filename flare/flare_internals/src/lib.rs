@@ -102,8 +102,8 @@ impl<T: Target> Context<T> {
         }
     }
 
-    pub fn parse_file(&mut self, id: FileID) -> CompResult<Vec<Package<Untyped>>> {
-        parser::parse(&mut self.filectx, id)
+    pub fn parse_file(&self, id: FileID) -> CompResult<Vec<Package<Untyped>>> {
+        parser::parse(&self.filectx, id)
     }
 
     pub fn parse_program(&mut self, id: FileID) -> CompResult<Program<Untyped>> {

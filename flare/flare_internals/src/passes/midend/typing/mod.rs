@@ -15,7 +15,7 @@ use std::{collections::BTreeSet, fmt::Display, hash::Hash};
 use ena::unify::InPlaceUnificationTable;
 use internment::Intern;
 
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     passes::midend::typing::subst::SubstOut,
