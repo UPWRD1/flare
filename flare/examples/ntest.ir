@@ -15,22 +15,14 @@ tyfn Type => fn [$0: ?0] => $0
 end item #3
 
 item #4: is
-tyfn Type => fn [$0: ?0] => $0 as {unit | ?0} variant 1
+tyfn Type => unit as {unit | ?0} variant 0
 end item #4
 
 item #5: is
-tyfn Type =>
-  fn [$0: {unit | ?0}, $1: ?0] =>
-    match $0:
-      | $8 then $1,
-      | $9 then $9
+tyfn Type => fn [$0: ?0] => $0 as {unit | ?0} variant 1
 end item #5
 
 item #6: is
-tyfn Type => unit as {unit | ?0} variant 0
-end item #6
-
-item #7: is
 tyfn Type =>
   tyfn Type =>
     fn [$0: {unit | ?1}, $1: ?1 -> ?0] =>
@@ -40,12 +32,20 @@ tyfn Type =>
             $9)
           in
             $0 as {unit | ?0} variant 1
+end item #6
+
+item #7: is
+tyfn Type =>
+  fn [$0: {unit | ?0}, $1: ?0] =>
+    match $0:
+      | $8 then $1,
+      | $9 then $9
 end item #7
 
 item #8: is
 let $0: {unit | str} = "10" as {unit | ?0} variant 1
 in
-  let $1: {unit | num} = [num]::[str]::#7(
+  let $1: {unit | num} = [num]::[str]::#6(
     "10" as {unit | ?0} variant 1, fn [$2: str] =>
       let $1: num -> str = fn [$3: str] => extern_to_num($3)
       in
