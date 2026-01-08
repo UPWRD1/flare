@@ -293,7 +293,7 @@ impl<T: Target> Context<T> {
         ];
         let mut resolver = Resolver::new(e, intrinsics);
         let order = resolver.build()?;
-        let resolved_e = resolver.finish();
+        let resolved_e = resolver.finish()?;
 
         let tc = Typechecker::new(order.leak(), resolved_e);
         let (items, source) = tc.check()?;

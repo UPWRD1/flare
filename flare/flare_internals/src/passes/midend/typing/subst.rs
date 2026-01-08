@@ -80,9 +80,9 @@ impl Solver<'_> {
         })
     }
 
-    fn substitute_row(&mut self, row: Row) -> SubstOut<Row> {
-        match row {
-            Row::Open(v) => SubstOut::new(Row::Open(v)),
+    fn substitute_row(&mut self, row: Spanned<Intern<Row>>) -> SubstOut<Spanned<Intern<Row>>> {
+        match *row.0 {
+            Row::Open(v) => SubstOut::new(row.convert(Row::Open(v))),
             Row::Unifier(var) => {
                 let root = self.tables.row_unification_table.find(var);
 
@@ -90,15 +90,21 @@ impl Solver<'_> {
                     Some(Row::Unifier(_)) => unreachable!(
                         "Unexpected open row found as value of row unification table. This variable should've been `unify_var_var()`, not `unify_var_value()`"
                     ),
-                    Some(Row::Open(v)) => SubstOut::new(Row::Open(v)),
-                    Some(Row::Closed(row)) => self.substitute_closedrow(row).map(Row::Closed),
+                    Some(Row::Open(v)) => SubstOut::new(row.convert(Row::Open(v))),
+                    Some(Row::Closed(crow)) => self
+                        .substitute_closedrow(crow)
+                        .map(Row::Closed)
+                        .map(|cr| row.convert(cr)),
                     None => {
                         let rowvar = self.rowvar_for_unifier(root);
-                        SubstOut::new(Row::Open(rowvar)).with_unbound_row(rowvar)
+                        SubstOut::new(row.convert(Row::Open(rowvar))).with_unbound_row(rowvar)
                     }
                 }
             }
-            Row::Closed(row) => self.substitute_closedrow(row).map(Row::Closed),
+            Row::Closed(crow) => self
+                .substitute_closedrow(crow)
+                .map(Row::Closed)
+                .map(|cr| row.convert(cr)),
         }
     }
 
@@ -286,6 +292,7 @@ impl Solver<'_> {
     }
 
     pub fn substitute_row_comb(&mut self, comb: RowCombination) -> SubstOut<Evidence> {
+        // dbg!(comb);
         self.substitute_row(comb.left)
             .merge(self.substitute_row(comb.right), |l, r| (l, r))
             .merge(self.substitute_row(comb.goal), |(left, right), goal| {

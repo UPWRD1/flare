@@ -103,6 +103,8 @@ pub enum BinOp {
     Sub,
     Mul,
     Div,
+    And,
+    Or,
 }
 
 impl Display for BinOp {
@@ -118,6 +120,8 @@ impl Display for BinOp {
             BinOp::Sub => write!(f, "-"),
             BinOp::Mul => write!(f, "*"),
             BinOp::Div => write!(f, "/"),
+            BinOp::And => write!(f, "and"),
+            BinOp::Or => write!(f, "or"),
         }
     }
 }

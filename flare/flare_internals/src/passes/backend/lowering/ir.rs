@@ -416,6 +416,16 @@ impl IR {
                     }
                     Type::Num
                 }
+                BinOp::And | BinOp::Or => {
+                    let lty = l.type_of();
+                    let rty = r.type_of();
+                    if lty != rty || lty != Type::Bool {
+                        unreachable!(
+                            "Expected number type in arithmatic operation while generating IR",
+                        )
+                    }
+                    Type::Bool
+                }
                 BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte => {
                     let lty = l.type_of();
                     let rty = r.type_of();

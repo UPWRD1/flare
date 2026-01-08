@@ -332,13 +332,21 @@ impl<'source> LowerAst<'source> {
             .or_insert_with_key(|ev| {
                 // If we see a vacant entry during lowering it must be solved.
                 // All our unsolved evidence appears in the type scheme.
-                let Evidence::RowEquation {
-                    left: typing::Row::Closed(left),
-                    right: typing::Row::Closed(right),
-                    goal: typing::Row::Closed(goal),
-                } = ev
-                else {
-                    unreachable!("Unsolved evidence appeared in AST that wasn't in type scheme");
+                let (left, right, goal) = match ev {
+                    Evidence::RowEquation {
+                        left, right, goal, ..
+                    } => {
+                        if let typing::Row::Closed(left) = *left.0
+                            && let typing::Row::Closed(right) = *right.0
+                            && let typing::Row::Closed(goal) = *goal.0
+                        {
+                            (left, right, goal)
+                        } else {
+                            unreachable!(
+                                "Unsolved evidence appeared in AST that wasn't in type scheme"
+                            );
+                        }
+                    }
                 };
                 let param = self.var_supply.supply();
 
@@ -364,9 +372,9 @@ impl<'source> LowerAst<'source> {
                             .expect("Invalid solved row combination.")
                     })
                     .collect::<Vec<_>>();
-                let left_values = self.types.lower_closed_row_ty(*left);
-                let right_values = self.types.lower_closed_row_ty(*right);
-                let goal_values = self.types.lower_closed_row_ty(*goal);
+                let left_values = self.types.lower_closed_row_ty(left);
+                let right_values = self.types.lower_closed_row_ty(right);
+                let goal_values = self.types.lower_closed_row_ty(goal);
 
                 let lower_solved_ev = LowerSolvedEv {
                     supply: &mut self.var_supply,
@@ -501,7 +509,6 @@ impl<'source> LowerAst<'source> {
                     self.lower_ast(body)
                 } else {
                     let term = self.lower_ast(body);
-                    // dbg!(&term);
 
                     let param = self
                         .row_to_ev
@@ -551,7 +558,7 @@ impl<'source> LowerAst<'source> {
                             IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty.0)))
                         });
                         let row_ir = wrapper.rows.into_iter().fold(ty_ir, |ir, row| {
-                            IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(row)))
+                            IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(*row.0)))
                         });
                         wrapper.evidence.into_iter().fold(row_ir, |ir, ev| {
                             let param = self.lookup_ev(ev);

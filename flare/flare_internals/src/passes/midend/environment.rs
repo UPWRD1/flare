@@ -5,7 +5,7 @@ use petgraph::{
     graph::{DiGraph, EdgeReference, NodeIndex},
     visit::EdgeRef as _,
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 // use serde::{Deserialize, Serialize};
 // use std::cell::OnceCell;
 // use std::collections::HashMap;
@@ -19,7 +19,6 @@ use crate::{
             // concretetypes::{EnumVariant, Ty},
             Spanned,
             ast::{Definition, Expr, ImplDef, Program, Untyped},
-            common::Ident,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
         },
@@ -101,7 +100,7 @@ impl Environment {
         use ItemKind::*;
         let mut graph = DiGraph::new();
         let mut current_node = graph.add_node(Item::new(ItemKind::Root));
-
+        let num_packages = program.packages.len();
         let mut me = Self {
             graph,
             root: current_node,
@@ -109,12 +108,12 @@ impl Environment {
         let mut package_to_imports: FxHashMap<
             Spanned<QualifierFragment>,
             FxHashSet<Spanned<Intern<Expr<Untyped>>>>,
-        > = FxHashMap::default();
+        > = FxHashMap::with_capacity_and_hasher(num_packages, FxBuildHasher);
 
         let mut package_to_exports: FxHashMap<
-            Spanned<QualifierFragment>,
-            FxHashSet<QualifierFragment>,
-        > = FxHashMap::default();
+            QualifierFragment,
+            FxHashSet<(QualifierFragment, NodeIndex)>,
+        > = FxHashMap::with_capacity_and_hasher(num_packages, FxBuildHasher);
 
         // Start building each package's contents
         for package in &program.packages {
@@ -125,8 +124,7 @@ impl Environment {
 
             let package_entry = Item::new(Package(PackageEntry {
                 name: package.0.name,
-                id: package.1, // file: fsource.filename,
-                               // src: fsource.src_text,
+                id: package.1,
             }));
             let package_quant = QualifierFragment::Package(package_name.0);
 
@@ -136,6 +134,7 @@ impl Environment {
             current_node = p_id;
 
             for item in &package.0.items {
+                let mut item_nodeindex: NodeIndex = NodeIndex::new(0);
                 let qual: Option<QualifierFragment>;
                 match item.def {
                     Definition::Import(import_item) => {
@@ -147,13 +146,13 @@ impl Environment {
                         let qfrag = QualifierFragment::Type(name.0);
                         qual = Some(qfrag);
                         let entry = Item::new(ItemKind::Type(name, generics, t));
-                        me.add(current_node, qfrag, entry);
+                        item_nodeindex = me.add(current_node, qfrag, entry);
                     }
                     Definition::Let(name, body, sig) => {
                         let qfrag = QualifierFragment::Func(name.0.0);
                         qual = Some(qfrag);
                         let entry = Item::new(Function(FunctionItem { name, sig, body }));
-                        me.add(current_node, qfrag, entry);
+                        item_nodeindex = me.add(current_node, qfrag, entry);
                     }
                     Definition::Extern(name, args, sig) => {
                         let qfrag = QualifierFragment::Func(name.0);
@@ -164,7 +163,7 @@ impl Environment {
                             args,
                             sig,
                         });
-                        me.add(current_node, qfrag, entry);
+                        item_nodeindex = me.add(current_node, qfrag, entry);
                     }
                     Definition::ImplDef(ImplDef { the_ty, methods }) => {
                         qual = None;
@@ -174,84 +173,78 @@ impl Environment {
                 if let Some(qual) = qual
                     && item.is_pub
                 {
-                    exports.insert(qual);
+                    exports.insert((qual, item_nodeindex));
                 }
             }
             current_node = old_current;
             let name = Spanned(package_quant, package_name.1);
             package_to_imports.insert(name, imports);
-            package_to_exports.insert(name, exports);
+            package_to_exports.insert(name.0, exports);
         }
 
         let new_package_to_imports: FxHashMap<
             Spanned<QualifierFragment>,
             FxHashSet<Vec<QualifierFragment>>,
         > = package_to_imports
-            .clone()
             .into_iter()
             .map(|(package_name, package_imports)| {
-                // let package = me
-                //     .get(&[package_name.0][..])
-                //     .map_err(|_| errors::not_defined(package_name.0, &package_name.1))?;
                 let new_package_imports: FxHashSet<_> = package_imports
                     .into_iter()
                     .flat_map(|import_expr| QualifierFragment::from_expr(&import_expr).unwrap())
                     .collect();
-                // let last_new_package_imports = new_package_imports
-                //     .into_iter()
-                //     .map(|x| *x.last().unwrap())
-                //     .collect();
                 Ok((package_name, new_package_imports))
             })
             .collect::<CompResult<_>>()?;
 
-        dbg!(&new_package_to_imports);
-        dbg!(&package_to_exports);
+        for (importing_package_qual, imports) in new_package_to_imports {
+            let importing_package = me.get(&[importing_package_qual.0][..]).map_err(|_| {
+                errors::not_defined(importing_package_qual, &importing_package_qual.1)
+            })?;
 
-        for (package_name, package_imports) in &package_to_imports {
-            let package = me
-                .get(&[package_name.0][..])
-                .map_err(|_| errors::not_defined(package_name.0, &package_name.1))?;
+            for import_path in imports {
+                let import = me.trace_import_path(&import_path, &package_to_exports);
 
-            for import_expr in package_imports {
-                // dbg!(package, dep);
-                let paths = QualifierFragment::from_expr(import_expr)?;
-                // dbg!(&paths);
-                let imports: CompResult<Vec<_>> = paths
-                    .iter()
-                    .map(|path| {
-                        // dbg!(path);
-                        // let path = if path.len() > 1 { &path[1..] } else { path };
-
-                        if let Ok(n) = me.get(path) {
-                            // dbg!(n);
-                            Ok(n)
-                        } else {
-                            Err(DynamicErr::new("Import does not exist")
-                                .label("this", import_expr.1)
-                                .into())
-                        }
-                    })
-                    .collect();
-
-                for import in imports? {
-                    let the_name = me
-                        .graph
-                        .edges_directed(import, petgraph::Direction::Incoming)
-                        .map(|x| x.weight())
-                        .next()
-                        .copied()
-                        .ok_or_else(|| {
-                            DynamicErr::new("Could not locate import within graph")
-                                .label("here", import_expr.1)
-                        })?;
-                    // dbg!(the_name);
-                    me.graph.update_edge(package, import, the_name);
-                }
+                me.graph.update_edge(
+                    importing_package,
+                    import,
+                    *import_path.last().expect("Import path should not be empty"),
+                );
             }
         }
 
         Ok(me)
+    }
+
+    fn trace_import_path(
+        &mut self,
+        path: &[QualifierFragment],
+        package_to_exports: &FxHashMap<
+            QualifierFragment,
+            FxHashSet<(QualifierFragment, NodeIndex)>,
+        >,
+    ) -> NodeIndex {
+        let mut res: NodeIndex = NodeIndex::new(0);
+        for path in path.windows(2) {
+            match path {
+                [left, right] => {
+                    if let QualifierFragment::Package(_) = left {
+                        if let Some(exports) = package_to_exports.get(left) {
+                            if let Some(n) = exports.iter().find(|x| x.0.is(right)) {
+                                res = n.1
+                            } else {
+                                panic!("import not found, {left}.{right}")
+                            }
+                        } else {
+                            panic!("Package has no exports")
+                        }
+                    } else {
+                        panic!("Import path should be a package or subpackage")
+                    }
+                }
+                _ => unreachable!("I"),
+            }
+        }
+        res
     }
 
     /// Builds an impl definition

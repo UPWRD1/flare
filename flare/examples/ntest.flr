@@ -1,46 +1,14 @@
 package Main =
-    # use Hidden
-    use Option.{Option, map, unwrap_or, Some, None}
-    # use Option
+    type Point2d = {x: num, y: num}
+
+    type Point3d = {x: num, y: num, z: num}
+
+    type T = {x: num, y: num, ...}
+
+    let slope_xy p q : T -> T -> num =
+        (q.y - p.x) / (q.x - p.x)
     
-    extern to_num: str ->num
-
-    type Wrapper[?T] = {data: ?T}
-
-    let new_Wrapper t : ?T -> Wrapper[?T] =
-        {data = t}
-
-    let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
-        let v = f(w.data) in 
-        {data = v}
-
-    let extract w : Wrapper[?T] -> ?T =
-        w.data
-           
     let main: num =
-        let val =  Some (new_Wrapper "10") in
-        let mapped = map val (fn x => map_wrapper x (fn data => to_num data )) in    
-        let unwrapped = unwrap_or mapped (new_Wrapper 0) in
-        extract unwrapped
-      
-
-
-
-package Hidden = 
-    extern format f: ?T -> str    
-
-    let speak x: {?T , ?T -> str} -> str =
-        x.1(x.0)
-
-    # for some property, CanTalk
-
-    let number_speak x: num -> str =
-      format(x)
-
-    let speak_wrapper f x : (?T -> str) -> ?T -> {?T , ?T -> str} =
-      {x, f}
-        
-    let demo : str =
-        let x = {3, number_speak} in
-          speak x
-           
+        let p1 = {x = 2, y = 3, z= 6 } in
+        let p2 = {x = 4, y = 5, z=7} in
+        slope_xy p1 p2

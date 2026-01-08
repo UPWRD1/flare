@@ -17,7 +17,7 @@ use crate::{
         errors::{CompResult, DynamicErr, ErrorCollection},
         rep::{
             Spanned,
-            ast::{Expr, ItemId, LambdaInfo, Untyped},
+            ast::{Expr, ItemId, LambdaInfo, NodeId, Untyped},
             common::Ident,
             entry::{FunctionItem, ItemKind},
         },
@@ -113,24 +113,34 @@ impl Typechecker {
         row_accum: &mut BTreeSet<RowVar>,
         names: &mut FxHashMap<TypeVar, Intern<String>>,
         evidence: &mut Vec<Evidence>,
+        seen_row_vars: &mut FxHashMap<NodeId, RowVar>,
     ) -> Spanned<Intern<Type>> {
         match *t.0 {
             Type::Var(type_var) => {
                 accum.insert(type_var);
                 t
             }
-            Type::Subtable(sub) => {
-                let sub = self.helper(sub, accum, row_accum, names, evidence);
-                let v = self.new_row_var();
+            Type::Subtable(sub, id) => {
+                let sub = self.helper(sub, accum, row_accum, names, evidence, seen_row_vars);
+
+                let v = if let Some(v) = seen_row_vars.get(&id) {
+                    *v
+                } else {
+                    let v = self.new_row_var();
+                    seen_row_vars.insert(id, v);
+                    v
+                };
+
                 // dbg!(&sub);
                 // let g = self.new_row_var();
                 evidence.push(Evidence::RowEquation {
-                    left: sub.0.to_row(),
-                    right: Row::Open(v),
-                    goal: sub.0.to_row(),
+                    left: sub.map(|sub| sub.to_row().into()),
+                    right: sub.map(|_| Intern::from(Row::Open(v))),
+                    goal: sub.map(|sub| sub.to_row().into()),
                 });
                 row_accum.insert(v);
                 // row_accum.insert(g);
+                // sub.modify(Type::Prod(Row::Open(v).into()))
                 sub
             }
             Type::Generic(n) => {
@@ -147,47 +157,57 @@ impl Typechecker {
             }
 
             Type::Func(l, r) => {
-                let l = self.helper(l, accum, row_accum, names, evidence);
-                let r = self.helper(r, accum, row_accum, names, evidence);
+                let l = self.helper(l, accum, row_accum, names, evidence, seen_row_vars);
+                let r = self.helper(r, accum, row_accum, names, evidence, seen_row_vars);
                 t.modify(Type::Func(l, r))
             }
 
-            Type::Prod(row) => t.modify(Type::Prod(match row {
-                Row::Closed(closed_row) => Row::Closed(ClosedRow {
-                    fields: closed_row.fields,
-                    values: closed_row
-                        .values
-                        .iter()
-                        .map(|t| self.helper(*t, accum, row_accum, names, evidence))
-                        .collect::<Vec<_>>()
-                        .leak(),
-                }),
+            Type::Prod(row) => t.modify(Type::Prod(row.map(|row| {
+                match *row {
+                    Row::Closed(closed_row) => Row::Closed(ClosedRow {
+                        fields: closed_row.fields,
+                        values: closed_row
+                            .values
+                            .iter()
+                            .map(|t| {
+                                self.helper(*t, accum, row_accum, names, evidence, seen_row_vars)
+                            })
+                            .collect::<Vec<_>>()
+                            .leak(),
+                    })
+                    .into(),
 
-                Row::Open(o) => {
-                    row_accum.insert(o);
-                    row
+                    Row::Open(o) => {
+                        row_accum.insert(o);
+                        row
+                    }
+
+                    _ => todo!("Should be closed? todo"),
                 }
+            }))),
+            Type::Sum(row) => t.modify(Type::Sum(row.map(|row| {
+                match *row {
+                    Row::Closed(closed_row) => Row::Closed(ClosedRow {
+                        fields: closed_row.fields,
+                        values: closed_row
+                            .values
+                            .iter()
+                            .map(|t| {
+                                self.helper(*t, accum, row_accum, names, evidence, seen_row_vars)
+                            })
+                            .collect::<Vec<_>>()
+                            .leak(),
+                    })
+                    .into(),
 
-                _ => todo!("Should be closed? todo"),
-            })),
-            Type::Sum(row) => t.modify(Type::Sum(match row {
-                Row::Closed(closed_row) => Row::Closed(ClosedRow {
-                    fields: closed_row.fields,
-                    values: closed_row
-                        .values
-                        .iter()
-                        .map(|t| self.helper(*t, accum, row_accum, names, evidence))
-                        .collect::<Vec<_>>()
-                        .leak(),
-                }),
+                    Row::Open(o) => {
+                        row_accum.insert(o);
+                        row
+                    }
 
-                Row::Open(o) => {
-                    row_accum.insert(o);
-                    row
+                    _ => todo!("Should be closed? todo"),
                 }
-
-                _ => todo!("Should be closed? todo"),
-            })),
+            }))),
             Type::User(t, g) => {
                 unreachable!("Encountered user type {t}[{g:?}] after resolution")
             }
@@ -209,9 +229,17 @@ impl Typechecker {
         let mut accum = BTreeSet::new();
         let mut row_accum = BTreeSet::new();
         let mut names = FxHashMap::default();
+        let mut seen_row_vars = FxHashMap::default();
         let mut evidence = vec![];
         // let row_accum = BTreeSet::new();
-        let t = self.helper(t, &mut accum, &mut row_accum, &mut names, &mut evidence);
+        let t = self.helper(
+            t,
+            &mut accum,
+            &mut row_accum,
+            &mut names,
+            &mut evidence,
+            &mut seen_row_vars,
+        );
         (accum, row_accum, names, t, evidence)
     }
 
@@ -230,8 +258,7 @@ impl Typechecker {
             ty,
             types_to_name,
         };
-        self.context
-            .insert(ItemId(item_idx.index()), scheme.clone());
+        self.context.insert(ItemId(item_idx.index()), scheme);
     }
 
     fn check_items(&mut self) -> CompResult<Vec<(ItemId, TypesOutput)>> {

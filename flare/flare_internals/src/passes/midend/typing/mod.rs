@@ -54,7 +54,11 @@ pub enum Constraint {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Evidence {
-    RowEquation { left: Row, right: Row, goal: Row },
+    RowEquation {
+        left: Spanned<Intern<Row>>,
+        right: Spanned<Intern<Row>>,
+        goal: Spanned<Intern<Row>>,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -65,8 +69,8 @@ pub enum Provenance {
     AppExpectedFun(NodeId),
     // Constraint produced by subsumption.
     ExpectedUnify(NodeId, NodeId),
-    //
-    ExpectedCombine(NodeId),
+
+    ExpectedCombine(NodeId, NodeId),
 
     ConditionIsBool(NodeId),
 }
@@ -76,7 +80,7 @@ impl Provenance {
         match self {
             Self::UnexpectedFun(node_id)
             | Self::AppExpectedFun(node_id)
-            | Self::ExpectedCombine(node_id)
+            | Self::ExpectedCombine(node_id, _)
             | Self::ConditionIsBool(node_id)
             | Self::ExpectedUnify(node_id, _) => *node_id,
         }
@@ -156,7 +160,7 @@ pub struct TypesOutput {
 #[derive(Debug, Clone)]
 pub struct ItemWrapper {
     pub types: Vec<Spanned<Intern<Type>>>,
-    pub rows: Vec<Row>,
+    pub rows: Vec<Spanned<Intern<Row>>>,
     pub evidence: Vec<Evidence>,
 }
 
@@ -214,11 +218,16 @@ impl<'env> Solver<'env> {
         self.tables.row_unification_table.new_key(None)
     }
 
-    fn fresh_row_combination(&mut self) -> RowCombination {
+    fn fresh_row_combination(
+        &mut self,
+        l_id: NodeId,
+        r_id: NodeId,
+        goal_id: NodeId,
+    ) -> RowCombination {
         RowCombination {
-            left: Row::Unifier(self.fresh_row_var()),
-            right: Row::Unifier(self.fresh_row_var()),
-            goal: Row::Unifier(self.fresh_row_var()),
+            left: Spanned(Row::Unifier(self.fresh_row_var()).into(), l_id),
+            right: Spanned(Row::Unifier(self.fresh_row_var()).into(), r_id),
+            goal: Spanned(Row::Unifier(self.fresh_row_var()).into(), goal_id),
         }
     }
 
@@ -383,7 +392,7 @@ impl<'env> Solver<'env> {
         out.constraints
             .extend(signature.evidence.iter().map(|ev| match *ev {
                 Evidence::RowEquation { left, right, goal } => Constraint::RowCombine(
-                    Provenance::ExpectedCombine(id),
+                    Provenance::ExpectedCombine(left.1, right.1),
                     RowCombination { left, right, goal },
                 ),
             }));

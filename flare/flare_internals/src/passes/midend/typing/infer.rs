@@ -3,8 +3,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     passes::midend::typing::{
-        Constraint, Evidence, GenOut, ItemWrapper, Provenance, Row, Solver, Type, Typed,
-        inst::Instantiate,
+        Constraint, GenOut, ItemWrapper, Provenance, Row, Solver, Type, Typed, inst::Instantiate,
     },
     resource::rep::{
         Spanned,
@@ -47,6 +46,7 @@ impl Solver<'_> {
                 // dbg!(v.0.0);
                 // dbg!(env.keys().collect::<Vec<_>>());
                 let ty = &env[&v.0.0];
+                // dbg!(ty.1, v.0.1);
                 (
                     GenOut::new(vec![], ast.convert(Expr::Ident(Typed(v, *ty)))),
                     *ty,
@@ -142,20 +142,19 @@ impl Solver<'_> {
                 )
             }
 
-            Expr::Let(name, def, body) => {
-                let (mut def_out, def_ty) = self.infer(env.clone(), def);
-                // dbg!(name, def_ty);
-                let env = env.update(name.0.0, def_ty);
-                let (body_out, body_ty) = self.infer(env, body);
-                def_out.constraints.extend(body_out.constraints);
-                (
-                    def_out.with_typed_ast(|def| {
-                        ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
-                    }),
-                    body_ty,
-                )
-            }
-
+            // Expr::Let(name, def, body) => {
+            //     let (mut def_out, def_ty) = self.infer(env.clone(), def);
+            //     // dbg!(name, def_ty);
+            //     let env = env.update(name.0.0, def_ty);
+            //     let (body_out, body_ty) = self.infer(env, body);
+            //     def_out.constraints.extend(body_out.constraints);
+            //     (
+            //         def_out.with_typed_ast(|def| {
+            //             ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
+            //         }),
+            //         body_ty,
+            //     )
+            // }
             Expr::Add(l, r) => {
                 let num_ty = ast.convert(Type::Num);
                 let left_out = self.check(env.clone(), l, num_ty);
@@ -266,7 +265,7 @@ impl Solver<'_> {
             }
 
             Expr::Concat(left, right) => {
-                let row_comb = self.fresh_row_combination();
+                let row_comb = self.fresh_row_combination(left.1, right.1, ast.1);
 
                 let left_out =
                     self.check(env.clone(), left, left.convert(Type::Prod(row_comb.left)));
@@ -277,7 +276,7 @@ impl Solver<'_> {
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(
                     // Provenance::ExpectedCombine(id),
-                    Provenance::ExpectedCombine(left.1),
+                    Provenance::ExpectedCombine(left.1, right.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
@@ -291,7 +290,7 @@ impl Solver<'_> {
                 )
             }
             Expr::Project(dir, goal) => {
-                let row_comb = self.fresh_row_combination();
+                let row_comb = self.fresh_row_combination(goal.1, goal.1, ast.1);
                 let sub_row = match dir {
                     Direction::Left => row_comb.left,
                     Direction::Right => row_comb.right,
@@ -300,7 +299,7 @@ impl Solver<'_> {
                 let mut out = self.check(env, goal, goal.convert(Type::Prod(row_comb.goal)));
 
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(goal.1),
+                    Provenance::ExpectedCombine(goal.1, sub_row.1),
                     row_comb,
                 ));
                 (
@@ -309,7 +308,7 @@ impl Solver<'_> {
                 )
             }
             Expr::Branch(left, right) => {
-                let row_comb = self.fresh_row_combination();
+                let row_comb = self.fresh_row_combination(left.1, right.1, ast.1);
                 let ret_var = self.fresh_ty_var();
                 let ret_ty = ast.convert(Type::Unifier(ret_var));
                 let left_out = self.check(
@@ -329,7 +328,7 @@ impl Solver<'_> {
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
                 constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(right.1),
+                    Provenance::ExpectedCombine(left.1, right.1),
                     row_comb,
                 ));
                 self.tables.row_to_combo.insert(ast.1, row_comb);
@@ -338,7 +337,7 @@ impl Solver<'_> {
                 (GenOut::new(constraints, ast.convert(typed_ast)), out_ty)
             }
             Expr::Inject(dir, value) => {
-                let row_comb = self.fresh_row_combination();
+                let row_comb = self.fresh_row_combination(value.1, value.1, ast.1);
 
                 let sub_row = match dir {
                     Direction::Left => row_comb.left,
@@ -349,7 +348,7 @@ impl Solver<'_> {
 
                 let mut out = self.check(env, value, ast.convert(Type::Sum(sub_row)));
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(value.1),
+                    Provenance::ExpectedCombine(value.1, sub_row.1),
                     row_comb,
                 ));
 
@@ -381,7 +380,7 @@ impl Solver<'_> {
                     .iter()
                     .map(|row_var| {
                         let unifier = self.fresh_row_var();
-                        wrapper_rowvars.push(Row::Unifier(unifier));
+                        wrapper_rowvars.push(ast.convert(Row::Unifier(unifier)));
                         (*row_var, unifier)
                     })
                     .collect::<FxHashMap<_, _>>();
@@ -399,11 +398,13 @@ impl Solver<'_> {
                         .clone()
                         .into_iter()
                         .filter_map(|c| match c {
-                            Constraint::RowCombine(_, row_combo) => Some(Evidence::RowEquation {
-                                left: row_combo.left,
-                                right: row_combo.right,
-                                goal: row_combo.goal,
-                            }),
+                            Constraint::RowCombine(_, row_combo) => Some(
+                                row_combo.into_evidence(), //     Evidence::RowEquation {
+                                                           //     left: row_combo.left,
+                                                           //     right: row_combo.right,
+                                                           //     goal: row_combo.goal,
+                                                           // }
+                            ),
                             _ => None,
                         })
                         .collect(),

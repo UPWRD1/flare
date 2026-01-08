@@ -46,6 +46,7 @@ enum Token {
     Sandwich(&'static str),
     Eq,
     Dot,
+    DoubleDot,
     TripleDot,
     FatArrow,
     Arrow,
@@ -69,6 +70,7 @@ enum Token {
     RParen,
     Question,
 
+    And,
     Def,
     Else,
     // Enum,
@@ -82,6 +84,7 @@ enum Token {
     Match,
     Package,
     Pub,
+    Or,
     // Struct,
     Then,
     True,
@@ -113,6 +116,8 @@ impl std::fmt::Display for Token {
             Self::ComparisonOp(c) => write!(f, "{c}"),
             Self::Ampersand => write!(f, "&"),
 
+            Self::And => write!(f, "and"),
+            Self::Or => write!(f, "or"),
             Self::At => write!(f, "@"),
             Self::Fn => write!(f, "fn"),
             Self::True => write!(f, "true"),
@@ -125,6 +130,7 @@ impl std::fmt::Display for Token {
             Self::Separator => write!(f, "newline"),
             Self::Whitespace => write!(f, "whitespace"),
             Self::Dot => write!(f, "."),
+            Self::DoubleDot => write!(f, ".."),
             Self::TripleDot => write!(f, "..."),
             Self::FatArrow => write!(f, "=>"),
             Self::Arrow => write!(f, "->"),
@@ -218,6 +224,7 @@ where
     recursive(move |token| {
         choice((
             text::ident().map(|s| match s {
+                "and" => Token::And,
                 "def" => Token::Def,
                 "else" => Token::Else,
                 // "enum" => Token::Enum,
@@ -230,6 +237,7 @@ where
                 "infer" => Token::TyInfer,
                 "let" => Token::Let,
                 "match" => Token::Match,
+                "or" => Token::Or,
                 "package" => Token::Package,
                 "pub" => Token::Pub,
                 // "struct" => Token::Struct,
@@ -263,6 +271,7 @@ where
             //             just("(").to(Token::LParen),
             // just(")").to(Token::RParen),
             just("...").to(Token::TripleDot),
+            just("..").to(Token::DoubleDot),
             just(".").to(Token::Dot),
             just(",").to(Token::Comma),
             just("|").to(Token::Pipe),
@@ -575,6 +584,27 @@ where
                 },
             )
             .boxed(),
+
+            infix(
+                left(5),
+                just(Token::And),
+                |left, _, right, e| {
+                    Spanned(Intern::from(Expr::Comparison(left, BinOp::And, right)), e.span())
+                    
+                },
+            )
+            .boxed(),
+
+            infix(
+                left(5),
+                just(Token::Or),
+                |left, _, right, e| {
+                    Spanned(Intern::from(Expr::Comparison(left, BinOp::Or, right)), e.span())
+                    
+                },
+            )
+            .boxed(),
+            
             // Calls
             infix(left(9), empty(), |func, (), arg, e| {
                 Spanned(Intern::from(Expr::Call(func, arg)), e.span())
@@ -727,7 +757,7 @@ where
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .map_with(|types, e| {
-                    let ty = Type::Prod(Row::Closed(ClosedRow {
+                    let ty = Type::Prod(Spanned(Row::Closed(ClosedRow {
                         fields: types
                             .iter()
                             .enumerate()
@@ -735,7 +765,7 @@ where
                             .collect::<Vec<_>>()
                             .leak(),
                         values: types.leak(),
-                    }));
+                    }).into(), e.span()));
                     Spanned(Intern::from(ty), e.span())
                 });
 
@@ -745,35 +775,35 @@ where
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect::<Vec<_>>()
-                .clone()
-                .then(just(Token::TripleDot).or_not())
+                .then(just(Token::TripleDot).map_with(|_, e| e.span()).or_not())
+                
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .map_with(|(types, is_open), e| {
                     let (fields, values): (
                         Vec<Spanned<Intern<String>>>,
                         Vec<Spanned<Intern<Type>>>,
                     ) = types.into_iter().unzip();
-                    if is_open.is_some() {
-                        let l_ty = Type::Prod(Row::Closed(ClosedRow {
+                    if let Some(id) = is_open {
+                        let l_ty = Type::Prod(Spanned(Row::Closed(ClosedRow {
                             fields: fields
                                 .iter()
                                 .map(|name| Label(*name))
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: values.leak(),
-                        }.sort()));
+                        }.sort()).into(), e.span()));
                         let l_ty = Spanned(Intern::from(l_ty), e.span());
-                        let ty = Type::Subtable(l_ty);
+                        let ty = Type::Subtable(l_ty, id);
                         Spanned(Intern::from(ty), e.span())
                     } else {
-                        let ty = Type::Prod(Row::Closed(ClosedRow {
+                        let ty = Type::Prod(Spanned(Row::Closed(ClosedRow {
                             fields: fields
                                 .iter()
                                 .map(|name| Label(*name))
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: values.leak(),
-                        }.sort()));
+                        }.sort()).into(), e.span()));
                         Spanned(Intern::from(ty), e.span())
                     }
                 });
@@ -790,14 +820,14 @@ where
                         Vec<Spanned<Intern<String>>>,
                         Vec<Option<Spanned<Intern<Type>>>>,
                     ) = types.into_iter().unzip();
-                        let ty = Type::Sum(Row::Closed(ClosedRow {
+                        let ty = Type::Sum(Spanned(Row::Closed(ClosedRow {
                             fields: fields
                                 .iter()
                                 .map(|name| Label(*name))
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: values.iter().enumerate().map(|(i, x)| x.unwrap_or(fields[i].convert(Type::Unit))).collect::<Vec<_>>().leak(),
-                        }.sort()));
+                        }.sort()).into(), e.span()));
                         // dbg!(ty);
                         Spanned(Intern::from(ty), e.span())
                     
@@ -842,7 +872,8 @@ where
                     .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
                     .map_with(|name, e| {
                         Spanned(
-                            Intern::from(Type::Prod(Row::Open(RowVar(name.0)))),
+                            Intern::from(Type::Prod(Spanned(Row::Open(RowVar(name.0)).into(), e.span()))),
+                            
                             e.span(),
                         )
                     }),
@@ -889,6 +920,26 @@ let rname = select_ref! { Token::Ident(x) => *x };
 
     recursive(|pat| {
         choice((
+            just(Token::LBrace)
+                .ignore_then(
+                    
+choice((
+                    raw_ident.then(pat.clone())
+                        .map(|(label, term)| 
+                            (ast::Label(label), term)
+                        ),
+                    
+                    raw_ident.map(|label| {
+                        (ast::Label(label), label.convert(Pattern::Wildcard))
+                    
+                    })
+                                )) .separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
+                .then_ignore(just(Token::RBrace))
+                .map_with(|fields, e|{
+                    let fields = fields
+                        .leak();
+                Spanned(Pattern::Record { fields, open: false }.into(), e.span())
+            }),
             just(Token::Pipe)
                 .ignore_then(choice((
                     raw_ident.then(pat.clone())

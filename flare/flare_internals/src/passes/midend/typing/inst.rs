@@ -41,7 +41,7 @@ impl<'a> Instantiate<'a> {
         // dbg!(&ev);
         match ev {
             Evidence::RowEquation { left, right, goal } => Constraint::RowCombine(
-                Provenance::ExpectedCombine(self.id),
+                Provenance::ExpectedCombine(left.1, right.1),
                 RowCombination {
                     left: self.row(*left),
                     right: self.row(*right),
@@ -51,32 +51,35 @@ impl<'a> Instantiate<'a> {
         }
     }
 
-    fn row(&self, row: Row) -> Row {
-        match row {
-            // Type Scheme's should have been generalized and only contain Row::Open.
-            // If we see a Unifier in a type scheme our type checker has a bug in it.
-            Row::Unifier(_) => unreachable!("Leftover unifier in type scheme"),
-            Row::Open(var) => self
-                .rowvar_to_unifiers
-                .get(&var)
-                .copied()
-                .map(Row::Unifier)
-                .unwrap_or_else(|| {
-                    unreachable!(
-                        "Expected row var {:?} to be mapped to fresh unifier in instantiation",
-                        var
-                    )
-                }),
-            Row::Closed(mut row) => {
-                row.values = row
-                    .values
-                    .iter()
-                    .map(|ty| self.ty(*ty))
-                    .collect::<Vec<_>>()
-                    .leak();
-                Row::Closed(row)
+    fn row(&self, row: Spanned<Intern<Row>>) -> Spanned<Intern<Row>> {
+        row.map(|row| {
+            match *row {
+                // Type Scheme's should have been generalized and only contain Row::Open.
+                // If we see a Unifier in a type scheme our type checker has a bug in it.
+                Row::Unifier(_) => unreachable!("Leftover unifier in type scheme"),
+                Row::Open(var) => self
+                    .rowvar_to_unifiers
+                    .get(&var)
+                    .copied()
+                    .map(Row::Unifier)
+                    .unwrap_or_else(|| {
+                        unreachable!(
+                            "Expected row var {:?} to be mapped to fresh unifier in instantiation",
+                            var
+                        )
+                    }),
+                Row::Closed(mut row) => {
+                    row.values = row
+                        .values
+                        .iter()
+                        .map(|ty| self.ty(*ty))
+                        .collect::<Vec<_>>()
+                        .leak();
+                    Row::Closed(row)
+                }
             }
-        }
+            .into()
+        })
     }
 
     fn ty(&self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {

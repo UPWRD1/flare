@@ -783,6 +783,14 @@ impl<'p> Simplifier<'p> {
                             BinOp::Sub => IR::Num(l - r),
                             BinOp::Mul => IR::Num(l * r),
                             BinOp::Div => IR::Num(l / r),
+                            BinOp::And | BinOp::Or => panic!("Invalid operator for num"),
+                        },
+                        (IR::Bool(l), IR::Bool(r)) => match op {
+                            BinOp::Eq => IR::Bool(l == r),
+                            BinOp::Neq => IR::Bool(l != r),
+                            BinOp::And => IR::Bool(l && r),
+                            BinOp::Or => IR::Bool(l || r),
+                            _ => panic!("Invalid operator for bool"),
                         },
                         (l, r) => {
                             let r = self.simplify(r, in_scope.clone(), vec![]);

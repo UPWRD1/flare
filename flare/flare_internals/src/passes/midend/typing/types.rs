@@ -50,7 +50,7 @@ pub struct TypeVar(pub usize);
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Type {
     Infer,
-    Subtable(Spanned<Intern<Self>>),
+    Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
 
     Unifier(TyUniVar),
     Generic(Spanned<Intern<String>>),
@@ -67,11 +67,11 @@ pub enum Type {
     Item(ItemId),
 
     User(Spanned<Intern<String>>, &'static [Spanned<Intern<Self>>]),
-    Prod(Row),
-    Sum(Row),
+    Prod(Spanned<Intern<Row>>),
+    Sum(Spanned<Intern<Row>>),
     Label(Label, Spanned<Intern<Self>>),
+    Hole,
 }
-
 // #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 // pub struct InternType(pub Intern<Type>);
 
@@ -97,12 +97,15 @@ impl Type {
             _ => format!("{self}"),
         }
     }
-    pub fn unit() -> Self {
-        Self::Prod(Row::Closed(super::ClosedRow {
-            fields: vec![].leak(),
-            values: vec![].leak(),
-        }))
-    }
+    // pub fn unit() -> Self {
+    //     Self::Prod(
+    //         Row::Closed(super::ClosedRow {
+    //             fields: vec![].leak(),
+    //             values: vec![].leak(),
+    //         })
+    //         .into(),
+    //     )
+    // }
 
     pub fn to_default_span(self) -> Spanned<Intern<Self>> {
         Spanned(
@@ -136,7 +139,7 @@ impl Type {
             }
 
             Self::Label(_, ty) => ty.0.occurs_check(var).map_err(|_| *self),
-            Self::Prod(row) | Self::Sum(row) => match row {
+            Self::Prod(row) | Self::Sum(row) => match *row.0 {
                 Row::Open(_) | Row::Unifier(_) => Ok(()),
                 Row::Closed(closed_row) => {
                     for ty in closed_row.values {
@@ -162,7 +165,7 @@ impl Type {
                     || ret.0.mentions(unbound_tys, unbound_rows)
             }
             Self::Label(_, ty) => ty.0.mentions(unbound_tys, unbound_rows),
-            Self::Prod(row) | Self::Sum(row) => match row {
+            Self::Prod(row) | Self::Sum(row) => match &*row.0 {
                 Row::Unifier(var) => unbound_rows.contains(var),
                 Row::Open(_) => false,
                 Row::Closed(row) => row.mentions(unbound_tys, unbound_rows),
@@ -197,8 +200,9 @@ impl Type {
     }
 
     pub fn to_row(self) -> Row {
+        // TODO Replace with `Intern<Row>`
         match self {
-            Self::Prod(row) | Self::Sum(row) => row,
+            Self::Prod(row) | Self::Sum(row) => *row.0,
             _ => unreachable!("expected row, found {self:?}"),
         }
     }

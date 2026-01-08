@@ -6,7 +6,10 @@ use itertools::Itertools;
 
 use crate::{
     passes::midend::typing::{Evidence, TyUniVar, TypeScheme, types::Type},
-    resource::rep::{Spanned, ast::Label},
+    resource::rep::{
+        Spanned,
+        ast::{Label, NodeId},
+    },
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -38,10 +41,16 @@ pub enum Row {
     Closed(ClosedRow),
 }
 
+impl Spanned<Intern<Row>> {
+    pub fn render(&self, scheme: &TypeScheme) -> String {
+        self.0.render(scheme)
+    }
+}
+
 impl Row {
     pub fn render(&self, scheme: &TypeScheme) -> String {
         match self {
-            Self::Open(row_var) => todo!(),
+            Self::Open(row_var) => format!("open{}", row_var.0),
             Self::Unifier(uni_var) => format!("rowunifier{}", uni_var.0),
             Self::Closed(closed_row) => closed_row
                 .fields
@@ -105,7 +114,8 @@ impl hash::Hash for ClosedRow {
 
 impl PartialEq for ClosedRow {
     fn eq(&self, other: &Self) -> bool {
-        self.is_subtype_of(other).is_some()
+        self.fields == other.fields
+        // self.is_subtype_of(other).is_some()
     }
 }
 
@@ -242,9 +252,9 @@ impl ClosedRow {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RowCombination {
-    pub left: Row,
-    pub right: Row,
-    pub goal: Row,
+    pub left: Spanned<Intern<Row>>,
+    pub right: Spanned<Intern<Row>>,
+    pub goal: Spanned<Intern<Row>>,
 }
 
 impl RowCombination {
@@ -255,9 +265,9 @@ impl RowCombination {
     ///
     /// This only works because our row combinations are commutative.
     pub fn is_unifiable(&self, other: &Self) -> bool {
-        let left_equatable = self.left.equatable(&other.left);
-        let right_equatable = self.right.equatable(&other.right);
-        let goal_equatable = self.goal.equatable(&other.goal);
+        let left_equatable = self.left.0.equatable(&other.left.0);
+        let right_equatable = self.right.0.equatable(&other.right.0);
+        let goal_equatable = self.goal.0.equatable(&other.goal.0);
         (goal_equatable && (left_equatable || right_equatable))
             || (left_equatable && right_equatable)
     }
@@ -265,9 +275,9 @@ impl RowCombination {
     /// Check unifiability the same way as `is_unifiable` but commutes the arguments.
     /// So we check left against right, and right against left. Goal is still checked against goal.
     pub fn is_comm_unifiable(&self, other: &Self) -> bool {
-        let left_equatable = self.left.equatable(&other.right);
-        let right_equatable = self.right.equatable(&other.left);
-        let goal_equatable = self.goal.equatable(&other.goal);
+        let left_equatable = self.left.0.equatable(&other.right.0);
+        let right_equatable = self.right.0.equatable(&other.left.0);
+        let goal_equatable = self.goal.0.equatable(&other.goal.0);
         (goal_equatable && (left_equatable || right_equatable))
             || (left_equatable && right_equatable)
     }

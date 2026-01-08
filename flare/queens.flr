@@ -1,0 +1,22 @@
+package Main =
+    extern len: List[?T] -> num
+    extern 
+    
+    let main : infer =
+      num_solutions 8
+
+    type List = {?T, ..?T}
+    
+    let is_safe x d list : num -> num -> List -> bool =
+        match list in
+            | Nil | then true,
+            | Cons {d, l} | then
+                x != q and x != q + d and x != q - d and is_safe x (d+1) l,
+    
+
+    let gen n : num -> List[List[num]] =
+    #  gen n = [ (q:b) | b <- gen (n-1), q <- [1..nq], safe q 1 b]
+        if n == 0 then |Nil| else |Cons { }|
+
+    let num_solutions nq: num -> num = len gen nq
+        

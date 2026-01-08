@@ -59,8 +59,8 @@ impl<T> Spanned<T> {
         Spanned(value.into(), self.1)
     }
 
-    pub fn with(self, f: impl FnOnce(Self) -> Self) -> Self {
-        (f)(self)
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
+        Spanned((f)(self.0), self.1)
     }
 }
 

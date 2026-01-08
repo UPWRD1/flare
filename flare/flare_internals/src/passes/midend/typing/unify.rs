@@ -1,3 +1,4 @@
+use chumsky::span::Span;
 use internment::Intern;
 
 use crate::{
@@ -16,7 +17,7 @@ enum UnificationError {
     TypeNotEqual(Spanned<Intern<Type>>, Spanned<Intern<Type>>),
     InfiniteType(TyUniVar, Type),
 
-    RowsNotEqual((Row, Row)),
+    RowsNotEqual(Spanned<Intern<Row>>, Spanned<Intern<Row>>),
 }
 
 pub struct UnificationFailure;
@@ -65,16 +66,16 @@ impl Solver<'_> {
         }
     }
 
-    fn normalize_row(&mut self, row: Row) -> Row {
-        match row {
+    fn normalize_row(&mut self, row: Spanned<Intern<Row>>) -> Spanned<Intern<Row>> {
+        row.map(|row| match *row {
             Row::Unifier(var) => match self.tables.row_unification_table.probe_value(var) {
-                Some(Row::Closed(closed)) => Row::Closed(self.normalize_closed_row(closed)),
-                Some(row) => row,
+                Some(Row::Closed(closed)) => Row::Closed(self.normalize_closed_row(closed)).into(),
+                Some(row) => row.into(),
                 None => row,
             },
-            Row::Open(var) => Row::Open(var),
-            Row::Closed(closed) => Row::Closed(self.normalize_closed_row(closed)),
-        }
+            Row::Open(var) => Row::Open(var).into(),
+            Row::Closed(closed) => Row::Closed(self.normalize_closed_row(closed)).into(),
+        })
     }
 
     fn unify_ty_ty(
@@ -127,15 +128,23 @@ impl Solver<'_> {
             }
 
             (Type::Prod(left), Type::Prod(right)) | (Type::Sum(left), Type::Sum(right)) => {
+                // dbg!(left, right);
                 self.unify_row_row(left, right)
             }
 
-            (Type::Label(field, ty), Type::Prod(row) | Type::Sum(row))
-            | (Type::Prod(row) | Type::Sum(row), Type::Label(field, ty)) => self.unify_row_row(
-                Row::Closed(ClosedRow {
+            (Type::Label(field, ty), Type::Prod(row) | Type::Sum(row)) => self.unify_row_row(
+                left.convert(Row::Closed(ClosedRow {
                     fields: vec![field].leak(),
                     values: vec![ty].leak(),
-                }),
+                })),
+                row,
+            ),
+
+            (Type::Prod(row) | Type::Sum(row), Type::Label(field, ty)) => self.unify_row_row(
+                right.convert(Row::Closed(ClosedRow {
+                    fields: vec![field].leak(),
+                    values: vec![ty].leak(),
+                })),
                 row,
             ),
             (_, _) => {
@@ -154,27 +163,27 @@ impl Solver<'_> {
         self.tables.partial_row_combs = std::mem::take(&mut self.tables.partial_row_combs)
             .into_iter()
             .filter_map(|comb| match comb {
-                RowCombination { left, right, goal } if left == Row::Unifier(var) => {
+                RowCombination { left, right, goal } if *left.0 == Row::Unifier(var) => {
                     changed_combs.push(RowCombination {
-                        left: Row::Closed(row),
+                        left: left.modify(Row::Closed(row)),
                         right,
                         goal,
                     });
                     None
                 }
-                RowCombination { left, right, goal } if right == Row::Unifier(var) => {
+                RowCombination { left, right, goal } if *right.0 == Row::Unifier(var) => {
                     changed_combs.push(RowCombination {
                         left,
-                        right: Row::Closed(row),
+                        right: right.modify(Row::Closed(row)),
                         goal,
                     });
                     None
                 }
-                RowCombination { left, right, goal } if goal == Row::Unifier(var) => {
+                RowCombination { left, right, goal } if *goal.0 == Row::Unifier(var) => {
                     changed_combs.push(RowCombination {
                         left,
                         right,
-                        goal: Row::Closed(row),
+                        goal: goal.modify(Row::Closed(row)),
                     });
                     None
                 }
@@ -188,30 +197,34 @@ impl Solver<'_> {
         Ok(())
     }
 
-    fn unify_row_row(&mut self, left: Row, right: Row) -> Result<(), UnificationError> {
+    fn unify_row_row(
+        &mut self,
+        left: Spanned<Intern<Row>>,
+        right: Spanned<Intern<Row>>,
+    ) -> Result<(), UnificationError> {
         // dbg!(&self.tables.row_unification_table);
         let left = self.normalize_row(left);
         let right = self.normalize_row(right);
         // dbg!(left, right);
-        match (left, right) {
+        match (*left.0, *right.0) {
             (Row::Open(left), Row::Open(right)) if left == right => Ok(()),
             (Row::Unifier(l), Row::Unifier(r)) => self
                 .tables
                 .row_unification_table
                 .unify_var_var(l, r)
-                .map_err(|(_, _)| UnificationError::RowsNotEqual((left, right))),
+                .map_err(|(_, _)| UnificationError::RowsNotEqual(left, right)),
 
             (Row::Unifier(var), Row::Open(row)) | (Row::Open(row), Row::Unifier(var)) => self
                 .tables
                 .row_unification_table
                 .unify_var_value(var, Some(Row::Open(row)))
-                .map_err(UnificationError::RowsNotEqual),
+                .map_err(|(l, r)| UnificationError::RowsNotEqual(left, right)),
             (Row::Unifier(var), Row::Closed(row)) | (Row::Closed(row), Row::Unifier(var)) => {
                 // dbg!(&self.tables.row_unification_table);
                 self.tables
                     .row_unification_table
                     .unify_var_value(var, Some(Row::Closed(row)))
-                    .map_err(UnificationError::RowsNotEqual)?;
+                    .map_err(|(l, r)| UnificationError::RowsNotEqual(left, right))?;
                 self.dispatch_any_solved(var, row)
             }
             (Row::Closed(l), Row::Closed(r)) => {
@@ -236,11 +249,11 @@ impl Solver<'_> {
                     }
                     Ok(())
                 } else {
-                    Err(UnificationError::RowsNotEqual((left, right)))
+                    Err(UnificationError::RowsNotEqual(left, right))
                 }
             }
 
-            (_, _) => Err(UnificationError::RowsNotEqual((left, right))),
+            (_, _) => Err(UnificationError::RowsNotEqual(left, right)),
         }
     }
 
@@ -271,19 +284,34 @@ impl Solver<'_> {
         let left = self.normalize_row(row_comb.left);
         let right = self.normalize_row(row_comb.right);
         let goal = self.normalize_row(row_comb.goal);
-        match (left, right, goal) {
-            (Row::Closed(left), Row::Closed(right), goal) => {
-                let calc_goal = ClosedRow::merge(left, right);
-                self.unify_row_row(Row::Closed(calc_goal), goal)
+
+        match (*left.0, *right.0, *goal.0) {
+            (Row::Closed(l), Row::Closed(r), g) => {
+                let calc_goal = ClosedRow::merge(l, r);
+                self.unify_row_row(
+                    Spanned(Row::Closed(calc_goal).into(), left.1.union(right.1)),
+                    goal.convert(g),
+                )
             }
-            (Row::Unifier(var), Row::Closed(sub), Row::Closed(goal))
-            | (Row::Closed(sub), Row::Unifier(var), Row::Closed(goal)) => {
+            (Row::Unifier(var), Row::Closed(sub), Row::Closed(goal)) => {
                 let diff_row = self.diff_and_unify(goal, sub)?;
 
-                self.unify_row_row(Row::Unifier(var), Row::Closed(diff_row))
+                self.unify_row_row(
+                    Spanned(Row::Unifier(var).into(), left.1.union(right.1)),
+                    right.convert(Row::Closed(diff_row)),
+                )
             }
 
-            (left, right, goal) => {
+            (Row::Closed(sub), Row::Unifier(var), Row::Closed(goal)) => {
+                let diff_row = self.diff_and_unify(goal, sub)?;
+
+                self.unify_row_row(
+                    Spanned(Row::Unifier(var).into(), left.1.union(right.1)),
+                    left.convert(Row::Closed(diff_row)),
+                )
+            }
+
+            (_l, _r, _g) => {
                 // let sub = self.diff_and_unify(right, left)?;
                 // self.unify_row_row(sub, right)
                 let new_comb = RowCombination { left, right, goal };
@@ -378,19 +406,9 @@ impl Solver<'_> {
                                 ))
                                 .label(format!("expected '{right_rendered}' here, found '{left_rendered}'"), l_id)
                                 .extra(format!("This is {}", left_rendered), left.1)
-                                .extra(format!("This is {}", right_rendered), right.1)
+                                .extra(format!("This is {}", right_rendered), r_id)
                                 .into(),
                             )
-                            }
-                            // FIXME: Use actual rows and not types...
-                            Provenance::ExpectedCombine(l_id) => {
-                                let err = DynamicErr::new("Could not combine types")
-                                    .label(
-                                        format!("Expected {}, found {}", left.0, right.0),
-                                        left.1,
-                                    )
-                                    .extra("Defined here", left.1);
-                                (l_id, err.into())
                             }
                             Provenance::ConditionIsBool(c_id) => {
                                 let err = DynamicErr::new("Expected bool").label(
@@ -399,16 +417,31 @@ impl Solver<'_> {
                                 );
                                 (c_id, err.into())
                             }
+                            _ => unreachable!("Invalid providence"),
                         }
                     }
-                    UnificationError::RowsNotEqual((l, r)) => {
-                        // dbg!(provenance);
+                    UnificationError::RowsNotEqual(l, r) => {
+                        dbg!(provenance);
                         let err = match provenance {
+                            Provenance::ExpectedCombine(l_span, r_span) => {
+                                DynamicErr::new(format!("Row mismatch between {l} and {r}"))
+                                    .label(
+                                        format!(
+                                            "Expected {} to combine with {}",
+                                            r.render(scheme),
+                                            l.render(scheme)
+                                        ),
+                                        provenance.id(),
+                                    )
+                                    .extra("here", l.1)
+                                    .extra("and here", r_span)
+                            }
+
                             Provenance::ExpectedUnify(l_span, r_span) => {
                                 DynamicErr::new(format!("Row mismatch between {l} and {r}"))
                                     .label(
                                         format!(
-                                            "Expected {}, found {}",
+                                            "Expected {} to unify with {}",
                                             r.render(scheme),
                                             l.render(scheme)
                                         ),
@@ -417,7 +450,6 @@ impl Solver<'_> {
                                     .extra("here", l_span)
                                     .extra("and here", r_span)
                             }
-
                             _ => DynamicErr::new(format!("Row mismatch between {l} and {r}"))
                                 .label(
                                     format!(
