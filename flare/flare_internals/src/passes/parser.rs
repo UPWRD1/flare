@@ -76,6 +76,7 @@ enum Token {
     // Enum,
     Extern,
     False,
+    For,
     Fn,
     If,
     Impl,
@@ -83,6 +84,7 @@ enum Token {
     Let,
     Match,
     Package,
+    Prop,
     Pub,
     Or,
     // Struct,
@@ -148,11 +150,13 @@ impl std::fmt::Display for Token {
             Self::Use => write!(f, "use"),
             // Self::Struct => write!(f, "struct"),
             Self::Else => write!(f, "else"),
+            Self::For => write!(f, "for"),
             // Self::Enum => write!(f, "enum"),
             Self::Extern => write!(f, "extern"),
             Self::Impl => write!(f, "impl"),
             Self::If => write!(f, "if"),
             Self::Match => write!(f, "match"),
+            Self::Prop => write!(f, "prop"),
             Self::Pub => write!(f, "pub"),
             Self::Then => {
                 write!(f, "then")
@@ -239,6 +243,7 @@ where
                 "match" => Token::Match,
                 "or" => Token::Or,
                 "package" => Token::Package,
+                "prop" => Token::Prop,
                 "pub" => Token::Pub,
                 // "struct" => Token::Struct,
                 "then" => Token::Then,
@@ -610,11 +615,14 @@ where
                 Spanned(Intern::from(Expr::Call(func, arg)), e.span())
             })
             .boxed(),
-            infix(left(8), just(Token::DoubleColon), |obj, _, f, e| {
-                Spanned(Intern::from(Expr::MethodAccess(obj, f)), e.span())
+            infix(left(8), just(Token::DoubleColon), |obj, _, method, e| {
+                Spanned(Intern::from(Expr::MethodAccess{obj, prop: None, method}), e.span())
             })
             .boxed(),
-            // Field Access
+            infix(left(8), select! {Token::Sandwich(p) = e => Some(Spanned(String::from(p).into(), e.span()))}, |obj, prop, method, e| {
+                Spanned(Intern::from(Expr::MethodAccess{obj, prop, method}), e.span())
+            })
+            .boxed(),            // Field Access
             infix(left(10), just(Token::Dot), |x, _, y, e| {
                 Spanned(Intern::from(Expr::FieldAccess(x, y)), e.span())
             })
@@ -654,11 +662,7 @@ where
                         )
                     });
                 Ok(Definition::Let(Untyped(name), value, ty))
-
-                // } else {
-
-                // Err(Rich::custom(name.1, format!("{} expected {} arguments, but its signature implies {}", name.0, args.len(), arg_types.len())))
-                // }
+             
             })
             .labelled("let-definition")
             .as_context();
@@ -686,7 +690,7 @@ where
             .map(|((name, args), ty)| Definition::Extern(name, args.into_iter().map(Untyped).collect::<Vec<_>>().leak(), ty));
 
         // let impl_group = just(Token::Impl)
-        //     .ignore_then(ty)
+        //     .ignore_then(ty).then_ignore(just(Token::For)).then(ty)
         //     .then_ignore(just(Token::Eq))
         //     .then(def_binding.repeated().collect::<Vec<_>>())
         //     .map_with(|(the_ty, methods), _| Definition::ImplDef(ImplDef { the_ty, methods }));

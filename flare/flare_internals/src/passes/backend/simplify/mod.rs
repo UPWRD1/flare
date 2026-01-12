@@ -7,7 +7,7 @@ use crate::{
     resource::rep::ast::BinOp,
 };
 #[allow(dead_code)]
-enum Param {
+pub enum Param {
     Ty(Kind),
     Val(Var),
 }
@@ -84,7 +84,7 @@ impl IR {
         }
     }
 
-    fn split_funs(self) -> (Vec<Param>, Self) {
+    pub fn split_funs(self) -> (Vec<Param>, Self) {
         fn split_funs(ir: IR, params: &mut Vec<Param>) -> IR {
             match ir {
                 IR::TyFun(kind, ir) => {
@@ -637,7 +637,7 @@ impl<'p> Simplifier<'p> {
             self.items
                 .get(itemid.0 as usize)
                 .map(|(definition, _)| {
-                    if definition.size() < self.inline_size_threshold * 2
+                    if definition.size() < self.inline_size_threshold * 200
                         && self.some_benefit(definition, in_scope, ctx)
                     {
                         self.subst = Subst::default();

@@ -52,7 +52,8 @@ impl Typechecker {
                     self.register_function(*item_idx, f);
                 }
                 ItemKind::Type(_n, _, t) => {
-                    self.register_type(*item_idx, t)?;
+                    // dbg!(t);
+                    // self.register_type(*item_idx, t)?;
                 }
                 ItemKind::Extern { sig, .. } => {
                     let (unbound_types, unbound_rows, types_to_name, ty, _) =
@@ -80,19 +81,19 @@ impl Typechecker {
         Ok((out, self.context))
     }
 
-    fn register_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
-        // let (unbound_types, unbound_rows, types_to_name, ty, _) = self.extract_generics(t);
-        // // TODO: Add support for rows and generics
-        // let scheme = TypeScheme {
-        //     unbound_types,
-        //     unbound_rows,
-        //     evidence: Vec::new(),
-        //     types_to_name,
-        //     ty,
-        // };
-        // self.context.insert(ItemId(item_idx.index()), scheme);
-        Ok(())
-    }
+    // fn register_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
+    //     // let (unbound_types, unbound_rows, types_to_name, ty, _) = self.extract_generics(t);
+    //     // // TODO: Add support for rows and generics
+    //     // let scheme = TypeScheme {
+    //     //     unbound_types,
+    //     //     unbound_rows,
+    //     //     evidence: Vec::new(),
+    //     //     types_to_name,
+    //     //     ty,
+    //     // };
+    //     // self.context.insert(ItemId(item_idx.index()), scheme);
+    //     Ok(())
+    // }
 
     fn new_type_var(&mut self) -> TypeVar {
         let v = TypeVar(self.type_var_count);

@@ -5,17 +5,18 @@ use crate::passes::backend::lowering::ir::{IR, Type};
 pub trait Target: Copy {
     type Partial: Default;
     type Output: Default + Debug;
+    type Input: Debug;
     // fn generate(&mut self);
     // fn generate_item(&mut self, Type)
-    fn generate(&mut self, ir: IR) -> Self::Partial;
+    fn generate(&mut self, ir: Self::Input) -> Self::Partial;
     fn finish(self, p: Vec<Self::Partial>) -> Self::Output;
     fn ext(&self) -> impl Into<String>;
+    fn convert(ir: Vec<(IR, Type)>) -> Vec<Self::Input>;
 }
 
 pub struct Generator<T: Target> {
     target: T,
-    items: Vec<(IR, Type)>,
-    output: T::Output,
+    inputs: Vec<T::Input>,
 }
 
 // impl Generator<C> {
@@ -38,20 +39,14 @@ pub struct Generator<T: Target> {
 impl<T: Target> Generator<T> {
     pub fn generate(mut self) -> T::Output {
         let mut v: Vec<T::Partial> = vec![];
-        for (ir, _) in self.items {
-            v.push(self.target.generate(ir))
+        for input in self.inputs {
+            v.push(self.target.generate(input))
         }
         self.target.finish(v)
-        // self.target.finish()
-        // v.join("")
     }
 }
 impl<T: Target> Generator<T> {
-    pub fn new(target: T, items: Vec<(IR, Type)>) -> Self {
-        Self {
-            target,
-            items,
-            output: T::Output::default(),
-        }
+    pub fn new(target: T, inputs: Vec<T::Input>) -> Self {
+        Self { target, inputs }
     }
 }

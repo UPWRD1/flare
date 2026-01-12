@@ -212,7 +212,11 @@ where
     // Access(Spanned<Intern<Self>>),
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     FieldAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    MethodAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    MethodAccess {
+        obj: Spanned<Intern<Self>>,
+        prop: Option<Spanned<Intern<String>>>,
+        method: Spanned<Intern<Self>>,
+    },
     Myself,
 
     If(

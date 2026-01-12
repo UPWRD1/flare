@@ -220,7 +220,9 @@ impl<const N: usize> Resolver<N> {
                         *func = f;
                     };
                 }
-                ItemKind::Type(..) => { /* do nothing */ }
+                ItemKind::Type(.., t) => {
+                    dbg!(t); /* do nothing */
+                }
 
                 ItemKind::Extern { sig, .. } => {
                     let old_sig = sig;
@@ -586,10 +588,7 @@ impl<const N: usize> Resolver<N> {
             Expr::Match(matchee, branches) => {
                 let matchee = self.analyze_expr(matchee, vars);
 
-                let branches: Vec<_> = branches
-                    .iter()
-                    .map(|b| self.resolve_branch(*b, vars))
-                    .collect();
+                let branches: Vec<_> = branches.iter().map(|b| self.resolve_branch(*b)).collect();
                 assert!(!branches.is_empty());
                 let branches = branches
                     .into_iter()
@@ -665,7 +664,7 @@ impl<const N: usize> Resolver<N> {
     fn resolve_branch(
         &mut self,
         b: MatchArm<Untyped>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+        // vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
         let (pat_expr, bindings) = self.resolve_pattern(b.pat, vec![]);
 

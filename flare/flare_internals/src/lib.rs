@@ -297,14 +297,16 @@ impl<T: Target> Context<T> {
 
         let tc = Typechecker::new(order.leak(), resolved_e);
         let (items, source) = tc.check()?;
-        // dbg!(&items);
+
         let lowerer = Lowerer::new();
         let ir = lowerer.lower(source, &items);
         let ir = simplify::simplify(&ir);
         let ir = monomorph::monomorph(ir);
         let ir = simplify::simplify(&ir);
 
-        let g = Generator::new(self.target, ir);
+        let final_ir = T::convert(ir);
+
+        let g = Generator::new(self.target, final_ir);
 
         let out = g.generate();
         // dbg!(&out);

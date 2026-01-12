@@ -16,6 +16,7 @@ impl Target for IRTarget {
     type Partial = IR;
 
     type Output = String;
+    type Input = IR;
 
     fn generate(&mut self, ir: IR) -> Self::Partial {
         ir
@@ -30,6 +31,9 @@ impl Target for IRTarget {
     }
     fn ext(&self) -> impl Into<String> {
         "ir"
+    }
+    fn convert(ir: Vec<(IR, Type)>) -> Vec<Self::Input> {
+        ir.into_iter().map(|(ir, _)| ir).collect()
     }
 }
 
@@ -173,7 +177,7 @@ impl Type {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Default)]
 #[repr(transparent)]
 pub struct VarId(pub usize);
 
@@ -541,7 +545,7 @@ impl IR {
     }
 }
 
-trait DocExt<'a> {
+pub trait DocExt<'a> {
     fn parens(self) -> Self;
     fn brackets(self) -> Self;
     fn braces(self) -> Self;
@@ -580,7 +584,7 @@ impl<'a> DocExt<'a> for Doc<'a> {
     }
 }
 
-trait Render {
+pub trait Render {
     fn render(self) -> Doc<'static>;
 }
 

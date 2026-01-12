@@ -12,20 +12,20 @@ use crate::{
     },
     resource::rep::{
         Spanned,
-        ast::{self, Direction, Expr, NodeId, Untyped},
+        ast::{self, Direction, Expr, NodeId},
     },
 };
 
 #[derive(Default)]
-pub struct VarSupply {
+pub struct VarSupply<K: Eq + std::hash::Hash> {
     next: usize,
-    cache: FxHashMap<Intern<String>, VarId>,
+    cache: FxHashMap<K, VarId>,
 }
 
-impl VarSupply {
-    fn supply_for(&mut self, var: Untyped) -> VarId {
+impl<K: Eq + std::hash::Hash> VarSupply<K> {
+    pub fn supply_for(&mut self, var: K) -> VarId {
         self.cache
-            .entry(var.0.0)
+            .entry(var)
             .or_insert_with(|| {
                 let ir_var = self.next;
                 self.next += 1;
@@ -58,10 +58,16 @@ impl ItemSupply {
             })
             .to_owned()
     }
+
+    pub fn supply(&mut self) -> ItemId {
+        let ir_item = self.next;
+        self.next += 1;
+        ItemId(ir_item)
+    }
 }
 
 pub struct LowerAst<'source> {
-    var_supply: VarSupply,
+    var_supply: VarSupply<Intern<String>>,
     types: LowerTypes,
     ev_to_var: FxHashMap<Evidence, Var>,
     pub solved: Vec<(Var, IR)>,
@@ -73,7 +79,7 @@ pub struct LowerAst<'source> {
 }
 
 pub struct LowerSolvedEv<'supply> {
-    supply: &'supply mut VarSupply,
+    supply: &'supply mut VarSupply<Intern<String>>,
     left: Vec<Type>,
     right: Vec<Type>,
     goal: Vec<Type>,
@@ -302,7 +308,7 @@ enum RowIndex {
 impl<'source> LowerAst<'source> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        var_supply: VarSupply,
+        var_supply: VarSupply<Intern<String>>,
         types: LowerTypes,
         ev_to_var: FxHashMap<Evidence, Var>,
         row_to_ev: &'source FxHashMap<NodeId, Evidence>,
@@ -406,7 +412,7 @@ impl<'source> LowerAst<'source> {
             Expr::Ident(Typed(var, ty)) => {
                 // dbg!(ty);
                 IR::Var(Var::new(
-                    self.var_supply.supply_for(var),
+                    self.var_supply.supply_for(var.0.0),
                     self.types.lower_ty(*ty.0),
                 ))
             }
@@ -418,7 +424,7 @@ impl<'source> LowerAst<'source> {
             Expr::Particle(p) => IR::Particle(p.0),
             Expr::Lambda(Typed(var, ty), body, _) => {
                 let ir_ty = self.types.lower_ty(*ty.0);
-                let ir_var = self.var_supply.supply_for(var);
+                let ir_var = self.var_supply.supply_for(var.0.0);
                 let ir_body = self.lower_ast(body);
                 IR::fun(Var::new(ir_var, ir_ty), ir_body)
             }
@@ -436,7 +442,7 @@ impl<'source> LowerAst<'source> {
             }
             Expr::Let(Typed(var, ty), def, body) => {
                 let ir_ty = self.types.lower_ty(*ty.0);
-                let ir_var = self.var_supply.supply_for(var);
+                let ir_var = self.var_supply.supply_for(var.0.0);
                 let ir_def = self.lower_ast(def);
                 let ir_body = self.lower_ast(body);
                 IR::local(Var::new(ir_var, ir_ty), ir_def, ir_body)

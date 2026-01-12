@@ -1,24 +1,3 @@
-# package Main =
-    # extern println: str -> unit
-
-    # pub prop Functor =
-    #     fmap: Self -> (?A -> ?B) -> Functor[?B]
-
-    # pub type Option[?T] = |Some ?T, None|
-
-    # impl Functor for Option[?T] =
-    #     def map self f : Option[?T] -> (?T -> ?U) -> Option[?U] = match self in
-    #             | Some x| then |Some (f x)|,
-    #             | None | then  |None|
-
-    # pub let x: infer = 3
-
-    # pub let main: infer =
-    #     let a = Some 2 in
-    #     let b = Some 3 in
-    #     a :: fmap (fn x => x * 2)
-    #         +
-    #     b :Functor: fmap (fn x => x * 3)
 package Main =
     type Point2d = {x: num, y: num}
 
@@ -47,4 +26,3 @@ package Main =
         let mapped = map val (fn x => map_wrapper x (fn data => to_num data )) in    
         let unwrapped = unwrap_or mapped (new_Wrapper 0) in
         extract unwrapped
-

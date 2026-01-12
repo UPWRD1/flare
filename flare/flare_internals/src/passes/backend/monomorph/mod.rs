@@ -40,6 +40,8 @@ fn collect_types(ir: &IR, types: &mut Vec<TyApp>) {
                 collect_types(&b.body, types);
             }
         }
+        IR::Var(v) => types.push(TyApp::Ty(v.ty.clone())),
+
         _ => (),
     }
 }

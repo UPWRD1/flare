@@ -43,7 +43,6 @@ impl Solver<'_> {
                     None => ty.modify(Type::Unifier(self.tables.unification_table.find(v))),
                 }
             }
-
             Type::Label(label, t) => {
                 let t = self.normalize_ty(t);
                 ty.modify(Type::Label(label, t))
@@ -218,13 +217,13 @@ impl Solver<'_> {
                 .tables
                 .row_unification_table
                 .unify_var_value(var, Some(Row::Open(row)))
-                .map_err(|(l, r)| UnificationError::RowsNotEqual(left, right)),
+                .map_err(|(_, _)| UnificationError::RowsNotEqual(left, right)),
             (Row::Unifier(var), Row::Closed(row)) | (Row::Closed(row), Row::Unifier(var)) => {
                 // dbg!(&self.tables.row_unification_table);
                 self.tables
                     .row_unification_table
                     .unify_var_value(var, Some(Row::Closed(row)))
-                    .map_err(|(l, r)| UnificationError::RowsNotEqual(left, right))?;
+                    .map_err(|(_, _)| UnificationError::RowsNotEqual(left, right))?;
                 self.dispatch_any_solved(var, row)
             }
             (Row::Closed(l), Row::Closed(r)) => {
@@ -417,11 +416,27 @@ impl Solver<'_> {
                                 );
                                 (c_id, err.into())
                             }
+
+                            Provenance::ExpectedCombine(l_span, r_span) => {
+                                let err = DynamicErr::new(format!(
+                                    "Row mismatch between {} and {}",
+                                    left.0, right.0
+                                ))
+                                .label(
+                                    format!(
+                                        "Expected {} to combine with {}",
+                                        right.0.render(scheme),
+                                        left.0.render(scheme)
+                                    ),
+                                    l_span,
+                                )
+                                .extra("and here", r_span);
+                                (l_span, err.into())
+                            }
                             _ => unreachable!("Invalid providence"),
                         }
                     }
                     UnificationError::RowsNotEqual(l, r) => {
-                        dbg!(provenance);
                         let err = match provenance {
                             Provenance::ExpectedCombine(l_span, r_span) => {
                                 DynamicErr::new(format!("Row mismatch between {l} and {r}"))
@@ -431,9 +446,8 @@ impl Solver<'_> {
                                             r.render(scheme),
                                             l.render(scheme)
                                         ),
-                                        provenance.id(),
+                                        l_span,
                                     )
-                                    .extra("here", l.1)
                                     .extra("and here", r_span)
                             }
 
@@ -445,10 +459,11 @@ impl Solver<'_> {
                                             r.render(scheme),
                                             l.render(scheme)
                                         ),
-                                        provenance.id(),
+                                        l_span,
                                     )
-                                    .extra("here", l_span)
                                     .extra("and here", r_span)
+                                    .extra("from", l.1)
+                                    .extra("and from", r.1)
                             }
                             _ => DynamicErr::new(format!("Row mismatch between {l} and {r}"))
                                 .label(

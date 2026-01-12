@@ -2,7 +2,11 @@ use internment::Intern;
 
 use crate::{
     passes::{
-        backend::target::Target,
+        backend::{
+            lir::{ClosureConvertOut, closure_convert},
+            lowering::ir,
+            target::Target,
+        },
         midend::typing::{Type, Typed},
     },
     resource::rep::{
@@ -17,8 +21,9 @@ pub struct C;
 #[allow(unused_variables)]
 impl Target for C {
     type Output = String;
-    type Partial = String;
 
+    type Partial = String;
+    type Input = ClosureConvertOut;
     // fn finish(self) -> Self::Output {
     //     let mut string_buf = String::new();
     //     let out = self
@@ -38,13 +43,18 @@ impl Target for C {
         p.join("")
     }
 
-    fn generate(&mut self, ir: super::lowering::ir::IR) -> Self::Partial {
+    fn generate(&mut self, ir: ClosureConvertOut) -> Self::Partial {
         todo!()
     }
     fn ext(&self) -> impl Into<String> {
         "c"
     }
+
+    fn convert(ir: Vec<(ir::IR, ir::Type)>) -> Vec<Self::Input> {
+        closure_convert(ir)
+    }
 }
+
 #[allow(dead_code, unused_variables, clippy::dbg_macro)]
 impl C {
     pub fn new() -> Self {
