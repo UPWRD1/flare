@@ -32,8 +32,8 @@ impl Target for IRTarget {
     fn ext(&self) -> impl Into<String> {
         "ir"
     }
-    fn convert(ir: Vec<(IR, Type)>) -> Vec<Self::Input> {
-        ir.into_iter().map(|(ir, _)| ir).collect()
+    fn convert(ir: Vec<IR>) -> Vec<Self::Input> {
+        ir
     }
 }
 
@@ -514,7 +514,10 @@ impl IR {
                     }
 
                     if ty != &branch.body.type_of() {
-                        unreachable!("ICE: Branch body has unexpected type")
+                        unreachable!(
+                            "ICE: Branch body has unexpected type: ty {ty:?} vs branch: {:?}",
+                            branch.body.type_of()
+                        )
                     }
                 }
 

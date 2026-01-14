@@ -50,7 +50,7 @@ impl Target for C {
         "c"
     }
 
-    fn convert(ir: Vec<(ir::IR, ir::Type)>) -> Vec<Self::Input> {
+    fn convert(ir: Vec<ir::IR>) -> Vec<Self::Input> {
         closure_convert(ir)
     }
 }

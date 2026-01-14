@@ -90,7 +90,13 @@ impl Ident for Type {
 impl Type {
     pub fn render(&self, scheme: &TypeScheme) -> String {
         match self {
-            Self::Var(v) => format!("?{}", scheme.types_to_name.get(v).unwrap()),
+            Self::Var(v) => format!(
+                "?{}",
+                scheme.types_to_name.get(v).unwrap_or_else(|| panic!(
+                    "Type variable {v:?} was not found in the type scheme: {scheme:?}"
+                )) // .coopied()
+                   // .uwrap_or_else(|| v.0.to_string().into())
+            ),
             Self::Func(l, r) => format!("{} -> {}", l.0.render(scheme), r.0.render(scheme)),
             Self::Prod(r) => format!("{{{}}}", r.render(scheme)),
             Self::Sum(r) => format!("|{}|", r.render(scheme)),

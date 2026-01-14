@@ -115,7 +115,8 @@ impl Target for LIRTarget {
         "ir"
     }
 
-    fn convert(ir: Vec<(ir::IR, ir::Type)>) -> Vec<Self::Input> {
+    fn convert(ir: Vec<ir::IR>) -> Vec<Self::Input> {
+        let ir = vec![ir.last().unwrap().clone()];
         closure_convert(ir)
     }
 }
@@ -299,7 +300,7 @@ impl ClosureConvert {
             }
 
             ir::IR::TyFun(..) | ir::IR::TyApp(..) => {
-                unreachable!("Generics appeared after monomorphization")
+                unreachable!("Generics appeared after monomorphization: {ir}")
             }
             _ => todo!("{ir:?}"),
         }
@@ -359,8 +360,8 @@ impl ClosureConvert {
     }
 }
 
-pub fn closure_convert(ir: Vec<(ir::IR, ir::Type)>) -> Vec<ClosureConvertOut> {
-    ir.into_iter().map(|(ir, _)| convert(ir)).collect()
+pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
+    ir.into_iter().map(convert).collect()
 }
 
 fn convert(ir: ir::IR) -> ClosureConvertOut {

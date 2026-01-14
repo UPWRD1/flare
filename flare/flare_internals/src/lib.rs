@@ -31,6 +31,7 @@
     // clippy::restriction
 )]
 #[allow(
+    warnings,
     clippy::must_use_candidate,
     clippy::return_self_not_must_use,
     clippy::type_complexity,
@@ -47,7 +48,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chumsky::span::SimpleSpan;
 use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
@@ -55,7 +55,7 @@ use crate::{
         //backend::{flatten::Flattener, gen::Generator},
         backend::{
             lowering::Lowerer,
-            monomorph, simplify,
+            simplify,
             target::{Generator, Target},
         },
         midend::{
@@ -66,7 +66,6 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr},
         rep::{
-            Spanned,
             ast::{
                 Package,
                 Program,
@@ -78,12 +77,23 @@ use crate::{
     },
 };
 
+pub trait Operation {}
+#[derive(Debug)]
+struct Init;
+impl Operation for Init {}
+
 pub type FileCtx = FxHashMap<FileID, FileSource<'static>>;
 #[derive(Debug)]
 /// The context for a Flare bundle.
 pub struct Context<T: Target> {
     pub filectx: FileCtx,
     pub target: T,
+    // pub intrinsics: OnceCell<[(&'static str, &'static [Untyped], Type); 0]>,
+    // pub raw_ast: OnceCell<Program<Untyped>>,
+    // pub typed_ast: OnceCell<Program<Typed>>,
+    // pub env: OnceCell<Environment>,
+    // pub ir: OnceCell<ir::IR>,
+    // pub lir: OnceCell<lir::IR>,
 }
 
 impl<T: Target> Context<T> {
@@ -99,6 +109,12 @@ impl<T: Target> Context<T> {
         Context {
             filectx: vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>(),
             target,
+            // intrinsics: Default::default(),
+            // raw_ast: Default::default(),
+            // typed_ast: Default::default(),
+            // env: Default::default(),
+            // ir: Default::default(),
+            // lir: Default::default(),
         }
     }
 
@@ -153,144 +169,22 @@ impl<T: Target> Context<T> {
 
         let e = Environment::build(&program)?;
         let default_span = Type::Infer.to_default_span();
-        let intrinsics: [(&str, &'static [Untyped], Type); 10] = [
-            (
-                "intrinsic_arith_add",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Num.to_default_span(),
-                    Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
-                        .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_arith_sub",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Num.to_default_span(),
-                    Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
-                        .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_arith_mul",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Num.to_default_span(),
-                    Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
-                        .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_arith_div",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Num.to_default_span(),
-                    Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
-                        .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_compare_eq",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
-                    Type::Func(
-                        Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
-                        Type::Bool.to_default_span(),
-                    )
-                    .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_compare_neq",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
-                    Type::Func(
-                        Type::Generic(default_span.convert("?T".to_string())).to_default_span(),
-                        Type::Bool.to_default_span(),
-                    )
-                    .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_compare_clt",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Num.to_default_span(),
-                    Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
-                        .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_compare_cle",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Num.to_default_span(),
-                    Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
-                        .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_compare_cgt",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Num.to_default_span(),
-                    Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
-                        .to_default_span(),
-                ),
-            ),
-            (
-                "intrinsic_compare_cge",
-                vec![
-                    Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-                    Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-                ]
-                .leak(),
-                Type::Func(
-                    Type::Num.to_default_span(),
-                    Type::Func(Type::Num.to_default_span(), Type::Bool.to_default_span())
-                        .to_default_span(),
-                ),
-            ),
-        ];
+        let intrinsics: [(&str, &'static [Untyped], Type); 0] = [
+            // (
+            //     "intrinsic_arith_add",
+            //     vec![
+            //         Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
+            //         Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
+            //     ]
+            //     .leak(),
+            //     Type::Func(
+            //         Type::Num.to_default_span(),
+            //         Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
+            //             .to_default_span(),
+            //     ),
+            // ),
+                    ];
+
         let mut resolver = Resolver::new(e, intrinsics);
         let order = resolver.build()?;
         let resolved_e = resolver.finish()?;
@@ -301,8 +195,8 @@ impl<T: Target> Context<T> {
         let lowerer = Lowerer::new();
         let ir = lowerer.lower(source, &items);
         let ir = simplify::simplify(&ir);
-        let ir = monomorph::monomorph(ir);
-        let ir = simplify::simplify(&ir);
+        // let ir = monomorph::monomorph(ir);
+        // let ir = simplify::simplify(&ir);
 
         let final_ir = T::convert(ir);
 

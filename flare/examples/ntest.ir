@@ -1,36 +1,12 @@
 item #0: is
-tyfn Type => fn [$0: ?0] => $0
+tyfn Type => fn [$0: ?0] => $0 as {unit | ?0} variant 1
 end item #0
 
 item #1: is
-extern_to_num
+tyfn Type => unit as {unit | ?0} variant 0
 end item #1
 
 item #2: is
-tyfn Type => tyfn Type => fn [$0: ?1, $1: ?1 -> ?0] => $1($0)
-end item #2
-
-item #3: is
-tyfn Type => fn [$0: ?0] => $0
-end item #3
-
-item #4: is
-tyfn Type => fn [$0: ?0] => $0 as {unit | ?0} variant 1
-end item #4
-
-item #5: is
-tyfn Type =>
-  fn [$0: {unit | ?0}, $1: ?0] =>
-    match $0:
-      | $8 then $1,
-      | $9 then $9
-end item #5
-
-item #6: is
-tyfn Type => unit as {unit | ?0} variant 0
-end item #6
-
-item #7: is
 tyfn Type =>
   tyfn Type =>
     let $2: {
@@ -59,238 +35,43 @@ tyfn Type =>
     in
       fn [$0: {unit | ?1}, $1: ?1 -> ?0] =>
         [{unit | ?0}]::$2.1(
-        fn [$16: ?1] =>
-          let $1: {
-            unit -> ?0 -> {unit * ?0} *
-            TyFunc Type unit -> ?0 -> ?1 -> ?0 -> {unit | ?1} -> ?0 *
-            {{unit * ?0} -> unit * unit -> {unit | ?0}} *
-            {{unit * ?0} -> ?0 * ?0 -> {unit | ?0}}
-          } = {
-              fn [$2: unit, $3: ?0] =>
-                {
-                  $2,
-                  $3},
-              tyfn Type =>
-                fn [$4: unit -> ?0, $5: ?0 -> ?0, $6: {unit | ?0}] =>
-                  match $6:
-                    | $7 then $4(
-                      $7),
-                    | $8 then $5(
-                      $8),
-              {
-                fn [$9: {unit * ?0}] => $9,
-                fn [$10: unit] => $10 as {unit | ?0} variant 0},
-              {
-                fn [$12: {unit * ?0}] => $12,
-                fn [$13: ?0] => $13 as {unit | ?0} variant 1}}
-          in
-            fn [$0: ?0] => $1($0)(
-          $1(
-          $16)), fn [$17: unit] =>
-          let $0: {
-            ?0 -> unit -> {unit * ?0} *
-            TyFunc Type ?1 -> ?0 -> unit -> ?0 -> {unit | ?1} -> ?0 *
-            {{unit * ?0} -> ?0 * ?0 -> {unit | ?0}} *
-            {{unit * ?0} -> unit * unit -> {unit | ?0}}
-          } = {
-              fn [$1: ?0, $2: unit] =>
-                {
-                  $2,
-                  $1},
-              tyfn Type =>
-                fn [$3: ?0 -> ?0, $4: unit -> ?0, $5: {unit | ?0}] =>
-                  match $5:
-                    | $6 then $4(
-                      $6),
-                    | $7 then $3(
-                      $7),
-              {
-                fn [$8: {unit * ?0}] => $8,
-                fn [$9: ?0] => $9 as {unit | ?0} variant 1},
-              {
-                fn [$11: {unit * ?0}] => $11,
-                fn [$12: unit] => $12 as {unit | ?0} variant 0}}
-          in
-            $0(
-            unit), $0)
+        fn [$16: ?1] => [?0]::#0($1($16)), fn [$17: unit] => [?0]::#1, $0)
+end item #2
+
+item #3: is
+tyfn Type =>
+  fn [$0: {unit | ?0}, $1: ?0] =>
+    match $0:
+      | $8 then $1,
+      | $9 then $9
+end item #3
+
+item #4: is
+tyfn Type => fn [$0: ?0] => $0
+end item #4
+
+item #5: is
+tyfn Type => tyfn Type => fn [$0: ?1, $1: ?1 -> ?0] => $1($0)
+end item #5
+
+item #6: is
+extern_to_num
+end item #6
+
+item #7: is
+tyfn Type => fn [$0: ?0] => $0
 end item #7
 
 item #8: is
-let $0: {unit | str} = let $1: {
-    unit -> str -> {unit * str} *
-    TyFunc Type unit -> ?0 -> str -> ?0 -> {unit | str} -> ?0 *
-    {{unit * str} -> unit * unit -> {unit | str}} *
-    {{unit * str} -> str * str -> {unit | str}}
-  } = {
-      fn [$2: unit, $3: str] =>
-        {
-          $2,
-          $3},
-      tyfn Type =>
-        fn [$4: unit -> str, $5: ?0 -> str, $6: {unit | ?0}] =>
-          match $6:
-            | $7 then $4(
-              $7),
-            | $8 then $5(
-              $8),
-      {
-        fn [$9: {unit * str}] => $9,
-        fn [$10: unit] => $10 as {unit | ?0} variant 0},
-      {
-        fn [$12: {unit * str}] => $12,
-        fn [$13: str] => $13 as {unit | ?0} variant 1}}
-  in
-    fn [$0: str] => $1($0)(
+let $0: {unit | str} = [str]::#0(
   "10")
 in
-  let $1: {unit | num} = let $2: {
-      num -> unit -> {unit * num} *
-      TyFunc Type num -> ?0 -> unit -> ?0 -> {unit | num} -> ?0 *
-      {{unit * num} -> num * num -> {unit | num}} *
-      {{unit * num} -> unit * unit -> {unit | num}}
-    } = {
-        fn [$3: num, $4: unit] =>
-          {
-            $4,
-            $3},
-        tyfn Type =>
-          fn [$5: ?0 -> str, $6: unit -> str, $7: {unit | ?0}] =>
-            match $7:
-              | $8 then $6(
-                $8),
-              | $9 then $5(
-                $9),
-        {
-          fn [$10: {unit * num}] => $10,
-          fn [$11: num] => $11 as {unit | ?1} variant 1},
-        {
-          fn [$13: {unit * num}] => $13,
-          fn [$14: unit] => $14 as {unit | ?1} variant 0}}
-    in
-      fn [$0: {unit | num}, $1: num -> str] =>
-        [num]::$2(
-        fn [$16: num] =>
-          let $1: {
-            unit -> num -> {unit * num} *
-            TyFunc Type unit -> ?0 -> num -> ?0 -> {unit | num} -> ?0 *
-            {{unit * num} -> unit * unit -> {unit | num}} *
-            {{unit * num} -> num * num -> {unit | num}}
-          } = {
-              fn [$2: unit, $3: num] =>
-                {
-                  $2,
-                  $3},
-              tyfn Type =>
-                fn [$4: unit -> num, $5: ?0 -> num, $6: {unit | ?0}] =>
-                  match $6:
-                    | $7 then $4(
-                      $7),
-                    | $8 then $5(
-                      $8),
-              {
-                fn [$9: {unit * num}] => $9,
-                fn [$10: unit] => $10 as {unit | ?0} variant 0},
-              {
-                fn [$12: {unit * num}] => $12,
-                fn [$13: num] => $13 as {unit | ?0} variant 1}}
-          in
-            fn [$0: num] => $1($0)(
-          $1(
-          $16)), fn [$17: unit] =>
-          let $0: {
-            str -> unit -> {unit * str} *
-            TyFunc Type str -> ?0 -> unit -> ?0 -> {unit | str} -> ?0 *
-            {{unit * str} -> str * str -> {unit | str}} *
-            {{unit * str} -> unit * unit -> {unit | str}}
-          } = {
-              fn [$1: str, $2: unit] =>
-                {
-                  $2,
-                  $1},
-              tyfn Type =>
-                fn [$3: str -> str, $4: unit -> str, $5: {unit | str}] =>
-                  match $5:
-                    | $6 then $4(
-                      $6),
-                    | $7 then $3(
-                      $7),
-              {
-                fn [$8: {unit * str}] => $8,
-                fn [$9: str] => $9 as {unit | ?0} variant 1},
-              {
-                fn [$11: {unit * str}] => $11,
-                fn [$12: unit] => $12 as {unit | ?0} variant 0}}
-          in
-            $0(
-            unit), $0)(
-    $0, fn [$2: str] =>
-      let $3: {
-        {} -> num -> num *
-        TyFunc Type {} -> ?0 -> num -> ?0 -> num -> ?0 *
-        {num -> {} * {} -> num} *
-        {num -> num * num -> num}
-      } = {
-          fn [$4: {}, $5: num] => $5,
-          tyfn Type => fn [$6: {} -> str, $7: ?0 -> str, $8: ?0] => $7($8),
-          {
-            fn [$10: num] => {},
-            fn [$11: {}] => $11},
-          {
-            fn [$12: num] => $12,
-            fn [$13: num] => $13}}
-      in
-        fn [$0: num, $1: num -> str] =>
-          let $2: str = $1(
-            $3(
-            $0))
-          in
-            $2(
-      $2, fn [$3: str] => extern_to_num($3)))
+  let $1: {unit | num} = [num]::[str]::#2(
+    $0, fn [$2: str] => [num]::[str]::#5($2, fn [$3: str] => extern_to_num($3)))
   in
-    let $4: num = let $2: {
-        num -> unit -> {unit * num} *
-        TyFunc Type num -> ?0 -> unit -> ?0 -> {unit | num} -> ?0 *
-        {{unit * num} -> num * num -> {unit | num}} *
-        {{unit * num} -> unit * unit -> {unit | num}}
-      } = {
-          fn [$3: num, $4: unit] =>
-            {
-              $4,
-              $3},
-          tyfn Type =>
-            fn [$5: ?0 -> num, $6: unit -> num, $7: {unit | ?0}] =>
-              match $7:
-                | $8 then $6(
-                  $8),
-                | $9 then $5(
-                  $9),
-          {
-            fn [$10: {unit * num}] => $10,
-            fn [$11: num] => $11 as {unit | ?0} variant 1},
-          {
-            fn [$13: {unit * num}] => $13,
-            fn [$14: unit] => $14 as {unit | ?0} variant 0}}
-      in
-        fn [$0: {unit | num}, $1: num] =>
-          [num]::$2(
-          fn [$16: num] => $16, fn [$17: unit] => $1, $0)(
+    let $4: num = [num]::#3(
       $1, 0)
     in
-      let $1: {
-        {} -> num -> num *
-        TyFunc Type {} -> ?0 -> num -> ?0 -> num -> ?0 *
-        {num -> {} * {} -> num} *
-        {num -> num * num -> num}
-      } = {
-          fn [$2: {}, $3: num] => $3,
-          tyfn Type => fn [$4: {} -> num, $5: ?0 -> num, $6: ?0] => $5($6),
-          {
-            fn [$8: num] => {},
-            fn [$9: {}] => $9},
-          {
-            fn [$10: num] => $10,
-            fn [$11: num] => $11}}
-      in
-        fn [$0: num] => $1($0)(
+      [num]::#7(
       $4)
 end item #8

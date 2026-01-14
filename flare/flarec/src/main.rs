@@ -61,7 +61,7 @@ fn main() -> CompResult<()> {
     enable_loggin();
     panic_hook();
 
-    unsafe { backtrace_on_stack_overflow::enable() };
+    // unsafe { backtrace_on_stack_overflow::enable() };
 
     match prog_args.len() {
         3 => match prog_args[1].as_str() {

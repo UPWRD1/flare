@@ -1,4 +1,4 @@
-default: show_ir
+default: bulk
 
 build: 
     cargo build -p flarec
@@ -31,6 +31,17 @@ build-profile:
 profile:
     valgrind --tool=cachegrind /workspaces/allegro/flare/target/release/flarec -c /workspaces/allegro/flare/flare_internals/benches/bench_code/bench1.flr
 #    rm cachegrind.*
+
+bulk:
+    #!/bin/zsh
+    while just run; do :; done
+
+ 
+# -Zmiri-many-seeds=..100
+export MIRIFLAGS := " -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-many-seeds=..10"
+# export RUSTFLAGS := "-Zrandomize-layout"
+miri:
+    cargo +nightly miri run -p flarec  -- -c examples/ntest.flr
 
 reset:
     cargo clean

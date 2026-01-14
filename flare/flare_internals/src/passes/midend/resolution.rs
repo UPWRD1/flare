@@ -1,10 +1,10 @@
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 use petgraph::{
-    algo::kosaraju_scc,
+    algo::{kosaraju_scc, scc::tarjan_scc, toposort},
     dot::Config,
     graph::NodeIndex,
-    visit::{Dfs, IntoNodeReferences, Walker},
+    visit::{Bfs, Dfs, IntoNodeReferences, Topo, Walker},
 };
 use rustc_hash::{FxBuildHasher, FxHashSet};
 
@@ -152,20 +152,29 @@ impl<const N: usize> Resolver<N> {
         for (idx, p) in filtered {
             self.analyze_package(idx, p)
         }
-        // self.debug();
-        // self.dag.reverse();
 
-        let reachable: FxHashSet<NodeIndex> =
-            Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
-                .iter(&self.dag)
-                .collect();
-        let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
+        let reachable: FxHashSet<NodeIndex> = Dfs::new(
+            &self.dag.clone(),
+            self.main_dag_idx.ok_or(err_no_main.clone())?,
+        )
+        .iter(&self.dag)
+        .collect();
+        // let reachable2: FxHashSet<NodeIndex> =
+        //     Bfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
+        //         .iter(&self.dag)
+        //         .collect();
+        // dbg!(&reachable);
+        // dbg!(reachable2);
+        let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
+            // self.debug();
+            // let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
             .into_iter()
             .flatten()
             .filter(|x| reachable.contains(x))
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
-
+        sorted.reverse();
+        dbg!(&sorted);
         Ok(sorted)
     }
 
@@ -192,7 +201,6 @@ impl<const N: usize> Resolver<N> {
                     .unwrap_or_else(|_| unreachable!("Graph overflow in resolution"))
             };
 
-            // Extract the data we need to analyze (without holding a borrow)
             let item_kind = self
                 .env
                 .graph
@@ -206,11 +214,8 @@ impl<const N: usize> Resolver<N> {
                     if *f.name.0.0 == "main" {
                         self.main_dag_idx = Some(dag_idx);
                     }
+                    f = self.analyze_func(f, dag_idx);
 
-                    // Analyze the function (doesn't touch the graph)
-                    self.analyze_func(&mut f, dag_idx);
-
-                    // Now write back the result
                     let item = self
                         .env
                         .graph
@@ -221,14 +226,14 @@ impl<const N: usize> Resolver<N> {
                     };
                 }
                 ItemKind::Type(.., t) => {
-                    dbg!(t); /* do nothing */
+                    self.analyze_type(t);
+                    // dbg!(t); /* do nothing */
                 }
 
                 ItemKind::Extern { sig, .. } => {
                     let old_sig = sig;
                     let t = self.in_context(|me| me.analyze_type(sig), dag_idx);
 
-                    // Write back the result
                     let item = self
                         .env
                         .graph
@@ -257,15 +262,24 @@ impl<const N: usize> Resolver<N> {
         out
     }
 
-    fn analyze_func(&mut self, the_func: &mut FunctionItem<Untyped>, idx: NodeIndex) {
+    fn analyze_func(
+        &mut self,
+        the_func: FunctionItem<Untyped>,
+        idx: NodeIndex,
+    ) -> FunctionItem<Untyped> {
         self.in_context(
             |me| {
                 me.generic_scope.clear();
                 let sig = me.analyze_type(the_func.sig);
                 let body = me.analyze_expr(the_func.body, &[]);
-                the_func.sig = sig;
-                the_func.body = body;
+                let f = FunctionItem {
+                    sig,
+                    body,
+                    ..the_func
+                };
+
                 me.generic_scope.clear();
+                f
             },
             idx,
         )
@@ -274,23 +288,23 @@ impl<const N: usize> Resolver<N> {
     fn subst_generic_type(
         &mut self,
         t: Spanned<Intern<Type>>,
-        gens: im::HashMap<Intern<Type>, Spanned<Intern<Type>>, FxBuildHasher>,
+        generics_to_types: im::HashMap<Intern<Type>, Spanned<Intern<Type>>, FxBuildHasher>,
         // mut gens: &[Spanned<Intern<Type>>],
     ) -> Spanned<Intern<Type>> {
         let mut accum: Spanned<Intern<Type>> = t;
         match *t.0 {
             Type::Func(l, r) => {
                 accum = accum.modify(Type::Func(
-                    self.subst_generic_type(l, gens.clone()),
-                    self.subst_generic_type(r, gens),
+                    self.subst_generic_type(l, generics_to_types.clone()),
+                    self.subst_generic_type(r, generics_to_types),
                 ));
             }
             Type::Generic(_) => {
-                if let Some(g) = gens.get(&t.0) {
+                if let Some(g) = generics_to_types.get(&t.0) {
                     accum = *g
                 } else {
-                    // panic!()
-                    accum = t
+                    panic!()
+                    // accum = t
                 }
             }
             Type::Prod(r) => {
@@ -299,7 +313,7 @@ impl<const N: usize> Resolver<N> {
                         let values: Vec<_> = closed_row
                             .values
                             .iter()
-                            .map(|x| self.subst_generic_type(*x, gens.clone()))
+                            .map(|x| self.subst_generic_type(*x, generics_to_types.clone()))
                             .collect();
 
                         Row::Closed(ClosedRow {
@@ -319,7 +333,7 @@ impl<const N: usize> Resolver<N> {
                         let values: Vec<_> = closed_row
                             .values
                             .iter()
-                            .map(|x| self.subst_generic_type(*x, gens.clone()))
+                            .map(|x| self.subst_generic_type(*x, generics_to_types.clone()))
                             .collect();
 
                         Row::Closed(ClosedRow {
@@ -334,7 +348,10 @@ impl<const N: usize> Resolver<N> {
             }
 
             Type::Label(l, the_r) => {
-                accum = accum.modify(Type::Label(l, self.subst_generic_type(the_r, gens)))
+                accum = accum.modify(Type::Label(
+                    l,
+                    self.subst_generic_type(the_r, generics_to_types),
+                ))
             }
 
             _ => accum = t,
@@ -348,12 +365,9 @@ impl<const N: usize> Resolver<N> {
         // dbg!(t);
         match *t.0 {
             Type::Generic(name) => {
-                // Check if we've already seen this generic parameter name
                 if let Some(existing) = self.generic_scope.get(&name.0) {
-                    // Reuse the existing Type::Generic instance
                     *existing
                 } else {
-                    // First time seeing it - register it
                     self.generic_scope.insert(name.0, t);
                     t
                 }
@@ -379,8 +393,6 @@ impl<const N: usize> Resolver<N> {
                                 .map(|ty| self.analyze_type(*ty))
                                 .collect();
 
-                            // Don't expand - keep as Type::User with generic params
-                            // Expand with substitution
                             let generic_instances: im::HashMap<
                                 Intern<Type>,
                                 Spanned<Intern<Type>>,

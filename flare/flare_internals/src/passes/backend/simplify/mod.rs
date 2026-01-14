@@ -70,8 +70,8 @@ impl IR {
             Self::TyFun(_, ir) => ir.is_value(),
             Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
             Self::Tuple(s) => s.iter().all(Self::is_value),
-            Self::Var(_)
-            | Self::Num(_)
+            Self::Var(_) => false,
+             Self::Num(_)
             | Self::Str(_)
             | Self::Unit
             | Self::Bool(_)
@@ -190,7 +190,7 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
         | IR::Unit
         | IR::Particle(_)
         // c IR::Tuple(_)
-        | IR::Tag(_, _, _) | IR::Extern(_, _) => haystack,
+        | IR::Extern(_, _) => haystack,
 
         IR::Fun(var, ir) => IR::fun(
             var.map_ty(|ty| ty.subst_app(payload.clone())),
@@ -199,12 +199,13 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
         IR::App(fun, arg) => IR::app(subst_ty(*fun, payload.clone()), subst_ty(*arg, payload)),
         IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
         IR::TyApp(ir, ty) => IR::ty_app(subst_ty(*ir, payload.clone()), ty.subst_tyapp(payload)),
+
         IR::Local(var, defn, body) => IR::local(
             var.map_ty(|ty| ty.subst_app(payload.clone())),
             subst_ty(*defn, payload.clone()),
             subst_ty(*body, payload),
         ),
-        IR::Field(ir, _u) => {
+        IR::Field(ir, u) => {
             // if let IR::Tuple(content) = *ir {
             //     let heads = &content[..u];
             //     let i = content[u].clone();
@@ -216,9 +217,10 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
             //     todo!()
             // } else {
                 // dbg!(&ir);
-                subst_ty(*ir, payload)
+                IR::field(subst_ty(*ir, payload), u)
             // }
         }
+        IR::Tag(t, u, ir) => IR::tag(t.subst_app(payload.clone()), u, subst_ty(*ir, payload)),
 
         IR::Tuple(elements) => {
             // dbg!(&elements);
@@ -232,8 +234,20 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
         // might be wrong
 
         IR::Case(t, ir, branches) => {
-            IR::Case(t, Box::new(subst_ty(*ir, payload.clone())), branches.into_iter().map(|x| Branch{ param: x.param, body: subst_ty(x.body, payload.clone())}).collect())
-        }
+            IR::case(
+                t,
+                // *ir,
+                subst_ty(*ir, payload.clone()),
+                branches.into_iter().map(|x|
+                    Branch{
+                        param: x.param.map_ty(|ty| ty.subst_app(payload.clone())),
+                        body: subst_ty(x.body, payload.clone())
+                    }
+                )
+            )
+
+    
+                    }
         IR::Item(t, id) => {
             IR::Item(t.subst_app(payload), id)
         }
@@ -242,10 +256,10 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
 }
 
 struct OccuranceAnalyzer<'i> {
-    items: &'i [(IR, Type)],
+    items: &'i [IR],
 }
 impl<'i> OccuranceAnalyzer<'i> {
-    pub fn new(items: &'i [(IR, Type)]) -> Self {
+    pub fn new(items: &'i [IR]) -> Self {
         Self { items }
     }
 
@@ -349,7 +363,7 @@ impl<'i> OccuranceAnalyzer<'i> {
                     (Default::default(), Default::default())
                 } else {
                     let seen = seen.update(*id);
-                    self.occurrence_analysis(&self.items[id.0 as usize].0, &seen)
+                    self.occurrence_analysis(&self.items[id.0 as usize], &seen)
                 }
             }
             IR::Extern(_, _) => (Default::default(), Default::default()),
@@ -395,16 +409,16 @@ struct Simplifier<'p> {
     saturated_ty_fun_count: usize,
     locals_inlined: usize,
     inline_size_threshold: usize,
-    items: &'p [(IR, Type)],
+    items: &'p [IR],
 
     seen_items: FxHashSet<ItemId>,
 }
 
-pub fn simplify(the_ir: &[(IR, Type)]) -> Vec<(IR, Type)> {
+pub fn simplify(the_ir: &[IR]) -> Vec<IR> {
     the_ir
         // .clone()
         .iter()
-        .map(|(ir, t)| {
+        .map(|ir| {
             let mut ir = ir.clone();
             for _ in 0..2 {
                 let occ_a = OccuranceAnalyzer::new(the_ir);
@@ -417,13 +431,13 @@ pub fn simplify(the_ir: &[(IR, Type)]) -> Vec<(IR, Type)> {
                     break;
                 }
             }
-            (ir, t.clone())
+            ir
         })
         .collect()
 }
 
 impl<'p> Simplifier<'p> {
-    fn new(occs: Occurrences, prev: &'p [(IR, Type)]) -> Self {
+    fn new(occs: Occurrences, prev: &'p [IR]) -> Self {
         Self {
             occs,
             items: prev,
@@ -525,7 +539,6 @@ impl<'p> Simplifier<'p> {
                     ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
                     *scrutinee
                 }
-
                 IR::Tag(ty, idx, ir) => {
                     ctx.push((ContextEntry::Tag(ty, idx), self.subst.clone()));
                     *ir
@@ -636,8 +649,8 @@ impl<'p> Simplifier<'p> {
             self.seen_items.insert(itemid);
             self.items
                 .get(itemid.0 as usize)
-                .map(|(definition, _)| {
-                    if definition.size() < self.inline_size_threshold * 200
+                .map(|definition| {
+                    if definition.size() < self.inline_size_threshold * 2
                         && self.some_benefit(definition, in_scope, ctx)
                     {
                         self.subst = Subst::default();

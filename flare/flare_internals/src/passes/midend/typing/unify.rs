@@ -49,6 +49,7 @@ impl Solver<'_> {
             }
             Type::Prod(row) => ty.modify(Type::Prod(self.normalize_row(row))),
             Type::Sum(row) => ty.modify(Type::Sum(self.normalize_row(row))),
+
             _ => todo!("{ty:?}"),
         }
     }
@@ -432,8 +433,7 @@ impl Solver<'_> {
                                 )
                                 .extra("and here", r_span);
                                 (l_span, err.into())
-                            }
-                            _ => unreachable!("Invalid providence"),
+                            } // _ => unreachable!("Invalid providence"),
                         }
                     }
                     UnificationError::RowsNotEqual(l, r) => {

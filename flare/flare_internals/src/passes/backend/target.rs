@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::passes::backend::lowering::ir::{IR, Type};
+use crate::passes::backend::lowering::ir::IR;
 
 pub trait Target: Copy {
     type Partial: Default;
@@ -11,7 +11,7 @@ pub trait Target: Copy {
     fn generate(&mut self, ir: Self::Input) -> Self::Partial;
     fn finish(self, p: Vec<Self::Partial>) -> Self::Output;
     fn ext(&self) -> impl Into<String>;
-    fn convert(ir: Vec<(IR, Type)>) -> Vec<Self::Input>;
+    fn convert(ir: Vec<IR>) -> Vec<Self::Input>;
 }
 
 pub struct Generator<T: Target> {

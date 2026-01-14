@@ -31,6 +31,14 @@ pub struct Typechecker {
     type_var_count: usize,
     row_var_count: usize,
 }
+#[derive(Default)]
+struct TypeFixer {
+    unbound_types: BTreeSet<TypeVar>,
+    unbound_rows: BTreeSet<RowVar>,
+    types_to_name: FxHashMap<TypeVar, Intern<String>>,
+    evidence: Vec<Evidence>,
+    seen_row_vars: FxHashMap<NodeId, RowVar>,
+}
 
 impl Typechecker {
     pub fn new(item_order: &'static [NodeIndex], env: Environment) -> Self {
@@ -49,15 +57,24 @@ impl Typechecker {
             let item = self.env.value(*item_idx)?;
             match item.kind {
                 ItemKind::Function(f) => {
+                    // dbg!(f.sig);
                     self.register_function(*item_idx, f);
                 }
                 ItemKind::Type(_n, _, t) => {
                     // dbg!(t);
-                    // self.register_type(*item_idx, t)?;
+                    self.register_type(*item_idx, t)?;
                 }
                 ItemKind::Extern { sig, .. } => {
-                    let (unbound_types, unbound_rows, types_to_name, ty, _) =
-                        self.extract_generics(sig);
+                    let (
+                        TypeFixer {
+                            unbound_types,
+                            unbound_rows,
+                            types_to_name,
+                            // evidence,
+                            ..
+                        },
+                        ty,
+                    ) = self.extract_generics(sig);
                     let scheme = TypeScheme {
                         unbound_types,
                         unbound_rows,
@@ -81,19 +98,30 @@ impl Typechecker {
         Ok((out, self.context))
     }
 
-    // fn register_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
-    //     // let (unbound_types, unbound_rows, types_to_name, ty, _) = self.extract_generics(t);
-    //     // // TODO: Add support for rows and generics
-    //     // let scheme = TypeScheme {
-    //     //     unbound_types,
-    //     //     unbound_rows,
-    //     //     evidence: Vec::new(),
-    //     //     types_to_name,
-    //     //     ty,
-    //     // };
-    //     // self.context.insert(ItemId(item_idx.index()), scheme);
-    //     Ok(())
-    // }
+    fn register_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
+        let (
+            TypeFixer {
+                unbound_types,
+                unbound_rows,
+                types_to_name,
+                evidence,
+                ..
+            },
+            ty,
+        ) = self.extract_generics(t);
+
+        // dbg!(ty);
+        // // TODO: Add support for  Type::Generic(_) =>rows and generics
+        let scheme = TypeScheme {
+            unbound_types,
+            unbound_rows,
+            evidence,
+            types_to_name,
+            ty,
+        };
+        self.context.insert(ItemId(item_idx.index()), scheme);
+        Ok(())
+    }
 
     fn new_type_var(&mut self) -> TypeVar {
         let v = TypeVar(self.type_var_count);
@@ -107,59 +135,53 @@ impl Typechecker {
         v
     }
 
-    fn helper(
-        &mut self,
-        t: Spanned<Intern<Type>>,
-        accum: &mut BTreeSet<TypeVar>,
-        row_accum: &mut BTreeSet<RowVar>,
-        names: &mut FxHashMap<TypeVar, Intern<String>>,
-        evidence: &mut Vec<Evidence>,
-        seen_row_vars: &mut FxHashMap<NodeId, RowVar>,
-    ) -> Spanned<Intern<Type>> {
+    fn helper(&mut self, t: Spanned<Intern<Type>>, f: &mut TypeFixer) -> Spanned<Intern<Type>> {
+        // dbg!(t);
         match *t.0 {
-            Type::Var(type_var) => {
-                accum.insert(type_var);
-                t
-            }
+            // Type::Var(type_var) => {
+            //     f.unbound_types.insert(type_var);
+            //     t
+            // }
             Type::Subtable(sub, id) => {
-                let sub = self.helper(sub, accum, row_accum, names, evidence, seen_row_vars);
+                let sub = self.helper(sub, f);
 
-                let v = if let Some(v) = seen_row_vars.get(&id) {
+                let v = if let Some(v) = f.seen_row_vars.get(&id) {
                     *v
                 } else {
                     let v = self.new_row_var();
-                    seen_row_vars.insert(id, v);
+                    f.seen_row_vars.insert(id, v);
                     v
                 };
 
                 // dbg!(&sub);
                 // let g = self.new_row_var();
-                evidence.push(Evidence::RowEquation {
+                f.evidence.push(Evidence::RowEquation {
                     left: sub.map(|sub| sub.to_row().into()),
                     right: sub.map(|_| Intern::from(Row::Open(v))),
                     goal: sub.map(|sub| sub.to_row().into()),
                 });
-                row_accum.insert(v);
+                f.unbound_rows.insert(v);
                 // row_accum.insert(g);
                 // sub.modify(Type::Prod(Row::Open(v).into()))
                 sub
             }
             Type::Generic(n) => {
-                let v = if let Some((v, _)) = names.iter().find(|(_, x)| **x == n.0) {
+                let v = if let Some((v, _)) = f.types_to_name.iter().find(|(_, name)| **name == n.0)
+                {
                     *v
                 } else {
                     let v = self.new_type_var();
-                    names.insert(v, n.0);
+                    f.types_to_name.insert(v, n.0);
                     v
                 };
 
-                accum.insert(v);
+                f.unbound_types.insert(v);
                 t.modify(Type::Var(v))
             }
 
             Type::Func(l, r) => {
-                let l = self.helper(l, accum, row_accum, names, evidence, seen_row_vars);
-                let r = self.helper(r, accum, row_accum, names, evidence, seen_row_vars);
+                let l = self.helper(l, f);
+                let r = self.helper(r, f);
                 t.modify(Type::Func(l, r))
             }
 
@@ -170,19 +192,16 @@ impl Typechecker {
                         values: closed_row
                             .values
                             .iter()
-                            .map(|t| {
-                                self.helper(*t, accum, row_accum, names, evidence, seen_row_vars)
-                            })
+                            .map(|value_ty| self.helper(*value_ty, f))
                             .collect::<Vec<_>>()
                             .leak(),
                     })
                     .into(),
 
-                    Row::Open(o) => {
-                        row_accum.insert(o);
-                        row
-                    }
-
+                    // Row::Open(o) => {
+                    //     f.unbound_rows.insert(o);
+                    //     row
+                    // }
                     _ => todo!("Should be closed? todo"),
                 }
             }))),
@@ -193,19 +212,16 @@ impl Typechecker {
                         values: closed_row
                             .values
                             .iter()
-                            .map(|t| {
-                                self.helper(*t, accum, row_accum, names, evidence, seen_row_vars)
-                            })
+                            .map(|value_ty| self.helper(*value_ty, f))
                             .collect::<Vec<_>>()
                             .leak(),
                     })
                     .into(),
 
-                    Row::Open(o) => {
-                        row_accum.insert(o);
-                        row
-                    }
-
+                    // Row::Open(o) => {
+                    //     f.unbound_rows.insert(o);
+                    //     row
+                    // }
                     _ => todo!("Should be closed? todo"),
                 }
             }))),
@@ -214,42 +230,30 @@ impl Typechecker {
             }
             _ => t,
         }
+        // dbg!(o)
     }
 
-    pub fn extract_generics(
-        &mut self,
-        t: Spanned<Intern<Type>>,
-    ) -> (
-        BTreeSet<TypeVar>,
-        BTreeSet<RowVar>,
-        FxHashMap<TypeVar, Intern<String>>,
-        Spanned<Intern<Type>>,
-        Vec<Evidence>,
-    ) {
-        // let mut rowcount = 0;
-        let mut accum = BTreeSet::new();
-        let mut row_accum = BTreeSet::new();
-        let mut names = FxHashMap::default();
-        let mut seen_row_vars = FxHashMap::default();
-        let mut evidence = vec![];
-        // let row_accum = BTreeSet::new();
-        let t = self.helper(
-            t,
-            &mut accum,
-            &mut row_accum,
-            &mut names,
-            &mut evidence,
-            &mut seen_row_vars,
-        );
-        (accum, row_accum, names, t, evidence)
+    fn extract_generics(&mut self, t: Spanned<Intern<Type>>) -> (TypeFixer, Spanned<Intern<Type>>) {
+        let mut f = TypeFixer::default();
+        let t = self.helper(t, &mut f);
+        // dbg!(t);
+        (f, t)
     }
 
     fn register_function(&mut self, item_idx: NodeIndex, f: FunctionItem<Untyped>) {
         // let unbound_types = BTreeSet::new();
         // let evidence = vec![];
         // let unbound_rows = (*f.unbound_rows).clone();
-        let (unbound_types, unbound_rows, types_to_name, ty, evidence) =
-            self.extract_generics(f.sig);
+        let (
+            TypeFixer {
+                unbound_types,
+                unbound_rows,
+                types_to_name,
+                evidence,
+                ..
+            },
+            ty,
+        ) = self.extract_generics(f.sig);
         // dbg!(&ty);
 
         let scheme = TypeScheme {
@@ -259,10 +263,12 @@ impl Typechecker {
             ty,
             types_to_name,
         };
+        println!("Registered {}: {}", f.name, ty);
         self.context.insert(ItemId(item_idx.index()), scheme);
     }
 
     fn check_items(&mut self) -> CompResult<Vec<(ItemId, TypesOutput)>> {
+        // dbg!(&self.context);
         let to_check: Vec<_> = self
             .item_order
             .iter()
@@ -310,13 +316,7 @@ impl Typechecker {
                                     e
                                 }
                             })
-                            .inspect(|x| {
-                                println!(
-                                    "Checked {} : {}",
-                                    f.name.0,
-                                    x.scheme.ty.0.render(&x.scheme)
-                                )
-                            })?
+                            .inspect(|x| println!("Checked {} : {}", f.name.0, x.scheme.ty.0))?
                     }
 
                     ItemKind::Extern { name, args, sig: _ } => {

@@ -89,7 +89,7 @@ impl Lowerer {
         mut self,
         source: typing::ItemSource,
         items: &[(ast::ItemId, TypesOutput)],
-    ) -> Vec<(IR, Type)> {
+    ) -> Vec<IR> {
         // dbg!(&source);
         let source = Self::lower_item_source(source);
         items
@@ -111,12 +111,7 @@ impl Lowerer {
         }
     }
 
-    fn lower_logic(
-        &mut self,
-        item_source: &ItemSource,
-        out: &TypesOutput,
-        item_id: ItemId,
-    ) -> (IR, Type) {
+    fn lower_logic(&mut self, item_source: &ItemSource, out: &TypesOutput, item_id: ItemId) -> IR {
         let lowered_scheme = lower_ty_scheme(out.scheme.clone());
 
         let mut var_supply = VarSupply::default();
@@ -151,10 +146,9 @@ impl Lowerer {
             .into_iter()
             .rfold(solved_ir, |ir, var| IR::fun(var, ir));
 
-        let bound_ir = lowered_scheme
+        lowered_scheme
             .kinds
             .into_iter()
-            .fold(param_ir, |ir, kind| IR::ty_fun(kind, ir));
-        (bound_ir, lowered_scheme.scheme)
+            .fold(param_ir, |ir, kind| IR::ty_fun(kind, ir))
     }
 }
