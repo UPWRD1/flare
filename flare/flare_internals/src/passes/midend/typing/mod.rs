@@ -23,7 +23,7 @@ use crate::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
             Spanned,
-            ast::{Expr, ItemId, NodeId, Untyped, Variable},
+            ast::{Expr, ItemId, Kind, NodeId, Untyped, Variable},
             common::Ident,
         },
     },
@@ -122,6 +122,16 @@ pub struct TypeScheme {
     pub evidence: Vec<Evidence>,
     pub ty: Spanned<Intern<Type>>,
     pub types_to_name: FxHashMap<TypeVar, Intern<String>>,
+    pub kind: Kind,
+}
+
+impl TypeScheme {
+    pub fn new(kind: Kind) -> Self {
+        Self {
+            kind,
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -465,9 +475,11 @@ impl<'env> Solver<'env> {
                     .help(format!("extra types: {extra_types:?}"))
                     .help(format!("extra rows: {extra_row:?}"))
                     .help(format!("extra evidence: {extra_evidence:#?}"))
+                    .help(format!("signature: {signature:#?}"))
                     .into(),
             );
         }
+        // dbg!(self.normalize_ty(signature.ty));
 
         Ok(TypesOutput {
             typed_ast,

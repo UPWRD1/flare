@@ -2,9 +2,12 @@ use chumsky::span::Span;
 use internment::Intern;
 
 use crate::{
-    passes::midend::typing::{
-        Constraint, Provenance, Solver, TyUniVar, Type, TypeScheme,
-        rows::{ClosedRow, Row, RowCombination, RowUniVar},
+    passes::midend::{
+        resolution::subst_generic_type,
+        typing::{
+            Constraint, Provenance, Solver, TyUniVar, Type, TypeScheme,
+            rows::{ClosedRow, Row, RowCombination, RowUniVar},
+        },
     },
     resource::{
         errors::{CompilerErr, DynamicErr, TypeErr},
@@ -30,6 +33,7 @@ impl Solver<'_> {
             | Type::Bool
             | Type::Unit
             | Type::Particle(_)
+            | Type::Template(_)
             | Type::Var(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.normalize_ty(arg);
@@ -49,7 +53,6 @@ impl Solver<'_> {
             }
             Type::Prod(row) => ty.modify(Type::Prod(self.normalize_row(row))),
             Type::Sum(row) => ty.modify(Type::Sum(self.normalize_row(row))),
-
             _ => todo!("{ty:?}"),
         }
     }
@@ -85,6 +88,7 @@ impl Solver<'_> {
     ) -> Result<(), UnificationError> {
         let left = self.normalize_ty(unnorm_left);
         let right = self.normalize_ty(unnorm_right);
+        // dbg!(left, right);
         match (*left.0, *right.0) {
             (Type::Num, Type::Num)
             | (Type::String, Type::String)
@@ -147,11 +151,44 @@ impl Solver<'_> {
                 })),
                 row,
             ),
+            // (Type::TypeApp(typefun, rep), _) => {
+            //     if let Type::TypeFun(arg, t) = *typefun.0 {
+            //         let subst_t = subst_generic_type(t, arg.0, rep.0);
+
+            //         self.unify_ty_ty(subst_t, right)
+            //     } else {
+            //         todo!()
+            //     }
+            // }
+
+            // (_, Type::TypeApp(typefun, rep)) => {
+            //     if let Type::TypeFun(arg, t) = *typefun.0 {
+            //         let subst_t = subst_generic_type(t, arg.0, rep.0);
+
+            //         self.unify_ty_ty(subst_t, left)
+            //     } else {
+            //         todo!()
+            //     }
+            // }
+            // (Type::TypeFun(arg, t), rep) | (rep, Type::TypeFun(arg, t)) => {
+            //     dbg!(arg, t, rep);
+            //     todo!()
+            //     // self.tables.unification_table.unify_var_value(a_id, b)
+            // }
             (_, _) => {
                 // dbg!(l, r);
                 Err(UnificationError::TypeNotEqual(left, right))
             }
         }
+    }
+
+    fn unify_typeapp(
+        &mut self,
+        tyfun: Spanned<Intern<Type>>,
+        arg: Spanned<Intern<Type>>,
+        rep: Spanned<Intern<Type>>,
+    ) -> Result<(), UnificationError> {
+        todo!()
     }
 
     fn dispatch_any_solved(

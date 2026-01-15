@@ -6,18 +6,22 @@ use petgraph::graph::NodeIndex;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::midend::{
-        environment::Environment,
-        typing::{
-            ClosedRow, Evidence, ItemSource, Row, RowVar, Solver, Type, TypeScheme, TypeVar,
-            TypesOutput,
+    passes::{
+        backend::lowering::subst::{self, Subst},
+        midend::{
+            environment::Environment,
+            resolution::subst_generic_type,
+            typing::{
+                ClosedRow, Evidence, ItemSource, Row, RowVar, Solver, Type, TypeScheme, TypeVar,
+                TypesOutput,
+            },
         },
     },
     resource::{
         errors::{CompResult, DynamicErr, ErrorCollection},
         rep::{
             Spanned,
-            ast::{Expr, ItemId, LambdaInfo, NodeId, Untyped},
+            ast::{Expr, ItemId, Kind, LambdaInfo, NodeId, Untyped},
             common::Ident,
             entry::{FunctionItem, ItemKind},
         },
@@ -31,13 +35,23 @@ pub struct Typechecker {
     type_var_count: usize,
     row_var_count: usize,
 }
-#[derive(Default)]
+
+#[derive(Default, Debug)]
+enum TyappState {
+    #[default]
+    Outside,
+    Arg,
+    Inside,
+}
+
+#[derive(Default, Debug)]
 struct TypeFixer {
     unbound_types: BTreeSet<TypeVar>,
     unbound_rows: BTreeSet<RowVar>,
-    types_to_name: FxHashMap<TypeVar, Intern<String>>,
+    pub types_to_name: FxHashMap<TypeVar, Intern<String>>,
     evidence: Vec<Evidence>,
     seen_row_vars: FxHashMap<NodeId, RowVar>,
+    inside_type_fun: TyappState,
 }
 
 impl Typechecker {
@@ -45,7 +59,6 @@ impl Typechecker {
         Self {
             item_order,
             env,
-
             type_var_count: 0,
             row_var_count: 0,
             context: ItemSource::new(FxHashMap::default()),
@@ -64,7 +77,7 @@ impl Typechecker {
                     // dbg!(t);
                     self.register_type(*item_idx, t)?;
                 }
-                ItemKind::Extern { sig, .. } => {
+                ItemKind::Extern { name, sig, .. } => {
                     let (
                         TypeFixer {
                             unbound_types,
@@ -81,6 +94,7 @@ impl Typechecker {
                         evidence: Vec::new(),
                         ty,
                         types_to_name,
+                        kind: Kind::Extern(name.0),
                     };
                     self.context.insert(ItemId(item_idx.index()), scheme);
                 }
@@ -98,26 +112,24 @@ impl Typechecker {
         Ok((out, self.context))
     }
 
-    fn register_type(&mut self, item_idx: NodeIndex, t: Spanned<Intern<Type>>) -> CompResult<()> {
-        let (
-            TypeFixer {
-                unbound_types,
-                unbound_rows,
-                types_to_name,
-                evidence,
-                ..
-            },
-            ty,
-        ) = self.extract_generics(t);
-
+    fn register_type(&mut self, item_idx: NodeIndex, ty: Spanned<Intern<Type>>) -> CompResult<()> {
+        // let (
+        //     TypeFixer {
+        //         unbound_types,
+        //         unbound_rows,
+        //         types_to_name,
+        //         evidence,
+        //         ..
+        //     },
+        //     ty,
+        // ) = self.extract_generics(t);
         // dbg!(ty);
+        // dbg!(&unbound_rows);
         // // TODO: Add support for  Type::Generic(_) =>rows and generics
         let scheme = TypeScheme {
-            unbound_types,
-            unbound_rows,
-            evidence,
-            types_to_name,
             ty,
+            kind: Kind::Ty,
+            ..Default::default()
         };
         self.context.insert(ItemId(item_idx.index()), scheme);
         Ok(())
@@ -125,6 +137,7 @@ impl Typechecker {
 
     fn new_type_var(&mut self) -> TypeVar {
         let v = TypeVar(self.type_var_count);
+        // let v = TypeVar(n);
         self.type_var_count += 1;
         v
     }
@@ -138,10 +151,10 @@ impl Typechecker {
     fn helper(&mut self, t: Spanned<Intern<Type>>, f: &mut TypeFixer) -> Spanned<Intern<Type>> {
         // dbg!(t);
         match *t.0 {
-            // Type::Var(type_var) => {
-            //     f.unbound_types.insert(type_var);
-            //     t
-            // }
+            Type::Var(type_var) => {
+                f.unbound_types.insert(type_var);
+                t
+            }
             Type::Subtable(sub, id) => {
                 let sub = self.helper(sub, f);
 
@@ -174,8 +187,8 @@ impl Typechecker {
                     f.types_to_name.insert(v, n.0);
                     v
                 };
-
                 f.unbound_types.insert(v);
+
                 t.modify(Type::Var(v))
             }
 
@@ -228,6 +241,21 @@ impl Typechecker {
             Type::User(t, g) => {
                 unreachable!("Encountered user type {t}[{g:?}] after resolution")
             }
+            Type::TypeApp(l, r) => {
+                // f.inside_type_fun = TyappState::Arg;
+                // let l = self.helper(l, f);
+                // f.inside_type_fun = TyappState::Outside;
+                // let r = self.helper(r, f);
+                // t.modify(Type::TypeApp(l, r))
+
+                if let Type::TypeFun(g, t) = *l.0 {
+                    // let t = self.helper(t, f);
+                    // dbg!(l, r, g, t);
+                    self.helper(subst_generic_type(t, g.0, r.0), f)
+                } else {
+                    self.helper(l, f)
+                }
+            }
             _ => t,
         }
         // dbg!(o)
@@ -262,8 +290,9 @@ impl Typechecker {
             evidence,
             ty,
             types_to_name,
+            kind: Kind::Func,
         };
-        println!("Registered {}: {}", f.name, ty);
+        println!("Registered {}: {}", f.name, ty.0);
         self.context.insert(ItemId(item_idx.index()), scheme);
     }
 
@@ -284,12 +313,7 @@ impl Typechecker {
                 let item = self.env.value(*idx).expect("Item should exist");
 
                 match item.kind {
-                    ItemKind::Function(_)
-                    | ItemKind::Extern {
-                        name: _,
-                        args: _,
-                        sig: _,
-                    } => Some((id, scheme, item)),
+                    ItemKind::Function(_) | ItemKind::Extern { .. } => Some((id, scheme, item)),
                     _ => None,
                 }
             })
@@ -299,7 +323,6 @@ impl Typechecker {
             .map(|(id, scheme, item)| {
                 let solved = match item.kind {
                     ItemKind::Function(f) => {
-                        // dbg!(scheme.ty);
                         Solver::check_with_items(&self.context, f.body, scheme)
                             .map_err(|e| {
                                 if let Some(e) = e.downcast_ref::<DynamicErr>() {
@@ -316,13 +339,15 @@ impl Typechecker {
                                     e
                                 }
                             })
-                            .inspect(|x| println!("Checked {} : {}", f.name.0, x.scheme.ty.0))?
+                            .inspect(|types_output| {
+                                println!("Checked {} : {}", f.name.0, types_output.scheme.ty.0)
+                            })?
                     }
 
                     ItemKind::Extern { name, args, sig: _ } => {
                         let ex = name.convert(Expr::Item(
                             id,
-                            crate::resource::rep::ast::Kind::Extern((*name.0).clone().leak()),
+                            crate::resource::rep::ast::Kind::Extern(name.0),
                         ));
 
                         let funcs = args.iter().fold(ex, |prev, arg| {
@@ -336,6 +361,7 @@ impl Typechecker {
                         Solver::check_with_items(&self.context, funcs, scheme)
                             .expect("Inference should succeed")
                     }
+
                     _ => unreachable!(),
                 };
 

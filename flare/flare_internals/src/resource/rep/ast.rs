@@ -164,12 +164,13 @@ impl Ord for Label {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub struct ItemId(pub usize);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Default)]
 pub enum Kind {
+    #[default]
     Ty,
     Func,
     Param,
-    Extern(&'static str),
+    Extern(Intern<String>),
     Package,
 }
 

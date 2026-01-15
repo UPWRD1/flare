@@ -22,6 +22,7 @@ pub mod subst;
 use ir::{Type, TypeVar};
 
 fn lower_ty_scheme(scheme: typing::TypeScheme) -> LoweredTyScheme {
+    // dbg!(&scheme.unbound_types);
     let mut kinds = vec![Kind::Type; scheme.unbound_types.len() + scheme.unbound_rows.len()];
     let ty_env = scheme
         .unbound_types
@@ -38,6 +39,7 @@ fn lower_ty_scheme(scheme: typing::TypeScheme) -> LoweredTyScheme {
 
     let lower_types = LowerTypes { env: ty_env };
     // dbg!(scheme.ty);
+    // dbg!(&lower_types.env);
     let lower_ty = lower_types.lower_ty(*scheme.ty.0);
     let mut ev_to_ty = BTreeMap::new();
     let ev_tys = scheme
@@ -68,6 +70,8 @@ pub struct ItemSource {
 
 impl ItemSource {
     pub fn lookup_item(&self, item: ast::ItemId) -> Type {
+        // dbg!(&self.items);
+        dbg!(item.0);
         self.items[&item].clone()
     }
 }
@@ -103,8 +107,10 @@ impl Lowerer {
             items: items
                 .types
                 .into_iter()
+                .filter(|(_, scheme)| matches!(scheme.kind, ast::Kind::Func | ast::Kind::Extern(_)))
                 .map(|(item_id, ty_scheme)| {
-                    let LoweredTyScheme { scheme, .. } = lower_ty_scheme(ty_scheme);
+                    let scheme = lower_ty_scheme(ty_scheme).scheme;
+
                     (item_id, scheme)
                 })
                 .collect(),

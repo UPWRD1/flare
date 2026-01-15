@@ -353,6 +353,7 @@ impl<'source> LowerAst<'source> {
                             );
                         }
                     }
+                    _ => panic!("bad ev: {ev:?}"),
                 };
                 let param = self.var_supply.supply();
 

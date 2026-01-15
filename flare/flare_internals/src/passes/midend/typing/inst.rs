@@ -2,9 +2,12 @@ use internment::Intern;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::midend::typing::{
-        Constraint, Evidence, Provenance, Row, TyUniVar, Type, TypeScheme, TypeVar,
-        rows::{RowCombination, RowUniVar, RowVar},
+    passes::midend::{
+        resolution::subst_generic_type,
+        typing::{
+            Constraint, Evidence, Provenance, Row, TyUniVar, Type, TypeScheme, TypeVar,
+            rows::{RowCombination, RowUniVar, RowVar},
+        },
     },
     resource::rep::{Spanned, ast::NodeId},
 };
@@ -101,6 +104,7 @@ impl<'a> Instantiate<'a> {
             | Type::String
             | Type::Unit
             | Type::Unifier(_)
+            | Type::Generic(_)
             | Type::Particle(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.ty(arg);
@@ -110,6 +114,7 @@ impl<'a> Instantiate<'a> {
             Type::Prod(row) => ty.convert(Type::Prod(self.row(row))),
             Type::Sum(row) => ty.convert(Type::Sum(self.row(row))),
             Type::Label(label, ty) => ty.convert(Type::Label(label, ty)),
+
             _ => todo!("{:?}", ty),
         }
     }

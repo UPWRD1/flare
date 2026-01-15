@@ -8,7 +8,10 @@ use crate::{
         rows::{RowCombination, RowVar},
         types::TypeVar,
     },
-    resource::rep::{Spanned, ast::Expr},
+    resource::rep::{
+        Spanned,
+        ast::{Expr, NodeId},
+    },
 };
 
 #[derive(Debug)]
@@ -114,6 +117,7 @@ impl Solver<'_> {
             Type::String => SubstOut::new(ty.convert(Type::String)),
             Type::Bool => SubstOut::new(ty.convert(Type::Bool)),
             Type::Unit => SubstOut::new(ty.convert(Type::Unit)),
+            Type::Generic(g) => SubstOut::new(ty.convert(Type::Generic(g))),
 
             Type::Particle(p) => SubstOut::new(ty.convert(Type::Particle(p))),
             Type::Var(v) => SubstOut::new(ty.convert(Type::Var(v))),
@@ -143,7 +147,6 @@ impl Solver<'_> {
                 .substitute_row(row)
                 .map(Type::Sum)
                 .map(|t| ty.convert(t)),
-
             _ => todo!("{ty:?}"),
         }
     }

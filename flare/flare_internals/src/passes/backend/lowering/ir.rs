@@ -310,7 +310,7 @@ pub enum IR {
     Case(Type, Box<Self>, Vec<Branch>),
 
     Item(Type, ItemId),
-    Extern(&'static str, Type),
+    Extern(Intern<String>, Type),
 }
 
 #[allow(clippy::should_implement_trait)]

@@ -97,7 +97,7 @@ impl Environment {
     /// - on invalid names,
     ///
     pub fn build(program: &Program<Untyped>) -> CompResult<Self> {
-        use ItemKind::*;
+        // use ItemKind::*;
         let mut graph = DiGraph::new();
         let mut current_node = graph.add_node(Item::new(ItemKind::Root));
         let num_packages = program.packages.len();
@@ -122,7 +122,7 @@ impl Environment {
             let mut imports = FxHashSet::default();
             let mut exports = FxHashSet::default();
 
-            let package_entry = Item::new(Package(PackageEntry {
+            let package_entry = Item::new(ItemKind::Package(PackageEntry {
                 name: package.0.name,
                 id: package.1,
             }));
@@ -144,20 +144,30 @@ impl Environment {
                     }
                     Definition::Type(name, generics, t) => {
                         let qfrag = QualifierFragment::Type(name.0);
+
                         qual = Some(qfrag);
+                        let t = if generics.is_empty() {
+                            t
+                        } else {
+                            let mut new_t = generics
+                                .iter()
+                                .fold(t, |g, t| Spanned(Type::TypeFun(*t, g).into(), g.1));
+                            new_t.1 = t.1;
+                            new_t
+                        };
                         let entry = Item::new(ItemKind::Type(name, generics, t));
                         item_nodeindex = me.add(current_node, qfrag, entry);
                     }
                     Definition::Let(name, body, sig) => {
                         let qfrag = QualifierFragment::Func(name.0.0);
                         qual = Some(qfrag);
-                        let entry = Item::new(Function(FunctionItem { name, sig, body }));
+                        let entry = Item::new(ItemKind::Function(FunctionItem { name, sig, body }));
                         item_nodeindex = me.add(current_node, qfrag, entry);
                     }
                     Definition::Extern(name, args, sig) => {
                         let qfrag = QualifierFragment::Func(name.0);
                         qual = Some(qfrag);
-                        let entry = Item::new(Extern {
+                        let entry = Item::new(ItemKind::Extern {
                             //parent: current_parent.clone(),
                             name,
                             args,

@@ -3,11 +3,14 @@ use std::collections::BTreeMap;
 use rustc_hash::FxHashMap;
 
 use crate::passes::{
-    backend::lowering::ir::{Kind, Row, Type, TypeVar},
-    midend::typing::{self, Evidence},
+    backend::lowering::ir::{Kind, Row, TyApp, Type, TypeVar},
+    midend::{
+        resolution::subst_generic_type,
+        typing::{self, Evidence},
+    },
 };
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum AstTypeVar {
     Ty(typing::TypeVar),
     Row(typing::RowVar),
@@ -62,6 +65,7 @@ impl LowerTypes {
             typing::Type::Label(_, ty) => self.lower_ty(*ty.0),
             typing::Type::Prod(row) => Type::prod(self.lower_row_ty(*row.0)),
             typing::Type::Sum(row) => Type::sum(self.lower_row_ty(*row.0)),
+            typing::Type::TypeFun(arg, t) => Type::ty_fun(Kind::Type, self.lower_ty(*t.0)),
             _ => todo!("{ty:?}"),
         }
     }
@@ -69,7 +73,10 @@ impl LowerTypes {
     pub fn lower_ev_ty(&self, evidence: &typing::Evidence) -> Type {
         let typing::Evidence::RowEquation {
             left, right, goal, ..
-        } = evidence;
+        } = evidence
+        else {
+            panic!("bad ev: {evidence:?}")
+        };
 
         let left = self.lower_row_ty(*left.0);
         let (left_prod, left_sum) = (Type::prod(left.clone()), Type::sum(left));

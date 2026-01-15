@@ -5,12 +5,14 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "lldb",
+            "type": "lldb-dap",
             "request": "launch",
-            "name": "Debug",
-            "program": "${workspaceFolder}/allegro/target/debug/allegro",
-            "args": ["-c", "/workspaces/allegro/allegro/ntest.alg"],
+            "name": "Launch",
+            "program": "${workspaceFolder}/flare/target/debug/flarec",
+            "args": ["-c", "${workspaceFolder}/flare/examples/ntest.flr"],
+            // "env": [],
             "cwd": "${workspaceFolder}"
-        }
+        },
+        
     ]
 }

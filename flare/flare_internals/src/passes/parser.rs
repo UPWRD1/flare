@@ -667,7 +667,12 @@ where
             .labelled("let-definition")
             .as_context();
 
-        let type_def = just(Token::Type).ignore_then(raw_ident).then(just(Token::Question).ignore_then(raw_ident).separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).then_ignore(just(Token::Eq)).then(ty.clone()).map(|((name, generics), ty)| {
+        let type_def = just(Token::Type)
+            .ignore_then(raw_ident)
+            .then(just(Token::Question)
+                .ignore_then(raw_ident)
+                .separated_by(just(Token::Comma))
+                .at_least(1).collect::<Vec<_>>().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).then_ignore(just(Token::Eq)).then(ty.clone()).map(|((name, generics), ty)| {
             let generics = generics.unwrap_or_default().into_iter().map(|x| x.convert(Type::Generic(x))).collect::<Vec<_>>().leak();
             Definition::Type(name, generics, ty)
         });

@@ -5,9 +5,12 @@ use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
 use crate::{
-    passes::midend::typing::{
-        TypeScheme,
-        rows::{Row, RowUniVar},
+    passes::midend::{
+        resolution::subst_generic_type,
+        typing::{
+            ClosedRow, TypeScheme,
+            rows::{Row, RowUniVar},
+        },
     },
     resource::{
         errors::CompResult,
@@ -54,6 +57,7 @@ pub enum Type {
 
     Unifier(TyUniVar),
     Generic(Spanned<Intern<String>>),
+    Template(Spanned<Intern<String>>),
     Var(TypeVar),
     Particle(Spanned<Intern<String>>),
     #[default]
@@ -64,8 +68,9 @@ pub enum Type {
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
     Package(Spanned<Intern<String>>),
-    Item(ItemId),
-
+    // Item(ItemId),
+    TypeFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    TypeApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     User(Spanned<Intern<String>>, &'static [Spanned<Intern<Self>>]),
     Prod(Spanned<Intern<Row>>),
     Sum(Spanned<Intern<Row>>),
@@ -92,14 +97,16 @@ impl Type {
         match self {
             Self::Var(v) => format!(
                 "?{}",
-                scheme.types_to_name.get(v).unwrap_or_else(|| panic!(
-                    "Type variable {v:?} was not found in the type scheme: {scheme:?}"
-                )) // .coopied()
-                   // .uwrap_or_else(|| v.0.to_string().into())
+                scheme.types_to_name.get(v).unwrap_or(
+                    &v.0.to_string().into() // panic!("Type variable {v:?} has no associated name : {scheme:?}")
+                ) // .coopied()
+                  // .uwrap_or_else(|| v.0.to_string().into())
             ),
             Self::Func(l, r) => format!("{} -> {}", l.0.render(scheme), r.0.render(scheme)),
             Self::Prod(r) => format!("{{{}}}", r.render(scheme)),
             Self::Sum(r) => format!("|{}|", r.render(scheme)),
+            Self::TypeFun(l, r) => format!("[{}]{}", l.0.render(scheme), r.0.render(scheme)),
+            Self::TypeApp(l, r) => format!("{}::[{}]", r.0.render(scheme), l.0.render(scheme)),
             _ => format!("{self}"),
         }
     }
@@ -138,6 +145,7 @@ impl Type {
             | Self::Bool
             | Self::Unit
             | Self::Particle(_)
+            | Self::Generic(_)
             | Self::Var(_) => Ok(()),
             Self::Func(arg, ret) => {
                 arg.0.occurs_check(var).map_err(|_| *self)?;
@@ -154,6 +162,15 @@ impl Type {
                     Ok(())
                 }
             },
+            Self::TypeFun(l, r) => {
+                l.0.occurs_check(var).map_err(|_| *self)?;
+                l.0.occurs_check(var).map_err(|_| *self)
+            }
+
+            Self::TypeApp(l, r) => {
+                l.0.occurs_check(var).map_err(|_| *self)?;
+                l.0.occurs_check(var).map_err(|_| *self)
+            }
             _ => todo!("{self:?}"),
         }
     }
@@ -187,6 +204,7 @@ impl Type {
             unreachable!("Called on non-func type {self:?}")
         }
     }
+
     pub fn destructure_arrow(
         t: Spanned<Intern<Self>>,
     ) -> (Vec<Spanned<Intern<Self>>>, Spanned<Intern<Self>>) {
@@ -212,6 +230,63 @@ impl Type {
             _ => unreachable!("expected row, found {self:?}"),
         }
     }
+
+    // pub fn collapse_apps(self) -> Self {
+    //     match self {
+    //         Self::Func(l, r) => Self::Func(
+    //             l.map(|l| l.collapse_apps().into()),
+    //             r.map(|r| r.collapse_apps().into()),
+    //         ),
+    //         Self::TypeFun(_, _) => panic!("Isolated typefun"),
+    //         Self::TypeApp(tyfun, arg) => {
+    //             if let Self::TypeFun(g, t) = *tyfun.0 {
+    //                 *subst_generic_type(t, g.0, arg.0).0
+    //             } else {
+    //                 tyfun.0.collapse_apps()
+    //             }
+    //         }
+    //         Self::Prod(r) => {
+    //             let r = r.map(|r| match *r {
+    //                 Row::Closed(closed_row) => {
+    //                     let values: Vec<_> = closed_row
+    //                         .values
+    //                         .iter()
+    //                         .map(|x| x.map(|x| x.collapse_apps().into()))
+    //                         .collect();
+
+    //                     Row::Closed(ClosedRow {
+    //                         values: values.leak(),
+    //                         ..closed_row
+    //                     })
+    //                     .into()
+    //                 }
+    //                 _ => r,
+    //             });
+    //             Self::Prod(r)
+    //         }
+    //         Self::Sum(r) => {
+    //             let r = r.map(|r| match *r {
+    //                 Row::Closed(closed_row) => {
+    //                     let values: Vec<_> = closed_row
+    //                         .values
+    //                         .iter()
+    //                         .map(|x| x.map(|x| x.collapse_apps().into()))
+    //                         .collect();
+
+    //                     Row::Closed(ClosedRow {
+    //                         values: values.leak(),
+    //                         ..closed_row
+    //                     })
+    //                     .into()
+    //                 }
+    //                 _ => r,
+    //             });
+    //             Self::Sum(r)
+    //         }
+    //         Self::Label(label, t) => Self::Label(label, t.map(|t| t.collapse_apps().into())),
+    //         _ => self,
+    //     }
+    // }
 }
 
 impl fmt::Display for Type {
@@ -229,6 +304,8 @@ impl fmt::Display for Type {
             Self::Prod(r) => write!(f, "{{{r}}}"),
             Self::Sum(r) => write!(f, "|{r}|"),
             Self::Label(l, t) => write!(f, "{}: {t}", l.0.0),
+            Self::TypeFun(l, r) => write!(f, "[{}]{}", l, r),
+            Self::TypeApp(l, r) => write!(f, "{} {}", l, r),
             _ => write!(f, "{self:#?}"),
         }
     }

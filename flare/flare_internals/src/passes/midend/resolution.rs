@@ -100,7 +100,7 @@ impl<const N: usize> Resolver<N> {
             let itemid = ItemId(e.index());
             (
                 itemid,
-                Expr::Item(itemid, Kind::Extern((*name).clone().leak())).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
+                Expr::Item(itemid, Kind::Extern(name)).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
             )
         }
 
@@ -159,22 +159,17 @@ impl<const N: usize> Resolver<N> {
         )
         .iter(&self.dag)
         .collect();
-        // let reachable2: FxHashSet<NodeIndex> =
-        //     Bfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
-        //         .iter(&self.dag)
-        //         .collect();
-        // dbg!(&reachable);
-        // dbg!(reachable2);
-        let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
-            // self.debug();
-            // let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
+        // let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
+        // self.debug();
+        let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
             .into_iter()
             .flatten()
             .filter(|x| reachable.contains(x))
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
-        sorted.reverse();
-        dbg!(&sorted);
+        // sorted.reverse();
+        // dbg!(&sorted);
+        // self.debug();
         Ok(sorted)
     }
 
@@ -226,7 +221,17 @@ impl<const N: usize> Resolver<N> {
                     };
                 }
                 ItemKind::Type(.., t) => {
-                    self.analyze_type(t);
+                    let t = self.analyze_type(t);
+                    let item = self
+                        .env
+                        .graph
+                        .node_weight_mut(node_idx)
+                        .expect("Node should exist");
+
+                    if let ItemKind::Type(_, _, ref mut ty) = item.kind {
+                        *ty = t;
+                    };
+
                     // dbg!(t); /* do nothing */
                 }
 
@@ -285,81 +290,6 @@ impl<const N: usize> Resolver<N> {
         )
     }
 
-    fn subst_generic_type(
-        &mut self,
-        t: Spanned<Intern<Type>>,
-        generics_to_types: im::HashMap<Intern<Type>, Spanned<Intern<Type>>, FxBuildHasher>,
-        // mut gens: &[Spanned<Intern<Type>>],
-    ) -> Spanned<Intern<Type>> {
-        let mut accum: Spanned<Intern<Type>> = t;
-        match *t.0 {
-            Type::Func(l, r) => {
-                accum = accum.modify(Type::Func(
-                    self.subst_generic_type(l, generics_to_types.clone()),
-                    self.subst_generic_type(r, generics_to_types),
-                ));
-            }
-            Type::Generic(_) => {
-                if let Some(g) = generics_to_types.get(&t.0) {
-                    accum = *g
-                } else {
-                    panic!()
-                    // accum = t
-                }
-            }
-            Type::Prod(r) => {
-                let r = r.map(|r| match *r {
-                    Row::Closed(closed_row) => {
-                        let values: Vec<_> = closed_row
-                            .values
-                            .iter()
-                            .map(|x| self.subst_generic_type(*x, generics_to_types.clone()))
-                            .collect();
-
-                        Row::Closed(ClosedRow {
-                            values: values.leak(),
-                            ..closed_row
-                        })
-                        .into()
-                    }
-                    _ => r,
-                });
-                accum = accum.modify(Type::Prod(r))
-            }
-
-            Type::Sum(r) => {
-                let r = r.map(|r| match *r {
-                    Row::Closed(closed_row) => {
-                        let values: Vec<_> = closed_row
-                            .values
-                            .iter()
-                            .map(|x| self.subst_generic_type(*x, generics_to_types.clone()))
-                            .collect();
-
-                        Row::Closed(ClosedRow {
-                            values: values.leak(),
-                            ..closed_row
-                        })
-                        .into()
-                    }
-                    _ => r,
-                });
-                accum = accum.modify(Type::Sum(r))
-            }
-
-            Type::Label(l, the_r) => {
-                accum = accum.modify(Type::Label(
-                    l,
-                    self.subst_generic_type(the_r, generics_to_types),
-                ))
-            }
-
-            _ => accum = t,
-        }
-
-        accum
-    }
-
     fn analyze_type(&mut self, t: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
         // dbg!(self.current_node);
         // dbg!(t);
@@ -385,35 +315,24 @@ impl<const N: usize> Resolver<N> {
             Type::User(name, instanced_generics) => {
                 let the_item = self.resolve_name_type(&name);
                 // dbg!(the_item.get_type_universal());
-                if let Ok(the_item) = the_item {
+                if let Ok(item_id) = the_item {
+                    // self.dag_add(item_id);
+                    let the_item = self.env.value(NodeIndex::new(item_id.0)).unwrap();
+
                     if let ItemKind::Type(_, generics, new_t) = the_item.kind {
-                        if !instanced_generics.is_empty() {
-                            let analyzed_instances: Vec<_> = instanced_generics
-                                .iter()
-                                .map(|ty| self.analyze_type(*ty))
-                                .collect();
+                        // if !instanced_generics.is_empty() {
+                        let analyzed_instances: Vec<_> = instanced_generics
+                            .iter()
+                            .map(|ty| self.analyze_type(*ty))
+                            .collect();
 
-                            let generic_instances: im::HashMap<
-                                Intern<Type>,
-                                Spanned<Intern<Type>>,
-                                FxBuildHasher,
-                            > = generics
-                                .iter()
-                                .zip(analyzed_instances.iter())
-                                .map(|(l, r)| (l.0, *r))
-                                .collect();
-
-                            self.subst_generic_type(new_t, generic_instances)
-                        } else {
-                            new_t
-                        }
-                        // self.analyze_type(t) // This recursively analyzes the substituted type
+                        let mut final_t = analyzed_instances
+                            .into_iter()
+                            .fold(new_t, |x, y| Spanned(Type::TypeApp(x, y).into(), x.1));
+                        final_t.1 = t.1;
+                        final_t
                     } else {
-                        let err = DynamicErr::new(format!("{} is not a type", name.0))
-                            .label("", name.1)
-                            .into();
-                        self.errors.push(err);
-                        name.convert(Type::Hole)
+                        panic!("not a type")
                     }
                 } else {
                     let err = errors::not_defined(name.0, &name.1);
@@ -472,6 +391,13 @@ impl<const N: usize> Resolver<N> {
             Type::Subtable(fields, s) => {
                 let new_fields = self.analyze_type(fields);
                 t.modify(Type::Subtable(new_fields, s))
+            }
+            // Type::TypeFun(g, l)
+            Type::TypeApp(l, r) => {
+                let l = self.analyze_type(l);
+                let r = self.analyze_type(r);
+
+                t.modify(Type::TypeApp(l, r))
             }
 
             _ => t,
@@ -744,9 +670,9 @@ impl<const N: usize> Resolver<N> {
         search.map_or_else(
             |_| Err(errors::not_defined(q, s)),
             |node| {
-                if !matches!(q, QualifierFragment::Type(_)) {
-                    self.dag_add(node.index());
-                }
+                // if !matches!(q, QualifierFragment::Type(_)) {
+                self.dag_add(node.index());
+                // }
                 Ok(ItemId(node.index()))
             },
         )
@@ -772,11 +698,12 @@ impl<const N: usize> Resolver<N> {
         }
     }
 
-    fn resolve_name_type(&mut self, name: &impl Ident) -> CompResult<&Item<Untyped>> {
+    fn resolve_name_type(&mut self, name: &impl Ident) -> CompResult<ItemId> {
         let name = name.ident()?;
 
         if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &name.1) {
-            self.env.value(NodeIndex::from(e.0 as u32))
+            Ok(e)
+            // self.env.value(NodeIndex::from(e.0 as u32))
         } else {
             Err(errors::not_defined(
                 QualifierFragment::Wildcard(name.0),
@@ -792,4 +719,83 @@ impl<const N: usize> Resolver<N> {
             Err(ErrorCollection::new(self.errors).into())
         }
     }
+}
+
+pub fn subst_generic_type(
+    t: Spanned<Intern<Type>>,
+    target: Intern<Type>,
+    replacement: Intern<Type>,
+    // generics_to_types: im::HashMap<Intern<Type>, Spanned<Intern<Type>>, FxBuildHasher>,
+    // mut gens: &[Spanned<Intern<Type>>],
+) -> Spanned<Intern<Type>> {
+    let mut accum: Spanned<Intern<Type>> = t;
+    // dbg!(t);
+    match *t.0 {
+        t if t == *target => accum = accum.modify(replacement),
+        Type::Func(l, r) => {
+            accum = accum.modify(Type::Func(
+                subst_generic_type(l, target, replacement),
+                subst_generic_type(r, target, replacement),
+            ));
+        }
+        Type::Prod(r) => {
+            let r = r.map(|r| match *r {
+                Row::Closed(closed_row) => {
+                    let values: Vec<_> = closed_row
+                        .values
+                        .iter()
+                        .map(|x| subst_generic_type(*x, target, replacement))
+                        .collect();
+
+                    Row::Closed(ClosedRow {
+                        values: values.leak(),
+                        ..closed_row
+                    })
+                    .into()
+                }
+                _ => r,
+            });
+            accum = accum.modify(Type::Prod(r))
+        }
+
+        Type::Sum(r) => {
+            let r = r.map(|r| match *r {
+                Row::Closed(closed_row) => {
+                    let values: Vec<_> = closed_row
+                        .values
+                        .iter()
+                        .map(|x| subst_generic_type(*x, target, replacement))
+                        .collect();
+
+                    Row::Closed(ClosedRow {
+                        values: values.leak(),
+                        ..closed_row
+                    })
+                    .into()
+                }
+                _ => r,
+            });
+            accum = accum.modify(Type::Sum(r))
+        }
+
+        Type::Label(l, the_r) => {
+            accum = accum.modify(Type::Label(
+                l,
+                subst_generic_type(the_r, target, replacement),
+            ))
+        }
+
+        // Type::TypeApp(l, r) => {
+        //     accum = accum.modify(Type::TypeApp(
+        //         subst_generic_type(l, target, replacement),
+        //         subst_generic_type(r, target, replacement),
+        //     ));
+        // }
+        // Type::TypeFun(l, r) => {
+        //     accum = accum.modify(Type::TypeFun(l, subst_generic_type(r, target, replacement)));
+        // }
+        _ => accum = t,
+    }
+
+    accum
 }
