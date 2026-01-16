@@ -33,7 +33,7 @@ impl Solver<'_> {
             | Type::Bool
             | Type::Unit
             | Type::Particle(_)
-            | Type::Template(_)
+            // | Type::Template(_)
             | Type::Var(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.normalize_ty(arg);
@@ -176,7 +176,7 @@ impl Solver<'_> {
             //     // self.tables.unification_table.unify_var_value(a_id, b)
             // }
             (_, _) => {
-                // dbg!(l, r);
+                dbg!(left, right);
                 Err(UnificationError::TypeNotEqual(left, right))
             }
         }

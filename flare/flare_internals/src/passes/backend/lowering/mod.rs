@@ -71,7 +71,7 @@ pub struct ItemSource {
 impl ItemSource {
     pub fn lookup_item(&self, item: ast::ItemId) -> Type {
         // dbg!(&self.items);
-        dbg!(item.0);
+        // dbg!(item.0);
         self.items[&item].clone()
     }
 }

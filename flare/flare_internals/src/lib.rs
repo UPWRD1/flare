@@ -191,7 +191,7 @@ impl<T: Target> Context<T> {
 
         let tc = Typechecker::new(order.leak(), resolved_e);
         let (items, source) = tc.check()?;
-        dbg!(&source);
+        // dbg!(&source);
         let lowerer = Lowerer::new();
         let ir = lowerer.lower(source, &items);
         let ir = simplify::simplify(&ir);

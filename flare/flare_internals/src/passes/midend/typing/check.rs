@@ -218,8 +218,6 @@ impl Solver<'_> {
                 let sub_row = Row::Unifier(self.fresh_row_var());
                 let mut out =
                     self.check(env, value, value.convert(Type::Sum(value.convert(sub_row))));
-                // let goal_row: Spanned<Intern<Row>> =
-                //     goal.convert(Row::Unifier(self.fresh_row_var()));
 
                 let (left, right) = match dir {
                     Direction::Left => (
@@ -274,7 +272,7 @@ impl Solver<'_> {
 
             // Wildcard
             (_, _) => {
-                // dbg!(the_ast, the_ty);
+                // dbg!(the_ty);
                 let (mut out, actual_ty) = self.infer(env, the_ast);
                 // dbg!(actual_ty);
                 {

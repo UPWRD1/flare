@@ -75,7 +75,7 @@ impl Typechecker {
                 }
                 ItemKind::Type(_n, _, t) => {
                     // dbg!(t);
-                    self.register_type(*item_idx, t)?;
+                    self.register_type(*item_idx, t);
                 }
                 ItemKind::Extern { name, sig, .. } => {
                     let (
@@ -83,7 +83,7 @@ impl Typechecker {
                             unbound_types,
                             unbound_rows,
                             types_to_name,
-                            // evidence,
+                            evidence,
                             ..
                         },
                         ty,
@@ -102,7 +102,6 @@ impl Typechecker {
                     let scheme = TypeScheme::default();
                     self.context.insert(ItemId(item_idx.index()), scheme);
                 }
-
                 _ => unreachable!("{:?}", item.kind),
             };
         }
@@ -112,7 +111,7 @@ impl Typechecker {
         Ok((out, self.context))
     }
 
-    fn register_type(&mut self, item_idx: NodeIndex, ty: Spanned<Intern<Type>>) -> CompResult<()> {
+    fn register_type(&mut self, item_idx: NodeIndex, ty: Spanned<Intern<Type>>) {
         // let (
         //     TypeFixer {
         //         unbound_types,
@@ -132,7 +131,6 @@ impl Typechecker {
             ..Default::default()
         };
         self.context.insert(ItemId(item_idx.index()), scheme);
-        Ok(())
     }
 
     fn new_type_var(&mut self) -> TypeVar {
@@ -155,41 +153,46 @@ impl Typechecker {
                 f.unbound_types.insert(type_var);
                 t
             }
-            Type::Subtable(sub, id) => {
-                let sub = self.helper(sub, f);
+            // Type::Subtable(sub, id) => {
+            //     let sub = self.helper(sub, f);
 
-                let v = if let Some(v) = f.seen_row_vars.get(&id) {
-                    *v
-                } else {
-                    let v = self.new_row_var();
-                    f.seen_row_vars.insert(id, v);
-                    v
-                };
+            //     let v = if let Some(v) = f.seen_row_vars.get(&id) {
+            //         *v
+            //     } else {
+            //         let v = self.new_row_var();
+            //         f.seen_row_vars.insert(id, v);
+            //         v
+            //     };
 
-                // dbg!(&sub);
-                // let g = self.new_row_var();
-                f.evidence.push(Evidence::RowEquation {
-                    left: sub.map(|sub| sub.to_row().into()),
-                    right: sub.map(|_| Intern::from(Row::Open(v))),
-                    goal: sub.map(|sub| sub.to_row().into()),
-                });
-                f.unbound_rows.insert(v);
-                // row_accum.insert(g);
-                // sub.modify(Type::Prod(Row::Open(v).into()))
-                sub
-            }
+            //     // dbg!(&sub);
+            //     // let g = self.new_row_var();
+            //     f.evidence.push(Evidence::RowEquation {
+            //         left: sub.map(|sub| sub.to_row().into()),
+            //         right: sub.map(|_| Intern::from(Row::Open(v))),
+            //         goal: sub.map(|sub| sub.to_row().into()),
+            //     });
+            //     f.unbound_rows.insert(v);
+            //     // row_accum.insert(g);
+            //     // sub.modify(Type::Prod(Row::Open(v).into()))
+            //     sub
+            // }
             Type::Generic(n) => {
-                let v = if let Some((v, _)) = f.types_to_name.iter().find(|(_, name)| **name == n.0)
+                // println!("Generic {}", n.0);
+                let v = if let Some((v, _)) =
+                    f.types_to_name.iter().find(|(_, name)| ***name == *n.0)
                 {
+                    // println!("Loaded {v:?}");
                     *v
                 } else {
                     let v = self.new_type_var();
                     f.types_to_name.insert(v, n.0);
+                    // println!("Created {v:?}");
                     v
                 };
-                f.unbound_types.insert(v);
 
-                t.modify(Type::Var(v))
+                // f.unbound_types.insert(v);
+
+                self.helper(t.modify(Type::Var(v)), f)
             }
 
             Type::Func(l, r) => {
@@ -238,16 +241,11 @@ impl Typechecker {
                     _ => todo!("Should be closed? todo"),
                 }
             }))),
+            Type::Label(l, t) => t.modify(Type::Label(l, self.helper(t, f))),
             Type::User(t, g) => {
                 unreachable!("Encountered user type {t}[{g:?}] after resolution")
             }
             Type::TypeApp(l, r) => {
-                // f.inside_type_fun = TyappState::Arg;
-                // let l = self.helper(l, f);
-                // f.inside_type_fun = TyappState::Outside;
-                // let r = self.helper(r, f);
-                // t.modify(Type::TypeApp(l, r))
-
                 if let Type::TypeFun(g, t) = *l.0 {
                     // let t = self.helper(t, f);
                     // dbg!(l, r, g, t);

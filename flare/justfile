@@ -34,7 +34,8 @@ profile:
 
 bulk:
     #!/bin/zsh
-    while just run; do :; done
+    just build;
+    while  ./target/debug/flarec -c examples/ntest.flr; do :; done
 
  
 # -Zmiri-many-seeds=..100

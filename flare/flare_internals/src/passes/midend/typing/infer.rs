@@ -351,7 +351,7 @@ impl Solver<'_> {
                     Provenance::ExpectedCombine(value.1, sub_row.1),
                     row_comb,
                 ));
-
+                // dbg!(ast.1);
                 self.tables.row_to_combo.insert(ast.1, row_comb);
                 (
                     out.with_typed_ast(|ast| ast.convert(Expr::Inject(dir, ast))),

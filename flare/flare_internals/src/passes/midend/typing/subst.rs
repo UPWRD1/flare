@@ -117,7 +117,6 @@ impl Solver<'_> {
             Type::String => SubstOut::new(ty.convert(Type::String)),
             Type::Bool => SubstOut::new(ty.convert(Type::Bool)),
             Type::Unit => SubstOut::new(ty.convert(Type::Unit)),
-            Type::Generic(g) => SubstOut::new(ty.convert(Type::Generic(g))),
 
             Type::Particle(p) => SubstOut::new(ty.convert(Type::Particle(p))),
             Type::Var(v) => SubstOut::new(ty.convert(Type::Var(v))),
@@ -147,99 +146,110 @@ impl Solver<'_> {
                 .substitute_row(row)
                 .map(Type::Sum)
                 .map(|t| ty.convert(t)),
+
             _ => todo!("{ty:?}"),
         }
     }
 
     pub fn substitute_ast(
         &mut self,
-        ast: Spanned<Intern<Expr<Typed>>>,
+        unsub_ast: Spanned<Intern<Expr<Typed>>>,
     ) -> SubstOut<Spanned<Intern<Expr<Typed>>>> {
-        let id = ast.1;
-        match *ast.0 {
+        let id = unsub_ast.1;
+        match *unsub_ast.0 {
             Expr::Ident(v) => self
                 .substitute_ty(v.1)
-                .map(|ty| Spanned(Expr::Ident(Typed(v.0, ty)).into(), id)),
+                .map(|ty| unsub_ast.convert(Expr::Ident(Typed(v.0, ty)))),
 
-            Expr::Number(i) => SubstOut::new(ast.convert(Expr::Number(i))),
-            Expr::String(s) => SubstOut::new(ast.convert(Expr::String(s))),
-            Expr::Bool(b) => SubstOut::new(ast.convert(Expr::Bool(b))),
-            Expr::Unit => SubstOut::new(ast.convert(Expr::Unit)),
-            Expr::Particle(p) => SubstOut::new(ast.convert(Expr::Particle(p))),
+            Expr::Number(i) => SubstOut::new(unsub_ast.convert(Expr::Number(i))),
+            Expr::String(s) => SubstOut::new(unsub_ast.convert(Expr::String(s))),
+            Expr::Bool(b) => SubstOut::new(unsub_ast.convert(Expr::Bool(b))),
+            Expr::Unit => SubstOut::new(unsub_ast.convert(Expr::Unit)),
+            Expr::Particle(p) => SubstOut::new(unsub_ast.convert(Expr::Particle(p))),
 
             Expr::Add(l, r) => self
                 .substitute_ast(l)
-                .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Add(l, r))),
+                .merge(self.substitute_ast(r), |l, r| {
+                    unsub_ast.convert(Expr::Add(l, r))
+                }),
             Expr::Sub(l, r) => self
                 .substitute_ast(l)
-                .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Sub(l, r))),
+                .merge(self.substitute_ast(r), |l, r| {
+                    unsub_ast.convert(Expr::Sub(l, r))
+                }),
             Expr::Mul(l, r) => self
                 .substitute_ast(l)
-                .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Mul(l, r))),
+                .merge(self.substitute_ast(r), |l, r| {
+                    unsub_ast.convert(Expr::Mul(l, r))
+                }),
             Expr::Div(l, r) => self
                 .substitute_ast(l)
-                .merge(self.substitute_ast(r), |l, r| ast.convert(Expr::Mul(l, r))),
-            Expr::Comparison(l, op, r) => SubstOut::new(ast.convert(Expr::Comparison(l, op, r))),
+                .merge(self.substitute_ast(r), |l, r| {
+                    unsub_ast.convert(Expr::Mul(l, r))
+                }),
+            Expr::Comparison(l, op, r) => {
+                SubstOut::new(unsub_ast.convert(Expr::Comparison(l, op, r)))
+            }
 
             Expr::Hole(v) => self
                 .substitute_ty(v.1)
-                .map(|ty| ast.convert(Expr::Hole(Typed(v.0, ty)))),
+                .map(|ty| unsub_ast.convert(Expr::Hole(Typed(v.0, ty)))),
             Expr::Lambda(arg, body, is_anon) => self
                 .substitute_ty(arg.1)
                 .map(|ty| Typed(arg.0, ty))
                 .merge(self.substitute_ast(body), |arg, body| {
-                    ast.convert(Expr::Lambda(arg, body, is_anon))
+                    unsub_ast.convert(Expr::Lambda(arg, body, is_anon))
                 }),
             Expr::Call(fun, arg) => self
                 .substitute_ast(fun)
                 .merge(self.substitute_ast(arg), |fun, arg| {
-                    ast.convert(Expr::Call(fun, arg))
+                    unsub_ast.convert(Expr::Call(fun, arg))
                 }),
 
             Expr::If(cond, then, otherwise) => self
                 .substitute_ast(then)
                 .merge(self.substitute_ast(otherwise), |t, o| (t, o))
                 .merge(self.substitute_ast(cond), |(t, o), c| (t, o, c))
-                .map(|(t, o, c)| ast.convert(Expr::If(c, t, o))),
+                .map(|(t, o, c)| unsub_ast.convert(Expr::If(c, t, o))),
             Expr::Let(var, def, body) => self
                 .substitute_ty(var.1)
                 .map(|ty| Typed(var.0, ty))
                 .merge(self.substitute_ast(def), |v, d| (v, d))
                 .merge(self.substitute_ast(body), |(v, def), body| (v, def, body))
-                .map(|(v, def, body)| ast.convert(Expr::Let(v, def, body))),
+                .map(|(v, def, body)| unsub_ast.convert(Expr::Let(v, def, body))),
 
             // Label constructor and destructor
             Expr::Label(label, ast) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.convert(Expr::Label(label, nast))),
+                .map(|nast| unsub_ast.convert(Expr::Label(label, nast))),
             Expr::Unlabel(ast, label) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.convert(Expr::Label(label, nast))),
+                .map(|nast| unsub_ast.convert(Expr::Label(label, nast))),
             // Products constructor and destructor
             Expr::Concat(left, right) => self
                 .substitute_ast(left)
                 .merge(self.substitute_ast(right), |left, right| {
-                    ast.convert(Expr::Concat(left, right))
+                    unsub_ast.convert(Expr::Concat(left, right))
                 }),
             Expr::Project(dir, ast) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.convert(Expr::Project(dir, nast))),
+                .map(|nast| unsub_ast.convert(Expr::Project(dir, nast))),
             // Sums constructor and destructor
             Expr::Branch(left, right) => self
                 .substitute_ast(left)
                 .merge(self.substitute_ast(right), |left, right| {
-                    ast.convert(Expr::Branch(left, right))
+                    unsub_ast.convert(Expr::Branch(left, right))
                 }),
             Expr::Inject(dir, ast) => self
                 .substitute_ast(ast)
-                .map(|nast| ast.convert(Expr::Inject(dir, nast))),
-            Expr::Item(id, item) => SubstOut::new(ast.convert(Expr::Item(id, item))),
-            _ => todo!("{ast:?}"),
+                .map(|nast| unsub_ast.convert(Expr::Inject(dir, nast))),
+            Expr::Item(id, item) => SubstOut::new(unsub_ast.convert(Expr::Item(id, item))),
+            _ => todo!("{unsub_ast:?}"),
         }
         // dbg!(res)
     }
 
-    pub(crate) fn substitute_wrapper(&mut self, wrapper: ItemWrapper) -> SubstOut<ItemWrapper> {
+    pub fn substitute_wrapper(&mut self, wrapper: ItemWrapper) -> SubstOut<ItemWrapper> {
         fn transpose<T>(vec: Vec<SubstOut<T>>) -> SubstOut<Vec<T>> {
             let mut subst = SubstOut::new(vec![]);
             for ele in vec {
@@ -283,7 +293,7 @@ impl Solver<'_> {
         )
     }
 
-    pub(crate) fn substitute_evidence(&mut self, ev: &Evidence) -> SubstOut<Evidence> {
+    pub fn substitute_evidence(&mut self, ev: &Evidence) -> SubstOut<Evidence> {
         match ev {
             Evidence::RowEquation { left, right, goal } => self
                 .substitute_row(*left)

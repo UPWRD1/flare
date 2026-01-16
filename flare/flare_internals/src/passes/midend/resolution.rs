@@ -59,8 +59,7 @@ pub struct Resolver<const N: usize> {
     pub dag: DiGraph<DagIdx, ()>,
     main_dag_idx: Option<NodeIndex>,
     errors: Vec<CompilerErr>,
-
-    generic_scope: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
+    generic_scope: im::HashMap<String, Spanned<Intern<Type>>, FxBuildHasher>,
     // intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
 }
 
@@ -152,6 +151,7 @@ impl<const N: usize> Resolver<N> {
         for (idx, p) in filtered {
             self.analyze_package(idx, p)
         }
+        // self.debug();
 
         let reachable: FxHashSet<NodeIndex> = Dfs::new(
             &self.dag.clone(),
@@ -159,9 +159,12 @@ impl<const N: usize> Resolver<N> {
         )
         .iter(&self.dag)
         .collect();
-        // let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
-        // self.debug();
-        let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
+        self.dag.reverse();
+        // dbg!(&reachable);
+        // let sorted = reachable;
+        let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
+            // self.debug();
+            // let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
             .into_iter()
             .flatten()
             .filter(|x| reachable.contains(x))
@@ -221,6 +224,7 @@ impl<const N: usize> Resolver<N> {
                     };
                 }
                 ItemKind::Type(.., t) => {
+                    // self.generic_scope.clear();
                     let t = self.analyze_type(t);
                     let item = self
                         .env
@@ -231,6 +235,7 @@ impl<const N: usize> Resolver<N> {
                     if let ItemKind::Type(_, _, ref mut ty) = item.kind {
                         *ty = t;
                     };
+                    // self.generic_scope.clear();
 
                     // dbg!(t); /* do nothing */
                 }
@@ -274,17 +279,15 @@ impl<const N: usize> Resolver<N> {
     ) -> FunctionItem<Untyped> {
         self.in_context(
             |me| {
-                me.generic_scope.clear();
+                // me.generic_scope.clear();
                 let sig = me.analyze_type(the_func.sig);
                 let body = me.analyze_expr(the_func.body, &[]);
-                let f = FunctionItem {
+                // me.generic_scope.clear();
+                FunctionItem {
                     sig,
                     body,
                     ..the_func
-                };
-
-                me.generic_scope.clear();
-                f
+                }
             },
             idx,
         )
@@ -292,13 +295,14 @@ impl<const N: usize> Resolver<N> {
 
     fn analyze_type(&mut self, t: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
         // dbg!(self.current_node);
+        // dbg!(&self.generic_scope);
         // dbg!(t);
         match *t.0 {
             Type::Generic(name) => {
-                if let Some(existing) = self.generic_scope.get(&name.0) {
+                if let Some(existing) = self.generic_scope.get(&*name.0) {
                     *existing
                 } else {
-                    self.generic_scope.insert(name.0, t);
+                    self.generic_scope.insert(name.0.to_string(), t);
                     t
                 }
             }
@@ -310,6 +314,7 @@ impl<const N: usize> Resolver<N> {
             }
             Type::Label(l, the_r) => {
                 let new_t = self.analyze_type(the_r);
+                dbg!(new_t);
                 t.modify(Type::Label(l, new_t))
             }
             Type::User(name, instanced_generics) => {
@@ -342,24 +347,25 @@ impl<const N: usize> Resolver<N> {
             }
             Type::Prod(r) => {
                 let new_r = r.map(|r| match *r {
-                    super::typing::Row::Closed(closed_row) => {
-                        let new_values: Vec<Spanned<Intern<Type>>> = closed_row
-                            .values
-                            .iter()
-                            .map(|t| -> Spanned<Intern<Type>> {
-                                // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
-                                self.analyze_type(*t)
-                            })
-                            .collect();
-                        let values = new_values.leak();
-                        let cr = ClosedRow {
-                            values,
-                            ..closed_row
-                        }
-                        .sort();
-                        crate::passes::midend::typing::Row::Closed(cr).into()
+                    Row::Closed(closed_row) => {
+                        Row::Closed(
+                            ClosedRow {
+                                values: closed_row
+                                    .values
+                                    .iter()
+                                    .map(|t| -> Spanned<Intern<Type>> {
+                                        // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                                        self.analyze_type(*t)
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .leak(),
+                                ..closed_row
+                            }
+                            .sort(),
+                        )
+                        .into()
                     }
-                    _ => r,
+                    _ => unreachable!("All rows should be closed"),
                 });
 
                 t.modify(Type::Prod(new_r))
@@ -367,22 +373,23 @@ impl<const N: usize> Resolver<N> {
 
             Type::Sum(r) => {
                 let new_r = r.map(|r| match *r {
-                    super::typing::Row::Closed(closed_row) => {
-                        let new_values: Vec<Spanned<Intern<Type>>> = closed_row
-                            .values
-                            .iter()
-                            .map(|t| -> Spanned<Intern<Type>> {
-                                // let t = self.resolve_name_generic(&n.0)?.get_ty()?;
-                                self.analyze_type(*t)
-                            })
-                            .collect();
-                        let values = new_values.leak();
-                        let cr = ClosedRow {
-                            values,
-                            ..closed_row
-                        }
-                        .sort();
-                        crate::passes::midend::typing::Row::Closed(cr).into()
+                    Row::Closed(closed_row) => {
+                        Row::Closed(
+                            ClosedRow {
+                                values: closed_row
+                                    .values
+                                    .iter()
+                                    .map(|t| -> Spanned<Intern<Type>> {
+                                        // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                                        self.analyze_type(*t)
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .leak(),
+                                ..closed_row
+                            }
+                            .sort(),
+                        )
+                        .into()
                     }
                     _ => unreachable!("All rows should be closed"),
                 });
@@ -398,6 +405,12 @@ impl<const N: usize> Resolver<N> {
                 let r = self.analyze_type(r);
 
                 t.modify(Type::TypeApp(l, r))
+            }
+            Type::TypeFun(l, r) => {
+                let l = self.analyze_type(l);
+                let r = self.analyze_type(r);
+
+                t.modify(Type::TypeFun(l, r))
             }
 
             _ => t,

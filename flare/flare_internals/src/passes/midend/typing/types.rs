@@ -57,7 +57,7 @@ pub enum Type {
 
     Unifier(TyUniVar),
     Generic(Spanned<Intern<String>>),
-    Template(Spanned<Intern<String>>),
+    // Template(Spanned<Intern<String>>),
     Var(TypeVar),
     Particle(Spanned<Intern<String>>),
     #[default]
