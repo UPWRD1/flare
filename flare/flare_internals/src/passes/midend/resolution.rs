@@ -220,6 +220,7 @@ impl<const N: usize> Resolver<N> {
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
                     if let ItemKind::Function(ref mut func) = item.kind {
+                        // println!("Analyzed {} : {}", f.name, f.sig);
                         *func = f;
                     };
                 }
@@ -279,10 +280,10 @@ impl<const N: usize> Resolver<N> {
     ) -> FunctionItem<Untyped> {
         self.in_context(
             |me| {
-                // me.generic_scope.clear();
+                me.generic_scope.clear();
                 let sig = me.analyze_type(the_func.sig);
                 let body = me.analyze_expr(the_func.body, &[]);
-                // me.generic_scope.clear();
+                me.generic_scope.clear();
                 FunctionItem {
                     sig,
                     body,
@@ -335,7 +336,7 @@ impl<const N: usize> Resolver<N> {
                             .into_iter()
                             .fold(new_t, |x, y| Spanned(Type::TypeApp(x, y).into(), x.1));
                         final_t.1 = t.1;
-                        final_t
+                        self.analyze_type(final_t)
                     } else {
                         panic!("not a type")
                     }
@@ -735,15 +736,15 @@ impl<const N: usize> Resolver<N> {
 }
 
 pub fn subst_generic_type(
-    t: Spanned<Intern<Type>>,
+    subject: Spanned<Intern<Type>>,
     target: Intern<Type>,
     replacement: Intern<Type>,
     // generics_to_types: im::HashMap<Intern<Type>, Spanned<Intern<Type>>, FxBuildHasher>,
     // mut gens: &[Spanned<Intern<Type>>],
 ) -> Spanned<Intern<Type>> {
-    let mut accum: Spanned<Intern<Type>> = t;
+    let mut accum: Spanned<Intern<Type>> = subject;
     // dbg!(t);
-    match *t.0 {
+    match *subject.0 {
         t if t == *target => accum = accum.modify(replacement),
         Type::Func(l, r) => {
             accum = accum.modify(Type::Func(
@@ -791,11 +792,21 @@ pub fn subst_generic_type(
             accum = accum.modify(Type::Sum(r))
         }
 
-        Type::Label(l, the_r) => {
+        Type::Label(label, value) => {
             accum = accum.modify(Type::Label(
-                l,
-                subst_generic_type(the_r, target, replacement),
+                label,
+                subst_generic_type(value, target, replacement),
             ))
+        }
+        Type::TypeApp(l, r) => {
+            let l = subst_generic_type(l, target, replacement);
+            let r = subst_generic_type(r, target, replacement);
+            accum = accum.modify(Type::TypeApp(l, r))
+        }
+
+        Type::TypeFun(l, r) => {
+            let r = subst_generic_type(r, target, replacement);
+            accum = accum.modify(Type::TypeFun(l, r))
         }
 
         // Type::TypeApp(l, r) => {
@@ -807,7 +818,7 @@ pub fn subst_generic_type(
         // Type::TypeFun(l, r) => {
         //     accum = accum.modify(Type::TypeFun(l, subst_generic_type(r, target, replacement)));
         // }
-        _ => accum = t,
+        _ => accum = subject,
     }
 
     accum

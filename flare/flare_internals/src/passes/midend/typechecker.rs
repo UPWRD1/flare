@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use internment::Intern;
 
@@ -177,22 +177,21 @@ impl Typechecker {
             //     sub
             // }
             Type::Generic(n) => {
-                // println!("Generic {}", n.0);
+                println!("Generic {}", n.0);
                 let v = if let Some((v, _)) =
                     f.types_to_name.iter().find(|(_, name)| ***name == *n.0)
                 {
-                    // println!("Loaded {v:?}");
+                    println!("Loaded {v:?}");
                     *v
                 } else {
                     let v = self.new_type_var();
                     f.types_to_name.insert(v, n.0);
-                    // println!("Created {v:?}");
+                    f.unbound_types.insert(v);
+                    println!("Created {v:?}");
                     v
                 };
 
-                // f.unbound_types.insert(v);
-
-                self.helper(t.modify(Type::Var(v)), f)
+                t.modify(Type::Var(v))
             }
 
             Type::Func(l, r) => {
@@ -251,7 +250,8 @@ impl Typechecker {
                     // dbg!(l, r, g, t);
                     self.helper(subst_generic_type(t, g.0, r.0), f)
                 } else {
-                    self.helper(l, f)
+                    let l = self.helper(l, f);
+                    self.helper(t.modify(Type::TypeApp(l, r)), f)
                 }
             }
             _ => t,
@@ -321,6 +321,7 @@ impl Typechecker {
             .map(|(id, scheme, item)| {
                 let solved = match item.kind {
                     ItemKind::Function(f) => {
+                        // println!("Checking {} : {}", f.name.0, scheme.ty.0);
                         Solver::check_with_items(&self.context, f.body, scheme)
                             .map_err(|e| {
                                 if let Some(e) = e.downcast_ref::<DynamicErr>() {

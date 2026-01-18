@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
-chumsky = {version = "0.11.2", features = ["pratt", "memoization",] }
+chumsky = {version = "0.12.0", features = ["pratt", "memoization",] }
+# chumsky = {version = "0.11.2", features = ["pratt", "memoization",] }
 # const_format = "0.2.35"
 ena = "0.14.3"
 im = "15.1.0"

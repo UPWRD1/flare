@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["flarec", "flare_internals"]
+members = ["flarec", "flare_internals", "flare_internals_tests"]
 
 [profile.release]
 opt-level = 3

@@ -313,13 +313,38 @@ impl fmt::Display for Type {
 
 impl Hash for Type {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
         match self {
             Self::Unifier(r) => r.hash(state),
             Self::Func(l, r) => {
                 l.hash(state);
                 r.hash(state);
             }
-            _ => core::mem::discriminant(self).hash(state),
+
+            Self::Generic(name) => name.hash(state),
+            Self::Particle(p) => p.hash(state),
+            Self::Package(p) => p.hash(state),
+            Self::Var(v) => v.hash(state),
+            Self::Label(label, ty) => {
+                label.hash(state);
+                ty.hash(state);
+            }
+            Self::Prod(row) | Self::Sum(row) => row.hash(state),
+            Self::TypeFun(l, r) | Self::TypeApp(l, r) => {
+                l.hash(state);
+                r.hash(state);
+            }
+            Self::User(name, generics) => {
+                name.hash(state);
+                for g in generics.iter() {
+                    g.hash(state);
+                }
+            }
+            Self::Subtable(ty, span) => {
+                ty.hash(state);
+                span.hash(state);
+            }
+            Self::Num | Self::Bool | Self::String | Self::Unit | Self::Infer | Self::Hole => {}
         }
     }
 }
