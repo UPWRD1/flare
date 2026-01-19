@@ -21,6 +21,7 @@ use rustc_hash::{FxBuildHasher, FxHashSet};
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 
+const INACCESSIBLE_IDENTIFIER: &str = "%INACCESSIBLE%";
 use crate::{
     passes::midend::{
         environment::Environment,
@@ -601,7 +602,7 @@ impl<const N: usize> Resolver<N> {
             Pattern::Unit => (p.convert(Expr::Unit), vars),
             Pattern::Ctor(label, ex) => {
                 if *ex.0 == Pattern::Unit {
-                    let inaccessible = Untyped(p.convert("%INACCESSIBLE%".to_string()));
+                    let inaccessible = Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string()));
 
                     (
                         p.convert(Expr::Unit),
@@ -625,7 +626,7 @@ impl<const N: usize> Resolver<N> {
         let (pat_expr, bindings) = self.resolve_pattern(b.pat, vec![]);
 
         bindings.into_iter().fold(b.body, |prev, v| {
-            if *v.0.0 == "%INACCESSIBLE%%" {
+            if *v.0.0 == INACCESSIBLE_IDENTIFIER {
                 prev.modify(Expr::Lambda(v, prev, LambdaInfo::Anon))
             } else {
                 let unwrapped = prev.modify(Expr::Let(v, pat_expr, prev));
