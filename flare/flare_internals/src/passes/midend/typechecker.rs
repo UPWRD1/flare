@@ -10,7 +10,6 @@ use crate::{
         backend::lowering::subst::{self, Subst},
         midend::{
             environment::Environment,
-            resolution::subst_generic_type,
             typing::{
                 ClosedRow, Evidence, ItemSource, Row, RowVar, Solver, Type, TypeScheme, TypeVar,
                 TypesOutput,
@@ -153,29 +152,7 @@ impl Typechecker {
                 f.unbound_types.insert(type_var);
                 t
             }
-            // Type::Subtable(sub, id) => {
-            //     let sub = self.helper(sub, f);
 
-            //     let v = if let Some(v) = f.seen_row_vars.get(&id) {
-            //         *v
-            //     } else {
-            //         let v = self.new_row_var();
-            //         f.seen_row_vars.insert(id, v);
-            //         v
-            //     };
-
-            //     // dbg!(&sub);
-            //     // let g = self.new_row_var();
-            //     f.evidence.push(Evidence::RowEquation {
-            //         left: sub.map(|sub| sub.to_row().into()),
-            //         right: sub.map(|_| Intern::from(Row::Open(v))),
-            //         goal: sub.map(|sub| sub.to_row().into()),
-            //     });
-            //     f.unbound_rows.insert(v);
-            //     // row_accum.insert(g);
-            //     // sub.modify(Type::Prod(Row::Open(v).into()))
-            //     sub
-            // }
             Type::Generic(n) => {
                 println!("Generic {}", n.0);
                 let v = if let Some((v, _)) =
@@ -244,16 +221,17 @@ impl Typechecker {
             Type::User(t, g) => {
                 unreachable!("Encountered user type {t}[{g:?}] after resolution")
             }
-            Type::TypeApp(l, r) => {
-                if let Type::TypeFun(g, t) = *l.0 {
-                    // let t = self.helper(t, f);
-                    // dbg!(l, r, g, t);
-                    self.helper(subst_generic_type(t, g.0, r.0), f)
-                } else {
-                    let l = self.helper(l, f);
-                    self.helper(t.modify(Type::TypeApp(l, r)), f)
-                }
-            }
+            // Type::TypeApp(l, r) => {
+            //     if let Type::TypeFun(g, t) = *l.0 {
+            //         // let r = self.helper(r, f);
+            //         // let t = self.helper(t, f);
+            //         // dbg!(l, r, g, t);
+            //         self.helper(subst_generic_type(t, g.0, r.0), f)
+            //     } else {
+            //         let l = self.helper(l, f);
+            //         self.helper(t.modify(Type::TypeApp(l, r)), f)
+            //     }
+            // }
             _ => t,
         }
         // dbg!(o)

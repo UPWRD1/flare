@@ -405,7 +405,12 @@ impl<const N: usize> Resolver<N> {
                 let l = self.analyze_type(l);
                 let r = self.analyze_type(r);
 
-                t.modify(Type::TypeApp(l, r))
+                if let Type::TypeFun(param, body) = *l.0 {
+                    self.analyze_type(subst_generic_type(body, param.0, r.0))
+                } else {
+                    t.modify(Type::TypeApp(l, r))
+                }
+                // t.modify(Type::TypeApp(l, r))
             }
             Type::TypeFun(l, r) => {
                 let l = self.analyze_type(l);
@@ -413,7 +418,6 @@ impl<const N: usize> Resolver<N> {
 
                 t.modify(Type::TypeFun(l, r))
             }
-
             _ => t,
         }
     }
@@ -744,15 +748,22 @@ pub fn subst_generic_type(
 ) -> Spanned<Intern<Type>> {
     let mut accum: Spanned<Intern<Type>> = subject;
     // dbg!(t);
-    match *subject.0 {
-        t if t == *target => accum = accum.modify(replacement),
-        Type::Func(l, r) => {
+    match (*subject.0, *target) {
+        // t if t == *target => accum = accum.modify(replacement),
+        (Type::Generic(subj_name), Type::Generic(target_name)) if subj_name == target_name => {
+            accum = subject.modify(replacement);
+        }
+
+        (Type::Var(subj_var), Type::Var(target_var)) if subj_var == target_var => {
+            accum = subject.modify(replacement);
+        }
+        (Type::Func(l, r), _) => {
             accum = accum.modify(Type::Func(
                 subst_generic_type(l, target, replacement),
                 subst_generic_type(r, target, replacement),
             ));
         }
-        Type::Prod(r) => {
+        (Type::Prod(r), _) => {
             let r = r.map(|r| match *r {
                 Row::Closed(closed_row) => {
                     let values: Vec<_> = closed_row
@@ -772,7 +783,7 @@ pub fn subst_generic_type(
             accum = accum.modify(Type::Prod(r))
         }
 
-        Type::Sum(r) => {
+        (Type::Sum(r), _) => {
             let r = r.map(|r| match *r {
                 Row::Closed(closed_row) => {
                     let values: Vec<_> = closed_row
@@ -792,21 +803,29 @@ pub fn subst_generic_type(
             accum = accum.modify(Type::Sum(r))
         }
 
-        Type::Label(label, value) => {
+        (Type::Label(label, value), _) => {
             accum = accum.modify(Type::Label(
                 label,
                 subst_generic_type(value, target, replacement),
             ))
         }
-        Type::TypeApp(l, r) => {
-            let l = subst_generic_type(l, target, replacement);
-            let r = subst_generic_type(r, target, replacement);
-            accum = accum.modify(Type::TypeApp(l, r))
-        }
-
-        Type::TypeFun(l, r) => {
-            let r = subst_generic_type(r, target, replacement);
-            accum = accum.modify(Type::TypeFun(l, r))
+        // (Type::TypeApp(l, r), _) => {
+        //     let l = subst_generic_type(l, target, replacement);
+        //     let r = subst_generic_type(r, target, replacement);
+        //     accum = accum.modify(Type::TypeApp(l, r))
+        // }
+        // GENERATED: Claude
+        (Type::TypeFun(param, body), _) => {
+            if *param.0 == *target {
+                // The parameter shadows the target, don't substitute in body
+                accum = subject
+            } else {
+                // Safe to substitute in body
+                let new_body = subst_generic_type(body, target, replacement);
+                accum = accum.modify(Type::TypeFun(param, new_body))
+            }
+            // let r = subst_generic_type(r, target, replacement);
+            // accum = accum.modify(Type::TypeFun(l, r))
         }
 
         // Type::TypeApp(l, r) => {

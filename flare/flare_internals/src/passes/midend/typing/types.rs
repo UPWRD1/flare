@@ -5,12 +5,9 @@ use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
 use crate::{
-    passes::midend::{
-        resolution::subst_generic_type,
-        typing::{
-            ClosedRow, TypeScheme,
-            rows::{Row, RowUniVar},
-        },
+    passes::midend::typing::{
+        ClosedRow, TypeScheme,
+        rows::{Row, RowUniVar},
     },
     resource::{
         errors::CompResult,

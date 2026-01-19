@@ -2,12 +2,9 @@ use chumsky::span::Span;
 use internment::Intern;
 
 use crate::{
-    passes::midend::{
-        resolution::subst_generic_type,
-        typing::{
-            Constraint, Provenance, Solver, TyUniVar, Type, TypeScheme,
-            rows::{ClosedRow, Row, RowCombination, RowUniVar},
-        },
+    passes::midend::typing::{
+        Constraint, Provenance, Solver, TyUniVar, Type, TypeScheme,
+        rows::{ClosedRow, Row, RowCombination, RowUniVar},
     },
     resource::{
         errors::{CompilerErr, DynamicErr, TypeErr},
@@ -151,30 +148,7 @@ impl Solver<'_> {
                 })),
                 row,
             ),
-            // (Type::TypeApp(typefun, rep), _) => {
-            //     if let Type::TypeFun(arg, t) = *typefun.0 {
-            //         let subst_t = subst_generic_type(t, arg.0, rep.0);
 
-            //         self.unify_ty_ty(subst_t, right)
-            //     } else {
-            //         todo!()
-            //     }
-            // }
-
-            // (_, Type::TypeApp(typefun, rep)) => {
-            //     if let Type::TypeFun(arg, t) = *typefun.0 {
-            //         let subst_t = subst_generic_type(t, arg.0, rep.0);
-
-            //         self.unify_ty_ty(subst_t, left)
-            //     } else {
-            //         todo!()
-            //     }
-            // }
-            // (Type::TypeFun(arg, t), rep) | (rep, Type::TypeFun(arg, t)) => {
-            //     dbg!(arg, t, rep);
-            //     todo!()
-            //     // self.tables.unification_table.unify_var_value(a_id, b)
-            // }
             (_, _) => {
                 dbg!(left, right);
                 Err(UnificationError::TypeNotEqual(left, right))

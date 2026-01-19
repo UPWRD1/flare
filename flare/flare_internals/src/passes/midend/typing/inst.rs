@@ -2,12 +2,9 @@ use internment::Intern;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::midend::{
-        resolution::subst_generic_type,
-        typing::{
-            Constraint, Evidence, Provenance, Row, TyUniVar, Type, TypeScheme, TypeVar,
-            rows::{RowCombination, RowUniVar, RowVar},
-        },
+    passes::midend::typing::{
+        Constraint, Evidence, Provenance, Row, TyUniVar, Type, TypeScheme, TypeVar,
+        rows::{RowCombination, RowUniVar, RowVar},
     },
     resource::rep::{Spanned, ast::NodeId},
 };
