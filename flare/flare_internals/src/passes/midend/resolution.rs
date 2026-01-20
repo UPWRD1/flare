@@ -60,7 +60,7 @@ pub struct Resolver<const N: usize> {
     pub dag: DiGraph<DagIdx, ()>,
     main_dag_idx: Option<NodeIndex>,
     errors: Vec<CompilerErr>,
-    generic_scope: im::HashMap<String, Spanned<Intern<Type>>, FxBuildHasher>,
+    // generic_scope: im::HashMap<String, Spanned<Intern<Type>>, FxBuildHasher>,
     // intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
 }
 
@@ -114,7 +114,7 @@ impl<const N: usize> Resolver<N> {
             current_dag_node: None,
             dag: DiGraph::new(),
             main_dag_idx: None,
-            generic_scope: im::HashMap::with_hasher(FxBuildHasher),
+            // generic_scope: im::HashMap::with_hasher(FxBuildHasher),
             errors: Vec::new(),
             // intrinsics,
         }
@@ -281,10 +281,10 @@ impl<const N: usize> Resolver<N> {
     ) -> FunctionItem<Untyped> {
         self.in_context(
             |me| {
-                me.generic_scope.clear();
+                // me.generic_scope.clear();
                 let sig = me.analyze_type(the_func.sig);
                 let body = me.analyze_expr(the_func.body, &[]);
-                me.generic_scope.clear();
+                // me.generic_scope.clear();
                 FunctionItem {
                     sig,
                     body,
@@ -300,14 +300,14 @@ impl<const N: usize> Resolver<N> {
         // dbg!(&self.generic_scope);
         // dbg!(t);
         match *t.0 {
-            Type::Generic(name) => {
-                if let Some(existing) = self.generic_scope.get(&*name.0) {
-                    *existing
-                } else {
-                    self.generic_scope.insert(name.0.to_string(), t);
-                    t
-                }
-            }
+            // Type::Generic(name) => {
+            //     if let Some(existing) = self.generic_scope.get(&*name.0) {
+            //         *existing
+            //     } else {
+            //         self.generic_scope.insert(name.0.to_string(), t);
+            //         t
+            //     }
+            // }
             Type::Func(l, r) => {
                 let l = self.analyze_type(l);
                 let r = self.analyze_type(r);

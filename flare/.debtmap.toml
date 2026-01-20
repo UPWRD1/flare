@@ -1,20 +1,33 @@
 # Debtmap Configuration
 
+[scoring]
+dependency = 0.30       # Higher dependency weight for coupling issues
+coverage = 0.55         # High coverage weight (public API focus)
+complexity = 0.30       # Moderate complexity weight
+
+[analysis]
+detect_external_api = true       # Flag untested public APIs
+public_api_threshold = 0.8       # 80% threshold for public API detection
+
 [thresholds]
 complexity = 10
 duplication = 50
-max_file_length = 500
-max_function_length = 50
+minimum_risk_score = 4.0              # High-risk items only
+# max_file_length = 500
+# max_function_length = 50
+
+[thresholds.validation]
+min_coverage_percentage = 90.0   # High coverage for public API
+max_high_complexity_count = 20   # Keep complexity low
+max_average_complexity = 9.0     # Strict complexity average
+max_debt_density = 40.0          # Low debt tolerance
 
 [languages]
-enabled = ["rust", "python"]
+enabled = ["rust"]
 
 [ignore]
 patterns = [
     "target/**",
-    "venv/**",
-    "node_modules/**",
-    "*.min.js"
 ]
 
 [output]

@@ -37,6 +37,9 @@ bulk:
     just build;
     while  ./target/debug/flarec -c examples/ntest.flr; do :; done
 
+debt:
+    debtmap analyze .
+
  
 # -Zmiri-many-seeds=..100
 export MIRIFLAGS := " -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-many-seeds=..10"

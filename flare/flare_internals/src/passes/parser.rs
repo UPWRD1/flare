@@ -117,7 +117,6 @@ impl std::fmt::Display for Token {
             Self::Minus => write!(f, "-"),
             Self::ComparisonOp(c) => write!(f, "{c}"),
             Self::Ampersand => write!(f, "&"),
-
             Self::And => write!(f, "and"),
             Self::Or => write!(f, "or"),
             Self::At => write!(f, "@"),
@@ -148,10 +147,8 @@ impl std::fmt::Display for Token {
             Self::RParen => write!(f, ")"),
             Self::Package => write!(f, "package"),
             Self::Use => write!(f, "use"),
-            // Self::Struct => write!(f, "struct"),
             Self::Else => write!(f, "else"),
             Self::For => write!(f, "for"),
-            // Self::Enum => write!(f, "enum"),
             Self::Extern => write!(f, "extern"),
             Self::Impl => write!(f, "impl"),
             Self::If => write!(f, "if"),
@@ -170,7 +167,6 @@ impl std::fmt::Display for Token {
             Self::TyUnit => write!(f, "unit"),
             Self::Myself => write!(f, "self"),
             Self::Metatype => write!(f, "Self"),
-
             Self::Error(e) => write!(f, "Error {e}"),
         }
     }

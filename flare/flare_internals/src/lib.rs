@@ -55,7 +55,7 @@ use crate::{
         //backend::{flatten::Flattener, gen::Generator},
         backend::{
             lowering::Lowerer,
-            simplify,
+            monomorph, simplify,
             target::{Generator, Target},
         },
         midend::{
@@ -168,7 +168,7 @@ impl<T: Target> Context<T> {
         let program = self.parse_program(id)?;
 
         let e = Environment::build(&program)?;
-        let default_span = Type::Infer.to_default_span();
+
         let intrinsics: [(&str, &'static [Untyped], Type); 0] = [
             // (
             //     "intrinsic_arith_add",
@@ -195,7 +195,7 @@ impl<T: Target> Context<T> {
         let lowerer = Lowerer::new();
         let ir = lowerer.lower(source, &items);
         let ir = simplify::simplify(&ir);
-        // let ir = monomorph::monomorph(ir);
+        let ir = monomorph::monomorph(ir);
         // let ir = simplify::simplify(&ir);
 
         let final_ir = T::convert(ir);

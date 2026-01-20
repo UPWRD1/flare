@@ -7,7 +7,16 @@ fn [$0: num] => $0
 end item #1
 
 item #2: is
-{
-  3,
-  "hi"}
+tyfn Type => fn [$0: ?0] => $0
 end item #2
+
+item #3: is
+let $3: num = tyfn Type => fn [$0: num] => $0(
+  3)
+in
+  fn [$4: str] =>
+    {
+      $3,
+      $4}(
+"hi")
+end item #3

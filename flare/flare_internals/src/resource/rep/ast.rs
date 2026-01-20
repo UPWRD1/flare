@@ -288,38 +288,38 @@ impl<V: Variable> Spanned<Intern<Expr<V>>> {
         self.1
     }
 
-    pub fn parents_of(&self, id: NodeId) -> Option<Vec<Self>> {
-        match *self.0 {
-            Expr::Ident(_) | Expr::Number(_) | Expr::String(_) | Expr::Unit | Expr::Bool(_) => None,
-            Expr::Call(fun, arg) => {
-                if id == fun.id() || id == arg.id() {
-                    return Some(vec![*self]);
-                }
-                fun.parents_of(id)
-                    .or_else(|| arg.parents_of(id))
-                    .map(|mut parents| {
-                        parents.push(*self);
-                        parents
-                    })
-            }
-            Expr::Lambda(_, body, _) => {
-                if id == body.id() {
-                    return Some(vec![*self]);
-                }
-                body.parents_of(id).map(|mut parents| {
-                    parents.push(*self);
-                    parents
-                })
-            }
-            _ => todo!(),
-        }
-    }
+    // pub fn parents_of(&self, id: NodeId) -> Option<Vec<Self>> {
+    //     match *self.0 {
+    //         Expr::Ident(_) | Expr::Number(_) | Expr::String(_) | Expr::Unit | Expr::Bool(_) => None,
+    //         Expr::Call(fun, arg) => {
+    //             if id == fun.id() || id == arg.id() {
+    //                 return Some(vec![*self]);
+    //             }
+    //             fun.parents_of(id)
+    //                 .or_else(|| arg.parents_of(id))
+    //                 .map(|mut parents| {
+    //                     parents.push(*self);
+    //                     parents
+    //                 })
+    //         }
+    //         Expr::Lambda(_, body, _) => {
+    //             if id == body.id() {
+    //                 return Some(vec![*self]);
+    //             }
+    //             body.parents_of(id).map(|mut parents| {
+    //                 parents.push(*self);
+    //                 parents
+    //             })
+    //         }
+    //         _ => todo!(),
+    //     }
+    // }
 
-    pub fn parent_of(&self, id: NodeId) -> Option<Self> {
-        // The first element of `parents_of` will be the nearest parent to `id`
-        self.parents_of(id)
-            .and_then(|parents| parents.into_iter().next())
-    }
+    // pub fn parent_of(&self, id: NodeId) -> Option<Self> {
+    //     // The first element of `parents_of` will be the nearest parent to `id`
+    //     self.parents_of(id)
+    //         .and_then(|parents| parents.into_iter().next())
+    // }
 }
 
 impl<V: Variable> Expr<V> {

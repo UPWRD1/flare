@@ -9,7 +9,7 @@ pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
         let mut types = vec![];
         collect_types(&ir, &mut types);
         let new_ir = m.instantiate(ir.clone(), &types);
-        // dbg!(ir == new_ir);
+        // println!("{}", &new_ir);
         m.new_ir.push(new_ir);
     }
     // m.new_ir
@@ -101,7 +101,7 @@ impl Monomorpher {
                 .ref_ir
                 .get(item_id.0 as usize)
                 .and_then(|ir| self.probe(ir)),
-
+            IR::Local(_, ref d, ref b) => self.probe(d).or(self.probe(b)),
             _ => None,
         }
     }

@@ -3,6 +3,7 @@ use std::{
     fmt::Display,
 };
 
+use internment::Intern;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use rustc_hash::{FxBuildHasher, FxHashMap};
@@ -10,16 +11,21 @@ use tiny_pretty::Doc;
 
 use crate::passes::backend::{
     lowering::{
-        ir::{self, DocExt, Render},
+        ir::{self},
         lower_ast::{ItemSupply, VarSupply},
     },
     simplify::Param,
     target::Target,
 };
+use crate::resource::pretty::{DocExt, Render};
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Int,
     Float,
+    String,
+    Array(Vec<Self>),
+    Union(Vec<Self>),
     Closure(Box<Self>, Box<Self>),
     ClosureEnv(Box<Self>, Vec<Self>),
 }
@@ -29,14 +35,33 @@ impl Render for Type {
         match self {
             Self::Int => Doc::text("i32"),
             Self::Float => Doc::text("f64"),
+            Self::String => Doc::text("str"),
             Self::Closure(l, r) => l.render().space().text("->").space().render(*r),
-            Self::ClosureEnv(c, params) => c.render().text("{").append(Doc::list(
-                params
-                    .iter()
-                    .map(|x| x.clone().render())
+            Self::ClosureEnv(c, params) => c
+                .render()
+                .append(Doc::list(
+                    params
+                        .into_iter()
+                        .map(|x| x.render())
+                        .intersperse(Doc::text(","))
+                        .collect(),
+                ))
+                .brackets(),
+            Self::Array(v) => Doc::list(
+                v.into_iter()
+                    .map(|x| x.render())
                     .intersperse(Doc::text(","))
                     .collect(),
-            )),
+            )
+            .braces(),
+
+            Self::Union(v) => Doc::list(
+                v.into_iter()
+                    .map(|x| x.render())
+                    .intersperse(Doc::text("|"))
+                    .collect(),
+            )
+            .braces(),
         }
     }
 }
@@ -54,7 +79,7 @@ impl Type {
 #[derive(Clone, Copy)]
 pub struct LIRTarget;
 
-impl Display for IR {
+impl Display for LIR {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let doc = self.clone().render();
         write!(
@@ -122,9 +147,10 @@ impl Target for LIRTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub enum IR {
+pub enum LIR {
     Var(Var),
     Int(i32),
+    Str(Intern<String>),
     #[default]
     Unit,
     Float(OrderedFloat<f64>),
@@ -132,9 +158,10 @@ pub enum IR {
     Apply(Box<Self>, Box<Self>),
     Local(Var, Box<Self>, Box<Self>),
     Access(Box<Self>, usize),
+    Array(Vec<Self>),
 }
 
-impl IR {
+impl LIR {
     fn local(v: Var, defn: Self, body: Self) -> Self {
         Self::Local(v, Box::new(defn), Box::new(body))
     }
@@ -152,7 +179,7 @@ impl IR {
             Self::Var(var) => {
                 free.insert(var.clone());
             }
-            Self::Int(_) | Self::Float(_) | Self::Unit => {}
+            Self::Int(_) | Self::Float(_) | Self::Unit | Self::Str(_) => {}
             Self::Closure(_, _, vars) => {
                 for var in vars {
                     free.insert(var.clone());
@@ -168,6 +195,7 @@ impl IR {
                 free.remove(var);
             }
             Self::Access(ir, _) => ir.free_vars_aux(free),
+            Self::Array(v) => v.iter().for_each(|ir| ir.free_vars_aux(free)),
         }
     }
 
@@ -184,7 +212,7 @@ impl IR {
                     *var = new_var.clone();
                 }
             }
-            Self::Int(_) | Self::Float(_) | Self::Unit => {}
+            Self::Int(_) | Self::Float(_) | Self::Unit | Self::Str(_) => {}
             Self::Closure(_, _, vars) => {
                 for var in vars.iter_mut() {
                     if let Some(new_var) = subst.get(var) {
@@ -201,15 +229,17 @@ impl IR {
                 body.rename(subst);
             }
             Self::Access(body, _) => body.rename(subst),
+            Self::Array(v) => v.iter_mut().for_each(|ir| ir.rename(subst)),
         }
     }
 }
 
-impl Render for IR {
+impl Render for LIR {
     fn render(self) -> Doc<'static> {
         match self {
             Self::Var(var) => Doc::text(format!("${}", var.id.0)),
             Self::Int(i) => Doc::text(format!("{i}")),
+            Self::Str(s) => Doc::text(format!("{s}")),
             Self::Unit => Doc::text("unit".to_string()),
             Self::Float(f) => Doc::text(format!("{f}")),
             Self::Closure(t, item_id, vars) => Doc::text("closure")
@@ -225,6 +255,13 @@ impl Render for IR {
             Self::Apply(ir, ir1) => todo!(),
             Self::Local(var, ir, ir1) => todo!(),
             Self::Access(ir, _) => todo!(),
+            Self::Array(v) => Doc::list(
+                v.into_iter()
+                    .map(|x| x.render())
+                    .intersperse(Doc::text(","))
+                    .collect(),
+            )
+            .braces(),
         }
     }
 }
@@ -232,7 +269,7 @@ impl Render for IR {
 pub struct Item {
     pub params: Vec<Var>,
     pub ret_ty: Type,
-    pub body: IR,
+    pub body: LIR,
 }
 
 #[derive(Debug)]
@@ -265,16 +302,17 @@ struct ClosureConvert {
 }
 
 impl ClosureConvert {
-    fn convert(&mut self, ir: ir::IR, env: im::HashMap<ir::Var, Var, FxBuildHasher>) -> IR {
+    fn convert(&mut self, ir: ir::IR, env: im::HashMap<ir::Var, Var, FxBuildHasher>) -> LIR {
         match ir {
             ir::IR::Num(n) => {
                 if n.fract() == 0.0 {
-                    IR::Int(n.0 as i32)
+                    LIR::Int(n.0 as i32)
                 } else {
-                    IR::Float(n)
+                    LIR::Float(n)
                 }
             }
-            ir::IR::Var(var) => IR::Var(env[&var].clone()),
+            ir::IR::Str(s) => LIR::Str(s),
+            ir::IR::Var(var) => LIR::Var(env[&var].clone()),
 
             ir::IR::Local(var, defn, body) => {
                 let defn = self.convert(*defn, env.clone());
@@ -283,7 +321,7 @@ impl ClosureConvert {
                     ty: lower_ty(&var.ty),
                 };
                 let body = self.convert(*body, env.update(var, v.clone()));
-                IR::local(v, defn, body)
+                LIR::local(v, defn, body)
             }
             ir::IR::Fun(fun_var, body) => {
                 let var = Var {
@@ -296,12 +334,17 @@ impl ClosureConvert {
             ir::IR::App(fun, arg) => {
                 let closure = self.convert(*fun, env.clone());
                 let arg = self.convert(*arg, env);
-                IR::apply(closure, arg)
+                LIR::apply(closure, arg)
             }
 
             ir::IR::TyFun(..) | ir::IR::TyApp(..) => {
                 unreachable!("Generics appeared after monomorphization: {ir}")
             }
+            ir::IR::Tuple(v) => LIR::Array(
+                v.into_iter()
+                    .map(|v| self.convert(v, env.clone()))
+                    .collect(),
+            ),
             _ => todo!("{ir:?}"),
         }
     }
@@ -311,7 +354,7 @@ impl ClosureConvert {
         var: Var,
         body: ir::IR,
         env: im::HashMap<ir::Var, Var, FxBuildHasher>,
-    ) -> IR {
+    ) -> LIR {
         let ret = lower_ty(&body.type_of());
         let mut body = self.convert(body, env);
         let mut free_vars = body.free_vars();
@@ -336,9 +379,9 @@ impl ClosureConvert {
                     id,
                     ty: var.ty.clone(),
                 };
-                body = IR::local(
+                body = LIR::local(
                     new_var.clone(),
-                    IR::access(IR::Var(env_var.clone()), i + 1),
+                    LIR::access(LIR::Var(env_var.clone()), i + 1),
                     body.clone(),
                 );
                 (var, new_var)
@@ -356,7 +399,7 @@ impl ClosureConvert {
                 body,
             },
         );
-        IR::Closure(closure_ty, item, vars)
+        LIR::Closure(closure_ty, item, vars)
     }
 }
 
@@ -406,12 +449,20 @@ fn convert(ir: ir::IR) -> ClosureConvertOut {
 fn lower_ty(ty: &ir::Type) -> Type {
     match ty {
         ir::Type::Num => Type::Float,
-
+        &ir::Type::Str => Type::String,
         ir::Type::Fun(arg, ret) => Type::closure(lower_ty(arg), lower_ty(ret)),
         ir::Type::Var(_) | ir::Type::TyFun(..) => {
             unreachable!("Type function or variable appeared after monomorphization: {ty:?}")
         }
+        ir::Type::Prod(r) => Type::Array(lower_row(r)),
 
         _ => todo!("{ty:?}"),
+    }
+}
+
+fn lower_row(row: &ir::Row) -> Vec<Type> {
+    match row {
+        ir::Row::Open(type_var) => todo!(),
+        ir::Row::Closed(items) => items.iter().map(lower_ty).collect(),
     }
 }
