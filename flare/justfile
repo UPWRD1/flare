@@ -34,7 +34,7 @@ profile:
 bulk:
     #!/bin/zsh
     just build;
-    while  ./target/debug/flarec -c examples/ntest.flr; do :; done
+    while  ./target/debug/flarec examples/ntest.flr examples/option.flr -o examples/ntest.ir; do :; done
 
 debt:
     debtmap analyze .

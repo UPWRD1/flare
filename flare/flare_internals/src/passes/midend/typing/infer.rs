@@ -158,7 +158,7 @@ impl Solver<'_> {
             Expr::Add(l, r) => {
                 let num_ty = ast.convert(Type::Num);
                 let left_out = self.check(env.clone(), l, num_ty);
-                let right_out = self.check(env.clone(), r, num_ty);
+                let right_out = self.check(env, r, num_ty);
 
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
@@ -175,7 +175,7 @@ impl Solver<'_> {
             Expr::Sub(l, r) => {
                 let num_ty = ast.convert(Type::Num);
                 let left_out = self.check(env.clone(), l, num_ty);
-                let right_out = self.check(env.clone(), r, num_ty);
+                let right_out = self.check(env, r, num_ty);
 
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
@@ -192,7 +192,7 @@ impl Solver<'_> {
             Expr::Mul(l, r) => {
                 let num_ty = ast.convert(Type::Num);
                 let left_out = self.check(env.clone(), l, num_ty);
-                let right_out = self.check(env.clone(), r, num_ty);
+                let right_out = self.check(env, r, num_ty);
 
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
@@ -209,7 +209,7 @@ impl Solver<'_> {
             Expr::Div(l, r) => {
                 let num_ty = ast.convert(Type::Num);
                 let left_out = self.check(env.clone(), l, num_ty);
-                let right_out = self.check(env.clone(), r, num_ty);
+                let right_out = self.check(env, r, num_ty);
 
                 let mut constraints = left_out.constraints;
                 constraints.extend(right_out.constraints);
@@ -318,7 +318,7 @@ impl Solver<'_> {
                 );
 
                 let right_out = self.check(
-                    env.clone(),
+                    env,
                     right,
                     right.convert(Type::Func(right.convert(Type::Sum(row_comb.right)), ret_ty)),
                 );
@@ -405,7 +405,7 @@ impl Solver<'_> {
                                                            //     goal: row_combo.goal,
                                                            // }
                             ),
-                            _ => None,
+                            Constraint::TypeEqual(..) => None,
                         })
                         .collect(),
                 };

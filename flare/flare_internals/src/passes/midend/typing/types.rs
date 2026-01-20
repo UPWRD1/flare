@@ -94,8 +94,8 @@ impl Type {
         match self {
             Self::Var(v) => format!(
                 "?{}",
-                scheme.types_to_name.get(v).unwrap_or(
-                    &v.0.to_string().into() // panic!("Type variable {v:?} has no associated name : {scheme:?}")
+                scheme.types_to_name.get(v).copied().unwrap_or_else(
+                    || Intern::from(v.0.to_string()) // panic!("Type variable {v:?} has no associated name : {scheme:?}")
                 ) // .coopied()
                   // .uwrap_or_else(|| v.0.to_string().into())
             ),
@@ -292,8 +292,8 @@ impl fmt::Display for Type {
             Self::Prod(r) => write!(f, "{{{r}}}"),
             Self::Sum(r) => write!(f, "|{r}|"),
             Self::Label(l, t) => write!(f, "{}: {t}", l.0.0),
-            Self::TypeFun(l, r) => write!(f, "[{}]{}", l, r),
-            Self::TypeApp(l, r) => write!(f, "{} {}", l, r),
+            Self::TypeFun(l, r) => write!(f, "[{l}]{r}"),
+            Self::TypeApp(l, r) => write!(f, "{l} {r}"),
             _ => write!(f, "{self:#?}"),
         }
     }

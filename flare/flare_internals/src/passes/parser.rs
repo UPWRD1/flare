@@ -450,7 +450,7 @@ where
                         name.convert(
                             Expr::Label(
                                 Label(name),
-                                val.unwrap_or(Spanned(Expr::Unit.into(), e.span()))
+                                val.unwrap_or_else(||Spanned(Expr::Unit.into(), e.span()))
                             )
                         )
                     ).into(),
@@ -1081,16 +1081,12 @@ mod tests {
     fn type_test(src: &'static str) -> Type {
         let tokens = make_tokens(src);
 
-        match ty_parser(&make_input)
+        ty_parser(&make_input)
             .parse(make_input(
                 SimpleSpan::new(0, 0..src.len()),
                 tokens.expect("Could not parse test").leak(),
             ))
-            .into_result()
-        {
-            Ok(t) => *t.0,
-            Err(_) => unreachable!(),
-        }
+            .into_result().map_or_else(|_| unreachable!(), |t| *t.0)
     }
 
     macro_rules! parser_test {

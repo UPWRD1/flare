@@ -326,7 +326,7 @@ impl IR {
             }
 
             // These should all be numbers
-            Self::Bin(l, op, r) => Self::type_of_binop(l, op, r),
+            Self::Bin(l, op, r) => Self::type_of_binop(l, *op, r),
 
             Self::TyFun(kind, body) => Type::ty_fun(*kind, body.type_of()),
             Self::TyApp(ty_fun, ty_app) => {
@@ -414,7 +414,7 @@ impl IR {
         }
     }
 
-    fn type_of_binop(l: &Self, op: &BinOp, r: &Self) -> Type {
+    fn type_of_binop(l: &Self, op: BinOp, r: &Self) -> Type {
         match op {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                 let lty = l.type_of();

@@ -42,14 +42,14 @@ impl Render for Type {
                 .append(Doc::list(
                     params
                         .into_iter()
-                        .map(|x| x.render())
+                        .map(Render::render)
                         .intersperse(Doc::text(","))
                         .collect(),
                 ))
                 .brackets(),
             Self::Array(v) => Doc::list(
                 v.into_iter()
-                    .map(|x| x.render())
+                    .map(Render::render)
                     .intersperse(Doc::text(","))
                     .collect(),
             )
@@ -57,7 +57,7 @@ impl Render for Type {
 
             Self::Union(v) => Doc::list(
                 v.into_iter()
-                    .map(|x| x.render())
+                    .map(Render::render)
                     .intersperse(Doc::text("|"))
                     .collect(),
             )
@@ -257,7 +257,7 @@ impl Render for LIR {
             Self::Access(ir, _) => todo!(),
             Self::Array(v) => Doc::list(
                 v.into_iter()
-                    .map(|x| x.render())
+                    .map(Render::render)
                     .intersperse(Doc::text(","))
                     .collect(),
             )
@@ -306,7 +306,8 @@ impl ClosureConvert {
         match ir {
             ir::IR::Num(n) => {
                 if n.fract() == 0.0 {
-                    LIR::Int(n.0 as i32)
+                    let n = n.0 as i32;
+                    LIR::Int(n)
                 } else {
                     LIR::Float(n)
                 }
@@ -431,8 +432,8 @@ fn convert(ir: ir::IR) -> ClosureConvertOut {
 
     let mut conversion = ClosureConvert {
         var_supply,
-        item_supply: Default::default(),
-        items: Default::default(),
+        item_supply: ItemSupply::default(),
+        items: BTreeMap::default(),
     };
 
     let body = conversion.convert(ir, env);

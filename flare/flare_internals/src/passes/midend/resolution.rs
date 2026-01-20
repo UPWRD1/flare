@@ -154,12 +154,10 @@ impl<const N: usize> Resolver<N> {
         }
         // self.debug();
 
-        let reachable: FxHashSet<NodeIndex> = Dfs::new(
-            &self.dag.clone(),
-            self.main_dag_idx.ok_or(err_no_main.clone())?,
-        )
-        .iter(&self.dag)
-        .collect();
+        let reachable: FxHashSet<NodeIndex> =
+            Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
+                .iter(&self.dag)
+                .collect();
         self.dag.reverse();
         // dbg!(&reachable);
         // let sorted = reachable;
@@ -720,15 +718,16 @@ impl<const N: usize> Resolver<N> {
     fn resolve_name_type(&mut self, name: &impl Ident) -> CompResult<ItemId> {
         let name = name.ident()?;
 
-        if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &name.1) {
-            Ok(e)
-            // self.env.value(NodeIndex::from(e.0 as u32))
-        } else {
-            Err(errors::not_defined(
-                QualifierFragment::Wildcard(name.0),
-                &name.1,
-            ))
-        }
+        self.search_masterenv(&QualifierFragment::Type(name.0), &name.1)
+            .map_or_else(
+                |_| {
+                    Err(errors::not_defined(
+                        QualifierFragment::Wildcard(name.0),
+                        &name.1,
+                    ))
+                },
+                Ok,
+            )
     }
 
     pub fn finish(self) -> CompResult<Environment> {

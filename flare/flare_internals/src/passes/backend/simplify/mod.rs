@@ -70,16 +70,14 @@ impl IR {
             Self::TyFun(_, ir) => ir.is_value(),
             Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
             Self::Tuple(s) => s.iter().all(Self::is_value),
-            Self::Var(_) => false,
+            Self::Var(_) | Self::App(_, _) | Self::TyApp(_, _) => false,
              Self::Num(_)
             | Self::Str(_)
             | Self::Unit
             | Self::Bool(_)
             | Self::Particle(_)
             | Self::Fun(_, _)
-            | Self::Tag(_, _, _) => true,
-            Self::App(_, _) | Self::TyApp(_, _) => false,
-            Self::Case(_, _, _) => true,
+            | Self::Tag(_, _, _) | Self::Case(_, _, _) => true,
             _ => todo!("{self:?}"),
         }
     }
@@ -170,9 +168,8 @@ impl Occurrences {
                 .and_modify(|self_occ| {
                     *self_occ = match (*self_occ, occ) {
                         (Occurrence::Dead, occ) | (occ, Occurrence::Dead) => occ,
-                        (Occurrence::Many, _) | (_, Occurrence::Many) => Occurrence::Many,
-                        (Occurrence::Once, Occurrence::Once) => Occurrence::Many,
-                        (Occurrence::Once, _) | (Occurrence::OnceInFun, _) => Occurrence::Many,
+                        (Occurrence::Many | Occurrence::Once | Occurrence::OnceInFun, _) |
+(_, Occurrence::Many) | (Occurrence::Once, Occurrence::Once) => Occurrence::Many,
                     };
                 })
                 .or_insert(occ);
@@ -299,8 +296,7 @@ impl<'i> OccuranceAnalyzer<'i> {
                 fun_free.extend(arg_free);
                 (fun_free, fun_occs.merge(arg_occs))
             }
-            IR::TyFun(_, ir) => self.occurrence_analysis(ir, seen),
-            IR::TyApp(ir, _) => self.occurrence_analysis(ir, seen),
+            IR::TyFun(_, ir) | IR::TyApp(ir, _) | IR::Field(ir, _) | IR::Tag(_, _, ir) => self.occurrence_analysis(ir, seen),
             IR::Local(var, defn, body) => {
                 let (mut free, mut occs) = self.occurrence_analysis(body, seen);
                 let (defn_free, defn_occs) = self.occurrence_analysis(defn, seen);
@@ -325,7 +321,6 @@ impl<'i> OccuranceAnalyzer<'i> {
                 (free, occs)
             }
 
-            IR::Field(ir, _) => self.occurrence_analysis(ir, seen),
             IR::Tuple(elements) => {
                 let mut occs = Occurrences::default();
                 let mut free = FxHashSet::default();
@@ -333,7 +328,7 @@ impl<'i> OccuranceAnalyzer<'i> {
                     // dbg!(elem);
                     let (elem_free, elem_occs) = self.occurrence_analysis(elem, seen);
                     free.extend(elem_free);
-                    occs = occs.merge(elem_occs)
+                    occs = occs.merge(elem_occs);
                 }
                 (free, occs)
             }
@@ -350,12 +345,11 @@ impl<'i> OccuranceAnalyzer<'i> {
                         .entry(branch.param.id)
                         .or_insert(Occurrence::Dead);
                     scrutinee_free.extend(branch_free);
-                    scrutinee_occs = scrutinee_occs.merge(branch_occs)
+                    scrutinee_occs = scrutinee_occs.merge(branch_occs);
                 }
                 (scrutinee_free, scrutinee_occs)
             }
 
-            IR::Tag(_, _, ir) => self.occurrence_analysis(ir, seen),
             IR::Item(_, id) => {
                 // dbg!(self.items.len(), id);
                 if seen.contains(id) {
@@ -617,25 +611,25 @@ impl<'p> Simplifier<'p> {
     ) -> ControlFlow<Var, IR> {
         in_scope
             .get(&var.id)
-            .map(|bind| match bind {
+            .map_or_else(
+|| {
+                unreachable!(
+                    "Unbound variable encountered in simplification: {:?}\nin_scope: {:?}",
+                    var.id, in_scope
+                )
+            }     ,           |bind| match bind {
                 Definition::BoundTo(definition, occ)
                     if self.should_inline(definition, *occ, in_scope, ctx) =>
                 {
                     self.subst = Subst::default();
-                    if let Occurrence::OnceInFun = occ {
+                    if matches!(occ, Occurrence::OnceInFun) {
                         self.occs.mark_dead(var.id);
                     }
                     ControlFlow::Continue(definition.clone())
                 }
                 _ => ControlFlow::Break(var.clone()),
             })
-            .unwrap_or_else(|| {
-                unreachable!(
-                    "Unbound variable encountered in simplification: {:?}\nin_scope: {:?}",
-                    var.id, in_scope
-                )
-            })
-    }
+                }
 
     fn item_inline(
         &mut self,
@@ -649,7 +643,14 @@ impl<'p> Simplifier<'p> {
             self.seen_items.insert(itemid);
             self.items
                 .get(itemid.0 as usize)
-                .map(|definition| {
+                .map_or_else(
+|| {
+                    unreachable!(
+                        "Unknown item encountered in simplification: {:?}\nin_scope: {:?}",
+                        itemid, in_scope
+                    )
+                }    ,                |definition| {
+                        
                     if definition.size() < self.inline_size_threshold * 2
                         && self.some_benefit(definition, in_scope, ctx)
                     {
@@ -659,12 +660,7 @@ impl<'p> Simplifier<'p> {
                         ControlFlow::Break(itemid)
                     }
                 })
-                .unwrap_or_else(|| {
-                    unreachable!(
-                        "Unknown item encountered in simplification: {:?}\nin_scope: {:?}",
-                        itemid, in_scope
-                    )
-                })
+                
         }
     }
 
@@ -775,7 +771,7 @@ impl<'p> Simplifier<'p> {
                             in_scope.update(var.id, Definition::BoundTo(ir.clone(), occ)),
                             vec![],
                         );
-                        ir = if let Occurrence::Dead = self.occs.lookup_var(&var) {
+                        ir = if matches!(self.occs.lookup_var(&var), Occurrence::Dead) {
                             self.locals_inlined += 1;
                             body
                         } else {

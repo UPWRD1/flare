@@ -82,7 +82,7 @@ struct Monomorpher {
     // saturated_fun_count: usize,
 }
 impl Monomorpher {
-    fn new(ref_ir: Vec<IR>) -> Self {
+    const fn new(ref_ir: Vec<IR>) -> Self {
         Self {
             ref_ir,
             new_ir: vec![],
@@ -101,7 +101,7 @@ impl Monomorpher {
                 .ref_ir
                 .get(item_id.0 as usize)
                 .and_then(|ir| self.probe(ir)),
-            IR::Local(_, ref d, ref b) => self.probe(d).or(self.probe(b)),
+            IR::Local(_, ref d, ref b) => self.probe(d).or_else(|| self.probe(b)),
             _ => None,
         }
     }
@@ -117,12 +117,13 @@ impl Monomorpher {
                 }
                 IR::TyApp(body, _) => {
                     // dbg!(a, &ty);
-                    if let Some(ir) = self.probe(&body) {
-                        simplify::subst_ty(ir, ty.clone())
-                    } else {
-                        let body = self.instantiate(*body, rest_types);
-                        simplify::subst_ty(body, ty.clone())
-                    }
+                    self.probe(&body).map_or_else(
+                        || {
+                            let body = self.instantiate(*body, rest_types);
+                            simplify::subst_ty(body, ty.clone())
+                        },
+                        |ir| simplify::subst_ty(ir, ty.clone()),
+                    )
                 }
                 IR::Local(v, d, b) => {
                     let defn = self.instantiate(*d, types);
@@ -133,7 +134,7 @@ impl Monomorpher {
                     let item_ir = self.ref_ir[id.0 as usize].clone();
                     let monomorphed_ir = self.instantiate(item_ir, types);
                     let t = t.subst_app(ty.clone());
-                    self.new_ir.push(monomorphed_ir.clone());
+                    self.new_ir.push(monomorphed_ir);
                     IR::Item(t, ItemId(self.new_ir.len() as u32))
                 }
                 IR::App(l, r) => IR::app(self.instantiate(*l, types), self.instantiate(*r, types)),

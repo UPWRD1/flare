@@ -77,7 +77,7 @@ impl Solver<'_> {
             })
             .collect::<Vec<_>>()
             .leak();
-        row_out.map(|_| ClosedRow {
+        row_out.map(|()| ClosedRow {
             fields: row.fields,
             values,
         })

@@ -102,7 +102,7 @@ impl Typechecker {
                     self.context.insert(ItemId(item_idx.index()), scheme);
                 }
                 _ => unreachable!("{:?}", item.kind),
-            };
+            }
         }
 
         let out = self.check_items()?;
@@ -341,11 +341,11 @@ impl Typechecker {
                     _ => unreachable!(),
                 };
 
-                if !solved.errors.is_empty() {
-                    Err(ErrorCollection::new(solved.errors.into_values().collect()).into())
-                } else {
+                if solved.errors.is_empty() {
                     self.context.insert(id, solved.scheme.clone());
                     Ok((id, solved))
+                } else {
+                    Err(ErrorCollection::new(solved.errors.into_values().collect()).into())
                 }
             })
             .collect()

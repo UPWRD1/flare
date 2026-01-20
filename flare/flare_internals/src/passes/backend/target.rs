@@ -43,7 +43,7 @@ impl<T: Target> Generator<T> {
     pub fn generate(mut self) -> T::Output {
         let mut v: Vec<T::Partial> = vec![];
         for input in self.inputs {
-            v.push(self.target.generate(input))
+            v.push(self.target.generate(input));
         }
         self.target.finish(v)
     }

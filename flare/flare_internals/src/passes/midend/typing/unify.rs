@@ -156,15 +156,6 @@ impl Solver<'_> {
         }
     }
 
-    fn unify_typeapp(
-        &mut self,
-        tyfun: Spanned<Intern<Type>>,
-        arg: Spanned<Intern<Type>>,
-        rep: Spanned<Intern<Type>>,
-    ) -> Result<(), UnificationError> {
-        todo!()
-    }
-
     fn dispatch_any_solved(
         &mut self,
         var: RowUniVar,
