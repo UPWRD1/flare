@@ -44,7 +44,7 @@ pub mod resource;
 use core::iter::Iterator;
 use std::{
     hash::{Hash, Hasher},
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -82,39 +82,60 @@ pub trait Operation {}
 struct Init;
 impl Operation for Init {}
 
-pub type FileCtx = FxHashMap<FileID, FileSource<'static>>;
-#[derive(Debug)]
+pub type FileCtx = FxHashMap<FileID, FileSource>;
+// #[derive(Debug)]
 /// The context for a Flare bundle.
-pub struct Context<T: Target> {
+pub struct Context<const N: usize, T> {
     pub filectx: FileCtx,
     pub target: T,
-    // pub intrinsics: OnceCell<[(&'static str, &'static [Untyped], Type); 0]>,
-    // pub raw_ast: OnceCell<Program<Untyped>>,
-    // pub typed_ast: OnceCell<Program<Typed>>,
-    // pub env: OnceCell<Environment>,
-    // pub ir: OnceCell<ir::IR>,
-    // pub lir: OnceCell<lir::IR>,
+    pub intrinsics: [(&'static str, &'static [Untyped], Type); N],
 }
 
-impl<T: Target> Context<T> {
-    pub fn new(src_path: &'static Path, id: FileID, target: T) -> Self {
-        let src_text = std::fs::read_to_string(src_path).unwrap();
+impl<const N: usize, T: Target> Context<N, T> {
+    // pub fn new(src_paths: &'static Path, id: FileID, target: T) -> Self {
+    //     let src_text = std::fs::read_to_string(src_path).unwrap();
 
-        // Leak the string to get a 'static lifetime, then cast to 'src
-        let src_text: &'static str = Box::leak(src_text.into_boxed_str());
-        let source = FileSource {
-            filename: src_path,
-            src_text,
-        };
-        Context {
-            filectx: vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>(),
+    //     // Leak the string to get a 'static lifetime, then cast to 'src
+    //     let src_text: &'static str = Box::leak(src_text.into_boxed_str());
+    //     let source = FileSource {
+    //         filename: src_path,
+    //         src_text,
+    //     };
+    //     Context {
+    //         filectx: vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>(),
+    //         target,
+    //         // intrinsics: Default::default(),
+    //         // raw_ast: Default::default(),
+    //         // typed_ast: Default::default(),
+    //         // env: Default::default(),
+    //         // ir: Default::default(),
+    //         // lir: Default::default(),
+    //     }
+    // }
+
+    pub fn new(
+        src_paths: Vec<PathBuf>,
+        target: T,
+        intrinsics: [(&'static str, &'static [Untyped], Type); N],
+    ) -> Self {
+        let filectx = src_paths
+            .into_iter()
+            .map(|filepath| {
+                let id = convert_path_to_id(&filepath);
+
+                let src_text = std::fs::read_to_string(&filepath).unwrap();
+
+                let source = FileSource {
+                    filepath,
+                    source: src_text,
+                };
+                (id, source)
+            })
+            .collect();
+        Self {
+            filectx,
             target,
-            // intrinsics: Default::default(),
-            // raw_ast: Default::default(),
-            // typed_ast: Default::default(),
-            // env: Default::default(),
-            // ir: Default::default(),
-            // lir: Default::default(),
+            intrinsics,
         }
     }
 
@@ -122,30 +143,11 @@ impl<T: Target> Context<T> {
         parser::parse(&self.filectx, id)
     }
 
-    pub fn parse_program(&mut self, id: FileID) -> CompResult<Program<Untyped>> {
-        let src_path = self.filectx.get(&id).unwrap().filename;
-        let path = src_path.canonicalize().unwrap();
-        let parent_dir = path.parent().unwrap();
-        let dir_contents: Vec<FileSource<'static>> = std::fs::read_dir(parent_dir)?
-            .filter_map(Result::ok)
-            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
-            .map(|x| {
-                let src_text = std::fs::read_to_string(x.path()).unwrap();
-                // Leak the string to get a 'static lifetime, then cast to 'src
-                let src_text = Box::leak(src_text.into_boxed_str());
-
-                FileSource {
-                    filename: x.path().leak(),
-                    src_text,
-                }
-            })
-            .collect::<Vec<_>>();
+    pub fn parse_program(&mut self) -> CompResult<Program<Untyped>> {
         let mut processed: Vec<(Vec<Package<Untyped>>, FileID)> = vec![];
-        for entry in dir_contents {
-            let converted_id = convert_path_to_id(entry.filename);
-            self.filectx.insert(converted_id, entry.clone());
-            let pack = self.parse_file(converted_id)?;
-            processed.push((pack, converted_id))
+        for id in self.filectx.keys() {
+            let pack = self.parse_file(*id)?;
+            processed.push((pack, *id))
         }
 
         let v: Vec<_> = processed
@@ -161,31 +163,15 @@ impl<T: Target> Context<T> {
         Ok(Program { packages: v })
     }
 
-    pub fn compile_program(&mut self, id: FileID) -> CompResult<(T::Output, Duration)> {
+    pub fn compile_program(&mut self) -> CompResult<(T::Output, Duration)> {
         // use internment::Intern;
         // use resource::rep::quantifier::QualifierFragment::*;
         let now: Instant = Instant::now();
-        let program = self.parse_program(id)?;
+        let program = self.parse_program()?;
 
         let e = Environment::build(&program)?;
 
-        let intrinsics: [(&str, &'static [Untyped], Type); 0] = [
-            // (
-            //     "intrinsic_arith_add",
-            //     vec![
-            //         Untyped(Spanned("l".to_string().into(), SimpleSpan::default())),
-            //         Untyped(Spanned("r".to_string().into(), SimpleSpan::default())),
-            //     ]
-            //     .leak(),
-            //     Type::Func(
-            //         Type::Num.to_default_span(),
-            //         Type::Func(Type::Num.to_default_span(), Type::Num.to_default_span())
-            //             .to_default_span(),
-            //     ),
-            // ),
-                    ];
-
-        let mut resolver = Resolver::new(e, intrinsics);
+        let mut resolver = Resolver::new(e, self.intrinsics);
         let order = resolver.build()?;
         let resolved_e = resolver.finish()?;
 
@@ -198,7 +184,7 @@ impl<T: Target> Context<T> {
         let ir = monomorph::monomorph(ir);
         // let ir = simplify::simplify(&ir);
 
-        let final_ir = T::convert(ir);
+        let final_ir = self.target.convert(ir);
 
         let g = Generator::new(self.target, final_ir);
 

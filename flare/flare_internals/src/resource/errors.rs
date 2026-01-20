@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Display},
     io::Cursor,
     ops::Deref,
+    path::PathBuf,
 };
 
 mod templates {
@@ -234,7 +235,7 @@ impl DynamicErr {
             ..self
         }
     }
-    pub fn generate_sources(&self, context: &FileCtx) -> Vec<(&'static str, &'static str)> {
+    pub fn generate_sources<'src>(&self, context: &FileCtx) -> Vec<(String, String)> {
         let mut source_ids: Vec<u64> = vec![];
         let label_origin = self
             .label
@@ -249,7 +250,7 @@ impl DynamicErr {
         let mut new_sources = vec![];
         for k in source_ids {
             let ent = context.get(&k).unwrap().clone();
-            new_sources.push((ent.filename.to_str().unwrap(), ent.src_text))
+            new_sources.push((ent.filepath.display().to_string(), ent.source))
         }
 
         new_sources
@@ -290,8 +291,8 @@ pub struct GeneralErr {
     label: (String, SimpleSpan<usize, FileID>),
     extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
     help: Vec<String>,
-    context: FxHashMap<FileID, FileSource<'static>>,
-    sources: Vec<(&'static str, &'static str)>,
+    context: FxHashMap<FileID, FileSource>,
+    sources: Vec<(String, String)>,
 }
 
 impl ReportableError for GeneralErr {
@@ -305,7 +306,10 @@ impl std::fmt::Display for GeneralErr {
         let mut buf = Cursor::new(vec![]);
         let mut rep = Report::build(
             ReportKind::Error,
-            (self.sources.first().unwrap().0, self.label.1.into_range()),
+            (
+                self.sources.first().unwrap().0.clone(),
+                self.label.1.into_range(),
+            ),
         )
         .with_config(
             ariadne::Config::new()
@@ -319,9 +323,9 @@ impl std::fmt::Display for GeneralErr {
                     self.context
                         .get(&self.label.1.context)
                         .unwrap()
-                        .filename
-                        .to_str()
-                        .unwrap()
+                        .filepath
+                        .display()
+                        .to_string()
                 },
                 self.label.1.into_range(),
             ))
@@ -333,19 +337,17 @@ impl std::fmt::Display for GeneralErr {
                 self.context
                     .get(&label2.1.context)
                     .unwrap()
-                    .filename
-                    .to_str()
-                    .unwrap(),
+                    .filepath
+                    .display()
+                    .to_string(),
                 label2.1.into_range(),
             ))
             .with_message(label2.0.as_str())
             .with_color(Color::Yellow)
         }));
         rep.with_helps(self.help.clone());
-
-        rep.finish()
-            .write(sources(self.sources.clone()), &mut buf)
-            .unwrap();
+        let sources = sources(self.sources.clone());
+        rep.finish().write(sources, &mut buf).unwrap();
         write!(
             f,
             "{}",

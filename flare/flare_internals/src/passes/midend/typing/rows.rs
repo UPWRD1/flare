@@ -105,38 +105,6 @@ pub struct ClosedRow {
     pub values: &'static [Spanned<Intern<Type>>],
 }
 
-// impl hash::Hash for ClosedRow {
-//     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-//         self.fields.iter().for_each(|f| f.0.0.hash(state));
-//         self.values.iter().for_each(|x| x.0.hash(state));
-//     }
-// }
-
-// impl PartialEq for ClosedRow {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.fields == other.fields
-//         // self.is_subtype_of(other).is_some()
-//     }
-// }
-
-// impl Eq for ClosedRow {}
-
-// impl Ord for ClosedRow {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.fields
-//             .iter()
-//             .map(|x| x.0.0)
-//             .cmp(other.fields.iter().map(|x| x.0.0))
-//             .then(self.values.iter().cmp(other.values.iter()))
-//     }
-// }
-
-// impl PartialOrd for ClosedRow {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-
 impl EqUnifyValue for ClosedRow {}
 
 impl Display for ClosedRow {

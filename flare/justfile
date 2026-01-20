@@ -7,17 +7,16 @@ release:
     cargo build --release -p flarec
 
 run:
-    cargo run -p flarec  -- -c examples/ntest.flr
-
+    cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.ir
 show_ir:
     just run
     bat examples/ntest.ir    
 
 compile path:
-    cargo run -p flarec -- -c {{path}}
+    cargo run -p flarec --  {{path}} -o 
 
 run-release:
-    cargo run --release -p flarec -- -c examples/ntest.flr
+    cargo run --release -p flarec -- examples/ntest.flr examples/option.flr -o examples/ntest.ir
 
 bench:
     cargo bench --features testing -p flare_internals

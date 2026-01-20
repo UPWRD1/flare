@@ -1021,10 +1021,10 @@ fn make_input(
 
 /// Public parsing function. Produces a parse tree from a source string.
 pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
-    let input = ctx
+    let input: &'static str = ctx
         .get(&fid)
         .unwrap_or_else(|| unreachable!("FileID {} does not exist in context: {:?}", fid, ctx))
-        .src_text;
+        .source.clone().leak();
     let tokens: Vec<Spanned<Token>> = match lexer(fid).parse(input).into_result() {
         Ok(tokens) => tokens,
         Err(errs) => {

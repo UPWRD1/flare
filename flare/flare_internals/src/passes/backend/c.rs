@@ -39,18 +39,18 @@ impl Target for C {
     // fn generate_struct(&mut self, s: &StructEntry) -> Self::Output {
     // todo!()
     // }
-    fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
+    fn finish(&self, p: Vec<Self::Partial>) -> Self::Output {
         p.join("")
     }
 
     fn generate(&mut self, ir: ClosureConvertOut) -> Self::Partial {
         todo!()
     }
-    fn ext(&self) -> impl Into<String> {
+    fn ext(&self) -> &str {
         "c"
     }
 
-    fn convert(ir: Vec<ir::IR>) -> Vec<Self::Input> {
+    fn convert(&self, ir: Vec<ir::IR>) -> Vec<Self::Input> {
         closure_convert(ir)
     }
 }

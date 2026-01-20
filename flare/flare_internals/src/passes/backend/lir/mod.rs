@@ -129,18 +129,18 @@ impl Target for LIRTarget {
         )
     }
 
-    fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
+    fn finish(&self, p: Vec<Self::Partial>) -> Self::Output {
         p.into_iter()
             .enumerate()
             .map(|(i, x)| format!("fn{i}{x}"))
             .collect::<Vec<String>>()
             .join("\n\n")
     }
-    fn ext(&self) -> impl Into<String> {
+    fn ext(&self) -> &str {
         "ir"
     }
 
-    fn convert(ir: Vec<ir::IR>) -> Vec<Self::Input> {
+    fn convert(&self, ir: Vec<ir::IR>) -> Vec<Self::Input> {
         let ir = vec![ir.last().unwrap().clone()];
         closure_convert(ir)
     }

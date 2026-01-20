@@ -47,7 +47,7 @@ impl UnifyKey for TyUniVar {
 // pub struct TypeVar(pub Intern<String>);
 pub struct TypeVar(pub usize);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum Type {
     Infer,
     Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
@@ -107,15 +107,6 @@ impl Type {
             _ => format!("{self}"),
         }
     }
-    // pub fn unit() -> Self {
-    //     Self::Prod(
-    //         Row::Closed(super::ClosedRow {
-    //             fields: vec![].leak(),
-    //             values: vec![].leak(),
-    //         })
-    //         .into(),
-    //     )
-    // }
 
     pub fn to_default_span(self) -> Spanned<Intern<Self>> {
         Spanned(
@@ -304,44 +295,6 @@ impl fmt::Display for Type {
             Self::TypeFun(l, r) => write!(f, "[{}]{}", l, r),
             Self::TypeApp(l, r) => write!(f, "{} {}", l, r),
             _ => write!(f, "{self:#?}"),
-        }
-    }
-}
-
-impl Hash for Type {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        core::mem::discriminant(self).hash(state);
-        match self {
-            Self::Unifier(r) => r.hash(state),
-            Self::Func(l, r) => {
-                l.hash(state);
-                r.hash(state);
-            }
-
-            Self::Generic(name) => name.hash(state),
-            Self::Particle(p) => p.hash(state),
-            Self::Package(p) => p.hash(state),
-            Self::Var(v) => v.hash(state),
-            Self::Label(label, ty) => {
-                label.hash(state);
-                ty.hash(state);
-            }
-            Self::Prod(row) | Self::Sum(row) => row.hash(state),
-            Self::TypeFun(l, r) | Self::TypeApp(l, r) => {
-                l.hash(state);
-                r.hash(state);
-            }
-            Self::User(name, generics) => {
-                name.hash(state);
-                for g in generics.iter() {
-                    g.hash(state);
-                }
-            }
-            Self::Subtable(ty, span) => {
-                ty.hash(state);
-                span.hash(state);
-            }
-            Self::Num | Self::Bool | Self::String | Self::Unit | Self::Infer | Self::Hole => {}
         }
     }
 }

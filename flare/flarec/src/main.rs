@@ -1,11 +1,12 @@
 //#![warn(clippy::pedantic)]
 //#![deny(elided_lifetimes_in_paths)]
 
-use std::{env, fs::File, io::Write, panic, path::PathBuf};
+use std::{fs::File, io::Write, panic, path::PathBuf};
 
+use clap::{Parser, ValueEnum, crate_description, crate_version};
 use flare_internals::{
-    Context, convert_path_to_id,
-    passes::backend::{lir::LIRTarget, lowering::ir::IRTarget, target::Target},
+    Context,
+    passes::backend::{c::C, lir::LIRTarget, lowering::ir::IRTarget, target::Target},
     resource::errors::CompResult,
 };
 fn enable_loggin() {
@@ -55,65 +56,63 @@ fn panic_hook() {
     }));
 }
 
+#[derive(Parser)]
+#[command(name = "flarec")]
+#[command(version = crate_version!())]
+#[command(about = crate_description!(), long_about = None)]
+struct Cli {
+    input_files: Vec<PathBuf>,
+
+    #[arg(short = 'o', long = "output")]
+    output_file: PathBuf,
+
+    #[arg(short = 't', long = "target", default_value_t = Targets::IR, value_enum)]
+    target: Targets,
+}
+
+#[derive(Copy, Clone, ValueEnum, Default)]
+enum Targets {
+    #[default]
+    IR,
+    Lir,
+    C,
+}
+
+macro_rules! make_target {
+    ($target:tt, $cli:ident) => {{
+        let files = $cli.input_files;
+        let target = $target;
+        let mut ctx = Context::new(files, target, []);
+        match ctx.compile_program() {
+            Ok((code, elapsed)) => {
+                println!("Compiled  in {elapsed:.2?}",);
+                let f = $cli.output_file.with_extension(target.ext());
+                let mut f = File::create(f).unwrap();
+                f.write_all(code.as_bytes())?;
+
+                Ok(())
+            }
+
+            Err(e) => {
+                e.report(&ctx.filectx);
+                std::process::exit(1)
+            }
+        }
+    }};
+}
+
 fn main() -> CompResult<()> {
-    const VERSION: &str = "0.0.1";
-    let prog_args: Vec<String> = env::args().collect();
     enable_loggin();
     panic_hook();
 
+    let cli = Cli::parse();
+
     // unsafe { backtrace_on_stack_overflow::enable() };
-
-    match prog_args.len() {
-        3 => match prog_args[1].as_str() {
-            "-c" | "--compile" => {
-                let filename = PathBuf::from(&prog_args[2]).canonicalize()?.leak();
-                let id = convert_path_to_id(filename);
-                let target = IRTarget;
-                let mut ctx = Context::new(filename, id, target);
-                match ctx.compile_program(id) {
-                    //.inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
-                    //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
-                    Ok((code, elapsed)) => {
-                        println!("Compiled {} in {elapsed:.2?}", filename.display());
-                        let f =
-                            PathBuf::from(filename.to_str().unwrap().split(".").next().unwrap())
-                                .with_extension(target.ext().into());
-                        let mut f = File::create(f).unwrap();
-                        f.write_all(code.as_bytes())?;
-
-                        Ok(())
-                    }
-
-                    Err(e) => {
-                        e.report(&ctx.filectx);
-                        std::process::exit(1)
-                    }
-                }
-            }
-
-            &_ => todo!(),
-        },
-        2 => match prog_args[1].as_str() {
-            "--help" | "-h" => {
-                println!("Flare v{VERSION}");
-                Ok(())
-            }
-            "--generate" | "-g" => {
-                // use bnf::Grammar;
-
-                // let input = include_str!("../../grammar.bnf");
-                // let grammar: Grammar = input.parse().unwrap();
-                // let sentence = grammar.generate();
-                // match sentence {
-                //     Ok(s) => println!("random sentence: {}", s),
-                //     Err(e) => println!("something went wrong: {}!", e),
-                // }
-                Ok(())
-            }
-            &_ => todo!(),
-        },
-        _ => {
-            panic!("Invalid length of arguments!")
+    match cli.target {
+        Targets::IR => {
+            make_target!(IRTarget, cli)
         }
+        Targets::Lir => make_target!(LIRTarget, cli),
+        Targets::C => make_target!(C, cli),
     }
 }

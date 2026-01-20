@@ -10,9 +10,8 @@ mod helper {
             Self { next: 0 }
         }
         pub fn fresh(&mut self) -> NodeId {
-            let s = SimpleSpan::new(0u64, self.next..self.next);
             // self.next += 1;
-            s
+            SimpleSpan::new(0u64, self.next..self.next)
         }
 
         pub fn with<T>(&mut self, item: T) -> Spanned<Intern<T>>

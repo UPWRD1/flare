@@ -1,6 +1,9 @@
 use std::fmt::Debug;
 
-use crate::passes::backend::lowering::ir::IR;
+use crate::passes::backend::{
+    lir::LIRTarget,
+    lowering::ir::{IR, IRTarget},
+};
 
 pub trait Target: Copy {
     type Partial: Default;
@@ -9,9 +12,9 @@ pub trait Target: Copy {
     // fn generate(&mut self);
     // fn generate_item(&mut self, Type)
     fn generate(&mut self, ir: Self::Input) -> Self::Partial;
-    fn finish(self, p: Vec<Self::Partial>) -> Self::Output;
-    fn ext(&self) -> impl Into<String>;
-    fn convert(ir: Vec<IR>) -> Vec<Self::Input>;
+    fn finish(&self, p: Vec<Self::Partial>) -> Self::Output;
+    fn ext(&self) -> &str;
+    fn convert(&self, ir: Vec<IR>) -> Vec<Self::Input>;
 }
 
 pub struct Generator<T: Target> {

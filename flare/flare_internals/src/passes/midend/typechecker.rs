@@ -154,17 +154,17 @@ impl Typechecker {
             }
 
             Type::Generic(n) => {
-                println!("Generic {}", n.0);
+                // println!("Generic {}", n.0);
                 let v = if let Some((v, _)) =
                     f.types_to_name.iter().find(|(_, name)| ***name == *n.0)
                 {
-                    println!("Loaded {v:?}");
+                    // println!("Loaded {v:?}");
                     *v
                 } else {
                     let v = self.new_type_var();
                     f.types_to_name.insert(v, n.0);
                     f.unbound_types.insert(v);
-                    println!("Created {v:?}");
+                    // println!("Created {v:?}");
                     v
                 };
 
@@ -268,7 +268,7 @@ impl Typechecker {
             types_to_name,
             kind: Kind::Func,
         };
-        println!("Registered {}: {}", f.name, ty.0);
+        // println!("Registered {}: {}", f.name, ty.0);
         self.context.insert(ItemId(item_idx.index()), scheme);
     }
 
@@ -300,25 +300,24 @@ impl Typechecker {
                 let solved = match item.kind {
                     ItemKind::Function(f) => {
                         // println!("Checking {} : {}", f.name.0, scheme.ty.0);
-                        Solver::check_with_items(&self.context, f.body, scheme)
-                            .map_err(|e| {
-                                if let Some(e) = e.downcast_ref::<DynamicErr>() {
-                                    e.clone()
-                                        .label(
-                                            "in this let-definition",
-                                            f.name
-                                                .ident()
-                                                .expect("Function should have a valid name")
-                                                .1,
-                                        )
-                                        .into()
-                                } else {
-                                    e
-                                }
-                            })
-                            .inspect(|types_output| {
-                                println!("Checked {} : {}", f.name.0, types_output.scheme.ty.0)
-                            })?
+                        Solver::check_with_items(&self.context, f.body, scheme).map_err(|e| {
+                            if let Some(e) = e.downcast_ref::<DynamicErr>() {
+                                e.clone()
+                                    .label(
+                                        "in this let-definition",
+                                        f.name
+                                            .ident()
+                                            .expect("Function should have a valid name")
+                                            .1,
+                                    )
+                                    .into()
+                            } else {
+                                e
+                            }
+                        })?
+                        // .inspect(|types_output| {
+                        // println!("Checked {} : {}", f.name.0, types_output.scheme.ty.0)
+                        // })?
                     }
 
                     ItemKind::Extern { name, args, sig: _ } => {

@@ -13,7 +13,7 @@ use crate::{
 use itertools::Itertools;
 use tiny_pretty::Doc;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct IRTarget;
 
 impl Target for IRTarget {
@@ -26,17 +26,17 @@ impl Target for IRTarget {
         ir
     }
 
-    fn finish(self, p: Vec<Self::Partial>) -> Self::Output {
+    fn finish(&self, p: Vec<Self::Partial>) -> Self::Output {
         p.into_iter()
             .enumerate()
             .map(|(i, x)| format!("item #{i}: is\n{x}\nend item #{i}"))
             .collect::<Vec<String>>()
             .join("\n\n")
     }
-    fn ext(&self) -> impl Into<String> {
+    fn ext(&self) -> &str {
         "ir"
     }
-    fn convert(ir: Vec<IR>) -> Vec<Self::Input> {
+    fn convert(&self, ir: Vec<IR>) -> Vec<Self::Input> {
         ir
     }
 }
