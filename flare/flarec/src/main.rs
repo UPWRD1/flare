@@ -12,7 +12,13 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use std::{fs::File, io::Write, panic, path::PathBuf};
+use std::{
+    fs::File,
+    io::Write,
+    panic,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use clap::{Parser, ValueEnum, crate_description, crate_version};
 use flare_internals::{
@@ -93,22 +99,32 @@ macro_rules! make_target {
     ($target:tt, $cli:ident) => {{
         let files = $cli.input_files;
         let target = $target;
-        let mut ctx = Context::new(files, target, []);
-        match ctx.compile_program() {
-            Ok((code, elapsed)) => {
+        let ctx = Context::new(files, target, []);
+        let filectx = ctx.filectx.clone();
+        let now: Instant = Instant::now();
+        ctx.parse()
+            .and_then(|ctx| ctx.build())
+            .and_then(|ctx| ctx.resolve())
+            .and_then(|ctx| ctx.typecheck())
+            .and_then(|ctx| ctx.lower())
+            .and_then(|ctx| ctx.simplify())
+            .and_then(|ctx| ctx.monomorph())
+            .and_then(|ctx| ctx.convert())
+            .and_then(|ctx| ctx.generate())
+            .and_then(|ctx| ctx.finish())
+            .and_then(|output| {
+                let elapsed = now.elapsed();
                 println!("Compiled  in {elapsed:.2?}",);
                 let f = $cli.output_file.with_extension(target.ext());
                 let mut f = File::create(f).unwrap();
-                f.write_all(code.as_bytes())?;
+                f.write_all(output.as_bytes())?;
 
                 Ok(())
-            }
-
-            Err(e) => {
-                e.report(&ctx.filectx);
+            })
+            .inspect_err(|e| {
+                e.report(&filectx);
                 std::process::exit(1)
-            }
-        }
+            })
     }};
 }
 

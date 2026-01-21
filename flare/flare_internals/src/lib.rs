@@ -56,11 +56,8 @@ pub mod resource;
 
 use core::iter::Iterator;
 use std::{
-    cell::OnceCell,
     hash::{Hash, Hasher},
-    mem::MaybeUninit,
     path::{Path, PathBuf},
-    time::{Duration, Instant},
 };
 
 use petgraph::graph::NodeIndex;
@@ -70,7 +67,6 @@ use crate::{
     passes::{
         //backend::{flatten::Flattener, gen::Generator},
         backend::{
-            lir::LIR,
             lowering::{Lowerer, ir::IR},
             monomorph, simplify,
             target::{Generator, Target},
@@ -79,7 +75,7 @@ use crate::{
             environment::Environment,
             resolution::Resolver,
             typechecker::Typechecker,
-            typing::{ItemSource, Type, Typed, TypesOutput},
+            typing::{ItemSource, Type, TypesOutput},
         },
         parser,
     },
@@ -98,39 +94,41 @@ use crate::{
 };
 
 // #[derive(Debug)]
-struct Init;
+pub struct Init;
 
-struct Parse {
+pub struct Parse {
     program: Program<Untyped>,
 }
 
-struct Build {
+pub struct Build {
     env: Environment,
 }
 
-struct Resolve {
+pub struct Resolve {
     order: Vec<NodeIndex>,
     env: Environment,
 }
-
-struct Typecheck {
+pub struct Typecheck {
     items: Vec<(ItemId, TypesOutput)>,
     source: ItemSource,
 }
+pub struct Lower {
+    ir: Vec<IR>,
+}
 
-struct Lower {
+pub struct Simplify {
     ir: Vec<IR>,
 }
-struct Simplify {
+
+pub struct Monomorph {
     ir: Vec<IR>,
 }
-struct Monomorph {
-    ir: Vec<IR>,
-}
-struct Convert<T: Target> {
+
+pub struct Convert<T: Target> {
     converted: Vec<T::Input>,
 }
-struct Generate<T: Target> {
+
+pub struct Generate<T: Target> {
     output: T::Output,
 }
 
@@ -145,8 +143,15 @@ impl Operation for Simplify {}
 impl Operation for Monomorph {}
 
 pub type FileCtx = FxHashMap<FileID, FileSource>;
-// #[derive(Debug)]
-/// The context for a Flare bundle.
+
+pub struct CtxErr {
+    filectx: FileCtx,
+    err: CompilerErr,
+}
+
+pub type CtxResult<const N: usize, T, O> = Result<Context<N, T, O>, CtxErr>;
+
+/// The context/state machine for compiling a Flare bundle.
 pub struct Context<const N: usize, T, O> {
     pub filectx: FileCtx,
     pub target: T,
@@ -316,25 +321,9 @@ impl<const N: usize, T: Target> Context<N, T, Convert<T>> {
 }
 
 impl<const N: usize, T: Target> Context<N, T, Generate<T>> {
-    pub fn finish(self) -> T::Output {
-        self.op.output
+    pub fn finish(self) -> CompResult<T::Output> {
+        Ok(self.op.output)
     }
-}
-
-pub fn compile_program(&mut self) -> CompResult<(T::Output, Duration)> {
-    // use internment::Intern;
-    // use resource::rep::quantifier::QualifierFragment::*;
-    let now: Instant = Instant::now();
-
-    let final_ir = self.target.convert(ir);
-
-    let g = Generator::new(self.target, final_ir);
-
-    let out = g.generate();
-    // dbg!(&out);
-    let elapsed = now.elapsed();
-
-    Ok((out, elapsed))
 }
 
 pub fn convert_path_to_id(path: &Path) -> FileID {
