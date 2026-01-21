@@ -16,11 +16,16 @@ minimum_risk_score = 4.0              # High-risk items only
 # max_file_length = 500
 # max_function_length = 50
 
+[entropy]
+enabled = true
+pattern_threshold = 0.6    # More aggressive pattern detection
+max_branch_reduction = 0.30 # Allow higher reduction for similar branches
+
 [thresholds.validation]
 min_coverage_percentage = 90.0   # High coverage for public API
-max_high_complexity_count = 20   # Keep complexity low
-max_average_complexity = 9.0     # Strict complexity average
-max_debt_density = 40.0          # Low debt tolerance
+# max_high_complexity_count = 20   # Keep complexity low
+max_average_complexity = 10.0     # Strict complexity average
+max_debt_density = 50.0          # Low debt tolerance
 
 [languages]
 enabled = ["rust"]

@@ -155,9 +155,7 @@ impl std::fmt::Display for Token {
             Self::Match => write!(f, "match"),
             Self::Prop => write!(f, "prop"),
             Self::Pub => write!(f, "pub"),
-            Self::Then => {
-                write!(f, "then")
-            }
+            Self::Then => write!(f, "then"),
             Self::Type => write!(f, "type"),
             Self::Def => write!(f, "def"),
             Self::TyInfer => write!(f, "infer"),

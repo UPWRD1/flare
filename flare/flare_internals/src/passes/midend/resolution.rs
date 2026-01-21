@@ -502,36 +502,13 @@ impl<const N: usize> Resolver<N> {
 
                 let arg = self.analyze_expr(arg, vars);
                 if let Expr::Item(id, Kind::Ty) = *func.0 {
-                    todo!()
+                    todo!(
+                        "This would be a type constructor, but it lowk isn't being used right now"
+                    )
                 };
                 expr.convert(Expr::Call(func, arg))
             }
-            Expr::FieldAccess(l, r) => {
-                // dbg!(l, r);
-                let l = self.analyze_expr(l, vars);
-                if let Expr::Item(id, k) = *l.0 {
-                    self.resolve_name_expr(r)
-                } else if let Expr::Ident(n) = *l.0 {
-                    if let Some((variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
-                        let projection: Spanned<Intern<Expr<Untyped>>> = {
-                            let combo = *val;
-                            let id = r.ident().expect("Expression should be nameable");
-                            {
-                                let ex = combo.convert(Expr::Project(Direction::Right, combo));
-
-                                combo.convert(Expr::Unlabel(ex, Label(id)))
-                            }
-                        };
-                        expr.convert(projection.0)
-                    } else {
-                        todo!()
-                    }
-                } else if let Expr::Unlabel(combo, label) = *l.0 {
-                    self.resolve_name_expr(r)
-                } else {
-                    todo!("{l:?}")
-                }
-            }
+            Expr::FieldAccess(l, r) => self.resolve_field_access(expr, l, r, vars),
             Expr::If(cond, then, otherwise) => {
                 let cond = self.analyze_expr(cond, vars);
                 let then_vars = vars;
@@ -552,31 +529,81 @@ impl<const N: usize> Resolver<N> {
 
                 expr.convert(Expr::Call(branches, matchee))
             }
-            Expr::Lambda(arg, body, is_anon) => {
-                let new_vars = &[
-                    vars,
-                    &[(
-                        arg.0.0,
-                        arg.ident()
-                            .expect("Expected expression to be namable")
-                            .convert(Expr::Ident(arg)),
-                    )],
-                ]
-                .concat();
-                let body = self.analyze_expr(body, new_vars);
-                // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
-                expr.convert(Expr::Lambda(arg, body, is_anon))
-            }
-            Expr::Let(id, body, and_in) => {
-                let body = self.analyze_expr(body, vars);
-
-                let new_vars = [vars, &[(id.0.0, body)]].concat();
-                let and_in = self.analyze_expr(and_in, &new_vars);
-                // let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
-                expr.modify(Expr::Let(id, body, and_in))
-            }
+            Expr::Lambda(arg, body, is_anon) => self.resolve_lambda(expr, arg, body, is_anon, vars),
+            Expr::Let(id, body, and_in) => self.resolve_let(expr, id, body, and_in, vars),
 
             _ => expr,
+        }
+    }
+
+    fn resolve_let(
+        &mut self,
+        expr: Spanned<Intern<Expr<Untyped>>>,
+        id: Untyped,
+        body: Spanned<Intern<Expr<Untyped>>>,
+        and_in: Spanned<Intern<Expr<Untyped>>>,
+        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+    ) -> Spanned<Intern<Expr<Untyped>>> {
+        let body = self.analyze_expr(body, vars);
+
+        let new_vars = [vars, &[(id.0.0, body)]].concat();
+        let and_in = self.analyze_expr(and_in, &new_vars);
+        // let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
+        expr.modify(Expr::Let(id, body, and_in))
+    }
+
+    fn resolve_lambda(
+        &mut self,
+        expr: Spanned<Intern<Expr<Untyped>>>,
+        arg: Untyped,
+        body: Spanned<Intern<Expr<Untyped>>>,
+        is_anon: LambdaInfo,
+        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+    ) -> Spanned<Intern<Expr<Untyped>>> {
+        let new_vars = &[
+            vars,
+            &[(
+                arg.0.0,
+                arg.ident()
+                    .expect("Expected expression to be namable")
+                    .convert(Expr::Ident(arg)),
+            )],
+        ]
+        .concat();
+        let body = self.analyze_expr(body, new_vars);
+        // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
+        expr.convert(Expr::Lambda(arg, body, is_anon))
+    }
+
+    fn resolve_field_access(
+        &mut self,
+        expr: Spanned<Intern<Expr<Untyped>>>,
+        l: Spanned<Intern<Expr<Untyped>>>,
+        r: Spanned<Intern<Expr<Untyped>>>,
+        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+    ) -> Spanned<Intern<Expr<Untyped>>> {
+        let l = self.analyze_expr(l, vars);
+        if let Expr::Item(id, k) = *l.0 {
+            self.resolve_name_expr(r)
+        } else if let Expr::Ident(n) = *l.0 {
+            if let Some((variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
+                let projection: Spanned<Intern<Expr<Untyped>>> = {
+                    let combo = *val;
+                    let id = r.ident().expect("Expression should be nameable");
+                    {
+                        let ex = combo.convert(Expr::Project(Direction::Right, combo));
+
+                        combo.convert(Expr::Unlabel(ex, Label(id)))
+                    }
+                };
+                expr.convert(projection.0)
+            } else {
+                todo!()
+            }
+        } else if let Expr::Unlabel(combo, label) = *l.0 {
+            self.resolve_name_expr(r)
+        } else {
+            todo!("{l:?}")
         }
     }
 
