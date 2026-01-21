@@ -743,8 +743,6 @@ pub fn subst_generic_type(
     subject: Spanned<Intern<Type>>,
     target: Intern<Type>,
     replacement: Intern<Type>,
-    // generics_to_types: im::HashMap<Intern<Type>, Spanned<Intern<Type>>, FxBuildHasher>,
-    // mut gens: &[Spanned<Intern<Type>>],
 ) -> Spanned<Intern<Type>> {
     let mut accum: Spanned<Intern<Type>> = subject;
     // dbg!(t);

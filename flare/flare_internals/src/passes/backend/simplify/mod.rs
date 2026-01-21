@@ -780,7 +780,15 @@ impl<'p> Simplifier<'p> {
                     }
                 }
                 ContextEntry::Bin(op, r) => {
-                    ir = match (ir, r) {
+                    ir = self.rebuild_binop(ir, op, r, in_scope.clone())
+                }
+            }
+        }
+        ir
+    }
+
+    fn rebuild_binop(&self, l: IR, op: BinOp, r: IR, in_scope: InScope) -> IR {
+        match (l, r) {
                         (IR::Num(l), IR::Num(r)) => match op {
                             BinOp::Eq => IR::Bool(l == r),
                             BinOp::Neq => IR::Bool(l != r),
@@ -801,14 +809,10 @@ impl<'p> Simplifier<'p> {
                             BinOp::Or => IR::Bool(l || r),
                             _ => panic!("Invalid operator for bool"),
                         },
-                        (l, r) => {
-                            let r = self.simplify(r, in_scope.clone(), vec![]);
-                            IR::bin(l, op, r)
-                        }
-                    }
-                }
-            }
-        }
-        ir
-    }
+                        _ => panic!("Invalid binop")
+                        // (l, r) => {
+                        //     let r = self.simplify(r, in_scope, vec![]);
+                        //     IR::bin(l, op, r)
+                        // }
+                    }    }
 }

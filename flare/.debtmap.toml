@@ -2,7 +2,7 @@
 
 [scoring]
 dependency = 0.30       # Higher dependency weight for coupling issues
-coverage = 0.55         # High coverage weight (public API focus)
+coverage = 0.25         # 0.55 High coverage weight (public API focus)
 complexity = 0.30       # Moderate complexity weight
 
 [analysis]

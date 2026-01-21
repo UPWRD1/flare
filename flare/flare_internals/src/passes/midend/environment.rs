@@ -226,35 +226,35 @@ impl Environment {
     }
 
     fn trace_import_path(
-        &mut self,
+        &self,
         path: &[QualifierFragment],
         package_to_exports: &FxHashMap<
             QualifierFragment,
             FxHashSet<(QualifierFragment, NodeIndex)>,
         >,
     ) -> NodeIndex {
-        let mut res: NodeIndex = NodeIndex::new(0);
-        for path in path.windows(2) {
-            match path {
-                [left, right] => {
-                    if let QualifierFragment::Package(_) = left {
-                        if let Some(exports) = package_to_exports.get(left) {
-                            if let Some(n) = exports.iter().find(|x| x.0.is(right)) {
-                                res = n.1
-                            } else {
-                                panic!("import not found, {left}.{right}")
-                            }
+        path.windows(2)
+            .map(|x| {
+                let [left, right] = path else {
+                    panic!("Path is invalid")
+                };
+
+                if let QualifierFragment::Package(_) = left {
+                    if let Some(exports) = package_to_exports.get(left) {
+                        if let Some(n) = exports.iter().find(|x| x.0.is(right)) {
+                            n.1
                         } else {
-                            panic!("Package has no exports")
+                            panic!("import not found, {left}.{right}")
                         }
                     } else {
-                        panic!("Import path should be a package or subpackage")
+                        panic!("Package has no exports")
                     }
+                } else {
+                    panic!("Import path should be a package or subpackage")
                 }
-                _ => unreachable!("I"),
-            }
-        }
-        res
+            })
+            .next_back()
+            .unwrap()
     }
 
     /// Builds an impl definition

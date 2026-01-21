@@ -2,6 +2,11 @@
 name = "flare_internals"
 version = "0.1.0"
 edition = "2024"
+description = "The library used internally by the Flare compiler"
+repository = "https://github.com/UPWRD1/flare"
+license = "MIT OR Apache-2.0"
+categories = ["compilers"]
+
 
 [dependencies]
 anyhow = "1.0.94"

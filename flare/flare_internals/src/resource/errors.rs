@@ -76,80 +76,12 @@ impl ReportableError for std::io::Error {
     }
 }
 
-// impl From<CompilerErrKind> for CompilerErr {
-//     fn from(value: CompilerErrKind) -> Self {
-//         Self(Box::new(value))
-//     }
-// }
-
 impl Deref for CompilerErr {
     type Target = dyn Any;
     fn deref(&self) -> &Self::Target {
         self.0.as_ref()
     }
 }
-
-// #[derive(Debug, Error)]
-// pub enum CompilerErrKind {
-//     #[error(transparent)]
-//     General(#[from] GeneralErr),
-
-//     #[error(transparent)]
-//     Dynamic(#[from] DynamicErr),
-
-//     #[error(transparent)]
-//     ErrorCollection(#[from] ErrorCollection),
-//     #[error(transparent)]
-//     Type(#[from] TypeErr),
-
-//     #[error(transparent)]
-//     Fatal(#[from] FatalErr),
-
-//     //#[error(transparent)]
-//     //Typecheck(#[from] TypecheckingError),
-//     // #[error(transparent)]
-//     // Environment(#[from] EnvironmentError),
-
-//     // Other error types...
-//     #[error(transparent)]
-//     Other(#[from] anyhow::Error), // Catch-all for unexpected errors
-// }
-
-// impl CompilerErrKind {
-//     pub fn get_dyn(self) -> DynamicErr {
-//         //panic!();
-
-//         match self {
-//             CompilerErrKind::Dynamic(dynamic_err) => dynamic_err,
-//             _ => panic!("Cannot get dynamic err from {:?}", self),
-//         }
-//     }
-// }
-
-// impl ReportableError for CompilerErrKind {
-//     fn report<'src>(&self, ctx: &FileCtx) {
-//         match self {
-// CompilerErrKind::General(error) => eprintln!("{error}"),
-//             CompilerErrKind::Other(error) => eprintln!("{error}"),
-//             CompilerErrKind::Dynamic(e) => {
-//                 CompilerErrKind::General(e.clone().get_gen(ctx)).report(ctx)
-//             }
-//             CompilerErrKind::ErrorCollection(errs) => {
-//                 for e in &errs.0 {
-//                     e.report(ctx);
-//                 }
-//             }
-//             CompilerErrKind::Type(error) => eprintln!("{error}"),
-//             CompilerErrKind::Fatal(_) => unreachable!(),
-//         }
-//     }
-// }
-
-// impl From<std::io::Error> for CompilerErrKind {
-//     fn from(value: std::io::Error) -> Self {
-//         Self::Other(value.into())
-//     }
-// }
 
 #[derive(Debug, Error)]
 pub struct ErrorCollection(Vec<CompilerErr>);

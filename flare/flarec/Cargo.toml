@@ -2,7 +2,10 @@
 name = "flarec"
 version = "0.1.0"
 edition = "2024"
-description = "Compiler for the flare language"
+description = "Compiler for the Flare language"
+repository = "https://github.com/UPWRD1/flare"
+license = "MIT OR Apache-2.0"
+categories = ["compilers"]
 
 [dependencies]
 flare_internals = { path = "../flare_internals" }
