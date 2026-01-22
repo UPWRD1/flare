@@ -3,3 +3,4 @@ perf.*
 flamegraph.svg
 cachegrind.*
 callgrind.*
+.DS_Store
