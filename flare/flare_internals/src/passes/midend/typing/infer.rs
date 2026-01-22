@@ -3,7 +3,8 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     passes::midend::typing::{
-        Constraint, GenOut, ItemWrapper, Provenance, Row, Solver, Type, Typed, inst::Instantiate,
+        Constraint, Evidence, GenOut, ItemWrapper, Provenance, Row, Solver, Type, Typed,
+        inst::Instantiate,
     },
     resource::rep::{
         Spanned,
@@ -350,7 +351,7 @@ impl Solver<'_> {
                     Provenance::ExpectedCombine(value.1, sub_row.1),
                     row_comb,
                 ));
-                // dbg!(ast.1);
+
                 self.tables.row_to_combo.insert(ast.1, row_comb);
                 (
                     out.with_typed_ast(|ast| ast.convert(Expr::Inject(dir, ast))),
@@ -361,7 +362,7 @@ impl Solver<'_> {
             Expr::Item(item_id, kind) => {
                 // dbg!(kind);
                 let ty_scheme = self.item_source.type_of_item(item_id);
-                // dbg!(&ty_scheme);
+
                 // Create fresh unifiers for each type and row variable in our type scheme.
                 let mut wrapper_tyvars: Vec<Spanned<Intern<Type>>> = vec![];
                 let tyvar_to_unifiers = ty_scheme
@@ -398,11 +399,12 @@ impl Solver<'_> {
                         .into_iter()
                         .filter_map(|c| match c {
                             Constraint::RowCombine(_, row_combo) => Some(
-                                row_combo.into_evidence(), //     Evidence::RowEquation {
-                                                           //     left: row_combo.left,
-                                                           //     right: row_combo.right,
-                                                           //     goal: row_combo.goal,
-                                                           // }
+                                // row_combo.into_evidence(),
+                                Evidence::RowEquation {
+                                    left: row_combo.left,
+                                    right: row_combo.right,
+                                    goal: row_combo.goal,
+                                },
                             ),
                             Constraint::TypeEqual(..) => None,
                         })

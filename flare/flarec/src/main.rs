@@ -12,13 +12,7 @@
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
 
-use std::{
-    fs::File,
-    io::Write,
-    panic,
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use std::{fs::File, io::Write, panic, path::PathBuf, time::Instant};
 
 use clap::{Parser, ValueEnum, crate_description, crate_version};
 use flare_internals::{

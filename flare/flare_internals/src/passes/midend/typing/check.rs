@@ -227,19 +227,19 @@ impl Solver<'_> {
 
                 let (left, right) = match dir {
                     Direction::Left => (
-                        the_ty.convert(sub_row),
-                        value.convert(Row::Unifier(self.fresh_row_var())),
+                        value.convert(sub_row),
+                        goal.convert(Row::Unifier(self.fresh_row_var())),
                         // goal.convert(Row::Unifier(self.fresh_row_var())),
                     ),
                     Direction::Right => (
                         // goal.convert(Row::Unifier(self.fresh_row_var())),
-                        value.convert(Row::Unifier(self.fresh_row_var())),
-                        the_ty.convert(sub_row),
+                        goal.convert(Row::Unifier(self.fresh_row_var())),
+                        value.convert(sub_row),
                     ),
                 };
                 let row_comb = RowCombination { left, right, goal };
                 out.constraints.push(Constraint::RowCombine(
-                    Provenance::ExpectedCombine(the_ast.1, the_ty.1),
+                    Provenance::ExpectedCombine(id, the_ty.1),
                     row_comb,
                 ));
 

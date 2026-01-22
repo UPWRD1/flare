@@ -3,7 +3,6 @@ use std::{
     fmt::{self, Display},
     io::Cursor,
     ops::Deref,
-    path::PathBuf,
 };
 
 mod templates {

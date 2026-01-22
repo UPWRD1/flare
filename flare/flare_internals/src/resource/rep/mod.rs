@@ -2,9 +2,7 @@ pub mod ast;
 pub mod common;
 pub mod entry;
 pub mod files;
-pub mod mir;
 pub mod quantifier;
-// pub mod concretetypes;
 
 use std::{fmt, hash};
 
