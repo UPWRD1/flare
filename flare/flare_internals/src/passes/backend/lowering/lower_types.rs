@@ -62,7 +62,7 @@ impl LowerTypes {
             typing::Type::Label(_, ty) => self.lower_ty(*ty.0),
             typing::Type::Prod(row) => Type::prod(self.lower_row_ty(*row.0)),
             typing::Type::Sum(row) => Type::sum(self.lower_row_ty(*row.0)),
-            typing::Type::TypeFun(arg, t) => Type::ty_fun(Kind::Type, self.lower_ty(*t.0)),
+            // typing::Type::TypeFun(arg, t) => Type::ty_fun(Kind::Type, self.lower_ty(*t.0)),
             _ => todo!("{ty:?}"),
         }
     }

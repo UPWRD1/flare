@@ -11,7 +11,7 @@
 //    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
-
+#![allow(clippy::upper_case_acronyms)]
 use std::{fs::File, io::Write, panic, path::PathBuf, time::Instant};
 
 use clap::{Parser, ValueEnum, crate_description, crate_version};
@@ -77,15 +77,15 @@ struct Cli {
     #[arg(short = 'o', long = "output")]
     output_file: PathBuf,
 
-    #[arg(short = 't', long = "target", default_value_t = Targets::IR, value_enum)]
-    target: Targets,
+    #[arg(short = 'e', long = "emit", default_value_t = EmitOptions::IR, value_enum)]
+    emit: EmitOptions,
 }
 
 #[derive(Copy, Clone, ValueEnum, Default)]
-enum Targets {
+enum EmitOptions {
     #[default]
     IR,
-    Lir,
+    LIR,
     C,
 }
 
@@ -102,8 +102,8 @@ macro_rules! make_target {
             .and_then(|ctx| ctx.typecheck())
             .and_then(|ctx| ctx.lower())
             .and_then(|ctx| ctx.simplify())
-            .and_then(|ctx| ctx.reduce())
             .and_then(|ctx| ctx.monomorph())
+            .and_then(|ctx| ctx.reduce())
             .and_then(|ctx| ctx.convert())
             .and_then(|ctx| ctx.generate())
             .and_then(|ctx| ctx.finish())
@@ -130,11 +130,11 @@ fn main() -> CompResult<()> {
     let cli = Cli::parse();
 
     // unsafe { backtrace_on_stack_overflow::enable() };
-    match cli.target {
-        Targets::IR => {
+    match cli.emit {
+        EmitOptions::IR => {
             make_target!(IRTarget, cli)
         }
-        Targets::Lir => make_target!(LIRTarget, cli),
-        Targets::C => make_target!(C, cli),
+        EmitOptions::LIR => make_target!(LIRTarget, cli),
+        EmitOptions::C => make_target!(C, cli),
     }
 }

@@ -113,19 +113,19 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
             subst_ty(*body, payload),
         ),
         IR::Field(ir, u) => {
-            // if let IR::Tuple(content) = *ir {
-            //     let heads = &content[..u];
-            //     let i = content[u].clone();
-            //     let tails = &content[u + 1..];
-            //     let v = subst_ty(i, payload);
-            //     let new_tuple = IR::Tuple([heads, &[v], tails].concat());
-            //     // let (i, heads) = items.split_last().unwrap();
-            //     // dbg!(new_tuple);
-            //     todo!()
-            // } else {
+            if let IR::Tuple(content) = *ir {
+                let heads = &content[..u];
+                let i = content[u].clone();
+                let tails = &content[u + 1..];
+                let v = subst_ty(i, payload);
+                let new_tuple = IR::Tuple([heads, &[v], tails].concat());
+                // let (i, heads) = items.split_last().unwrap();
+                // dbg!(new_tuple);
+                todo!()
+            } else {
                 // dbg!(&ir);
                 IR::field(subst_ty(*ir, payload), u)
-            // }
+            }
         }
         IR::Tag(t, u, ir) => IR::tag(t.subst_app(payload.clone()), u, subst_ty(*ir, payload)),
 
@@ -184,6 +184,7 @@ impl<'i> OccuranceAnalyzer<'i> {
             IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
                 (FxHashSet::default(), Occurrences::default())
             }
+            IR::Comment(_, r) => self.occurrence_analysis(r, seen),
             IR::Bin(l, _, r) => {
                 let (mut free, occs) = self.occurrence_analysis(l, seen);
                 let (r_free, r_occs) = self.occurrence_analysis(r, seen);
@@ -384,6 +385,7 @@ impl<'p> Simplifier<'p> {
                 IR::Particle(p) => {
                     break self.rebuild(IR::Particle(p), in_scope, ctx);
                 }
+                IR::Comment(_, r) => *r,
 
                 IR::Fun(var, body) => {
                     let body =

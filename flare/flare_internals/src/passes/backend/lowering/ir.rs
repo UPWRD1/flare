@@ -212,6 +212,7 @@ pub enum IR {
     Bool(bool),
     #[default]
     Unit,
+    Comment(String, Box<Self>),
 
     Particle(Intern<String>),
 
@@ -316,6 +317,8 @@ impl IR {
             Self::Str(_) => Type::Str,
             Self::Bool(_) => Type::Bool,
             Self::Unit => Type::Unit,
+
+            Self::Comment(_, r) => r.type_of(),
 
             Self::Particle(p) => Type::Particle(*p),
 
@@ -464,6 +467,8 @@ impl IR {
             | Self::Bool(_)
             | Self::Unit
             | Self::Particle(_) => 0,
+
+            Self::Comment(_, r) => r.size(),
 
             Self::Bin(l, _, r) => l.size() + r.size(),
 

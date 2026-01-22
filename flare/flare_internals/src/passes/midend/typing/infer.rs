@@ -339,7 +339,6 @@ impl Solver<'_> {
                 (GenOut::new(constraints, ast.convert(typed_ast)), out_ty)
             }
             Expr::Inject(dir, value) => {
-                dbg!(ast.1);
                 let row_comb = self.fresh_row_combination(value.1, value.1, ast.1);
 
                 let sub_row = match dir {

@@ -23,6 +23,7 @@ pub enum Type {
     Int,
     Float,
     String,
+    Unit,
     Array(Vec<Self>),
     Union(Vec<Self>),
     Closure(Box<Self>, Box<Self>),
@@ -35,6 +36,7 @@ impl Render for Type {
             Self::Int => Doc::text("i32"),
             Self::Float => Doc::text("f64"),
             Self::String => Doc::text("str"),
+            Self::Unit => Doc::text("unit"),
             Self::Closure(l, r) => l.render().space().text("->").space().render(*r),
             Self::ClosureEnv(c, params) => c
                 .render()
@@ -136,7 +138,7 @@ impl Target for LIRTarget {
             .join("\n\n")
     }
     fn ext(&self) -> &str {
-        "ir"
+        "lir"
     }
 
     fn convert(&self, ir: Vec<ir::IR>) -> Vec<Self::Input> {
@@ -345,6 +347,9 @@ impl ClosureConvert {
                     .map(|v| self.convert(v, env.clone()))
                     .collect(),
             ),
+            ir::IR::Comment(_, c) => self.convert(*c, env),
+            ir::IR::Tag(t, u, ir) => self.convert(*ir, env),
+
             _ => todo!("{ir:?}"),
         }
     }
@@ -450,12 +455,13 @@ fn lower_ty(ty: &ir::Type) -> Type {
     match ty {
         ir::Type::Num => Type::Float,
         &ir::Type::Str => Type::String,
+        ir::Type::Unit => Type::Unit,
         ir::Type::Fun(arg, ret) => Type::closure(lower_ty(arg), lower_ty(ret)),
         ir::Type::Var(_) | ir::Type::TyFun(..) => {
             unreachable!("Type function or variable appeared after monomorphization: {ty:?}")
         }
         ir::Type::Prod(r) => Type::Array(lower_row(r)),
-
+        ir::Type::Sum(r) => Type::Union(lower_row(r)),
         _ => todo!("{ty:?}"),
     }
 }

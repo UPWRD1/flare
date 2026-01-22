@@ -1,4 +1,4 @@
-default: show_ir
+default: show 
 
 build: 
     cargo build -p flarec
@@ -6,12 +6,13 @@ build:
 release: 
     cargo build --release -p flarec
 
-run:
-    cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.ir
+run emit='ir':
+    cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.ir --emit {{emit}}
 
-show_ir:
-    just run
-    bat examples/ntest.ir    
+show emit='ir':
+    just run {{emit}}
+    bat examples/ntest.{{emit}}   
+
 
 compile path:
     cargo run -p flarec --  {{path}} -o 

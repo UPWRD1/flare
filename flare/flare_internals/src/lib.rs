@@ -283,18 +283,6 @@ impl<const N: usize, T: Target> Context<N, T, Lower> {
 }
 
 impl<const N: usize, T: Target> Context<N, T, Simplify> {
-    pub fn reduce(self) -> CompResult<Context<N, T, Reduce>> {
-        let ir = reduce::reduce(self.op.ir);
-        Ok(Context {
-            op: Reduce { ir },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
-}
-
-impl<const N: usize, T: Target> Context<N, T, Reduce> {
     pub fn monomorph(self) -> CompResult<Context<N, T, Monomorph>> {
         let ir = monomorph::monomorph(self.op.ir);
         Ok(Context {
@@ -307,6 +295,17 @@ impl<const N: usize, T: Target> Context<N, T, Reduce> {
 }
 
 impl<const N: usize, T: Target> Context<N, T, Monomorph> {
+    pub fn reduce(self) -> CompResult<Context<N, T, Reduce>> {
+        let ir = reduce::reduce(self.op.ir);
+        Ok(Context {
+            op: Reduce { ir },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+impl<const N: usize, T: Target> Context<N, T, Reduce> {
     pub fn convert(self) -> CompResult<Context<N, T, Convert<T>>> {
         let converted = self.target.convert(self.op.ir);
         Ok(Context {

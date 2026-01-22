@@ -71,6 +71,7 @@ impl Render for IR {
                     .group()
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))
             }
+            Self::Comment(s, r) => Doc::text(format!("//{s}")).hard_line().render(*r),
 
             Self::App(fun, r) => {
                 let mut v = vec![*r];

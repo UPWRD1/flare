@@ -6,17 +6,16 @@ use crate::passes::backend::{
 };
 
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
-    the_ir
-    // let mut m = Monomorpher::new(the_ir.clone());
-    // for ir in the_ir {
-    //     let mut types = vec![];
-    //     collect_types(&ir, &mut types);
-    //     let new_ir = m.instantiate(ir.clone(), &types);
+    // the_ir
+    let mut m = Monomorpher::new(the_ir.clone());
+    for ir in the_ir {
+        let mut types = vec![];
+        collect_types(&ir, &mut types);
+        let new_ir = m.instantiate(ir.clone(), &types);
+        m.new_ir.push(new_ir);
+    }
 
-    //     m.new_ir.push(new_ir);
-    // }
-
-    // m.new_ir
+    m.new_ir
 }
 
 fn collect_types(ir: &IR, types: &mut Vec<TyApp>) {
@@ -88,9 +87,17 @@ impl Monomorpher {
             func_map: Vec::default(), // saturated_fun_count: 0,
         }
     }
-    // fn did_work(&self) -> bool {
-    //     self.saturated_fun_count > 0
-    // }
+
+    fn instance_item(&mut self, id: ItemId, types: &[TyApp]) -> ItemId {
+        let item_ir = self.ref_ir[id.0 as usize].clone();
+
+        // dbg!(&item_ir);
+        let monomorphed_ir = self.instantiate(item_ir, types);
+        // let t = t.subst_app(ty.clone());
+        let new_ir = IR::Comment(format!("Derived from {}", id.0), Box::new(monomorphed_ir));
+        self.new_ir.push(new_ir);
+        ItemId(self.new_ir.len() as u32)
+    }
 
     fn probe(&self, ir: &IR) -> Option<IR> {
         match *ir {
@@ -115,14 +122,8 @@ impl Monomorpher {
                     simplify::subst_ty(body, ty.clone())
                 }
                 IR::TyApp(body, _) => {
-                    // dbg!(a, &ty);
-                    self.probe(&body).map_or_else(
-                        || {
-                            let body = self.instantiate(*body, rest_types);
-                            simplify::subst_ty(body, ty.clone())
-                        },
-                        |ir| simplify::subst_ty(ir, ty.clone()),
-                    )
+                    let body = self.instantiate(*body, rest_types);
+                    simplify::subst_ty(body, ty.clone())
                 }
                 IR::Local(v, d, b) => {
                     let defn = self.instantiate(*d, types);
@@ -130,14 +131,16 @@ impl Monomorpher {
                     IR::local(v, defn, body)
                 }
                 IR::Item(t, id) => {
-                    let item_ir = self.ref_ir[id.0 as usize].clone();
-                    let monomorphed_ir = self.instantiate(item_ir, types);
-                    let t = t.subst_app(ty.clone());
-                    self.new_ir.push(monomorphed_ir);
-                    IR::Item(t, ItemId(self.new_ir.len() as u32))
+                    let id = self.instance_item(id, types);
+                    IR::Item(t, id)
                 }
                 IR::App(l, r) => IR::app(self.instantiate(*l, types), self.instantiate(*r, types)),
-                // IR::Tuple()
+                IR::Fun(v, ir) => IR::Fun(v, Box::new(self.instantiate(*ir, types))),
+                IR::Tuple(v) => IR::Tuple(
+                    v.into_iter()
+                        .map(|ir| self.instantiate(ir, types))
+                        .collect(),
+                ),
                 // _ => self.instantiate(ir, rest_types),
                 _ => ir,
             },
