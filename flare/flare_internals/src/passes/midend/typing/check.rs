@@ -104,10 +104,12 @@ impl Solver<'_> {
             }
             (ast @ (Expr::Branch(_, _) | Expr::Inject(_, _)), Type::Label(lbl, ty)) => self.check(
                 env,
-                Spanned(ast.into(), id),
+                the_ast,
+                // Spanned(ast.into(), id),
                 Spanned(
                     Type::Sum(Spanned(Row::single(lbl, ty).into(), id)).into(),
                     lbl.0.1,
+                    // the_ast.1,
                 ),
             ),
 
@@ -202,6 +204,7 @@ impl Solver<'_> {
                     Provenance::ExpectedCombine(id, the_ty.1),
                     row_comb,
                 ));
+                dbg!(id, left.1, right.1);
                 self.tables.row_to_combo.insert(id, row_comb);
                 self.tables.branch_to_ret_ty.insert(id, ret_ty);
 
@@ -216,17 +219,22 @@ impl Solver<'_> {
 
             (Expr::Inject(dir, value), Type::Sum(goal)) => {
                 let sub_row = Row::Unifier(self.fresh_row_var());
-                let mut out =
-                    self.check(env, value, value.convert(Type::Sum(value.convert(sub_row))));
+                let mut out = self.check(
+                    env,
+                    value,
+                    the_ty.convert(Type::Sum(value.convert(sub_row))),
+                );
 
                 let (left, right) = match dir {
                     Direction::Left => (
-                        value.convert(sub_row),
-                        goal.convert(Row::Unifier(self.fresh_row_var())),
+                        the_ty.convert(sub_row),
+                        value.convert(Row::Unifier(self.fresh_row_var())),
+                        // goal.convert(Row::Unifier(self.fresh_row_var())),
                     ),
                     Direction::Right => (
-                        goal.convert(Row::Unifier(self.fresh_row_var())),
-                        value.convert(sub_row),
+                        // goal.convert(Row::Unifier(self.fresh_row_var())),
+                        value.convert(Row::Unifier(self.fresh_row_var())),
+                        the_ty.convert(sub_row),
                     ),
                 };
                 let row_comb = RowCombination { left, right, goal };

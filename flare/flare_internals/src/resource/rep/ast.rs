@@ -132,34 +132,34 @@ pub enum Direction {
     Right,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Label(pub Spanned<Intern<String>>);
 
-impl PartialEq for Label {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.0 == other.0.0
-    }
-}
+// impl PartialEq for Label {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.0.0 == other.0.0
+//     }
+// }
 
-impl Hash for Label {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.0.0.hash(state);
-    }
-}
+// impl Hash for Label {
+//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+//         self.0.0.hash(state);
+//     }
+// }
 
-impl Eq for Label {}
+// impl Eq for Label {}
 
-impl PartialOrd for Label {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
+// impl PartialOrd for Label {
+//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+//         Some(self.cmp(other))
+//     }
+// }
 
-impl Ord for Label {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.0.cmp(&other.0.0)
-    }
-}
+// impl Ord for Label {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         self.0.0.cmp(&other.0.0)
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub struct ItemId(pub usize);

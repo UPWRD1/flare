@@ -23,13 +23,13 @@ package Main =
     use Option.{Option, map, unwrap_or, Some, None}
     # # # use Option
     
-    # extern to_num: str ->num
+    extern to_num: str ->num
 
     # extern display: ?T -> str
 
     type Wrapper[?X] = {data: ?X}
 
-    let new_Wrapper t : num -> Wrapper[num] =
+    let new_Wrapper t : ?T -> Wrapper[?T] =
         {data = t}
 
     let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
@@ -40,7 +40,7 @@ package Main =
         w.data
 
               
-    # let main: num =
+    let main: num =
         # let val =  Some (new_Wrapper 10) in
         # let mapped = map val (fn x => map_wrapper x (fn data =>  data *2  )) in    
         # let unwrapped = unwrap_or mapped (new_Wrapper 0) in
@@ -49,10 +49,14 @@ package Main =
         # let v = new_Wrapper 10 in
         # let mapped = map_wrapper v (fn data => data * 2) in
         # extract v
-        # v
 
-    let id x : ?T -> ?T = x
-    let main: {num, str}=
-        let l = id (new_Wrapper (3)) in
-        let r = id "hi" in
-            {extract l, r}
+        let val = Some ("3") in
+        let mapped = map val (fn x => to_num x) in
+        unwrap_or mapped 0
+        
+
+    # let id x : ?T -> ?T = x
+    # let main: {num, str}=
+        # let l = id (new_Wrapper (3)) in
+        # let r = id "hi" in
+            # {extract l, r}

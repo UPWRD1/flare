@@ -5,5 +5,6 @@ pub mod c;
 pub mod lir;
 pub mod lowering;
 pub mod monomorph;
+pub mod reduce;
 pub mod simplify;
 pub mod target;

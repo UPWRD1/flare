@@ -2,7 +2,7 @@ use itertools::Itertools;
 use tiny_pretty::Doc;
 
 use crate::{
-    passes::backend::lowering::ir::{IR, TyApp, Var},
+    passes::backend::lowering::ir::{IR, Row, TyApp, Type, Var},
     resource::pretty::{DocExt, INC, Render},
 };
 
@@ -171,11 +171,15 @@ impl Render for IR {
             Self::Tag(t, i, b) => Doc::nil()
                 .append(b.render())
                 .space()
-                .append(Doc::text("as"))
+                .append(Doc::text("become"))
                 .space()
-                .append(t.render())
-                .append(Doc::text(" variant "))
-                .append(Doc::text(format!("{i}"))),
+                .append({
+                    if let Type::Sum(Row::Closed(r)) = t {
+                        r[i].clone().render()
+                    } else {
+                        t.render()
+                    }
+                }),
             Self::Particle(p) => Doc::text(format!("@{p}")),
             Self::Item(_, id) => Doc::text(format!("#{}", id.0)),
             // .append(Doc::space())

@@ -1,23 +1,22 @@
+use rustc_hash::FxHashMap;
+
 use crate::passes::backend::{
-    lowering::ir::{IR, ItemId, TyApp},
+    lowering::ir::{IR, ItemId, TyApp, Type},
     simplify,
 };
 
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
-    let mut m = Monomorpher::new(the_ir.clone());
-    for ir in the_ir {
-        let mut types = vec![];
-        collect_types(&ir, &mut types);
-        let new_ir = m.instantiate(ir.clone(), &types);
-        // println!("{}", &new_ir);
-        m.new_ir.push(new_ir);
-    }
+    the_ir
+    // let mut m = Monomorpher::new(the_ir.clone());
+    // for ir in the_ir {
+    //     let mut types = vec![];
+    //     collect_types(&ir, &mut types);
+    //     let new_ir = m.instantiate(ir.clone(), &types);
+
+    //     m.new_ir.push(new_ir);
+    // }
+
     // m.new_ir
-    //     .iter()
-    //     .enumerate()
-    //     .for_each(|(i, x)| println!("item #{i}:\n{x}"));
-    // println!("{}", m.new_ir.last().unwrap());
-    m.new_ir
 }
 
 fn collect_types(ir: &IR, types: &mut Vec<TyApp>) {
@@ -79,14 +78,14 @@ fn collect_types(ir: &IR, types: &mut Vec<TyApp>) {
 struct Monomorpher {
     ref_ir: Vec<IR>,
     new_ir: Vec<IR>,
-    // saturated_fun_count: usize,
+    func_map: Vec<FxHashMap<TyApp, ItemId>>, // saturated_fun_count: usize,
 }
 impl Monomorpher {
-    const fn new(ref_ir: Vec<IR>) -> Self {
+    fn new(ref_ir: Vec<IR>) -> Self {
         Self {
             ref_ir,
             new_ir: vec![],
-            // saturated_fun_count: 0,
+            func_map: Vec::default(), // saturated_fun_count: 0,
         }
     }
     // fn did_work(&self) -> bool {

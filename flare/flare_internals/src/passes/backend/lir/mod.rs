@@ -11,10 +11,9 @@ use tiny_pretty::Doc;
 
 use crate::passes::backend::{
     lowering::{
-        ir::{self},
+        ir::{self, Param},
         lower_ast::{ItemSupply, VarSupply},
     },
-    simplify::Param,
     target::Target,
 };
 use crate::resource::pretty::{DocExt, Render};

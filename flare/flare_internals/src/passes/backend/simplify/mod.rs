@@ -7,99 +7,9 @@ use crate::{
     resource::rep::ast::BinOp,
 };
 #[allow(dead_code)]
-pub enum Param {
-    Ty(Kind),
-    Val(Var),
-}
-#[allow(dead_code)]
 enum Arg<'a> {
     Val(&'a IR),
     Ty(&'a TyApp),
-}
-
-impl IR {
-    fn size(&self) -> usize {
-        fn size_app(ir: &IR, args: usize) -> usize {
-            match ir {
-                IR::App(fun, arg) => arg.size() + size_app(fun, args + 1),
-                IR::TyApp(ir, _) => size_app(ir, args),
-                ir => ir.size() + 10 * (1 + args),
-            }
-        }
-        match self {
-            Self::Var(_)
-            | Self::Num(_)
-            | Self::Str(_)
-            | Self::Bool(_)
-            | Self::Unit
-            | Self::Particle(_) => 0,
-
-            Self::Bin(l, _, r) => l.size() + r.size(),
-
-            Self::Fun(_, body) => 10 + body.size(),
-            Self::App(fun, arg) => arg.size() + size_app(fun, 1),
-            Self::TyFun(_, ir) | Self::TyApp(ir, _) | Self::Field(ir, _) | Self::Tag(_, _, ir) => {
-                ir.size()
-            }
-            Self::Local(var, defn, body) => {
-                defn.size() + body.size() + (if var.ty.is_cheap_alloc() { 0 } else { 10 })
-            }
-            Self::If(c, t, o) => c.size().max(t.size().max(o.size())),
-            Self::Tuple(v) => v.iter().map(Self::size).sum::<usize>(),
-            Self::Case(_, s, b) => s.size() + b.iter().map(|x| x.as_fun().size()).sum::<usize>(),
-            Self::Item(_, _) | Self::Extern(_, _) => 100,
-            // _ => todo!(),
-        }
-    }
-
-    fn is_trivial(&self) -> bool {
-        matches!(
-            self,
-            Self::Var(_)
-                | Self::Num(_)
-                | Self::Str(_)
-                | Self::Unit
-                | Self::Bool(_)
-                | Self::Particle(_)
-        )
-    }
-    pub fn is_value(&self) -> bool {
-        match self {
-            Self::Bin(l, _, r) => l.is_value() && r.is_value(),
-
-            Self::TyFun(_, ir) => ir.is_value(),
-            Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
-            Self::Tuple(s) => s.iter().all(Self::is_value),
-            Self::Var(_) | Self::App(_, _) | Self::TyApp(_, _) => false,
-             Self::Num(_)
-            | Self::Str(_)
-            | Self::Unit
-            | Self::Bool(_)
-            | Self::Particle(_)
-            | Self::Fun(_, _)
-            | Self::Tag(_, _, _) | Self::Case(_, _, _) => true,
-            _ => todo!("{self:?}"),
-        }
-    }
-
-    pub fn split_funs(self) -> (Vec<Param>, Self) {
-        fn split_funs(ir: IR, params: &mut Vec<Param>) -> IR {
-            match ir {
-                IR::TyFun(kind, ir) => {
-                    params.push(Param::Ty(kind));
-                    split_funs(*ir, params)
-                }
-                IR::Fun(var, ir) => {
-                    params.push(Param::Val(var));
-                    split_funs(*ir, params)
-                }
-                ir => ir,
-            }
-        }
-        let mut params = vec![];
-        let body = split_funs(self, &mut params);
-        (params, body)
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -651,7 +561,7 @@ impl<'p> Simplifier<'p> {
                     )
                 }    ,                |definition| {
                         
-                    if definition.size() < self.inline_size_threshold * 2
+                    if definition.size() < self.inline_size_threshold 
                         && self.some_benefit(definition, in_scope, ctx)
                     {
                         self.subst = Subst::default();
@@ -740,7 +650,7 @@ impl<'p> Simplifier<'p> {
                     if let IR::Tuple(irs) = ir {
                         let field = irs[idx].clone();
                         return self.simplify(field, in_scope, ctx);
-                    } else {
+                    } else{
                         // dbg!(&ir);
                         let obj = self.simplify(ir, in_scope.clone(), vec![]);
                         ir = IR::field(obj, idx);
@@ -787,7 +697,7 @@ impl<'p> Simplifier<'p> {
         ir
     }
 
-    fn rebuild_binop(&self, l: IR, op: BinOp, r: IR, in_scope: InScope) -> IR {
+    fn rebuild_binop(&mut self, l: IR, op: BinOp, r: IR, in_scope: InScope) -> IR {
         match (l, r) {
                         (IR::Num(l), IR::Num(r)) => match op {
                             BinOp::Eq => IR::Bool(l == r),
@@ -809,10 +719,10 @@ impl<'p> Simplifier<'p> {
                             BinOp::Or => IR::Bool(l || r),
                             _ => panic!("Invalid operator for bool"),
                         },
-                        _ => panic!("Invalid binop")
-                        // (l, r) => {
-                        //     let r = self.simplify(r, in_scope, vec![]);
-                        //     IR::bin(l, op, r)
-                        // }
+                        // _ => panic!("Invalid binop: {} {} {}", l, op, r)
+                        (l, r) => {
+                             let r = self.simplify(r, in_scope, vec![]);
+                             IR::bin(l, op, r)
+                        }
                     }    }
 }

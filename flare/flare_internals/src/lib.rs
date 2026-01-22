@@ -68,7 +68,7 @@ use crate::{
         //backend::{flatten::Flattener, gen::Generator},
         backend::{
             lowering::{Lowerer, ir::IR},
-            monomorph, simplify,
+            monomorph, reduce, simplify,
             target::{Generator, Target},
         },
         midend::{
@@ -120,6 +120,10 @@ pub struct Simplify {
     ir: Vec<IR>,
 }
 
+pub struct Reduce {
+    ir: Vec<IR>,
+}
+
 pub struct Monomorph {
     ir: Vec<IR>,
 }
@@ -140,16 +144,12 @@ impl Operation for Resolve {}
 impl Operation for Typecheck {}
 impl Operation for Lower {}
 impl Operation for Simplify {}
+impl Operation for Reduce {}
 impl Operation for Monomorph {}
 
 pub type FileCtx = FxHashMap<FileID, FileSource>;
 
-pub struct CtxErr {
-    filectx: FileCtx,
-    err: CompilerErr,
-}
-
-pub type CtxResult<const N: usize, T, O> = Result<Context<N, T, O>, CtxErr>;
+// pub type CtxResult<const N: usize, T, O> = Result<Context<N, T, O>, CtxErr>;
 
 /// The context/state machine for compiling a Flare bundle.
 pub struct Context<const N: usize, T, O> {
@@ -283,6 +283,18 @@ impl<const N: usize, T: Target> Context<N, T, Lower> {
 }
 
 impl<const N: usize, T: Target> Context<N, T, Simplify> {
+    pub fn reduce(self) -> CompResult<Context<N, T, Reduce>> {
+        let ir = reduce::reduce(self.op.ir);
+        Ok(Context {
+            op: Reduce { ir },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+
+impl<const N: usize, T: Target> Context<N, T, Reduce> {
     pub fn monomorph(self) -> CompResult<Context<N, T, Monomorph>> {
         let ir = monomorph::monomorph(self.op.ir);
         Ok(Context {

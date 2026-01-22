@@ -331,6 +331,7 @@ impl Solver<'_> {
                     Provenance::ExpectedCombine(left.1, right.1),
                     row_comb,
                 ));
+                dbg!(ast.1, left.1, right.1);
                 self.tables.row_to_combo.insert(ast.1, row_comb);
                 self.tables.branch_to_ret_ty.insert(ast.1, ret_ty);
                 let typed_ast = Expr::Branch(left_out.typed_ast, right_out.typed_ast);
@@ -344,8 +345,6 @@ impl Solver<'_> {
                     Direction::Right => row_comb.right,
                 };
 
-                let out_ty = ast.convert(Type::Sum(row_comb.goal));
-
                 let mut out = self.check(env, value, ast.convert(Type::Sum(sub_row)));
                 out.constraints.push(Constraint::RowCombine(
                     Provenance::ExpectedCombine(value.1, sub_row.1),
@@ -356,7 +355,7 @@ impl Solver<'_> {
                 (
                     out.with_typed_ast(|ast| ast.convert(Expr::Inject(dir, ast))),
                     // Our goal row is the type of our output
-                    out_ty,
+                    ast.convert(Type::Sum(row_comb.goal)),
                 )
             }
             Expr::Item(item_id, kind) => {

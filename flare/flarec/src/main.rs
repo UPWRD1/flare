@@ -108,6 +108,7 @@ macro_rules! make_target {
             .and_then(|ctx| ctx.typecheck())
             .and_then(|ctx| ctx.lower())
             .and_then(|ctx| ctx.simplify())
+            .and_then(|ctx| ctx.reduce())
             .and_then(|ctx| ctx.monomorph())
             .and_then(|ctx| ctx.convert())
             .and_then(|ctx| ctx.generate())
