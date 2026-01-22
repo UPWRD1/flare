@@ -19,7 +19,7 @@ impl Solver<'_> {
         ast: Spanned<Intern<Expr<Untyped>>>,
     ) -> (GenOut, Spanned<Intern<Type>>) {
         // dbg!(&env);
-        // let id = ast.id();
+        let id = ast.1;
         match *ast.0 {
             Expr::Number(n) => (
                 GenOut::new(vec![], ast.convert(Expr::Number(n))),
@@ -266,7 +266,7 @@ impl Solver<'_> {
             }
 
             Expr::Concat(left, right) => {
-                let row_comb = self.fresh_row_combination(left.1, right.1, ast.1);
+                let row_comb = self.fresh_row_combination(left.1, right.1, id);
 
                 let left_out =
                     self.check(env.clone(), left, left.convert(Type::Prod(row_comb.left)));
@@ -280,7 +280,7 @@ impl Solver<'_> {
                     Provenance::ExpectedCombine(left.1, right.1),
                     row_comb,
                 ));
-                self.tables.row_to_combo.insert(ast.1, row_comb);
+                self.tables.row_to_combo.insert(id, row_comb);
                 let typed_ast = ast.convert(Expr::Concat(left_out.typed_ast, right_out.typed_ast));
                 (
                     GenOut {
@@ -332,13 +332,14 @@ impl Solver<'_> {
                     Provenance::ExpectedCombine(left.1, right.1),
                     row_comb,
                 ));
-                dbg!(ast.1, left.1, right.1);
-                self.tables.row_to_combo.insert(ast.1, row_comb);
-                self.tables.branch_to_ret_ty.insert(ast.1, ret_ty);
+                // dbg!(ast.1, left.1, right.1);
+                self.tables.row_to_combo.insert(id, row_comb);
+                self.tables.branch_to_ret_ty.insert(id, ret_ty);
                 let typed_ast = Expr::Branch(left_out.typed_ast, right_out.typed_ast);
                 (GenOut::new(constraints, ast.convert(typed_ast)), out_ty)
             }
             Expr::Inject(dir, value) => {
+                dbg!(ast.1);
                 let row_comb = self.fresh_row_combination(value.1, value.1, ast.1);
 
                 let sub_row = match dir {
@@ -352,9 +353,9 @@ impl Solver<'_> {
                     row_comb,
                 ));
 
-                self.tables.row_to_combo.insert(ast.1, row_comb);
+                self.tables.row_to_combo.insert(id, row_comb);
                 (
-                    out.with_typed_ast(|ast| ast.convert(Expr::Inject(dir, ast))),
+                    out.with_typed_ast(|nast| ast.convert(Expr::Inject(dir, nast))),
                     // Our goal row is the type of our output
                     ast.convert(Type::Sum(row_comb.goal)),
                 )
@@ -410,7 +411,7 @@ impl Solver<'_> {
                         })
                         .collect(),
                 };
-                self.tables.item_wrappers.insert(ast.1, wrapper);
+                self.tables.item_wrappers.insert(id, wrapper);
                 (
                     GenOut::new(constraints, ast.convert(Expr::Item(item_id, kind))),
                     ty,

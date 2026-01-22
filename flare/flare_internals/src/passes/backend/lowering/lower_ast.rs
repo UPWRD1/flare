@@ -534,14 +534,19 @@ impl<'source> LowerAst<'source> {
             Expr::Inject(direction, body) => {
                 // dbg!(body.0);
                 // dbg!(self.row_to_ev);
-                dbg!(id);
+                // dbg!(id);
 
                 let param = self
                     .row_to_ev
                     .get(&id)
                     .cloned()
                     .map(|ev| self.lookup_ev(ev))
-                    .expect("Inject AST node lacks an expected evidence");
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Inject AST node lacks an expected evidence: {:?} \n\n {:#?}",
+                            id, self.row_to_ev
+                        )
+                    });
 
                 let term = self.lower_ast(body);
                 let direction_field = match direction {

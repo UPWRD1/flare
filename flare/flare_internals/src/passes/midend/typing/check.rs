@@ -204,7 +204,7 @@ impl Solver<'_> {
                     Provenance::ExpectedCombine(id, the_ty.1),
                     row_comb,
                 ));
-                dbg!(id, left.1, right.1);
+                // dbg!(id, left.1, right.1);
                 self.tables.row_to_combo.insert(id, row_comb);
                 self.tables.branch_to_ret_ty.insert(id, ret_ty);
 
@@ -218,6 +218,7 @@ impl Solver<'_> {
             }
 
             (Expr::Inject(dir, value), Type::Sum(goal)) => {
+                // dbg!(value.1, goal.1, id);
                 let sub_row = Row::Unifier(self.fresh_row_var());
                 let mut out = self.check(
                     env,
@@ -280,7 +281,7 @@ impl Solver<'_> {
 
             // Wildcard
             (_, _) => {
-                // dbg!(the_ty);
+                // dbg!(the_ast, the_ty);
                 let (mut out, actual_ty) = self.infer(env, the_ast);
                 // dbg!(actual_ty);
                 {

@@ -240,9 +240,10 @@ impl Solver<'_> {
                 .merge(self.substitute_ast(right), |left, right| {
                     unsub_ast.convert(Expr::Branch(left, right))
                 }),
-            Expr::Inject(dir, ast) => self
-                .substitute_ast(ast)
-                .map(|nast| unsub_ast.convert(Expr::Inject(dir, nast))),
+            Expr::Inject(dir, ast) => self.substitute_ast(ast).map(|nast| {
+                // dbg!(ast.1, nast.1, unsub_ast.1);
+                unsub_ast.convert(Expr::Inject(dir, nast))
+            }),
             Expr::Item(id, item) => SubstOut::new(unsub_ast.convert(Expr::Item(id, item))),
             _ => todo!("{unsub_ast:?}"),
         }

@@ -83,36 +83,39 @@ impl<'a> Instantiate<'a> {
     }
 
     fn ty(&self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
-        match *ty.0 {
-            Type::Var(var) => self
-                .tyvar_to_unifiers
-                .get(&var)
-                .copied()
-                .map(Type::Unifier)
-                .map(|x| ty.convert(x))
-                .unwrap_or_else(|| {
-                    unreachable!(
-                        "Expected type var {:?} to be mapped to fresh unifier in instantiation",
-                        var
-                    )
-                }),
-            Type::Num
-            | Type::Bool
-            | Type::String
-            | Type::Unit
-            | Type::Unifier(_)
-            | Type::Generic(_)
-            | Type::Particle(_) => ty,
-            Type::Func(arg, ret) => {
-                let arg = self.ty(arg);
-                let ret = self.ty(ret);
-                Spanned(Type::Func(arg, ret).into(), ty.1)
-            }
-            Type::Prod(row) => ty.convert(Type::Prod(self.row(row))),
-            Type::Sum(row) => ty.convert(Type::Sum(self.row(row))),
-            Type::Label(label, ty) => ty.convert(Type::Label(label, ty)),
+        ty.map(|ty| {
+            match *ty {
+                Type::Var(var) => self
+                    .tyvar_to_unifiers
+                    .get(&var)
+                    .copied()
+                    .map(Type::Unifier)
+                    // .map(|x| ty.convert(x))
+                    .unwrap_or_else(|| {
+                        unreachable!(
+                            "Expected type var {:?} to be mapped to fresh unifier in instantiation",
+                            var
+                        )
+                    }),
+                Type::Num
+                | Type::Bool
+                | Type::String
+                | Type::Unit
+                | Type::Unifier(_)
+                | Type::Generic(_)
+                | Type::Particle(_) => *ty,
+                Type::Func(arg, ret) => {
+                    let arg = self.ty(arg);
+                    let ret = self.ty(ret);
+                    Type::Func(arg, ret)
+                }
+                Type::Prod(row) => Type::Prod(self.row(row)),
+                Type::Sum(row) => Type::Sum(self.row(row)),
+                Type::Label(label, ty) => Type::Label(label, ty),
 
-            _ => todo!("{:?}", ty),
-        }
+                _ => todo!("{:?}", ty),
+            }
+            .into()
+        })
     }
 }
