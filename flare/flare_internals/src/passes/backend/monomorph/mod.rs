@@ -68,10 +68,14 @@ impl Monomorpher {
                     // println!("monomorph added: {monomorph:?}");
                     self.monomorph_set.insert(monomorph);
                     types.push(app.clone());
-                } else {
-                    types.push(app.clone());
-                    self.collect_types(body, types);
                 }
+                // else {
+                // types.push(app.clone());
+                // self.collect_types(body, types);
+                // }
+
+                types.push(app.clone());
+                self.collect_types(body, types);
             }
             IR::Local(_, def, body) => {
                 self.collect_types(def, types);
@@ -182,9 +186,12 @@ impl Monomorpher {
                 IR::Case(t, ir, b) => {
                     // dbg!(&ty);
 
+                    let t = types
+                        .iter()
+                        .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone()));
                     IR::case(
-                        // t.subst_app(ty.clone()),
                         t,
+                        // t,
                         self.instantiate_ir(*ir, types),
                         b.into_iter().map(|b| Branch {
                             param: b.param.map_ty(|t| t.subst_app(ty.clone())),
