@@ -1,7 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::passes::backend::{
-    lowering::ir::{IR, ItemId, TyApp, Type},
+    lowering::ir::{Branch, IR, ItemId, TyApp, Type},
     simplify,
 };
 
@@ -14,11 +14,12 @@ pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
 
         for morph in &m.monomorph_set {
             let new_ir = m.instantiate(morph);
+
             let t = new_ir.type_of();
             m.new_ir.push(new_ir);
             let magic_id = m.new_ir.len() - m.monomorph_set.len() + dist;
             let id = ItemId(magic_id as u32);
-            dbg!(magic_id);
+            // dbg!(magic_id);
             m.replacement_set.insert(morph.clone(), (id, t));
         }
 
@@ -64,12 +65,12 @@ impl Monomorpher {
             IR::TyFun(_, ir) => self.collect_types(ir, types),
             IR::TyApp(body, app) => {
                 if let Some(monomorph) = self.probe_item(body, vec![app.clone()]) {
-                    println!("monomorph added: {monomorph:?}");
+                    // println!("monomorph added: {monomorph:?}");
                     self.monomorph_set.insert(monomorph);
                     types.push(app.clone());
                 } else {
                     types.push(app.clone());
-                    self.collect_types(ir, types);
+                    self.collect_types(body, types);
                 }
             }
             IR::Local(_, def, body) => {
@@ -81,7 +82,7 @@ impl Monomorpher {
                     self.collect_types(elem, types);
                 }
             }
-            IR::Case(_, ir, branches) => {
+            IR::Case(t, ir, branches) => {
                 self.collect_types(ir, types);
                 for b in branches {
                     self.collect_types(&b.body, types);
@@ -96,8 +97,13 @@ impl Monomorpher {
                 self.collect_types(l, types);
                 self.collect_types(r, types);
             }
+            IR::Var(_) | IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Particle(_) | IR::Unit => (),
 
-            _ => (),
+            IR::Comment(_, ir) => self.collect_types(ir, types),
+            IR::Fun(var, ir) => self.collect_types(ir, types),
+            IR::Field(ir, _) => self.collect_types(ir, types),
+            IR::Tag(_, _, ir) => self.collect_types(ir, types),
+            IR::Item(_, _) | IR::Extern(_, _) => (),
         }
     }
 
@@ -124,7 +130,7 @@ impl Monomorpher {
     }
 
     fn instantiate_ir(&self, ir: IR, types: &[TyApp]) -> IR {
-        // dbg!(types);
+        // dbg!();
         match types {
             [] => ir,
 
@@ -135,7 +141,7 @@ impl Monomorpher {
                 }
                 IR::TyApp(body, t) => {
                     if let Some(monomorph) = self.probe_item(&body, vec![t.clone()]) {
-                        dbg!(&monomorph);
+                        // dbg!(&monomorph);
                         let (id, t) = self.replacement_set.get(&monomorph).unwrap_or_else(|| {
                             panic!(
                                 "{:?} was not found in replacement set {:?}",
@@ -144,18 +150,24 @@ impl Monomorpher {
                         });
                         IR::Item(t.clone(), *id)
                     } else {
-                        let body = self.instantiate_ir(*body, types);
+                        // *body
+                        let body = self.instantiate_ir(*body, rest_types);
                         simplify::subst_ty(body, ty.clone())
                     }
                 }
                 IR::Local(v, d, b) => {
+                    // dbg!(&v);
+
+                    // let v = v.map_ty(|t| t.subst_app(ty.clone()));
                     let defn = self.instantiate_ir(*d, types);
+                    let v = v.map_ty(|t| defn.type_of());
+
                     let body = self.instantiate_ir(*b, types);
                     IR::local(v, defn, body)
                 }
                 // IR::Item(t, id) => {
-                //     let id = self.instance_item(id, types);
-                //     IR::Item(t, id)
+                //     // let id = self.instance_item(id, types);
+                //     IR::Item(t.subst_app(ty.clone()), id)
                 // }
                 IR::App(l, r) => IR::app(
                     self.instantiate_ir(*l, types),
@@ -167,6 +179,21 @@ impl Monomorpher {
                         .map(|ir| self.instantiate_ir(ir, types))
                         .collect(),
                 ),
+                IR::Case(t, ir, b) => {
+                    // dbg!(&ty);
+
+                    IR::case(
+                        // t.subst_app(ty.clone()),
+                        t,
+                        self.instantiate_ir(*ir, types),
+                        b.into_iter().map(|b| Branch {
+                            param: b.param.map_ty(|t| t.subst_app(ty.clone())),
+                            body: self.instantiate_ir(b.body, types),
+                        }),
+                    )
+                }
+                IR::Field(ir, u) => IR::field(self.instantiate_ir(*ir, types), u),
+                IR::Tag(t, u, ir) => IR::tag(t, u, self.instantiate_ir(*ir, types)),
                 // _ => self.instantiate(ir, rest_types),
                 _ => ir,
             },

@@ -177,6 +177,10 @@ impl LIR {
         Self::Access(Box::new(v), u)
     }
 
+    fn index(v: Self, u: usize) -> Self {
+        Self::Index(Box::new(v), u)
+    }
+
     fn free_vars_aux(&self, free: &mut BTreeSet<Var>) {
         match self {
             Self::Var(var) => {
@@ -256,8 +260,17 @@ impl Render for LIR {
                         .collect(),
                 ))
                 .brackets(),
-            Self::Apply(ir, ir1) => todo!(),
-            Self::Local(var, ir, ir1) => todo!(),
+            Self::Apply(ir, ir1) => ir.render().append(ir1.render().parens()),
+            Self::Local(var, d, b) => Doc::text("let")
+                .space()
+                .render(var)
+                .space()
+                .text("=")
+                .space()
+                .render(*d)
+                .text(";")
+                .hard_line()
+                .render(*b),
             Self::Access(ir, _) => todo!(),
             Self::Array(v) => Doc::list(
                 v.into_iter()
@@ -288,6 +301,12 @@ pub struct ClosureConvertOut {
 pub struct Var {
     pub id: ir::VarId,
     pub ty: Type,
+}
+
+impl Render for Var {
+    fn render(self) -> Doc<'static> {
+        Doc::text(format!("${}", self.id.0))
+    }
 }
 
 impl PartialOrd for Var {

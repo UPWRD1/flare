@@ -367,7 +367,9 @@ impl IR {
             Self::Local(v, defn, body) => {
                 if v.ty != defn.type_of() {
                     unreachable!(
-                        "Type mismatch local variable has different type from its definition",
+                        "Type mismatch local variable has different type from its definition: {} vs {}",
+                        v.ty,
+                        defn.type_of()
                     )
                 }
                 body.type_of()
@@ -551,6 +553,23 @@ impl IR {
 }
 
 impl Display for IR {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let doc = self.clone().render();
+        write!(
+            f,
+            "{}",
+            tiny_pretty::print(
+                &doc,
+                &tiny_pretty::PrintOptions {
+                    width: 80,
+                    ..Default::default()
+                }
+            )
+        )
+    }
+}
+
+impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let doc = self.clone().render();
         write!(

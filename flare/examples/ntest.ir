@@ -1,33 +1,66 @@
 item #0: is
-fn [$0: str] => $0
+extern_to_num
 end item #0
 
 item #1: is
-fn [$0: num] => $0
+tyfn Type => fn [$0: ?0] => $0 become ?0
 end item #1
 
 item #2: is
-let $0: num = #1(
-  3)
-in
-  {
-    fn [$3: num, $4: str] =>
-      {
-        $3,
-        $4},
-    tyfn Type =>
-      fn [$5: num -> ?0, $6: str -> ?0, $7: {num | str}] =>
-        match $7:
-          | $8 then $5(
-            $8),
-          | $9 then $6(
-            $9),
-    {
-      fn [$10: {num * str}] => $10.0,
-      fn [$11: num] => $11 become num},
-    {
-      fn [$13: {num * str}] => $13.1,
-      fn [$14: str] => $14 become str}}.0(
-  $0, #0(
-  "hi"))
+tyfn Type => unit become unit
 end item #2
+
+item #3: is
+tyfn Type =>
+  tyfn Type =>
+    let $2: {
+      ?1 -> unit -> {unit * ?1} *
+      TyFunc Type ?2 -> ?0 -> unit -> ?0 -> {unit | ?2} -> ?0 *
+      {{unit * ?1} -> ?1 * ?1 -> {unit | ?1}} *
+      {{unit * ?1} -> unit * unit -> {unit | ?1}}
+    } = {
+        fn [$3: ?1, $4: unit] =>
+          {
+            $4,
+            $3},
+        tyfn Type =>
+          fn [$5: ?2 -> ?0, $6: unit -> ?0, $7: {unit | ?2}] =>
+            match $7:
+              | $8 then $6(
+                $8),
+              | $9 then $5(
+                $9),
+        {
+          fn [$10: {unit * ?1}] => $10.1,
+          fn [$11: ?1] => $11 become ?1},
+        {
+          fn [$13: {unit * ?1}] => $13.0,
+          fn [$14: unit] => $14 become unit}}
+    in
+      fn [$0: {unit | ?1}, $1: ?1 -> ?0] =>
+        [{unit | ?0}]::$2.1(
+        fn [$16: ?1] =>
+          let $16: ?0 = $1(
+            $16)
+          in
+            $16 become ?0, fn [$31: unit] => [?0]::#2, $0)
+end item #3
+
+item #4: is
+tyfn Type =>
+  fn [$0: {unit | ?0}, $1: ?0] =>
+    match $0:
+      | $8 then $1,
+      | $9 then $9
+end item #4
+
+item #5: is
+let $0: {unit | str} = [str]::#1(
+  "3")
+in
+  let $1: {unit | num} = [num]::[str]::#3(
+    $0, fn [$2: str] => #0($2))
+  in
+    [num]::#4(
+    $1, 0)
+end item #5
