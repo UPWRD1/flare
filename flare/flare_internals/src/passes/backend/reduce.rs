@@ -35,19 +35,19 @@ fn track_seen(ir: &[IR]) -> FxHashSet<ItemId> {
 }
 /// DANGER!
 /// currently, this is an invalid transformation because it does not update item indexes afterwards.
-pub fn reduce(mut ir: Vec<IR>) -> Vec<IR> {
-    let mut seen = track_seen(&ir);
-    seen.insert(ItemId(ir.len() as u32));
+pub fn reduce(mut irs: Vec<IR>) -> Vec<IR> {
+    let mut seen = track_seen(&irs);
+    seen.insert(ItemId(irs.len() as u32));
     let mut new_counter = 0;
     let mut map: FxHashMap<ItemId, ItemId> = FxHashMap::default();
-
-    let ir: Vec<IR> = ir
+    let len = irs.len() as u32 - 1;
+    let ir: Vec<IR> = irs
         .into_iter()
         .enumerate()
         .filter_map(|(index_counter, ir)| {
             let id = ItemId(index_counter as u32);
             let nid = ItemId(new_counter);
-            let retain_item = seen.contains(&id);
+            let retain_item = seen.contains(&id) || id.0 == len;
             // index_counter += 1;
             if retain_item {
                 new_counter += 1;

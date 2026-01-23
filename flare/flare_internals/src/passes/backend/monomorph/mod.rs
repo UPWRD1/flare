@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::passes::backend::{
     lowering::ir::{IR, ItemId, TyApp, Type},
@@ -8,137 +8,163 @@ use crate::passes::backend::{
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
     // the_ir
     let mut m = Monomorpher::new(the_ir.clone());
-    for ir in the_ir {
+    for (dist, ir) in the_ir.into_iter().enumerate() {
         let mut types = vec![];
-        collect_types(&ir, &mut types);
-        let new_ir = m.instantiate(ir.clone(), &types);
-        m.new_ir.push(new_ir);
+        m.collect_types(&ir, &mut types);
+
+        for morph in &m.monomorph_set {
+            let new_ir = m.instantiate(morph);
+            let t = new_ir.type_of();
+            m.new_ir.push(new_ir);
+            let magic_id = m.new_ir.len() - m.monomorph_set.len() + dist;
+            let id = ItemId(magic_id as u32);
+            dbg!(magic_id);
+            m.replacement_set.insert(morph.clone(), (id, t));
+        }
+
+        let ir = m.instantiate_ir(ir, &types);
+        m.new_ir.push(ir);
+        // }
     }
 
     m.new_ir
 }
 
-fn collect_types(ir: &IR, types: &mut Vec<TyApp>) {
-    // dbg!(ir);
-    match ir {
-        IR::App(func, body) => {
-            collect_types(func, types);
-            collect_types(body, types);
-        }
-        IR::TyFun(_, ir) => collect_types(ir, types),
-        IR::TyApp(ir, ty_app) => {
-            types.push(ty_app.clone());
-            collect_types(ir, types);
-        }
-        IR::Local(_, def, body) => {
-            collect_types(def, types);
-            collect_types(body, types);
-        }
-        IR::Tuple(irs) => {
-            for elem in irs {
-                collect_types(elem, types);
-            }
-        }
-        IR::Case(_, ir, branches) => {
-            collect_types(ir, types);
-            for b in branches {
-                collect_types(&b.body, types);
-            }
-        }
-        IR::If(c, t, o) => {
-            collect_types(c, types);
-            collect_types(t, types);
-            collect_types(o, types);
-        }
-        IR::Bin(l, _, r) => {
-            collect_types(l, types);
-            collect_types(r, types);
-        }
-
-        // IR::Var(v) => types.push(TyApp::Ty(v.ty.clone())),
-
-        // IR::Num(_) => types.push(TyApp::Ty(Type::Num)),
-        // IR::Str(intern) => types.push(TyApp::Ty(Type::Str)),
-        // IR::Bool(_) => todo!(),
-        // IR::Unit => todo!(),
-        // IR::Particle(intern) => todo!(),
-        // IR::Fun(var, ir) => todo!(),
-        // IR::If(ir, ir1, ir2) => todo!(),
-        // IR::Bin(ir, bin_op, ir1) => todo!(),
-        // IR::Field(ir, _) => todo!(),
-        // IR::Tag(_, _, ir) => todo!(),
-        // IR::Item(t, _) => types.push(TyApp::Ty(t.clone())),
-        // IR::Extern(_, _) => todo!(),
-        // _ => types.push(TyApp::Ty(ir.type_of())),
-        _ => (),
-    }
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+struct Monomorph {
+    ref_item: ItemId,
+    apps: Vec<TyApp>,
+    // output: IR,
 }
 
 struct Monomorpher {
     ref_ir: Vec<IR>,
     new_ir: Vec<IR>,
-    func_map: Vec<FxHashMap<TyApp, ItemId>>, // saturated_fun_count: usize,
+    monomorph_set: FxHashSet<Monomorph>,
+    replacement_set: FxHashMap<Monomorph, (ItemId, Type)>,
 }
+
 impl Monomorpher {
     fn new(ref_ir: Vec<IR>) -> Self {
         Self {
             ref_ir,
             new_ir: vec![],
-            func_map: Vec::default(), // saturated_fun_count: 0,
+            monomorph_set: FxHashSet::default(), // saturated_fun_count: 0,
+            replacement_set: FxHashMap::default(),
         }
     }
 
-    fn instance_item(&mut self, id: ItemId, types: &[TyApp]) -> ItemId {
-        let item_ir = self.ref_ir[id.0 as usize].clone();
+    fn collect_types(&mut self, ir: &IR, types: &mut Vec<TyApp>) {
+        // dbg!(ir);
+        match ir {
+            IR::App(func, body) => {
+                self.collect_types(func, types);
+                self.collect_types(body, types);
+            }
+            IR::TyFun(_, ir) => self.collect_types(ir, types),
+            IR::TyApp(body, app) => {
+                if let Some(monomorph) = self.probe_item(body, vec![app.clone()]) {
+                    println!("monomorph added: {monomorph:?}");
+                    self.monomorph_set.insert(monomorph);
+                    types.push(app.clone());
+                } else {
+                    types.push(app.clone());
+                    self.collect_types(ir, types);
+                }
+            }
+            IR::Local(_, def, body) => {
+                self.collect_types(def, types);
+                self.collect_types(body, types);
+            }
+            IR::Tuple(irs) => {
+                for elem in irs {
+                    self.collect_types(elem, types);
+                }
+            }
+            IR::Case(_, ir, branches) => {
+                self.collect_types(ir, types);
+                for b in branches {
+                    self.collect_types(&b.body, types);
+                }
+            }
+            IR::If(c, t, o) => {
+                self.collect_types(c, types);
+                self.collect_types(t, types);
+                self.collect_types(o, types);
+            }
+            IR::Bin(l, _, r) => {
+                self.collect_types(l, types);
+                self.collect_types(r, types);
+            }
 
-        // dbg!(&item_ir);
-        let monomorphed_ir = self.instantiate(item_ir, types);
-        // let t = t.subst_app(ty.clone());
-        let new_ir = IR::Comment(format!("Derived from {}", id.0), Box::new(monomorphed_ir));
-        self.new_ir.push(new_ir);
-        ItemId(self.new_ir.len() as u32)
+            _ => (),
+        }
     }
 
-    fn probe(&self, ir: &IR) -> Option<IR> {
-        match *ir {
-            IR::TyFun(_, _) => Some(ir.clone()),
-            IR::TyApp(ref ir, _) => Some(*ir.clone()),
-            IR::Item(_, item_id) => self
-                .ref_ir
-                .get(item_id.0 as usize)
-                .and_then(|ir| self.probe(ir)),
-            IR::Local(_, ref d, ref b) => self.probe(d).or_else(|| self.probe(b)),
+    fn probe_item(&self, ir: &IR, mut app_accum: Vec<TyApp>) -> Option<Monomorph> {
+        // dbg!(ir);
+        match ir {
+            IR::TyApp(ir, t) => self.probe_item(ir, [app_accum, vec![t.clone()]].concat()),
+            IR::Item(_, item_id) => Some(Monomorph {
+                ref_item: *item_id,
+                apps: app_accum,
+            }),
+            // IR::Local(_, ref d, ref b) => self.probe_item(d).or_else(|| self.probe_item(b)),
             _ => None,
         }
     }
 
-    fn instantiate(&mut self, ir: IR, types: &[TyApp]) -> IR {
+    fn instantiate(
+        &self,
+        // ir: IR,
+        morph: &Monomorph,
+    ) -> IR {
+        let ir = self.ref_ir[morph.ref_item.0 as usize].clone();
+        self.instantiate_ir(ir.clone(), &morph.apps)
+    }
+
+    fn instantiate_ir(&self, ir: IR, types: &[TyApp]) -> IR {
+        // dbg!(types);
         match types {
             [] => ir,
 
             [ty, rest_types @ ..] => match ir {
                 IR::TyFun(_, body) => {
-                    let body = self.instantiate(*body, rest_types);
+                    let body = self.instantiate_ir(*body, rest_types);
                     simplify::subst_ty(body, ty.clone())
                 }
-                IR::TyApp(body, _) => {
-                    let body = self.instantiate(*body, rest_types);
-                    simplify::subst_ty(body, ty.clone())
+                IR::TyApp(body, t) => {
+                    if let Some(monomorph) = self.probe_item(&body, vec![t.clone()]) {
+                        dbg!(&monomorph);
+                        let (id, t) = self.replacement_set.get(&monomorph).unwrap_or_else(|| {
+                            panic!(
+                                "{:?} was not found in replacement set {:?}",
+                                monomorph, self.replacement_set
+                            )
+                        });
+                        IR::Item(t.clone(), *id)
+                    } else {
+                        let body = self.instantiate_ir(*body, types);
+                        simplify::subst_ty(body, ty.clone())
+                    }
                 }
                 IR::Local(v, d, b) => {
-                    let defn = self.instantiate(*d, types);
-                    let body = self.instantiate(*b, types);
+                    let defn = self.instantiate_ir(*d, types);
+                    let body = self.instantiate_ir(*b, types);
                     IR::local(v, defn, body)
                 }
-                IR::Item(t, id) => {
-                    let id = self.instance_item(id, types);
-                    IR::Item(t, id)
-                }
-                IR::App(l, r) => IR::app(self.instantiate(*l, types), self.instantiate(*r, types)),
-                IR::Fun(v, ir) => IR::Fun(v, Box::new(self.instantiate(*ir, types))),
+                // IR::Item(t, id) => {
+                //     let id = self.instance_item(id, types);
+                //     IR::Item(t, id)
+                // }
+                IR::App(l, r) => IR::app(
+                    self.instantiate_ir(*l, types),
+                    self.instantiate_ir(*r, types),
+                ),
+                IR::Fun(v, ir) => IR::Fun(v, Box::new(self.instantiate_ir(*ir, types))),
                 IR::Tuple(v) => IR::Tuple(
                     v.into_iter()
-                        .map(|ir| self.instantiate(ir, types))
+                        .map(|ir| self.instantiate_ir(ir, types))
                         .collect(),
                 ),
                 // _ => self.instantiate(ir, rest_types),

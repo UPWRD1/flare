@@ -68,6 +68,14 @@ impl Type {
         // Technically, unit is zero-sized, so it doesn't alloc
         matches!(self, Self::Num | Self::Bool | Self::Str | Self::Unit)
     }
+
+    pub fn into_ret_ty(self) -> Self {
+        match self {
+            Self::Fun(_, r) => r.into_ret_ty(),
+            Self::TyFun(kind, r) => r.into_ret_ty(),
+            _ => self,
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Clone, Debug, Hash)]
@@ -325,13 +333,16 @@ impl IR {
             Self::Fun(arg, body) => Type::fun(arg.ty.clone(), body.type_of()),
 
             Self::App(fun, arg) => {
-                let Type::Fun(fun_arg_ty, ret_ty) = fun.type_of() else {
+                if let Type::Fun(fun_arg_ty, ret_ty) = fun.type_of() {
+                    if arg.type_of() != *fun_arg_ty {
+                        unreachable!("Function applied to wrong argument type");
+                    }
+                    *ret_ty
+                } else if let Self::Item(t, id) = &**fun {
+                    t.clone().into_ret_ty()
+                } else {
                     unreachable!("IR used non-function type as a function: {fun}")
-                };
-                if arg.type_of() != *fun_arg_ty {
-                    unreachable!("Function applied to wrong argument type");
                 }
-                *ret_ty
             }
 
             // These should all be numbers

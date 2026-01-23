@@ -160,6 +160,8 @@ pub enum LIR {
     Local(Var, Box<Self>, Box<Self>),
     Access(Box<Self>, usize),
     Array(Vec<Self>),
+    Index(Box<Self>, usize),
+    Item(ir::ItemId),
 }
 
 impl LIR {
@@ -195,8 +197,9 @@ impl LIR {
                 defn.free_vars_aux(free);
                 free.remove(var);
             }
-            Self::Access(ir, _) => ir.free_vars_aux(free),
+            Self::Access(ir, _) | Self::Index(ir, _) => ir.free_vars_aux(free),
             Self::Array(v) => v.iter().for_each(|ir| ir.free_vars_aux(free)),
+            Self::Item(d) => {}
         }
     }
 
@@ -213,7 +216,7 @@ impl LIR {
                     *var = new_var.clone();
                 }
             }
-            Self::Int(_) | Self::Float(_) | Self::Unit | Self::Str(_) => {}
+            Self::Int(_) | Self::Float(_) | Self::Unit | Self::Str(_) | Self::Item(_) => {}
             Self::Closure(_, _, vars) => {
                 for var in vars.iter_mut() {
                     if let Some(new_var) = subst.get(var) {
@@ -229,7 +232,7 @@ impl LIR {
                 defn.rename(subst);
                 body.rename(subst);
             }
-            Self::Access(body, _) => body.rename(subst),
+            Self::Access(body, _) | Self::Index(body, _) => body.rename(subst),
             Self::Array(v) => v.iter_mut().for_each(|ir| ir.rename(subst)),
         }
     }
@@ -263,6 +266,8 @@ impl Render for LIR {
                     .collect(),
             )
             .braces(),
+            Self::Index(ir, u) => ir.render().append(Doc::text(u.to_string()).brackets()),
+            Self::Item(id) => Doc::text(format!("#{}", id.0)),
         }
     }
 }
@@ -349,7 +354,8 @@ impl ClosureConvert {
             ),
             ir::IR::Comment(_, c) => self.convert(*c, env),
             ir::IR::Tag(t, u, ir) => self.convert(*ir, env),
-
+            ir::IR::Item(t, d) => LIR::Item(d),
+            ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             _ => todo!("{ir:?}"),
         }
     }

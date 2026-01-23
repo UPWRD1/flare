@@ -113,19 +113,19 @@ pub fn subst_ty(haystack: IR, payload: TyApp) -> IR {
             subst_ty(*body, payload),
         ),
         IR::Field(ir, u) => {
-            if let IR::Tuple(content) = *ir {
-                let heads = &content[..u];
-                let i = content[u].clone();
-                let tails = &content[u + 1..];
-                let v = subst_ty(i, payload);
-                let new_tuple = IR::Tuple([heads, &[v], tails].concat());
-                // let (i, heads) = items.split_last().unwrap();
-                // dbg!(new_tuple);
-                todo!()
-            } else {
+            // if let IR::Tuple(content) = *ir {
+            //     let heads = &content[..u];
+            //     let i = content[u].clone();
+            //     let tails = &content[u + 1..];
+            //     let v = subst_ty(i, payload);
+            //     let new_tuple = IR::Tuple([heads, &[v], tails].concat());
+            //     // let (i, heads) = items.split_last().unwrap();
+            //     // dbg!(new_tuple);
+            //     todo!()
+            // } else {
                 // dbg!(&ir);
                 IR::field(subst_ty(*ir, payload), u)
-            }
+            // }
         }
         IR::Tag(t, u, ir) => IR::tag(t.subst_app(payload.clone()), u, subst_ty(*ir, payload)),
 
@@ -325,14 +325,14 @@ pub fn simplify(the_ir: &[IR]) -> Vec<IR> {
         .iter()
         .map(|ir| {
             let mut ir = ir.clone();
-            for _ in 0..2 {
+            for i in 0..2 {
                 let occ_a = OccuranceAnalyzer::new(the_ir);
                 let (_, occs) =
                     occ_a.occurrence_analysis(&ir, &im::HashSet::with_hasher(FxBuildHasher));
                 let mut simplifier = Simplifier::new(occs, the_ir);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
-                    // println!("Simplified after {i} passes");
+                    println!("Simplified after {i} passes");
                     break;
                 }
             }
@@ -454,13 +454,13 @@ impl<'p> Simplifier<'p> {
                 }
                 IR::Item(_, itemid) => {
                     // dbg!(self.items.len());
-                    // break self.rebuild(ir, in_scope, ctx);
-                    match self.item_inline(itemid, &in_scope, &ctx) {
-                        ControlFlow::Continue(c) => c,
-                        ControlFlow::Break(_) => {
-                            break self.rebuild(ir, in_scope, ctx);
-                        }
-                    }
+                    break self.rebuild(ir, in_scope, ctx);
+                    // match self.item_inline(itemid, &in_scope, &ctx) {
+                        // ControlFlow::Continue(c) => c,
+                        // ControlFlow::Break(_) => {
+                            // break self.rebuild(ir, in_scope, ctx);
+                        // }
+                    // }
                 }
             }
         }
@@ -565,6 +565,7 @@ impl<'p> Simplifier<'p> {
                         
                     if definition.size() < self.inline_size_threshold 
                         && self.some_benefit(definition, in_scope, ctx)
+                    // if self.some_benefit(definition, in_scope, ctx)
                     {
                         self.subst = Subst::default();
                         ControlFlow::Continue(definition.clone())
@@ -638,8 +639,11 @@ impl<'p> Simplifier<'p> {
                         return self.simplify(IR::local(var, arg, *body), in_scope, ctx);
                     } else if let IR::Item(_, ref id) = ir {
                         if self.seen_items.contains(id) {
+                        let arg = self.simplify(arg, in_scope.clone(), vec![]);
                             ir = IR::app(ir, arg);
+
                         } else {
+
                             panic!()
                         }
                     } else {
@@ -649,14 +653,14 @@ impl<'p> Simplifier<'p> {
                     }
                 }
                 ContextEntry::Field(idx) => {
-                    if let IR::Tuple(irs) = ir {
-                        let field = irs[idx].clone();
-                        return self.simplify(field, in_scope, ctx);
-                    } else{
+                    // if let IR::Tuple(irs) = ir {
+                        // let field = irs[idx].clone();
+                        // return self.simplify(field, in_scope, ctx);
+                    // } else{
                         // dbg!(&ir);
                         let obj = self.simplify(ir, in_scope.clone(), vec![]);
                         ir = IR::field(obj, idx);
-                    }
+                    // }
                 }
                 ContextEntry::Tag(ty, idx) => ir = IR::tag(ty, idx, ir),
                 ContextEntry::Case(ty, b) => ir = IR::case(ty, ir, b),
