@@ -44,7 +44,7 @@ impl Target for IRTarget {
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
 pub struct TypeVar(pub usize);
 
-#[derive(PartialEq, Eq, PartialOrd, Clone, Debug, Hash, Default)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Default)]
 pub enum Type {
     Num,
     #[default]
@@ -78,7 +78,7 @@ impl Type {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
 pub enum Row {
     Open(TypeVar),
     Closed(Vec<Type>),
@@ -194,10 +194,19 @@ pub enum Param {
     Val(Var),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum TyApp {
     Ty(Type),
     Row(Row),
+}
+
+impl std::fmt::Display for TyApp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TyApp::Ty(t) => write!(f, "{}", t.to_string()),
+            TyApp::Row(row) => todo!(),
+        }
+    }
 }
 
 impl TyApp {
@@ -570,7 +579,8 @@ impl IR {
 }
 
 // GENERATED: Google AI Overview 😭
-struct IrIterator<'a> {
+#[derive(Debug)]
+pub struct IrIterator<'a> {
     stack: Vec<&'a IR>,
 }
 impl<'a> Iterator for IrIterator<'a> {
