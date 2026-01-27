@@ -1,62 +1,110 @@
+use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::passes::backend::{
-    lowering::ir::{Branch, IR, ItemId, TyApp, Type},
+    lowering::{
+        ir::{Branch, IR, ItemId, Kind, TyApp, Type},
+        lower_ast::ItemSupply,
+    },
     simplify,
 };
 
+// How to Monomorph
+// Guarantees:
+// 1. The last function is always main().
+// 2. main() never takes any type parameters.
+// 3. Therefore, start from the back.
+//
+// Algorithm:
+// 1. Read the IR:
+// 2. If we find a tyapp chain, fold all the tyapps into a new Monomorph
+// 3. If the mononomorph is cached:
+//     - use the cached ID
+//     - else
+//         1. recursively solve the new monomorph
+//         2. generate and use a new ID
+// 4. Replace the application chain with the id
+
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
     // the_ir
-    let mut m = Monomorpher::new(the_ir.clone());
-    for (dist, ir) in the_ir.into_iter().enumerate() {
-        let mut types = vec![];
-        m.collect_types(&ir, &mut types);
+    dbg!(the_ir.last().unwrap().who_do_i_call());
 
-        for morph in &m.monomorph_set {
-            let new_ir = m.instantiate(morph);
+    let main_id = the_ir.len() as u32 - 1;
+    let mut m = Monomorpher::new(the_ir.clone().into_iter(), main_id);
 
-            let t = new_ir.type_of();
-            m.new_ir.push(new_ir);
-            let magic_id = m.new_ir.len() - m.monomorph_set.len() + dist;
-            let id = ItemId(magic_id as u32);
-            // dbg!(magic_id);
-            m.replacement_set.insert(morph.clone(), (id, t));
-        }
-
-        let ir = m.instantiate_ir(ir, &types);
-        m.new_ir.push(ir);
-        // }
-    }
-
-    m.new_ir
+    let init_monomorph = Monomorph {
+        ref_item: ItemId(main_id),
+        apps: vec![].leak(),
+    };
+    m.solve_monomorph(&init_monomorph);
+    // printn!("{res}");
+    // todo!()
+    // the_ir
+    let res: Vec<_> = m
+        .ref_ir
+        .into_iter()
+        .sorted_by_key(|(id, _)| *id)
+        .map(|(_, ir)| ir)
+        .collect();
+    // the_ir;
+    res
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 struct Monomorph {
     ref_item: ItemId,
-    apps: Vec<TyApp>,
+    apps: &'static [TyApp],
     // output: IR,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+struct Replacement {
+    ref_item: ItemId,
+    apps: &'static [TyApp],
+    replacement: ItemId,
+    // output: IR,
+}
+
+#[derive(Default)]
 struct Monomorpher {
-    ref_ir: Vec<IR>,
-    new_ir: Vec<IR>,
-    monomorph_set: FxHashSet<Monomorph>,
-    replacement_set: FxHashMap<Monomorph, (ItemId, Type)>,
+    next_id: u32,
+    main_id: u32,
+    ref_ir: FxHashMap<ItemId, IR>,
+    cache: FxHashMap<Monomorph, IR>,
+    cache_ref: FxHashMap<Monomorph, IR>,
+    final_ir: FxHashMap<ItemId, IR>,
 }
 
 impl Monomorpher {
-    fn new(ref_ir: Vec<IR>) -> Self {
+    fn new(ref_ir: impl Iterator<Item = IR>, main_id: u32) -> Self {
         Self {
-            ref_ir,
-            new_ir: vec![],
-            monomorph_set: FxHashSet::default(), // saturated_fun_count: 0,
-            replacement_set: FxHashMap::default(),
+            ref_ir: ref_ir
+                .enumerate()
+                .map(|(i, ir)| (ItemId(i as u32), ir))
+                .collect(),
+            next_id: main_id,
+            main_id,
+            ..Default::default()
         }
     }
 
-    fn collect_types(&mut self, ir: &IR, types: &mut Vec<TyApp>) {
-        // dbg!(ir);
+    fn new_id(&mut self) -> ItemId {
+        let n = self.next_id;
+        self.next_id += 1;
+        ItemId(n)
+    }
+
+    fn solve_monomorph(&mut self, mono: &Monomorph) {
+        let ir = self.ref_ir.get(&mono.ref_item).expect("IR should exist");
+        let mut sub_morphs = FxHashSet::default();
+        self.collect_types(ir, &mut sub_morphs);
+        dbg!(sub_morphs);
+
+        // todo!()
+    }
+
+    fn collect_types(&self, ir: &IR, types: &mut FxHashSet<Monomorph>) {
+        // dbg!(ir.who_do_i_call());
         match ir {
             IR::App(func, body) => {
                 self.collect_types(func, types);
@@ -66,16 +114,13 @@ impl Monomorpher {
             IR::TyApp(body, app) => {
                 if let Some(monomorph) = self.probe_item(body, vec![app.clone()]) {
                     // println!("monomorph added: {monomorph:?}");
-                    self.monomorph_set.insert(monomorph);
-                    types.push(app.clone());
-                }
-                // else {
-                // types.push(app.clone());
-                // self.collect_types(body, types);
-                // }
 
-                types.push(app.clone());
-                self.collect_types(body, types);
+                    types.insert(monomorph);
+                } else {
+                    unreachable!("Could not generate monomorph for {ir}")
+                }
+
+                // self.collect_types(body, types);
             }
             IR::Local(_, def, body) => {
                 self.collect_types(def, types);
@@ -117,20 +162,11 @@ impl Monomorpher {
             IR::TyApp(ir, t) => self.probe_item(ir, [app_accum, vec![t.clone()]].concat()),
             IR::Item(_, item_id) => Some(Monomorph {
                 ref_item: *item_id,
-                apps: app_accum,
+                apps: app_accum.leak(),
             }),
             // IR::Local(_, ref d, ref b) => self.probe_item(d).or_else(|| self.probe_item(b)),
             _ => None,
         }
-    }
-
-    fn instantiate(
-        &self,
-        // ir: IR,
-        morph: &Monomorph,
-    ) -> IR {
-        let ir = self.ref_ir[morph.ref_item.0 as usize].clone();
-        self.instantiate_ir(ir.clone(), &morph.apps)
     }
 
     fn instantiate_ir(&self, ir: IR, types: &[TyApp]) -> IR {
@@ -139,40 +175,28 @@ impl Monomorpher {
             [] => ir,
 
             [ty, rest_types @ ..] => match ir {
-                IR::TyFun(_, body) => {
+                IR::TyFun(k, body) => {
                     let body = self.instantiate_ir(*body, rest_types);
-                    simplify::subst_ty(body, ty.clone())
-                }
-                IR::TyApp(body, t) => {
-                    if let Some(monomorph) = self.probe_item(&body, vec![t.clone()]) {
-                        // dbg!(&monomorph);
-                        let (id, t) = self.replacement_set.get(&monomorph).unwrap_or_else(|| {
-                            panic!(
-                                "{:?} was not found in replacement set {:?}",
-                                monomorph, self.replacement_set
-                            )
-                        });
-                        IR::Item(t.clone(), *id)
-                    } else {
-                        // *body
-                        let body = self.instantiate_ir(*body, rest_types);
-                        simplify::subst_ty(body, ty.clone())
+
+                    match (k, ty) {
+                        (Kind::Type, TyApp::Ty(t)) => simplify::subst_ty(body, t.clone()),
+                        (Kind::Row, TyApp::Row(row)) => simplify::subst_row(body, row.clone()),
+                        (_, _) => unreachable!("Invalid substitution: {:?} {:?}", k, ty),
                     }
                 }
+                IR::TyApp(body, t) => {
+                    // *body
+                    self.instantiate_ir(*body, rest_types)
+                    // simplify::subst_ty(body, ty.clone())
+                }
                 IR::Local(v, d, b) => {
-                    // dbg!(&v);
-
                     // let v = v.map_ty(|t| t.subst_app(ty.clone()));
                     let defn = self.instantiate_ir(*d, types);
-                    let v = v.map_ty(|t| defn.type_of());
+                    // let v = v.map_ty(|t| defn.type_of());
 
                     let body = self.instantiate_ir(*b, types);
                     IR::local(v, defn, body)
                 }
-                // IR::Item(t, id) => {
-                //     // let id = self.instance_item(id, types);
-                //     IR::Item(t.subst_app(ty.clone()), id)
-                // }
                 IR::App(l, r) => IR::app(
                     self.instantiate_ir(*l, types),
                     self.instantiate_ir(*r, types),
@@ -205,22 +229,90 @@ impl Monomorpher {
                 _ => ir,
             },
         }
+    }
 
-        // dbg!(&types);
-        // types.into_iter().fold(ir, |ir, ty| match ir {
-        //     IR::TyFun(_, body) => match ty {
-        //         TyApp::Ty(ty) => simplify::subst_ty(*body, ty),
-        //         TyApp::Row(r) => todo!(),
-        //     },
-        //     IR::TyApp(body, a) => {
-        //         dbg!(a, &ty);
-        //         match ty {
-        //             TyApp::Ty(ty) => simplify::subst_ty(*body, ty),
-        //             TyApp::Row(r) => todo!(),
-        //         }
-        //     }
-        //     _ => ir,
-        // })
-        // dbg!(t)
+    fn instantiate_replacements(&self, ir: IR, replacement: Replacement) -> IR {
+        match ir {
+            IR::TyFun(k, body) => {
+                let [t, rest @ ..] = replacement.apps else {
+                    unreachable!("Not enough types in replacement")
+                };
+                let new_rep = Replacement {
+                    apps: rest,
+                    ..replacement
+                };
+                let body = self.instantiate_replacements(*body, new_rep);
+                match (k, t) {
+                    (Kind::Type, TyApp::Ty(t)) => simplify::subst_ty(body, t.clone()),
+                    (Kind::Row, TyApp::Row(row)) => simplify::subst_row(body, row.clone()),
+                    (_, _) => unreachable!("Invalid substitution: {:?} {:?}", k, t),
+                }
+            }
+            IR::TyApp(body, t) => {
+                let body = match t {
+                    TyApp::Ty(ref t) => simplify::subst_ty(*body, t.clone()),
+                    TyApp::Row(ref row) => simplify::subst_row(*body, row.clone()),
+                };
+                if let Some(monomorph) = self.probe_item(&body, vec![t.clone()]) {
+                    dbg!(&monomorph, replacement);
+                    if replacement.apps == monomorph.apps
+                        && replacement.ref_item == monomorph.ref_item
+                    {
+                        match t {
+                            TyApp::Ty(t) => IR::Item(t.clone(), replacement.replacement),
+
+                            TyApp::Row(ref row) => todo!(),
+                        }
+                    } else {
+                        body
+                    }
+                } else {
+                    panic!("mono not found")
+                    // self.instantiate_ir(*body, types)
+                    // let body = self.instantiate_replacements(*body, replacement);
+                    // simplify::subst_ty(body, ty.clone())
+                }
+            }
+            IR::Local(v, d, b) => {
+                // dbg!(&v);
+
+                // let v = v;
+                let defn = self.instantiate_replacements(*d, replacement);
+                // let v = v.map_ty(|t| defn.type_of());
+
+                let body = self.instantiate_replacements(*b, replacement);
+                IR::local(v, defn, body)
+            }
+            IR::App(l, r) => IR::app(
+                self.instantiate_replacements(*l, replacement),
+                self.instantiate_replacements(*r, replacement),
+            ),
+            IR::Fun(v, ir) => IR::Fun(v, Box::new(self.instantiate_replacements(*ir, replacement))),
+            IR::Tuple(v) => IR::Tuple(
+                v.into_iter()
+                    .map(|ir| self.instantiate_replacements(ir, replacement))
+                    .collect(),
+            ),
+            IR::Case(t, ir, b) => {
+                // dbg!(&ty);
+
+                // let t = types
+                // .iter()
+                // .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone()));
+                IR::case(
+                    // t.subst_app(ty.clone()),
+                    t,
+                    self.instantiate_replacements(*ir, replacement),
+                    b.into_iter().map(|b| Branch {
+                        param: b.param, //b.param.map_ty(|t| t.subst_app(ty.clone())),
+                        body: self.instantiate_replacements(b.body, replacement),
+                    }),
+                )
+            }
+            IR::Field(ir, u) => IR::field(self.instantiate_replacements(*ir, replacement), u),
+            IR::Tag(t, u, ir) => IR::tag(t, u, self.instantiate_replacements(*ir, replacement)),
+            // _ => self.instantiate(ir, rest_types),
+            _ => ir,
+        }
     }
 }

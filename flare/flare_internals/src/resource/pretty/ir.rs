@@ -175,12 +175,16 @@ impl Render for IR {
                 .append(Doc::text("become"))
                 .space()
                 .append({
-                    if let Type::Sum(Row::Closed(r)) = t {
+                    if let Type::Sum(Row::Closed(ref r)) = t {
                         r[i].clone().render()
                     } else {
-                        t.render()
+                        panic!("non-row")
                     }
-                }),
+                })
+                .space()
+                .text("in")
+                .space()
+                .render(t),
             Self::Particle(p) => Doc::text(format!("@{p}")),
             Self::Item(_, id) => Doc::text(format!("#{}", id.0)),
             // .append(Doc::space())

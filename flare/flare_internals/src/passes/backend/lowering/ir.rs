@@ -367,7 +367,8 @@ impl IR {
             Self::Local(v, defn, body) => {
                 if v.ty != defn.type_of() {
                     unreachable!(
-                        "Type mismatch local variable has different type from its definition: {} vs {}",
+                        "Type mismatch local variable ${} has different type from its definition:  {} vs {}",
+                        v.id.0,
                         v.ty,
                         defn.type_of()
                     )
@@ -532,6 +533,18 @@ impl IR {
         }
     }
 
+    pub fn who_do_i_call(&self) -> Vec<ItemId> {
+        self.iter()
+            .filter_map(|ir| {
+                if let Self::Item(_, id) = ir {
+                    Some(*id)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     pub fn split_funs(self) -> (Vec<Param>, Self) {
         fn split_funs(ir: IR, params: &mut Vec<Param>) -> IR {
             match ir {
@@ -549,6 +562,76 @@ impl IR {
         let mut params = vec![];
         let body = split_funs(self, &mut params);
         (params, body)
+    }
+
+    pub fn iter<'a>(&'a self) -> IrIterator<'a> {
+        IrIterator { stack: vec![self] }
+    }
+}
+
+// GENERATED: Google AI Overview 😭
+struct IrIterator<'a> {
+    stack: Vec<&'a IR>,
+}
+impl<'a> Iterator for IrIterator<'a> {
+    type Item = &'a IR;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(node) = self.stack.pop() {
+            // Push child nodes onto the stack (e.g., for depth-first traversal)
+            // Note: the order of pushing determines the traversal order
+            match node {
+                IR::Var(_)
+                | IR::Num(_)
+                | IR::Str(_)
+                | IR::Bool(_)
+                | IR::Unit
+                | IR::Particle(_)
+                | IR::Item(_, _)
+                | IR::Extern(_, _) => {
+
+                    // Do nothing
+                }
+                IR::Comment(_, ir)
+                | IR::Fun(_, ir)
+                | IR::TyFun(_, ir)
+                | IR::TyApp(ir, _)
+                | IR::Field(ir, _)
+                | IR::Tag(_, _, ir) => self.stack.push(ir),
+                IR::App(l, r) => {
+                    self.stack.push(r); // push right first so left is processed next (LIFO)
+                    self.stack.push(l);
+                }
+                IR::Local(var, defn, body) => {
+                    self.stack.push(body);
+                    self.stack.push(defn);
+                }
+                IR::If(cond, then, other) => {
+                    self.stack.push(other);
+                    self.stack.push(then);
+                    self.stack.push(cond);
+                }
+                IR::Bin(l, _, r) => {
+                    self.stack.push(r);
+                    self.stack.push(l);
+                }
+
+                IR::Tuple(irs) => {
+                    for ir in irs.iter().rev() {
+                        self.stack.push(ir);
+                    }
+                }
+                IR::Case(_, scrutinee, branches) => {
+                    for branch in branches.iter().rev() {
+                        self.stack.push(&branch.body);
+                    }
+                    self.stack.push(scrutinee)
+                }
+            }
+            Some(node)
+        } else {
+            None // Stack is empty, iteration is complete
+        }
     }
 }
 

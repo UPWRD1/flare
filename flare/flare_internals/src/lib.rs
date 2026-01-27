@@ -272,7 +272,7 @@ impl<const N: usize, T: Target> Context<N, T, Typecheck> {
 
 impl<const N: usize, T: Target> Context<N, T, Lower> {
     pub fn simplify(self) -> CompResult<Context<N, T, Simplify>> {
-        let ir = simplify::simplify(&self.op.ir);
+        let ir = simplify::simplify(self.op.ir);
         Ok(Context {
             op: Simplify { ir },
             filectx: self.filectx,

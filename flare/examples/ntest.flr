@@ -27,32 +27,37 @@ package Main =
 
     # extern display: ?T -> str
 
-    type Wrapper[?X] = {data: ?X}
+    type Wrapper[?X] = {data: ?X, extra: str}
 
     let new_Wrapper t : ?T -> Wrapper[?T] =
-        {data = t}
+        {data = t, extra= "hello"}
 
     let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
         let v = f(w.data) in 
-        {data = v}
+        {data = v, extra= w.extra}
 
     let extract w : Wrapper[?T] -> ?T =
         w.data
 
+
+let id x : ?T -> ?T = x
+
+    let combine x y : ?T -> ?U -> {?T, ?U} =
+        {x, y}
               
-    let main: num =
+    let main: {num,str}=
         # let val =  Some (new_Wrapper "10") in
         # let mapped = map val (fn x => map_wrapper x (fn data => to_num data)) in    
         # let unwrapped = unwrap_or mapped (new_Wrapper 0) in
         # extract unwrapped
         #
-        # let v = new_Wrapper 10 in
+        let v = new_Wrapper 10 in
         # let mapped = map_wrapper v (fn data => data * 2) in
-        # extract v
+        combine (id (extract v)) (id "hi")
 
-        let val = Some ("3") in
-        let mapped = map val (fn x => to_num x) in
-        unwrap_or mapped 0
+        # let val = Some ("3") in
+        # let mapped = map val (fn x => to_num x) in
+        # unwrap_or mapped 0
         
     # let choose l r choice: ?T -> ?U -> bool -> |Left ?T, Right ?U| =
     #     if choice then |Left l| else |Right r|

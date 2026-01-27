@@ -36,31 +36,30 @@ fn track_seen(ir: &[IR]) -> FxHashSet<ItemId> {
 /// DANGER!
 /// currently, this is an invalid transformation because it does not update item indexes afterwards.
 pub fn reduce(mut irs: Vec<IR>) -> Vec<IR> {
-    let mut seen = track_seen(&irs);
-    seen.insert(ItemId(irs.len() as u32));
-    let mut new_counter = 0;
-    let mut map: FxHashMap<ItemId, ItemId> = FxHashMap::default();
-    let len = irs.len() as u32 - 1;
-    let ir: Vec<IR> = irs
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index_counter, ir)| {
-            let id = ItemId(index_counter as u32);
-            let nid = ItemId(new_counter);
-            let retain_item = seen.contains(&id) || id.0 == len;
-            // index_counter += 1;
-            if retain_item {
-                new_counter += 1;
-                map.insert(id, nid);
-                Some(ir)
-            } else {
-                None
-            }
-        })
-        .collect();
-    // dbg!(&map);
-    ir.into_iter().map(|ir| reduce_ir(ir, &map)).collect()
-    // ir
+    irs
+    // let mut seen = track_seen(&irs);
+    // seen.insert(ItemId(irs.len() as u32));
+    // let mut new_counter = 0;
+    // let mut map: FxHashMap<ItemId, ItemId> = FxHashMap::default();
+    // let len = irs.len() as u32 - 1;
+    // let ir: Vec<IR> = irs
+    //     .into_iter()
+    //     .enumerate()
+    //     .filter_map(|(index_counter, ir)| {
+    //         let id = ItemId(index_counter as u32);
+    //         let nid = ItemId(new_counter);
+    //         let retain_item = seen.contains(&id) || id.0 == len;
+    //         // index_counter += 1;
+    //         if retain_item {
+    //             new_counter += 1;
+    //             map.insert(id, nid);
+    //             Some(ir)
+    //         } else {
+    //             None
+    //         }
+    //     })
+    //     .collect();
+    //     ir.into_iter().map(|ir| reduce_ir(ir, &map)).collect()
 }
 
 fn reduce_ir(ir: IR, map: &FxHashMap<ItemId, ItemId>) -> IR {
