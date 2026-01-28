@@ -1,74 +1,71 @@
 item #0: is
-tyfn Type => fn [$0: {?0 * str}] => $0.0
+fn [$0: {unit | {num * str}}, $1: {num * str}] =>
+  match $0:
+    | $8 then $1,
+    | $9 then $9
 end item #0
 
 item #1: is
-extern_to_num
+fn [$0: str] =>
+  {
+    $0,
+    "hello"}
 end item #1
 
 item #2: is
-tyfn Type =>
-  tyfn Type =>
-    fn [$0: {?1 * str}, $1: ?1 -> ?0] =>
-      let $18: ?0 = $1(
-        $0.0)
-      in
-        fn [$19: str] =>
-          {
-            $18,
-            $19}(
-      $0.1)
+fn [$0: num] =>
+  {
+    $0,
+    "hello"}
 end item #2
 
 item #3: is
-tyfn Type =>
-  fn [$0: ?0] =>
-    {
-      $0,
-      "hello"}
+fn [$0: {num * str}, $1: num -> str] =>
+  let $18: str = $1(
+    $0.0)
+  in
+    fn [$19: str] =>
+      {
+        $18,
+        $19}(
+  $0.1)
 end item #3
 
 item #4: is
-tyfn Type => unit become unit in {unit | ?0}
+fn [$0: {str * str}] => $0 become {str * str} in {unit | {str * str}}
 end item #4
 
 item #5: is
-tyfn Type =>
-  tyfn Type =>
-    fn [$0: {unit | ?1}, $1: ?1 -> ?0] =>
-      let $6: unit -> {unit | ?0} = fn [$31: unit] => [?0]::#4
-      in
-        fn [$7: {unit | ?1}] =>
-          match $7:
-            | $8 then [?0]::#4,
-            | $9 then $9 become ?0 in {unit | ?0}(
-      $0)
+unit become unit in {unit | {num * str}}
 end item #5
 
 item #6: is
-tyfn Type =>
-  fn [$0: {unit | ?0}, $1: ?0] =>
-    match $0:
-      | $8 then $1,
-      | $9 then $9
+fn [$0: {unit | {num * str}}, $1: {num * str} -> {str * str}] =>
+  let $6: unit -> {unit | {str * str}} = fn [$31: unit] => #6
+  in
+    fn [$7: {unit | {num * str}}] =>
+      match $7:
+        | $8 then #6,
+        | $9 then $9 become {str * str} in {unit | {str * str}}(
+  $0)
 end item #6
 
 item #7: is
-tyfn Type => fn [$0: ?0] => $0 become ?0 in {unit | ?0}
+fn [$0: {num * str}] => $0.0
 end item #7
 
 item #8: is
-let $0: {unit | {str * str}} = [{str * str}]::#7(
-  [str]::#3(
+let $0: {unit | {str * str}} = #4(
+  #3(
   "10"))
 in
-  let $1: {unit | {num * str}} = [{num * str}]::[{str * str}]::#5(
-    $0, fn [$2: {str * str}] => [num]::[str]::#2($2, fn [$3: str] => #1($3)))
+  let $1: {unit | {num * str}} = #7(
+    $0, fn [$2: {str * str}] => #2($2, fn [$3: str] => #1($3)))
   in
-    let $4: {num * str} = [{num * str}]::#6(
-      $1, [num]::#3(
+    let $4: {num * str} = #5(
+      $1, #3(
       0))
     in
-      [num]::#0(
+      #0(
       $4)
 end item #8

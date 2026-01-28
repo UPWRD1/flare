@@ -583,6 +583,7 @@ impl IR {
 pub struct IrIterator<'a> {
     stack: Vec<&'a IR>,
 }
+
 impl<'a> Iterator for IrIterator<'a> {
     type Item = &'a IR;
 
