@@ -30,10 +30,10 @@ use crate::passes::backend::{
 
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
     // the_ir
-    dbg!(the_ir.last().unwrap().who_do_i_call());
+    // dbg!(the_ir.last().unwrap().who_do_i_call());
 
     let main_id = the_ir.len() as u32 - 1;
-    let mut m = Monomorpher::new(the_ir.clone().into_iter(), main_id);
+    let mut m = Monomorpher::new(the_ir.into_iter(), main_id);
 
     let init_monomorph = Monomorph {
         ref_item: ItemId(main_id),
@@ -63,12 +63,7 @@ struct Monomorph {
 
 impl fmt::Display for Monomorph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "#{}[{}]",
-            self.ref_item.0,
-            self.apps.iter().map(|app| app.to_string()).join(", ")
-        )
+        write!(f, "#{}[{}]", self.ref_item.0, self.apps.iter().join(", "))
     }
 }
 
@@ -86,6 +81,7 @@ struct Monomorpher {
     main_id: u32,
     ref_ir: FxHashMap<ItemId, IR>,
     graph: DiGraph<Monomorph, ()>,
+    graph_cache: FxHashMap<Monomorph, NodeIndex>,
 }
 
 impl Monomorpher {
@@ -125,20 +121,30 @@ impl Monomorpher {
         dbg!(dot);
     }
 
+    fn get_or_insert(&mut self, mono: &Monomorph) -> NodeIndex {
+        if let Some(x) = self.graph_cache.get(mono) {
+            *x
+        } else {
+            let idx = self.graph.add_node(*mono);
+            self.graph_cache.insert(*mono, idx);
+            idx
+        }
+    }
+
     fn solve_monomorph(&mut self, mono: &Monomorph) {
         let ir = self.ref_ir.get(&mono.ref_item).expect("IR should exist");
-        let sub_morphs = self.collect_needed_morphs(ir);
-        let parent_node = self.graph.add_node(*mono);
+        let sub_morphs = self.collect_needed_morphs(ir, mono);
+
+        let parent_node = self.get_or_insert(mono);
+        dbg!(&sub_morphs);
         for sub_morph in sub_morphs {
-            // if self.graph.
-            let sub_morph_node = self.graph.add_node(sub_morph);
+            let sub_morph_node = self.get_or_insert(&sub_morph);
             self.graph.add_edge(parent_node, sub_morph_node, ());
             self.solve_monomorph(&sub_morph);
         }
-        // dbg!(sub_morphs);
     }
 
-    fn collect_needed_morphs(&self, ir: &IR) -> FxHashSet<Monomorph> {
+    fn collect_needed_morphs(&self, ir: &IR, parent_mono: &Monomorph) -> FxHashSet<Monomorph> {
         let mut result = FxHashSet::default();
         let mut iter = ir.iter();
 
@@ -151,7 +157,11 @@ impl Monomorpher {
                 for sub_node in sub_iter.by_ref() {
                     match sub_node {
                         IR::TyApp(_, app) => {
-                            apps.push(app.clone());
+                            let app = match app {
+                                TyApp::Ty(Type::Var(v)) => parent_mono.apps[v.0].clone(),
+                                _ => app.clone(),
+                            };
+                            apps.push(app);
                             iter.next();
                         }
                         IR::Item(_, id) => {
@@ -166,7 +176,6 @@ impl Monomorpher {
                 }
             }
         }
-
         result
     }
 }
