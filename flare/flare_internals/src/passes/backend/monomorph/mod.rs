@@ -130,21 +130,25 @@ impl Monomorpher {
         // dbg!(ir);
         let sub_morphs = self.collect_needed_morphs(ir, mono);
 
-        // let calls: Vec<_> = ir.who_do_i_call();
+        let calls: Vec<_> = ir
+            .who_do_i_call()
+            .into_iter()
+            .filter(|id| !sub_morphs.iter().any(|mono| mono.ref_item == *id))
+            .collect();
         // dbg!(&calls);
         let parent_node = self.get_or_insert(mono);
 
-        // for ref_item in calls.iter().rev() {
-        //     let imaginary_morph = Monomorph {
-        //         ref_item: *ref_item,
-        //         apps: Vec::new().leak(),
-        //     };
+        for ref_item in calls.iter().rev() {
+            let imaginary_morph = Monomorph {
+                ref_item: *ref_item,
+                apps: Vec::new().leak(),
+            };
 
-        //     // dbg!(imaginary_morph);
-        //     let imaginary_morph_node = self.get_or_insert(&imaginary_morph);
-        //     self.graph.add_edge(parent_node, imaginary_morph_node, ());
-        //     self.solve_monomorph(&imaginary_morph);
-        // }
+            // dbg!(imaginary_morph);
+            let imaginary_morph_node = self.get_or_insert(&imaginary_morph);
+            self.graph.add_edge(parent_node, imaginary_morph_node, ());
+            self.solve_monomorph(&imaginary_morph);
+        }
 
         // let sub_morph_node = self.get_or_insert(&Monomorph { ref_item: (), apps: () })
         for sub_morph in sub_morphs {

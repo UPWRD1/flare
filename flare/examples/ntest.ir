@@ -1,16 +1,12 @@
 item #0: is
-unit become unit in {unit | num}
+extern_to_num
 end item #0
 
 item #1: is
-fn [$0:{unit | str}, $1:str -> num] =>
-  let $6:unit -> {unit | num} = fn [$31:unit] => #0
-  in
-    fn [$7:{unit | str}] =>
-      match $7:
-        | $8:unit then #0,
-        | $9:str then $9 become num in {unit | num}(
-  $0)
+fn [$0:{unit | num}, $1:num] =>
+  match $0:
+    | $8:unit then $1,
+    | $9:num then $9
 end item #1
 
 item #2: is
@@ -18,19 +14,27 @@ fn [$0:str] => $0 become str in {unit | str}
 end item #2
 
 item #3: is
-fn [$0:{unit | num}, $1:num] =>
-  match $0:
-    | $8:unit then $1,
-    | $9:num then $9
+unit become unit in {unit | num}
 end item #3
 
 item #4: is
+fn [$0:{unit | str}, $1:str -> num] =>
+  let $6:unit -> {unit | num} = fn [$31:unit] => #3
+  in
+    fn [$7:{unit | str}] =>
+      match $7:
+        | $8:unit then #3,
+        | $9:str then $9 become num in {unit | num}(
+  $0)
+end item #4
+
+item #5: is
 let $0:{unit | str} = #2(
   "3")
 in
-  let $1:{unit | num} = #1(
+  let $1:{unit | num} = #4(
     $0, fn [$2:str] => #0($2))
   in
-    #3(
+    #1(
     $1, 0)
-end item #4
+end item #5
