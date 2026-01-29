@@ -150,7 +150,7 @@ IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
         IR::Item(t, id) => {
             IR::Item(t.subst_ty(payload), id)
         }
-        IR::Comment(_, ir) => todo!(),
+       
         IR::If(ir, t, o) => {
             IR::r#if(subst_ty(*ir, payload.clone()), subst_ty(*t, payload.clone()), subst_ty(*o, payload))
         },
@@ -208,8 +208,7 @@ IR::Item(t, id) => {
             IR::Item(t.subst_row(payload), id)
         }
 
- IR::Comment(_, ir) => todo!(),
-        IR::If(ir, t, o) => {
+         IR::If(ir, t, o) => {
             IR::r#if(subst_row(*ir, payload.clone()), subst_row(*t, payload.clone()), subst_row(*o, payload))
         },
         IR::Bin(ir, bin_op, ir1) => todo!(),
@@ -237,7 +236,7 @@ impl<'i> OccuranceAnalyzer<'i> {
             IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
                 (FxHashSet::default(), Occurrences::default())
             }
-            IR::Comment(_, r) => self.occurrence_analysis(r, seen),
+            // IR::Comment(_, r) => self.occurrence_analysis(r, seen),
             IR::Bin(l, _, r) => {
                 let (mut free, occs) = self.occurrence_analysis(l, seen);
                 let (r_free, r_occs) = self.occurrence_analysis(r, seen);
@@ -440,7 +439,7 @@ impl<'p> Simplifier<'p> {
                 IR::Particle(p) => {
                     break self.rebuild(IR::Particle(p), in_scope, ctx);
                 }
-                IR::Comment(_, r) => *r,
+                // IR::Comment(_, r) => *r,
 
                 IR::Fun(var, body) => {
                     let body =

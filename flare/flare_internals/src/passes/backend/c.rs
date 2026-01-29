@@ -40,7 +40,7 @@ impl Target for C {
     // todo!()
     // }
     fn finish(&self, p: Vec<Self::Partial>) -> Self::Output {
-        p.join("")
+        p.join(" ")
     }
 
     fn generate(&mut self, ir: ClosureConvertOut) -> Self::Partial {

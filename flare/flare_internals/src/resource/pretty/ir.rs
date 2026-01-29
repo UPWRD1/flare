@@ -36,9 +36,7 @@ impl Var {
 
 impl Render for Var {
     fn render(self) -> Doc<'static> {
-        Doc::text(format!("${}:", self.id.0))
-            .append(Doc::space())
-            .append(self.ty.render())
+        Doc::text(format!("${}:", self.id.0)).append(self.ty.render())
     }
 }
 
@@ -71,8 +69,7 @@ impl Render for IR {
                     .group()
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))
             }
-            Self::Comment(s, r) => Doc::text(format!("//{s}")).hard_line().render(*r),
-
+            // Self::Comment(s, r) => Doc::text(format!("//{s}")).hard_line().render(*r),
             Self::App(fun, r) => {
                 let mut v = vec![*r];
                 let fun = fun.collect_app_args(&mut v);
@@ -149,15 +146,16 @@ impl Render for IR {
                     .braces()
                 }
             }
-            Self::Case(_, b, v) => Doc::text("match")
+            Self::Case(_, scrutinee, branches) => Doc::text("match")
                 .space()
-                .append(b.render())
+                .append(scrutinee.render())
                 .text(":")
                 .append(
                     Doc::list(
                         Itertools::intersperse(
-                            v.into_iter()
-                                .map(|x| Doc::hard_line().append(x.render()).nest(INC)),
+                            branches
+                                .into_iter()
+                                .map(|branch| Doc::hard_line().append(branch.render()).nest(INC)),
                             Doc::text(","),
                         )
                         .collect(),
@@ -186,7 +184,7 @@ impl Render for IR {
                 .space()
                 .render(t),
             Self::Particle(p) => Doc::text(format!("@{p}")),
-            Self::Item(_, id) => Doc::text(format!("#{}", id.0)),
+            Self::Item(_t, id) => Doc::text(format!("#{}", id.0)),
             // .append(Doc::space())
             // .append(t.render()),
             Self::Extern(n, _) => Doc::text(format!("extern_{n}")),

@@ -9,14 +9,20 @@ use ordered_float::OrderedFloat;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use tiny_pretty::Doc;
 
-use crate::passes::backend::{
-    lowering::{
-        ir::{self, Param},
-        lower_ast::{ItemSupply, VarSupply},
-    },
-    target::Target,
+use crate::{
+    passes::backend::lowering::ir::ItemId,
+    resource::pretty::{DocExt, Render},
 };
-use crate::resource::pretty::{DocExt, Render};
+use crate::{
+    passes::backend::{
+        lowering::{
+            ir::{self, Param},
+            lower_ast::{ItemSupply, VarSupply},
+        },
+        target::Target,
+    },
+    resource::rep::ast::BinOp,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
@@ -32,22 +38,33 @@ pub enum Type {
 
 impl Render for Type {
     fn render(self) -> Doc<'static> {
+        // dbg!(&self);
         match self {
             Self::Int => Doc::text("i32"),
             Self::Float => Doc::text("f64"),
             Self::String => Doc::text("str"),
             Self::Unit => Doc::text("unit"),
-            Self::Closure(l, r) => l.render().space().text("->").space().render(*r),
-            Self::ClosureEnv(c, params) => c
-                .render()
-                .append(Doc::list(
-                    params
-                        .into_iter()
-                        .map(Render::render)
-                        .intersperse(Doc::text(","))
-                        .collect(),
-                ))
-                .brackets(),
+            Self::Closure(l, r) => l.render().space().text("->").space().render(*r).brackets(),
+            Self::ClosureEnv(c, params) => Doc::text("code:")
+                .space()
+                .hard_line()
+                .render(*c)
+                .nest(2)
+                .hard_line()
+                .text("env:")
+                .space()
+                .hard_line()
+                .append(
+                    Doc::list(
+                        params
+                            .into_iter()
+                            .map(Render::render)
+                            .intersperse(Doc::text(", "))
+                            .collect(),
+                    )
+                    .brackets()
+                    .nest(2),
+                ),
             Self::Array(v) => Doc::list(
                 v.into_iter()
                     .map(Render::render)
@@ -96,17 +113,12 @@ impl Display for LIR {
         )
     }
 }
-impl Target for LIRTarget {
-    type Partial = String;
 
-    type Output = String;
-    type Input = ClosureConvertOut;
-
-    fn generate(&mut self, ir: Self::Input) -> Self::Partial {
+impl LIRTarget {
+    fn render_item(&self, item: Item) -> String {
         format!(
-            "({}) {{{}}}",
-            ir.item
-                .params
+            "({}) {{\n\t{}\n}}\n",
+            item.params
                 .iter()
                 .map(|x| format!(
                     "${}: {}",
@@ -121,20 +133,44 @@ impl Target for LIRTarget {
                 ))
                 .join(","),
             tiny_pretty::print(
-                &ir.item.body.render(),
+                &item.body.render(),
                 &tiny_pretty::PrintOptions {
                     width: 80,
                     ..Default::default()
                 }
-            )
+            ),
         )
+    }
+
+    fn render_closures(&self, closures: BTreeMap<ItemId, Item>) -> String {
+        closures
+            .into_iter()
+            .map(|(i, x)| {
+                let item_body = self.render_item(x);
+                format!("fn {}{item_body}", i.0)
+            })
+            .join("n")
+    }
+}
+
+impl Target for LIRTarget {
+    type Partial = String;
+
+    type Output = String;
+    type Input = ClosureConvertOut;
+
+    fn generate(&mut self, ir: Self::Input) -> Self::Partial {
+        let closures = self.render_closures(ir.closure_items);
+        let main_body = self.render_item(ir.item);
+
+        format!("closures = {closures}\n{main_body}")
     }
 
     fn finish(&self, p: Vec<Self::Partial>) -> Self::Output {
         p.into_iter()
-            .enumerate()
-            .map(|(i, x)| format!("fn{i}{x}"))
-            .collect::<Vec<String>>()
+            // .enumerate()
+            // .map(|(i, x)| format!("{x}"))
+            // .collect::<Vec<String>>()
             .join("\n\n")
     }
     fn ext(&self) -> &str {
@@ -142,7 +178,7 @@ impl Target for LIRTarget {
     }
 
     fn convert(&self, ir: Vec<ir::IR>) -> Vec<Self::Input> {
-        let ir = vec![ir.last().unwrap().clone()];
+        // let ir = ;
         closure_convert(ir)
     }
 }
@@ -162,6 +198,7 @@ pub enum LIR {
     Array(Vec<Self>),
     Index(Box<Self>, usize),
     Item(ir::ItemId),
+    BinOp(Box<Self>, BinOp, Box<Self>),
 }
 
 impl LIR {
@@ -179,6 +216,9 @@ impl LIR {
 
     fn index(v: Self, u: usize) -> Self {
         Self::Index(Box::new(v), u)
+    }
+    fn binop(l: Self, op: BinOp, r: Self) -> Self {
+        Self::BinOp(Box::new(l), op, Box::new(r))
     }
 
     fn free_vars_aux(&self, free: &mut BTreeSet<Var>) {
@@ -204,6 +244,10 @@ impl LIR {
             Self::Access(ir, _) | Self::Index(ir, _) => ir.free_vars_aux(free),
             Self::Array(v) => v.iter().for_each(|ir| ir.free_vars_aux(free)),
             Self::Item(d) => {}
+            Self::BinOp(l, _, r) => {
+                l.free_vars_aux(free);
+                r.free_vars_aux(free);
+            }
         }
     }
 
@@ -238,6 +282,10 @@ impl LIR {
             }
             Self::Access(body, _) | Self::Index(body, _) => body.rename(subst),
             Self::Array(v) => v.iter_mut().for_each(|ir| ir.rename(subst)),
+            Self::BinOp(l, _, r) => {
+                l.rename(subst);
+                r.rename(subst);
+            }
         }
     }
 }
@@ -246,20 +294,24 @@ impl Render for LIR {
     fn render(self) -> Doc<'static> {
         match self {
             Self::Var(var) => Doc::text(format!("${}", var.id.0)),
-            Self::Int(i) => Doc::text(format!("{i}")),
+            Self::Int(i) => Doc::text(format!("{i}i")),
             Self::Str(s) => Doc::text(format!("{s}")),
             Self::Unit => Doc::text("unit".to_string()),
-            Self::Float(f) => Doc::text(format!("{f}")),
+            Self::Float(f) => Doc::text(format!("{f}f")),
             Self::Closure(t, item_id, vars) => Doc::text("closure")
                 .space()
                 .text(format!("#{}", item_id.0))
-                .append(Doc::list(
-                    vars.iter()
-                        .map(|x| Doc::text(format!("${}: ", x.id.0,)).append(x.ty.clone().render()))
-                        .intersperse(Doc::text(", "))
-                        .collect(),
-                ))
-                .brackets(),
+                .append(
+                    Doc::list(
+                        vars.iter()
+                            .map(|x| {
+                                Doc::text(format!("${}: ", x.id.0,)).append(x.ty.clone().render())
+                            })
+                            .intersperse(Doc::text(", "))
+                            .collect(),
+                    )
+                    .brackets(),
+                ),
             Self::Apply(ir, ir1) => ir.render().append(ir1.render().parens()),
             Self::Local(var, d, b) => Doc::text("let")
                 .space()
@@ -271,7 +323,7 @@ impl Render for LIR {
                 .text(";")
                 .hard_line()
                 .render(*b),
-            Self::Access(ir, _) => todo!(),
+            Self::Access(ir, i) => ir.render().text(format!("^{i}")),
             Self::Array(v) => Doc::list(
                 v.into_iter()
                     .map(Render::render)
@@ -281,6 +333,7 @@ impl Render for LIR {
             .braces(),
             Self::Index(ir, u) => ir.render().append(Doc::text(u.to_string()).brackets()),
             Self::Item(id) => Doc::text(format!("#{}", id.0)),
+            Self::BinOp(l, op, r) => l.render().space().text(format!("{op}")).space().render(*r),
         }
     }
 }
@@ -371,10 +424,13 @@ impl ClosureConvert {
                     .map(|v| self.convert(v, env.clone()))
                     .collect(),
             ),
-            ir::IR::Comment(_, c) => self.convert(*c, env),
+
             ir::IR::Tag(t, u, ir) => self.convert(*ir, env),
             ir::IR::Item(t, d) => LIR::Item(d),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
+            ir::IR::Bin(l, op, r) => {
+                LIR::binop(self.convert(*l, env.clone()), op, self.convert(*r, env))
+            }
             _ => todo!("{ir:?}"),
         }
     }

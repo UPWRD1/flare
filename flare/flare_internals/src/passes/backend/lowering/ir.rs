@@ -179,7 +179,7 @@ impl Render for Branch {
     fn render(self) -> Doc<'static> {
         Doc::text("|")
             .append(Doc::space())
-            .append(Doc::text(format!("{}", self.param)))
+            .append(self.param.render())
             .append(Doc::space())
             .append(Doc::text("then"))
             .append(Doc::soft_line())
@@ -229,8 +229,7 @@ pub enum IR {
     Bool(bool),
     #[default]
     Unit,
-    Comment(String, Box<Self>),
-
+    // Comment(String, Box<Self>),
     Particle(Intern<String>),
 
     Fun(Var, Box<Self>),
@@ -335,8 +334,7 @@ impl IR {
             Self::Bool(_) => Type::Bool,
             Self::Unit => Type::Unit,
 
-            Self::Comment(_, r) => r.type_of(),
-
+            // Self::Comment(_, r) => r.type_of(),
             Self::Particle(p) => Type::Particle(*p),
 
             Self::Fun(arg, body) => Type::fun(arg.ty.clone(), body.type_of()),
@@ -376,10 +374,11 @@ impl IR {
             Self::Local(v, defn, body) => {
                 if v.ty != defn.type_of() {
                     unreachable!(
-                        "Type mismatch local variable ${} has different type from its definition:  {} vs {}",
+                        "Type mismatch local variable ${} has different type from its definition:  {} vs {}, \ndefn = \n{}",
                         v.id.0,
                         v.ty,
-                        defn.type_of()
+                        defn.type_of(),
+                        defn
                     )
                 }
                 body.type_of()
@@ -491,8 +490,7 @@ impl IR {
             | Self::Unit
             | Self::Particle(_) => 0,
 
-            Self::Comment(_, r) => r.size(),
-
+            // Self::Comment(_, r) => r.size(),
             Self::Bin(l, _, r) => l.size() + r.size(),
 
             Self::Fun(_, body) => 10 + body.size(),
@@ -603,8 +601,8 @@ impl<'a> Iterator for IrIterator<'a> {
 
                     // Do nothing
                 }
-                IR::Comment(_, ir)
-                | IR::Fun(_, ir)
+                // IR::Comment(_, ir)
+                IR::Fun(_, ir)
                 | IR::TyFun(_, ir)
                 | IR::TyApp(ir, _)
                 | IR::Field(ir, _)

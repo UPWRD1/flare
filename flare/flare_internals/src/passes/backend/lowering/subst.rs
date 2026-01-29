@@ -73,6 +73,28 @@ impl Subst {
             Type::Prod(row) => Type::prod(self.subst_row(row, needle)),
             Type::Sum(row) => Type::sum(self.subst_row(row, needle)),
         }
+        // dbg!(res)
+    }
+
+    pub fn subst_ty_final(self, haystack: Type, needle: usize) -> Type {
+        match haystack {
+            Type::Num | Type::Unit | Type::Str | Type::Bool | Type::Particle(_) => haystack,
+            Type::Var(type_var) => match type_var.0.cmp(&needle) {
+                Ordering::Equal => self.subst_ty_var(),
+                Ordering::Less => Type::Var(type_var),
+                Ordering::Greater => Type::Var(TypeVar(type_var.0 - 1)),
+            },
+            Type::Fun(arg, ret) => Type::fun(
+                self.clone().subst_ty_final(*arg, needle),
+                self.subst_ty_final(*ret, needle),
+            ),
+            Type::TyFun(kind, body) => {
+                self.shifted().subst_ty_final(*body, needle /*+ 1*/)
+            }
+            Type::Prod(row) => Type::prod(self.subst_row(row, needle)),
+            Type::Sum(row) => Type::sum(self.subst_row(row, needle)),
+        }
+        // dbg!(res)
     }
 }
 
@@ -110,8 +132,20 @@ impl Type {
         }
     }
 
+    pub fn subst_app_final(self, payload: TyApp) -> Self {
+        match payload {
+            TyApp::Ty(ty) => self.subst_ty_final(ty),
+
+            TyApp::Row(row) => self.subst_row(row),
+        }
+    }
+
     pub fn subst_ty(self, ty: Self) -> Self {
         Subst::TyPayload(ty).subst_ty(self, 0)
+    }
+
+    pub fn subst_ty_final(self, ty: Self) -> Self {
+        Subst::TyPayload(ty).subst_ty_final(self, 0)
     }
 
     pub fn subst_row(self, row: Row) -> Self {
