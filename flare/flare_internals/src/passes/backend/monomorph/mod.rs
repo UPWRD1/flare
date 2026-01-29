@@ -29,9 +29,6 @@ use crate::passes::backend::{
 // 4. Replace the application chain with the id
 
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
-    // the_ir
-    // dbg!(the_ir.last().unwrap().who_do_i_call());
-
     let main_id = the_ir.len() as u32 - 1;
     let mut m = Monomorpher::new(the_ir.into_iter(), main_id);
 
@@ -45,24 +42,13 @@ pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
         unreachable!("Main was not added to cache");
     };
     m.generate_irs(*main_idx)
-    // printn!("{res}");
-    // todo!()
     // the_ir
-    // let res: Vec<_> = m
-    //     .ref_ir
-    //     .into_iter()
-    //     .sorted_by_key(|(id, _)| *id)
-    //     .map(|(_, ir)| ir)
-    //     .collect();
-    // // the_ir;
-    // res
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 struct Monomorph {
     ref_item: ItemId,
     apps: &'static [TyApp],
-    // output: IR,
 }
 
 impl fmt::Display for Monomorph {
@@ -141,10 +127,26 @@ impl Monomorpher {
 
     fn solve_monomorph(&mut self, mono: &Monomorph) {
         let ir = self.ref_ir.get(&mono.ref_item).expect("IR should exist");
+        // dbg!(ir);
         let sub_morphs = self.collect_needed_morphs(ir, mono);
 
+        // let calls: Vec<_> = ir.who_do_i_call();
+        // dbg!(&calls);
         let parent_node = self.get_or_insert(mono);
-        // dbg!(&sub_morphs);
+
+        // for ref_item in calls.iter().rev() {
+        //     let imaginary_morph = Monomorph {
+        //         ref_item: *ref_item,
+        //         apps: Vec::new().leak(),
+        //     };
+
+        //     // dbg!(imaginary_morph);
+        //     let imaginary_morph_node = self.get_or_insert(&imaginary_morph);
+        //     self.graph.add_edge(parent_node, imaginary_morph_node, ());
+        //     self.solve_monomorph(&imaginary_morph);
+        // }
+
+        // let sub_morph_node = self.get_or_insert(&Monomorph { ref_item: (), apps: () })
         for sub_morph in sub_morphs {
             let sub_morph_node = self.get_or_insert(&sub_morph);
             self.graph.add_edge(parent_node, sub_morph_node, ());
@@ -166,7 +168,9 @@ impl Monomorpher {
                     match sub_node {
                         IR::TyApp(_, app) => {
                             let app = match app {
-                                TyApp::Ty(Type::Var(v)) => parent_mono.apps[v.0].clone(),
+                                TyApp::Ty(Type::Var(v)) => {
+                                    parent_mono.apps.get(v.0).cloned().unwrap_or(app.clone())
+                                }
                                 _ => app.clone(),
                             };
                             apps.push(app);
@@ -189,7 +193,7 @@ impl Monomorpher {
 
     fn generate_irs(&mut self, main_idx: NodeIndex) -> Vec<IR> {
         let mut dfs = DfsPostOrder::new(&self.graph, main_idx);
-        let mut new_irs: Vec<IR> = Vec::with_capacity(self.graph_cache.len());
+        let mut new_irs: Vec<IR> = Vec::with_capacity(self.graph_cache.len() * 2);
         let mut id = 0;
         let mut replacements: Vec<Replacement> = Vec::with_capacity(self.graph_cache.len());
         while let Some(n) = dfs.next(&self.graph) {
@@ -227,23 +231,13 @@ impl Monomorpher {
             .collect()
     }
 
-    fn instantiate_monomorph(&self, ir: IR, replacement: Monomorph) -> IR {
+    fn instantiate_monomorph(&self, ir: IR, morph: Monomorph) -> IR {
         match ir {
-            IR::TyFun(k, body) => {
-                // let [t, rest @ ..] = replacement.apps else {
-                //     unreachable!("Not enough types in replacement")
-                // };
-                // let new_rep = Replacement {
-                //     apps: rest,
-                //     ..replacement
-                // };
-                // let body = simplify::subst_ty(*body, payload);
-                self.instantiate_monomorph(*body, replacement)
-            }
+            IR::TyFun(k, body) => self.instantiate_monomorph(*body, morph),
             IR::TyApp(body, t) => {
                 // dbg!(&t);
                 let t = match t {
-                    TyApp::Ty(Type::Var(v)) => replacement.apps[v.0].clone(),
+                    TyApp::Ty(Type::Var(v)) => morph.apps.get(v.0).cloned().unwrap_or(t.clone()),
                     _ => t,
                 };
                 let body = match t {
@@ -251,81 +245,76 @@ impl Monomorpher {
                     TyApp::Row(ref row) => simplify::subst_row(*body, row.clone()),
                 };
 
-                IR::ty_app(self.instantiate_monomorph(body, replacement), t)
+                IR::ty_app(self.instantiate_monomorph(body, morph), t)
             }
             IR::Local(v, d, b) => {
-                // dbg!(&v);
-
                 let v = v.map_ty(|f| {
-                    replacement
+                    morph
                         .apps
                         .iter()
                         .fold(f, |ty, tyapp| ty.subst_app(tyapp.clone()))
                 });
-                let defn = self.instantiate_monomorph(*d, replacement);
-                // let v = v.map_ty(|t| defn.type_of());
+                let defn = self.instantiate_monomorph(*d, morph);
 
-                let body = self.instantiate_monomorph(*b, replacement);
+                let body = self.instantiate_monomorph(*b, morph);
                 IR::local(v, defn, body)
             }
             IR::App(l, r) => IR::app(
-                self.instantiate_monomorph(*l, replacement),
-                self.instantiate_monomorph(*r, replacement),
+                self.instantiate_monomorph(*l, morph),
+                self.instantiate_monomorph(*r, morph),
             ),
             IR::Fun(v, body) => IR::fun(
                 v.map_ty(|f| {
-                    replacement
+                    morph
                         .apps
                         .iter()
                         .fold(f, |ty, tyapp| ty.subst_app(tyapp.clone()))
                 }),
-                self.instantiate_monomorph(*body, replacement),
+                self.instantiate_monomorph(*body, morph),
             ),
             IR::Tuple(v) => IR::Tuple(
                 v.into_iter()
-                    .map(|ir| self.instantiate_monomorph(ir, replacement))
+                    .map(|ir| self.instantiate_monomorph(ir, morph))
                     .collect(),
             ),
             IR::Case(t, ir, b) => {
-                // dbg!(&ty);
-
-                let t = replacement
+                let t = morph
                     .apps
                     .iter()
                     .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone()));
                 IR::case(
                     t,
-                    self.instantiate_monomorph(*ir, replacement),
+                    self.instantiate_monomorph(*ir, morph),
                     b.into_iter().map(|b| Branch {
                         param: b.param.map_ty(|t| {
-                            replacement
+                            morph
                                 .apps
                                 .iter()
                                 .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone()))
                         }),
-                        body: self.instantiate_monomorph(b.body, replacement),
+                        body: self.instantiate_monomorph(b.body, morph),
                     }),
                 )
             }
-            IR::Field(ir, u) => IR::field(self.instantiate_monomorph(*ir, replacement), u),
+            IR::Field(ir, u) => IR::field(self.instantiate_monomorph(*ir, morph), u),
             IR::Tag(t, u, ir) => IR::tag(
-                replacement
+                morph
                     .apps
                     .iter()
                     .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone())),
                 u,
-                self.instantiate_monomorph(*ir, replacement),
+                self.instantiate_monomorph(*ir, morph),
             ),
             IR::Var(v) => IR::Var(v.map_ty(|t| {
-                replacement
+                morph
                     .apps
                     .iter()
                     .fold(t.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()))
             })),
             IR::Item(ref t, id) => {
-                if id == replacement.ref_item {
+                if id == morph.ref_item {
                     // Recursive item call
-                    let t = replacement
+                    let t = morph
                         .apps
                         .iter()
                         .fold(t.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()));
@@ -333,6 +322,13 @@ impl Monomorpher {
                 } else {
                     ir
                 }
+            }
+            IR::Extern(n, t) => {
+                let t = morph
+                    .apps
+                    .iter()
+                    .fold(t.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()));
+                IR::Extern(n, t)
             }
             // IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => ir,
             _ => ir,
@@ -344,17 +340,7 @@ impl Monomorpher {
 
     fn instantiate_replacement(&self, ir: IR, replacement: Replacement) -> IR {
         match ir {
-            IR::TyFun(k, body) => {
-                // let [t, rest @ ..] = replacement.apps else {
-                //     unreachable!("Not enough types in replacement")
-                // };
-                // let new_rep = Replacement {
-                //     apps: rest,
-                //     ..replacement
-                // };
-                // let body = simplify::subst_ty(*body, payload);
-                self.instantiate_replacement(*body, replacement)
-            }
+            IR::TyFun(k, body) => self.instantiate_replacement(*body, replacement),
             IR::TyApp(ref body, ref t) => {
                 fn probe_item(ir: &IR, mut app_accum: Vec<TyApp>) -> Option<(Monomorph, Type)> {
                     // dbg!(ir);
@@ -380,8 +366,6 @@ impl Monomorpher {
                         .apps
                         .iter()
                         .fold(og_ty.clone(), |ty, tyapp| ty.subst_app_final(tyapp.clone()));
-                    // let new_ty = new_ty.subst_app(replacement.apps.last().unwrap().clone());
-                    // dbg!(&new_ty);
 
                     IR::Item(new_ty, replacement.replacement)
                 } else {
@@ -399,23 +383,20 @@ impl Monomorpher {
                 self.instantiate_replacement(*r, replacement),
             ),
             IR::Fun(v, body) => IR::fun(v, self.instantiate_replacement(*body, replacement)),
+
             IR::Tuple(v) => IR::Tuple(
                 v.into_iter()
                     .map(|ir| self.instantiate_replacement(ir, replacement))
                     .collect(),
             ),
-            IR::Case(t, ir, b) => {
-                // dbg!(&ty);
-
-                IR::case(
-                    t,
-                    self.instantiate_replacement(*ir, replacement),
-                    b.into_iter().map(|b| Branch {
-                        param: b.param,
-                        body: self.instantiate_replacement(b.body, replacement),
-                    }),
-                )
-            }
+            IR::Case(t, ir, b) => IR::case(
+                t,
+                self.instantiate_replacement(*ir, replacement),
+                b.into_iter().map(|b| Branch {
+                    param: b.param,
+                    body: self.instantiate_replacement(b.body, replacement),
+                }),
+            ),
             IR::Field(ir, u) => IR::field(self.instantiate_replacement(*ir, replacement), u),
             IR::Tag(t, u, ir) => IR::tag(t, u, self.instantiate_replacement(*ir, replacement)),
 

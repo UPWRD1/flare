@@ -190,6 +190,7 @@ pub enum LIR {
     Float(OrderedFloat<f64>),
     Closure(Type, ir::ItemId, Vec<Var>),
     Apply(Box<Self>, Box<Self>),
+    BulkApply(Box<Self>, Vec<Self>),
     Local(Var, Box<Self>, Box<Self>),
     Access(Box<Self>, usize),
     Struct(Vec<Self>),
@@ -239,6 +240,10 @@ impl LIR {
             Self::Apply(fun, arg) => {
                 fun.free_vars_aux(free);
                 arg.free_vars_aux(free);
+            }
+            Self::BulkApply(fun, args) => {
+                fun.free_vars_aux(free);
+                args.iter().for_each(|arg| arg.free_vars_aux(free));
             }
             Self::Local(var, defn, body) => {
                 body.free_vars_aux(free);
@@ -292,6 +297,10 @@ impl LIR {
                 fun.rename(subst);
                 arg.rename(subst);
             }
+            Self::BulkApply(fun, args) => {
+                fun.rename(subst);
+                args.iter_mut().for_each(|arg| arg.rename(subst));
+            }
             Self::Local(_, defn, body) => {
                 defn.rename(subst);
                 body.rename(subst);
@@ -332,10 +341,16 @@ impl Render for LIR {
                     )
                     .brackets(),
                 ),
-            Self::Apply(ir, ir1) => Doc::text("apply")
-                .space()
-                .render(*ir)
-                .append(ir1.render().parens()),
+            Self::Apply(ir, ir1) => ir.render().append(ir1.render().parens()),
+            Self::BulkApply(fun, args) => fun.render().append(
+                Doc::list(
+                    args.into_iter()
+                        .map(|arg| arg.render())
+                        .intersperse(Doc::text(","))
+                        .collect(),
+                )
+                .parens(),
+            ),
             Self::Local(var, d, b) => Doc::text("let")
                 .space()
                 .render(var)
@@ -431,6 +446,7 @@ impl ClosureConvert {
             ir::IR::Str(s) => LIR::Str(s),
             ir::IR::Unit => LIR::Unit,
             ir::IR::Var(var) => LIR::Var(env[&var].clone()),
+            ir::IR::Particle(p) => LIR::Str(p),
 
             ir::IR::Local(var, defn, body) => {
                 let defn = self.convert(*defn, env.clone());
@@ -450,9 +466,23 @@ impl ClosureConvert {
                 self.make_closure(var.clone(), *body, env.update(fun_var, var))
             }
             ir::IR::App(fun, arg) => {
-                let closure = self.convert(*fun, env.clone());
-                let arg = self.convert(*arg, env);
-                LIR::apply(closure, arg)
+                if let ir::IR::App(_, _) = *fun {
+                    let mut b = fun;
+                    let arg = self.convert(*arg, env.clone());
+                    let mut args: Vec<_> = vec![arg];
+                    while let ir::IR::App(f, arg) = *b {
+                        args.push(self.convert(*arg, env.clone()));
+                        b = f;
+                    }
+
+                    let closure = self.convert(*b, env.clone());
+
+                    LIR::BulkApply(Box::new(closure), args)
+                } else {
+                    let closure = self.convert(*fun, env.clone());
+                    let arg = self.convert(*arg, env);
+                    LIR::apply(closure, arg)
+                }
             }
 
             ir::IR::TyFun(..) | ir::IR::TyApp(..) => {
@@ -477,6 +507,7 @@ impl ClosureConvert {
                     .map(|b| ir::IR::fun(b.param, b.body))
                     .map(|ir| self.convert(ir, env.clone())),
             ),
+            ir::IR::Extern(n, t) => LIR::Extern(n),
             _ => todo!("{ir:?}"),
         }
     }
@@ -595,6 +626,7 @@ fn lower_ty(ty: &ir::Type) -> Type {
         }
         ir::Type::Prod(r) => Type::Array(lower_row(r)),
         ir::Type::Sum(r) => Type::Union(lower_row(r)),
+        ir::Type::Particle(p) => Type::String,
         _ => todo!("{ty:?}"),
     }
 }

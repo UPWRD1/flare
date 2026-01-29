@@ -6,7 +6,7 @@ env:
 }
 
 fn 1($0: {f64,str},$1: [f64 -> f64]) {
-	apply let $0 = apply $1($0[0]) in closure 0[$0: f64]($0[1])
+	let $0 = $1($0[0]) in closure 0[$0: f64]($0[1])
 }
 ---------------------
 
@@ -24,7 +24,7 @@ env:
 }
 
 fn 4($0: f64) {
-	apply let $4 = apply #1($0) in closure 3[$4: f64](hello)
+	let $4 = #1($0) in closure 3[$4: f64](hello)
 }
 ---------------------
 
@@ -54,5 +54,5 @@ env:
 }
 
 fn 9() {
-	let $8 = apply #2(10i) in let $10 = apply apply #0($8)(closure 8[]) in apply apply #3(apply #1(apply #5($8)))(apply #4(hi))
+	let $8 = #2(10i) in let $10 = #0(closure 8[],$8) in #3(#4(hi),#1(#5($8)))
 }

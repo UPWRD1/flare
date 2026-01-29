@@ -603,7 +603,11 @@ impl<const N: usize> Resolver<N> {
         } else if let Expr::Unlabel(combo, label) = *l.0 {
             self.resolve_name_expr(r)
         } else {
-            todo!("{l:?}")
+            let ex = l.convert(Expr::Project(Direction::Right, l));
+
+            let id = r.ident().expect("Expression should be nameable");
+            l.convert(Expr::Unlabel(ex, Label(id)))
+            // todo!("{l:?}")
         }
     }
 

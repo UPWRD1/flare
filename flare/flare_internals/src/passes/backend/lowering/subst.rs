@@ -69,6 +69,8 @@ impl Subst {
             ),
             Type::TyFun(kind, body) => {
                 Type::ty_fun(kind, self.shifted().subst_ty(*body, needle + 1))
+
+                // Type::ty_fun(kind, self.shifted().subst_ty(*body, needle))
             }
             Type::Prod(row) => Type::prod(self.subst_row(row, needle)),
             Type::Sum(row) => Type::sum(self.subst_row(row, needle)),
@@ -88,9 +90,7 @@ impl Subst {
                 self.clone().subst_ty_final(*arg, needle),
                 self.subst_ty_final(*ret, needle),
             ),
-            Type::TyFun(kind, body) => {
-                self.shifted().subst_ty_final(*body, needle /*+ 1*/)
-            }
+            Type::TyFun(kind, body) => self.shifted().subst_ty_final(*body, needle),
             Type::Prod(row) => Type::prod(self.subst_row(row, needle)),
             Type::Sum(row) => Type::sum(self.subst_row(row, needle)),
         }

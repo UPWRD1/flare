@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use internment::Intern;
 use ordered_float::OrderedFloat;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     passes::backend::target::Target,
@@ -203,8 +204,8 @@ pub enum TyApp {
 impl std::fmt::Display for TyApp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TyApp::Ty(t) => write!(f, "{}", t.to_string()),
-            TyApp::Row(row) => todo!(),
+            Self::Ty(t) => write!(f, "{}", t),
+            Self::Row(row) => todo!(),
         }
     }
 }
@@ -342,7 +343,11 @@ impl IR {
             Self::App(fun, arg) => {
                 if let Type::Fun(fun_arg_ty, ret_ty) = fun.type_of() {
                     if arg.type_of() != *fun_arg_ty {
-                        unreachable!("Function applied to wrong argument type");
+                        unreachable!(
+                            "Function applied to wrong argument type. Expected {}, found {}",
+                            fun_arg_ty,
+                            arg.type_of()
+                        );
                     }
                     *ret_ty
                 } else if let Self::Item(t, id) = &**fun {
@@ -412,7 +417,11 @@ impl IR {
                 };
 
                 if body.type_of() != elems[*tag] {
-                    unreachable!("Tagged value has element with the wrong type")
+                    unreachable!(
+                        "Tagged value has element with the wrong type {} vs {}",
+                        body.type_of(),
+                        elems[*tag]
+                    )
                 }
 
                 ty.clone()
@@ -504,7 +513,7 @@ impl IR {
             Self::If(c, t, o) => c.size().max(t.size().max(o.size())),
             Self::Tuple(v) => v.iter().map(Self::size).sum::<usize>(),
             Self::Case(_, s, b) => s.size() + b.iter().map(|x| x.as_fun().size()).sum::<usize>(),
-            Self::Item(_, _) | Self::Extern(_, _) => 100,
+            Self::Item(_, _) | Self::Extern(_, _) => 0,
             // _ => todo!(),
         }
     }
@@ -676,4 +685,9 @@ impl Display for Type {
             )
         )
     }
+}
+
+struct IRModule {
+    externs: FxHashMap<ItemId, Intern<String>>,
+    items: FxHashMap<ItemId, IR>,
 }

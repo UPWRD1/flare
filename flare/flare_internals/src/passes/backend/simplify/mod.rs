@@ -503,6 +503,9 @@ impl<'p> Simplifier<'p> {
                     *scrutinee
                 }
                 IR::Tag(ty, idx, ir) => {
+
+                    // break self.rebuild(ir, in_scope, ctx)
+                    
                     ctx.push((ContextEntry::Tag(ty, idx), self.subst.clone()));
                     *ir
                 }
@@ -695,13 +698,9 @@ impl<'p> Simplifier<'p> {
                         self.saturated_fun_count += 1;
                         return self.simplify(IR::local(var, arg, *body), in_scope, ctx);
                     } else if let IR::Item(_, ref id) = ir {
-                        // if self. seen_items.contains(id) {
-                            let arg = self.simplify(arg, in_scope.clone(), vec![]);
+                        let arg = self.simplify(arg, in_scope.clone(), vec![]);
                             ir = IR::app(ir, arg);
-                        // } else {
-                            // panic!()
-                        // }
-                                            } else {
+                                                                    } else {
                         // dbg!(&ir, &arg);
                         let arg = self.simplify(arg, in_scope.clone(), vec![]);
                         ir = IR::app(ir, arg);
@@ -710,7 +709,8 @@ impl<'p> Simplifier<'p> {
                 ContextEntry::Field(idx) => {
                     if let IR::Tuple(irs) = ir {
                         self.tuples_inlined += 1;
-                         let field = irs[idx].clone();
+                        let field = irs[idx].clone();
+                        // ir = field;
                         return self.simplify(field, in_scope, ctx);
                     } else{
                         // dbg!(&ir);

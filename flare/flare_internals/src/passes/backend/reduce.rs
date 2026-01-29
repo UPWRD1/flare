@@ -1,5 +1,6 @@
 use chumsky::input::Input;
 use im::HashSet;
+use internment::Intern;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 use crate::passes::backend::lowering::ir::{Branch, IR, ItemId};
@@ -46,9 +47,10 @@ pub fn reduce(mut irs: Vec<IR>) -> Vec<IR> {
         .into_iter()
         .enumerate()
         .filter_map(|(index_counter, ir)| {
+            // dbg!(&ir);
             let id = ItemId(index_counter as u32);
             let nid = ItemId(new_counter);
-            let retain_item = seen.contains(&id) || id.0 == len;
+            let retain_item = seen.contains(&id) || id.0 == len || matches!(ir, IR::Extern(_, _));
             // index_counter += 1;
             if retain_item {
                 new_counter += 1;

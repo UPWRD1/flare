@@ -287,52 +287,9 @@ impl<V: Variable> Spanned<Intern<Expr<V>>> {
     pub fn id(&self) -> SimpleSpan<usize, u64> {
         self.1
     }
-
-    // pub fn parents_of(&self, id: NodeId) -> Option<Vec<Self>> {
-    //     match *self.0 {
-    //         Expr::Ident(_) | Expr::Number(_) | Expr::String(_) | Expr::Unit | Expr::Bool(_) => None,
-    //         Expr::Call(fun, arg) => {
-    //             if id == fun.id() || id == arg.id() {
-    //                 return Some(vec![*self]);
-    //             }
-    //             fun.parents_of(id)
-    //                 .or_else(|| arg.parents_of(id))
-    //                 .map(|mut parents| {
-    //                     parents.push(*self);
-    //                     parents
-    //                 })
-    //         }
-    //         Expr::Lambda(_, body, _) => {
-    //             if id == body.id() {
-    //                 return Some(vec![*self]);
-    //             }
-    //             body.parents_of(id).map(|mut parents| {
-    //                 parents.push(*self);
-    //                 parents
-    //             })
-    //         }
-    //         _ => todo!(),
-    //     }
-    // }
-
-    // pub fn parent_of(&self, id: NodeId) -> Option<Self> {
-    //     // The first element of `parents_of` will be the nearest parent to `id`
-    //     self.parents_of(id)
-    //         .and_then(|parents| parents.into_iter().next())
-    // }
 }
 
 impl<V: Variable> Expr<V> {
-    // #[inline]
-    // pub fn get_ident(&self, span: SimpleSpan<usize, u64>) -> CompResult<Spanned<Intern<String>>> {
-    //     match self {
-    //         Expr<V>::Ident(s) => Ok(*s),
-    //         _ => Err(DynamicErr::new("cannot get ident")
-    //             .label(format!("{self:?}"), span)
-    //             .into()),
-    //     }
-    // }
-
     pub fn get_num(&self, span: SimpleSpan<usize, u64>) -> CompResult<OrderedFloat<f64>> {
         match self {
             Self::Number(n) => Ok(*n),
