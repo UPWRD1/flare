@@ -97,7 +97,7 @@ pub fn subst_ty(haystack: IR, payload: Type) -> IR {
         | IR::Unit
         | IR::Particle(_)
         // c IR::Tuple(_)
-        | IR::Extern(_, _) => haystack,
+         => haystack,
         IR::Fun(var, ir) => IR::fun(
             var.map_ty(|ty| ty.subst_ty(payload.clone())),
             subst_ty(*ir, payload),
@@ -149,6 +149,9 @@ IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
                     }
         IR::Item(t, id) => {
             IR::Item(t.subst_ty(payload), id)
+        },
+        IR::Extern(n, t) => {
+            IR::Extern(n, t.subst_ty(payload))
         }
        
         IR::If(ir, t, o) => {

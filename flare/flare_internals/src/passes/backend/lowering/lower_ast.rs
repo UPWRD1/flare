@@ -43,7 +43,7 @@ impl<K: Eq + std::hash::Hash> VarSupply<K> {
 
 #[derive(Default)]
 pub struct ItemSupply {
-    next: u32,
+    pub next: u32,
     cache: FxHashMap<ast::ItemId, ItemId>,
 }
 

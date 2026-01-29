@@ -117,7 +117,8 @@ impl Display for LIR {
 impl LIRTarget {
     fn render_item(&self, item: Item) -> String {
         format!(
-            "({}) {{\n\t{}\n}}\n",
+            "fn {}({}) {{\n\t{}\n}}\n",
+            item.id.0,
             item.params
                 .iter()
                 .map(|x| format!(
@@ -145,11 +146,8 @@ impl LIRTarget {
     fn render_closures(&self, closures: BTreeMap<ItemId, Item>) -> String {
         closures
             .into_iter()
-            .map(|(i, x)| {
-                let item_body = self.render_item(x);
-                format!("fn {}{item_body}", i.0)
-            })
-            .join("n")
+            .map(|(i, x)| self.render_item(x))
+            .join("\n")
     }
 }
 
@@ -171,14 +169,13 @@ impl Target for LIRTarget {
             // .enumerate()
             // .map(|(i, x)| format!("{x}"))
             // .collect::<Vec<String>>()
-            .join("\n\n")
+            .join("---------------------\n\n")
     }
     fn ext(&self) -> &str {
         "lir"
     }
 
     fn convert(&self, ir: Vec<ir::IR>) -> Vec<Self::Input> {
-        // let ir = ;
         closure_convert(ir)
     }
 }
@@ -195,9 +192,11 @@ pub enum LIR {
     Apply(Box<Self>, Box<Self>),
     Local(Var, Box<Self>, Box<Self>),
     Access(Box<Self>, usize),
-    Array(Vec<Self>),
-    Index(Box<Self>, usize),
+    Struct(Vec<Self>),
+    Field(Box<Self>, usize),
+    Case(Box<Self>, Vec<Self>),
     Item(ir::ItemId),
+    Extern(Intern<String>),
     BinOp(Box<Self>, BinOp, Box<Self>),
 }
 
@@ -215,10 +214,15 @@ impl LIR {
     }
 
     fn index(v: Self, u: usize) -> Self {
-        Self::Index(Box::new(v), u)
+        Self::Field(Box::new(v), u)
     }
+
     fn binop(l: Self, op: BinOp, r: Self) -> Self {
         Self::BinOp(Box::new(l), op, Box::new(r))
+    }
+
+    fn case(scrutinee: Self, branches: impl IntoIterator<Item = Self>) -> Self {
+        Self::Case(Box::new(scrutinee), branches.into_iter().collect())
     }
 
     fn free_vars_aux(&self, free: &mut BTreeSet<Var>) {
@@ -241,12 +245,19 @@ impl LIR {
                 defn.free_vars_aux(free);
                 free.remove(var);
             }
-            Self::Access(ir, _) | Self::Index(ir, _) => ir.free_vars_aux(free),
-            Self::Array(v) => v.iter().for_each(|ir| ir.free_vars_aux(free)),
-            Self::Item(d) => {}
+            Self::Access(ir, _) | Self::Field(ir, _) => ir.free_vars_aux(free),
+            Self::Struct(v) => v.iter().for_each(|ir| ir.free_vars_aux(free)),
+            Self::Item(_) | Self::Extern(_) => {}
+
             Self::BinOp(l, _, r) => {
                 l.free_vars_aux(free);
                 r.free_vars_aux(free);
+            }
+            Self::Case(scrutinee, branches) => {
+                scrutinee.free_vars_aux(free);
+                branches
+                    .iter()
+                    .for_each(|branch| branch.free_vars_aux(free));
             }
         }
     }
@@ -264,7 +275,12 @@ impl LIR {
                     *var = new_var.clone();
                 }
             }
-            Self::Int(_) | Self::Float(_) | Self::Unit | Self::Str(_) | Self::Item(_) => {}
+            Self::Int(_)
+            | Self::Float(_)
+            | Self::Unit
+            | Self::Str(_)
+            | Self::Item(_)
+            | Self::Extern(_) => {}
             Self::Closure(_, _, vars) => {
                 for var in vars.iter_mut() {
                     if let Some(new_var) = subst.get(var) {
@@ -280,11 +296,15 @@ impl LIR {
                 defn.rename(subst);
                 body.rename(subst);
             }
-            Self::Access(body, _) | Self::Index(body, _) => body.rename(subst),
-            Self::Array(v) => v.iter_mut().for_each(|ir| ir.rename(subst)),
+            Self::Access(body, _) | Self::Field(body, _) => body.rename(subst),
+            Self::Struct(v) => v.iter_mut().for_each(|ir| ir.rename(subst)),
             Self::BinOp(l, _, r) => {
                 l.rename(subst);
                 r.rename(subst);
+            }
+            Self::Case(scrutinee, branches) => {
+                scrutinee.rename(subst);
+                branches.iter_mut().for_each(|branch| branch.rename(subst));
             }
         }
     }
@@ -300,7 +320,7 @@ impl Render for LIR {
             Self::Float(f) => Doc::text(format!("{f}f")),
             Self::Closure(t, item_id, vars) => Doc::text("closure")
                 .space()
-                .text(format!("#{}", item_id.0))
+                .text(format!("{}", item_id.0))
                 .append(
                     Doc::list(
                         vars.iter()
@@ -312,7 +332,10 @@ impl Render for LIR {
                     )
                     .brackets(),
                 ),
-            Self::Apply(ir, ir1) => ir.render().append(ir1.render().parens()),
+            Self::Apply(ir, ir1) => Doc::text("apply")
+                .space()
+                .render(*ir)
+                .append(ir1.render().parens()),
             Self::Local(var, d, b) => Doc::text("let")
                 .space()
                 .render(var)
@@ -320,31 +343,46 @@ impl Render for LIR {
                 .text("=")
                 .space()
                 .render(*d)
-                .text(";")
-                .hard_line()
+                .space()
+                .text("in")
+                .space()
+                // .hard_line()
                 .render(*b),
             Self::Access(ir, i) => ir.render().text(format!("^{i}")),
-            Self::Array(v) => Doc::list(
+            Self::Struct(v) => Doc::list(
                 v.into_iter()
                     .map(Render::render)
                     .intersperse(Doc::text(","))
                     .collect(),
             )
             .braces(),
-            Self::Index(ir, u) => ir.render().append(Doc::text(u.to_string()).brackets()),
+            Self::Field(ir, u) => ir.render().append(Doc::text(u.to_string()).brackets()),
             Self::Item(id) => Doc::text(format!("#{}", id.0)),
+            Self::Extern(n) => Doc::text(format!("extern_{}", n)),
             Self::BinOp(l, op, r) => l.render().space().text(format!("{op}")).space().render(*r),
+            Self::Case(scrutinee, branches) => Doc::text("case").space().render(*scrutinee).append(
+                Doc::list(
+                    branches
+                        .into_iter()
+                        .map(Render::render)
+                        .intersperse(Doc::text(","))
+                        .collect(),
+                )
+                .nest(2)
+                .braces(),
+            ),
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Item {
+    pub id: ItemId,
     pub params: Vec<Var>,
     pub ret_ty: Type,
     pub body: LIR,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ClosureConvertOut {
     pub item: Item,
     pub closure_items: BTreeMap<ir::ItemId, Item>,
@@ -391,6 +429,7 @@ impl ClosureConvert {
                 }
             }
             ir::IR::Str(s) => LIR::Str(s),
+            ir::IR::Unit => LIR::Unit,
             ir::IR::Var(var) => LIR::Var(env[&var].clone()),
 
             ir::IR::Local(var, defn, body) => {
@@ -419,7 +458,7 @@ impl ClosureConvert {
             ir::IR::TyFun(..) | ir::IR::TyApp(..) => {
                 unreachable!("Generics appeared after monomorphization: {ir}")
             }
-            ir::IR::Tuple(v) => LIR::Array(
+            ir::IR::Tuple(v) => LIR::Struct(
                 v.into_iter()
                     .map(|v| self.convert(v, env.clone()))
                     .collect(),
@@ -431,6 +470,13 @@ impl ClosureConvert {
             ir::IR::Bin(l, op, r) => {
                 LIR::binop(self.convert(*l, env.clone()), op, self.convert(*r, env))
             }
+            ir::IR::Case(_, scrutinee, branches) => LIR::case(
+                self.convert(*scrutinee, env.clone()),
+                branches
+                    .into_iter()
+                    .map(|b| ir::IR::fun(b.param, b.body))
+                    .map(|ir| self.convert(ir, env.clone())),
+            ),
             _ => todo!("{ir:?}"),
         }
     }
@@ -480,6 +526,7 @@ impl ClosureConvert {
         self.items.insert(
             item,
             Item {
+                id: item,
                 params,
                 ret_ty: ret,
                 body,
@@ -490,10 +537,19 @@ impl ClosureConvert {
 }
 
 pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
-    ir.into_iter().map(convert).collect()
+    let mut var_supply = VarSupply::default();
+    // let mut env = im::HashMap::with_hasher(FxBuildHasher);
+    let mut converter = ClosureConvert {
+        var_supply,
+        item_supply: ItemSupply::default(),
+        items: BTreeMap::default(),
+    };
+    ir.into_iter()
+        .map(|ir| convert(ir, &mut converter))
+        .collect()
 }
 
-fn convert(ir: ir::IR) -> ClosureConvertOut {
+fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
     let (params, ir) = ir.split_funs();
     let mut var_supply = VarSupply::default();
     let mut env = im::HashMap::with_hasher(FxBuildHasher);
@@ -515,20 +571,16 @@ fn convert(ir: ir::IR) -> ClosureConvertOut {
         .collect();
     let ret_ty = lower_ty(&ir.type_of());
 
-    let mut conversion = ClosureConvert {
-        var_supply,
-        item_supply: ItemSupply::default(),
-        items: BTreeMap::default(),
-    };
-
     let body = conversion.convert(ir, env);
+    let id = conversion.item_supply.supply();
     ClosureConvertOut {
         item: Item {
+            id,
             params,
             ret_ty,
             body,
         },
-        closure_items: conversion.items,
+        closure_items: std::mem::take(&mut conversion.items),
     }
 }
 
