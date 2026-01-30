@@ -522,8 +522,8 @@ impl IR {
     pub fn is_trivial(&self) -> bool {
         matches!(
             self,
-            // Self::Var(_) |
-            Self::Num(_) | Self::Str(_) | Self::Unit | Self::Bool(_) | Self::Particle(_)
+            // Self::Var(_)
+            |Self::Num(_)| Self::Str(_) | Self::Unit | Self::Bool(_) | Self::Particle(_)
         )
     }
     pub fn is_value(&self) -> bool {

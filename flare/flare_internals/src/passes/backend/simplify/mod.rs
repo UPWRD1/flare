@@ -20,6 +20,8 @@ enum Occurrence {
     Once,
     /// Appears once inside a function
     OnceInFun,
+    /// Appears once inside a branch
+    OnceInBranch,
     /// Appears many times
     Many,
 }
@@ -61,7 +63,26 @@ impl Occurrences {
                     (
                         id,
                         match occ {
-                            Occurrence::Once if free.contains(&id) => Occurrence::OnceInFun,
+                            Occurrence::Once if free.contains(&id) =>  Occurrence::OnceInFun,
+                            occ => occ,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    
+fn in_branch(self, free: &FxHashSet<VarId>) -> Self {
+        Self {
+            vars: self
+                .vars
+                .into_iter()
+                .map(|(id, occ)| {
+                    (
+                        id,
+                        match occ {
+                            Occurrence::Once if free.contains(&id) =>  Occurrence::OnceInBranch,
                             occ => occ,
                         },
                     )
@@ -78,8 +99,9 @@ impl Occurrences {
                 .and_modify(|self_occ| {
                     *self_occ = match (*self_occ, occ) {
                         (Occurrence::Dead, occ) | (occ, Occurrence::Dead) => occ,
-                        (Occurrence::Many | Occurrence::Once | Occurrence::OnceInFun, _) |
-(_, Occurrence::Many) | (Occurrence::Once, Occurrence::Once) => Occurrence::Many,
+//                         (Occurrence::Many | Occurrence::Once | Occurrence::OnceInFun  |  Occurrence::OnceInBranch, _) |
+// (_, Occurrence::Many) | (Occurrence::Once, Occurrence::Once) => Occurrence::Many,
+(_, _) => Occurrence::Many,
                     };
                 })
                 .or_insert(occ);
@@ -219,14 +241,15 @@ IR::Item(t, id) => {
 }
 struct OccuranceAnalyzer<'i> {
     items: &'i [IR],
+    in_branch: bool,
 }
 impl<'i> OccuranceAnalyzer<'i> {
     pub fn new(items: &'i [IR]) -> Self {
-        Self { items }
+        Self { items, in_branch: false }
     }
 
     fn occurrence_analysis(
-        &self,
+        &mut self,
         ir: &IR,
         seen: &im::HashSet<ItemId, FxBuildHasher>,
     ) -> (FxHashSet<VarId>, Occurrences) {
@@ -301,6 +324,7 @@ impl<'i> OccuranceAnalyzer<'i> {
             IR::Case(_, scrutinee, branches) => {
                 let (mut scrutinee_free, mut scrutinee_occs) =
                     self.occurrence_analysis(scrutinee, seen);
+                self.in_branch = true;
                 for branch in branches {
                     let (mut branch_free, mut branch_occs) =
                         self.occurrence_analysis(&branch.body, seen);
@@ -310,9 +334,12 @@ impl<'i> OccuranceAnalyzer<'i> {
                         .vars
                         .entry(branch.param.id)
                         .or_insert(Occurrence::Dead);
+
+                    branch_occs = branch_occs.in_fun(&branch_free);
                     scrutinee_free.extend(branch_free);
                     scrutinee_occs = scrutinee_occs.merge(branch_occs);
                 }
+                self.in_branch = false;
                 (scrutinee_free, scrutinee_occs)
             }
 
@@ -377,15 +404,15 @@ struct Simplifier<'p> {
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
 let ref_ir = the_ir.clone();
-let occ_a = OccuranceAnalyzer::new(&ref_ir);
+let mut occ_a = OccuranceAnalyzer::new(&ref_ir);
 let mut simplifier = Simplifier::new(& ref_ir);
     the_ir
                 .into_iter()
         .map(|ir| {
             let mut ir = ir;
-            for _ in 0..4 {
+            for _ in 0..2 {
             let (_, occs) =
-                    occ_a.occurrence_analysis(&ir, &im::HashSet::with_hasher(FxBuildHasher));
+                occ_a.occurrence_analysis(&ir, &im::HashSet::with_hasher(FxBuildHasher));
                 simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
@@ -494,7 +521,7 @@ impl<'p> Simplifier<'p> {
                     }
                     let branches: Vec<Branch> = branches
                         .into_iter()
-                        .map(|b| self.simplify_branch(b, &in_scope, Vec::new()))
+                        .map(|b| self.simplify_branch(b, &in_scope))
                         .collect();
 
                     ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
@@ -521,18 +548,22 @@ impl<'p> Simplifier<'p> {
         }
     }
 
-    fn simplify_branch(&mut self, b: Branch, in_scope: &InScope, ctx: SimplifierContext) -> Branch {
+    fn simplify_branch(&mut self, b: Branch, in_scope: &InScope) -> Branch {
         Branch {
             body: self.simplify(
                 b.body,
                 in_scope.update(b.param.id, Definition::Unknown),
-                ctx,
+                Vec::new(),
             ),
             ..b
         }
     }
 
     fn simplify_local(&mut self, var: Var, defn: IR, body: IR, ctx: &mut SimplifierContext) -> IR {
+        if let IR::Var(ref v) = defn && *v == var {
+            return body
+            
+        }
         match self.occs.lookup_var(&var) {
             Occurrence::Dead => {
                 self.locals_inlined += 1;
@@ -644,10 +675,11 @@ impl<'p> Simplifier<'p> {
                 "Encountered dead or single-use variable while determining inline viablility. This should have been handled prior.",
             ),
             Occurrence::OnceInFun => ir.is_value() && self.some_benefit(ir, in_scope, ctx),
+            Occurrence::OnceInBranch |
             Occurrence::Many => {
                 // dbg!(&ir);
                 // dbg!(ir.size());
-                let small_enough = ir.size() <= self.inline_size_threshold * 3;
+                let small_enough = ir.size() <= self.inline_size_threshold * 3  ;
                 ir.is_value() && small_enough && self.some_benefit(ir, in_scope, ctx)
             }
         }
@@ -713,20 +745,27 @@ impl<'p> Simplifier<'p> {
                      }
                 }
                 ContextEntry::Tag(ty, idx) => ir = IR::tag(ty, idx, ir),
-                ContextEntry::Case(ty, b) => ir = IR::case(ty, ir, b),
+                ContextEntry::Case(ty, b) => {
+                    if let IR::Tag(ty, idx, body) = ir {
+                        let correct_branch = b[idx].clone();
+                        let branch_as_fn = correct_branch.as_fun();
+                        ir = IR::app(branch_as_fn, *body);
+                    } else {
+                        ir = IR::case(ty, ir, b)
+                    }
+                },
                 ContextEntry::TyApp(ty_app) => {
                     ir = if let IR::TyFun(_, body) = ir {
                         // dbg!(&body);
-                         
- self.saturated_ty_fun_count += 1;
-match ty_app {
-              TyApp::Ty(ty) => subst_ty(*body, ty),
-              TyApp::Row(row) => subst_row(*body, row),
-            }                                               
-                    } else {
-                        IR::ty_app(ir, ty_app)
+                            self.saturated_ty_fun_count += 1;
+                            match ty_app {
+                                TyApp::Ty(ty) => subst_ty(*body, ty),
+                                TyApp::Row(row) => subst_row(*body, row),
+                            }                                               
+                        } else {
+                            IR::ty_app(ir, ty_app)
+                        }
                     }
-                }
                 ContextEntry::TyFun(kind) => {
                     ir = IR::ty_fun(kind, ir);
                 }

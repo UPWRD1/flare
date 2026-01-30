@@ -10,11 +10,7 @@ item #2: is
 fn [$0:{unit | num}, $1:num] =>
   match $0:
     | $8:unit then $1,
-    | $9:num then let $16:num = $9
-      in
-        let $16:num = $16
-        in
-          $16
+    | $9:num then $9
 end item #2
 
 item #3: is
@@ -23,29 +19,32 @@ end item #3
 
 item #4: is
 fn [$0:{unit | str}, $1:str -> num] =>
-  let $6:unit -> {unit | num} = fn [$31:unit] => #3
+  [let $5:str -> {unit | num} = fn [$16:str] =>
+      let $16:num = [$1](
+        $16)
+      in
+        $16 become num in {unit | num}
   in
-    fn [$7:{unit | str}] =>
+    fn [$6:unit -> {unit | num}, $7:{unit | str}] =>
       match $7:
-        | $8:unit then #3,
+        | $8:unit then [$6](
+          $8),
         | $9:str then let $16:str = $9
           in
-            let $16:str = $16
+            let $16:num = [$1](
+              $16)
             in
-              let $16:num = $1(
-                $16)
-              in
-                $16 become num in {unit | num}(
-  $0)
+              $16 become num in {unit | num}](
+  fn [$31:unit] => #3, $0)
 end item #4
 
 item #5: is
-let $0:{unit | str} = #1(
+let $0:{unit | str} = [#1](
   "10")
 in
-  let $1:{unit | num} = #4(
-    $0, fn [$2:str] => #0($2))
+  let $1:{unit | num} = [#4](
+    $0, fn [$2:str] => [#0]($2))
   in
-    #2(
+    [#2](
     $1, 8005882300)
 end item #5

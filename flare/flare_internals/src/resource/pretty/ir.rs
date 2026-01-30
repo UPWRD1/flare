@@ -74,7 +74,7 @@ impl Render for IR {
                 let mut v = vec![*r];
                 let fun = fun.collect_app_args(&mut v);
 
-                fun.render().append(
+                fun.render().brackets().append(
                     Doc::line_or_nil()
                         .append(Doc::list(
                             Itertools::intersperse(
