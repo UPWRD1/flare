@@ -480,7 +480,7 @@ impl<'p> Simplifier<'p> {
                 IR::Tuple(elements) => {
                     let new_elements = elements
                         .into_iter()
-                        .map(|elem| self.simplify(elem, in_scope.clone(), vec![]))
+                        .map(|elem| self.simplify(elem, in_scope.clone(), Vec::new()))
                         .collect();
                     break self.rebuild(IR::Tuple(new_elements), in_scope, ctx);
                 }
@@ -494,7 +494,7 @@ impl<'p> Simplifier<'p> {
                     }
                     let branches: Vec<Branch> = branches
                         .into_iter()
-                        .map(|b| self.simplify_branch(b, &in_scope, vec![]))
+                        .map(|b| self.simplify_branch(b, &in_scope, Vec::new()))
                         .collect();
 
                     ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
@@ -693,21 +693,22 @@ impl<'p> Simplifier<'p> {
                         self.saturated_fun_count += 1;
                         return self.simplify(IR::local(var, arg, *body), in_scope, ctx);
                     } else if let IR::Item(_, ref id) = ir {
-                        let arg = self.simplify(arg, in_scope.clone(), vec![]);
+                        let arg = self.simplify(arg, in_scope.clone(), Vec::new());
                             ir = IR::app(ir, arg);
                                                                     } else {
                         // dbg!(&ir, &arg);
-                        let arg = self.simplify(arg, in_scope.clone(), vec![]);
+                        let arg = self.simplify(arg, in_scope.clone(), Vec::new());
                         ir = IR::app(ir, arg);
                     }
                 }
                 ContextEntry::Field(idx) => {
                     if let IR::Tuple(ref irs) = ir {
                         self.tuples_inlined += 1;
+
                         let field = irs[idx].clone();
                         return self.simplify(field, in_scope, ctx);
                     } else{
-                        let obj = self.simplify(ir, in_scope.clone(), vec![]);
+                        let obj = self.simplify(ir, in_scope.clone(), Vec::new());
                         ir = IR::field(obj, idx);
                      }
                 }
@@ -780,7 +781,7 @@ match ty_app {
                         },
                         // _ => panic!("Invalid binop: {} {} {}", l, op, r)
                         (l, r) => {
-                             let r = self.simplify(r, in_scope, vec![]);
+                             let r = self.simplify(r, in_scope, Vec::new());
                              IR::bin(l, op, r)
                         }
                     }    }

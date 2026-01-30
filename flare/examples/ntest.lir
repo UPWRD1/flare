@@ -5,66 +5,66 @@ fn 0() {
 ---------------------
 
 closures = 
-fn 1() {
-	unit
-}
----------------------
-
-closures = fn 2($1: code: 
-  [unit -> {unit|f64}]
-env: 
-[],$0: unit) {
-	#1
-}
-
-fn 3($5: code: 
-  [unit -> {unit|f64}]
-env: 
-[],$4: unit) {
-	#1
-}
-
-fn 4($8: code: 
-  [str -> {unit|f64}]
-env: 
-[[str -> f64]],$6: str) {
-	let $9 = $8^1 in let $7 = $6 in let $7 = $7 in let $7 = $9($7) in $7
-}
-
-fn 5($10: code: 
-  [{unit|str} -> {unit|f64}]
-env: 
-[[str -> f64]],$3: {unit|str}) {
-	let $11 = $10^1 in case $3{closure 3[],closure 4[$11: [str -> f64]]}
-}
-
-fn 6($0: {unit|str},$1: [str -> f64]) {
-	let $2 = closure 2[] in closure 5[$1: [str -> f64]]($0)
-}
----------------------
-
-closures = 
-fn 7($0: str) {
+fn 1($0: str) {
 	$0
 }
 ---------------------
 
-closures = fn 8($12: code: 
+closures = fn 2($1: code: 
   [unit -> f64]
 env: 
-[f64],$4: unit) {
-	let $13 = $12^1 in $13
+[f64],$0: unit) {
+	let $2 = $1^1 in $2
 }
 
-fn 9($14: code: 
+fn 3($5: code: 
   [f64 -> f64]
 env: 
-[],$6: f64) {
-	let $7 = $6 in let $7 = $7 in $7
+[],$3: f64) {
+	let $4 = $3 in let $4 = $4 in $4
 }
 
-fn 10($0: {unit|f64},$1: f64) {
-	case $0{closure 8[$1: f64],closure 9[]}
+fn 4($0: {unit|f64},$1: f64) {
+	case $0{closure 2[$1: f64],closure 3[]}
+}
+---------------------
+
+closures = 
+fn 5() {
+	unit
+}
+---------------------
+
+closures = fn 6($7: code: 
+  [unit -> {unit|f64}]
+env: 
+[],$6: unit) {
+	#3
+}
+
+fn 7($10: code: 
+  [unit -> {unit|f64}]
+env: 
+[],$0: unit) {
+	#3
+}
+
+fn 8($11: code: 
+  [str -> {unit|f64}]
+env: 
+[[str -> f64]],$3: str) {
+	let $12 = $11^1 in let $4 = $3 in let $4 = $4 in let $4 = $12($4) in $4
+}
+
+fn 9($13: code: 
+  [{unit|str} -> {unit|f64}]
+env: 
+[[str -> f64]],$9: {unit|str}) {
+	let $14 = $13^1 in case $9{closure 7[],closure 8[$14: [str -> f64]]}
+}
+
+fn 10($0: {unit|str},$1: [str -> f64]) {
+	let $8 = closure 6[] in closure 9[$1: [str -> f64]]($0)
 }
 ---------------------
 
@@ -76,5 +76,5 @@ env:
 }
 
 fn 12() {
-	let $15 = #3(10) in let $18 = #2(closure 11[],$15) in #4(2147483647i,$18)
+	let $15 = #1(10) in let $18 = #4(closure 11[],$15) in #2(2147483647i,$18)
 }
