@@ -65,30 +65,33 @@ use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
     passes::{
-        //backend::{flatten::Flattener, gen::Generator},
-        backend::{
-            lowering::{Lowerer, ir::IR},
-            monomorph, reduce, simplify,
-            target::{Generator, Target},
-        },
-        midend::{
+        frontend::{
             environment::Environment,
+            parser,
             resolution::Resolver,
             typechecker::Typechecker,
             typing::{ItemSource, Type, TypesOutput},
         },
-        parser,
+        //backend::{flatten::Flattener, gen::Generator},
+        midend::{
+            lowering::Lowerer,
+            monomorph, reduce, simplify,
+           },backend::target   ::{Generator, Target},
+        
     },
     resource::{
         errors::{CompResult, CompilerErr},
         rep::{
-            ast::{
-                ItemId,
-                Package,
-                Program,
-                Untyped, // Untyped
+            frontend::{
+                ast::{
+                    ItemId,
+                    Package,
+                    Program,
+                    Untyped, // Untyped
+                },
+                files::{FileID, FileSource},
             },
-            files::{FileID, FileSource},
+            midend::ir::IR,
         },
     },
 };

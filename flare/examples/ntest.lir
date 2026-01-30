@@ -4,85 +4,115 @@ fn 0() {
 }
 ---------------------
 
-closures = fn 1($1: code: 
-  [unit -> f64]
+closures = 
+fn 1($0: str) {
+	$0
+}
+---------------------
+
+closures = fn 2($2: code: 
+  [str -> {str,str}]
 env: 
-[f64],$0: unit) {
-	let $2 = $1^1 in $2
+[str],$1: str) {
+	let $3 = $2^1 in {$3,$1}
 }
 
-fn 2($4: code: 
-  [f64 -> f64]
-env: 
-[],$3: f64) {
-	$3
-}
-
-fn 3($0: {unit|f64},$1: f64) {
-	case $0{closure 1[$1: f64],closure 2[]}
+fn 3($0: str) {
+	let $0 = #1($0) in closure 2[$0: str](hello)
 }
 ---------------------
 
 closures = 
-fn 4() {
+fn 4($0: f64) {
+	$0
+}
+---------------------
+
+closures = fn 5($4: code: 
+  [str -> {f64,str}]
+env: 
+[f64],$1: str) {
+	let $5 = $4^1 in {$5,$1}
+}
+
+fn 6($0: f64) {
+	let $0 = #3($0) in closure 5[$0: f64](hello)
+}
+---------------------
+
+closures = 
+fn 7($0: {str,str}) {
+	$0
+}
+---------------------
+
+closures = 
+fn 8() {
 	unit
 }
 ---------------------
 
-closures = fn 5($6: code: 
-  [unit -> {unit|f64}]
+closures = fn 9($7: code: 
+  [unit -> {unit|{f64,str}}]
 env: 
-[],$5: unit) {
-	#2
+[],$6: unit) {
+	#6
 }
 
-fn 6($8: code: 
-  [str -> {unit|f64}]
+fn 10($9: code: 
+  [{str,str} -> {unit|{f64,str}}]
 env: 
-[[str -> f64]],$7: str) {
-	let $9 = $8^1 in let $7 = $9($7) in $7
+[[{str,str} -> {f64,str}]],$8: {str,str}) {
+	let $10 = $9^1 in let $8 = $10($8) in $8
 }
 
-fn 7($13: code: 
-  [unit -> {unit|f64}]
+fn 11($15: code: 
+  [unit -> {unit|{f64,str}}]
 env: 
-[[unit -> {unit|f64}]],$0: unit) {
-	let $14 = $13^1 in $14($0)
+[[unit -> {unit|{f64,str}}]],$14: unit) {
+	let $16 = $15^1 in $16($14)
 }
 
-fn 8($15: code: 
-  [str -> {unit|f64}]
+fn 12($18: code: 
+  [{str,str} -> {unit|{f64,str}}]
 env: 
-[[str -> f64]],$3: str) {
-	let $16 = $15^1 in let $7 = $3 in let $7 = $16($7) in $7
+[[{str,str} -> {f64,str}]],$17: {str,str}) {
+	let $19 = $18^1 in let $8 = $17 in let $8 = $19($8) in $8
 }
 
-fn 9($17: code: 
-  [{unit|str} -> {unit|f64}]
+fn 13($20: code: 
+  [{unit|{str,str}} -> {unit|{f64,str}}]
 env: 
-[[str -> f64], [unit -> {unit|f64}]],$12: {unit|str}) {
-	let $19 = $17^2 in let $18 = $17^1 in case $12{closure 7[$19: [unit -> {unit|f64}]],closure 8[$18: [str -> f64]]}
+[[{str,str} -> {f64,str}], [unit -> {unit|{f64,str}}]],$13: {unit|{str,str}}) {
+	let $22 = $20^2 in let $21 = $20^1 in case $13{closure 11[$22: [unit -> {unit|{f64,str}}]],closure 12[$21: [{str,str} -> {f64,str}]]}
 }
 
-fn 10($20: code: 
-  [[unit -> {unit|f64}] -> [{unit|str} -> {unit|f64}]]
+fn 14($23: code: 
+  [[unit -> {unit|{f64,str}}] -> [{unit|{str,str}} -> {unit|{f64,str}}]]
 env: 
-[[str -> f64]],$11: [unit -> {unit|f64}]) {
-	let $21 = $20^1 in closure 9[$21: [str -> f64], $11: [unit -> {unit|f64}]]
+[[{str,str} -> {f64,str}]],$12: [unit -> {unit|{f64,str}}]) {
+	let $24 = $23^1 in closure 13[$24: [{str,str} -> {f64,str}], $12: [unit -> {unit|{f64,str}}]]
 }
 
-fn 11($0: {unit|str},$1: [str -> f64]) {
-	let $10 = closure 6[$1: [str -> f64]] in closure 10[$1: [str -> f64]]($0,closure 5[])
+fn 15($0: {unit|{str,str}},$1: [{str,str} -> {f64,str}]) {
+	let $11 = closure 10[$1: [{str,str} -> {f64,str}]] in closure 14[$1: [{str,str} -> {f64,str}]]($0,closure 9[])
 }
 ---------------------
 
-closures = fn 12($24: code: 
+closures = fn 16($26: code: 
   [str -> f64]
 env: 
-[],$23: str) {
-	#0($23)
+[],$1: str) {
+	#0($1)
 }
 
-fn 13() {
-	let $22 = #1(10) in let $25 = #3(closure 12[],$22) in #1(2147483647i,$25)
+fn 17($27: code: 
+  [{str,str} -> {f64,str}]
+env: 
+[],$0: {str,str}) {
+	#7(closure 16[],$0)
+}
+
+fn 18() {
+	let $25 = #5(#2(10)) in let $28 = #7(closure 17[],$25) in let $29 = #4(#4(0i),$28) in #7($29)
 }

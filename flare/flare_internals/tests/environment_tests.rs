@@ -2,7 +2,7 @@
 use petgraph::prelude::*;
 
 use flare_internals::{
-    passes::midend::environment::Environment,
+    passes::frontend::environment::Environment,
     resource::rep::{
         entry::{Item, PackageEntry},
         quantifier::QualifierFragment,

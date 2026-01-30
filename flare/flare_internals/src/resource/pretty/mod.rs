@@ -1,7 +1,9 @@
 use tiny_pretty::Doc;
 
-pub mod ir;
-pub mod r#type;
+
+pub mod frontend;
+pub mod backend;
+pub mod midend;
 
 pub const INC: usize = 2;
 

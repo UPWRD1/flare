@@ -1,16 +1,16 @@
-use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+// use std::path::{Path, PathBuf};
+// use std::sync::LazyLock;
 
-static TEST_FILE: LazyLock<&'static Path> = LazyLock::new(|| {
-    let relative_path = PathBuf::from("benches/bench_code/bench1.flr");
-    let mut absolute_path = std::env::current_dir().unwrap();
-    absolute_path.push(relative_path);
-    absolute_path.leak()
-});
+// static TEST_FILE: LazyLock<&'static Path> = LazyLock::new(|| {
+//     let relative_path = PathBuf::from("benches/bench_code/bench1.flr");
+//     let mut absolute_path = std::env::current_dir().unwrap();
+//     absolute_path.push(relative_path);
+//     absolute_path.leak()
+// });
 
-pub fn main() {
-    ()
-}
+// pub fn main() {
+//     ()
+// }
 
 // pub fn typechecking_bench(c: &mut Criterion) {
 //     //let path: &'static Path = PathBuf::from(TEST_FILE).read_dir().canonicalize().unwrap().leak();

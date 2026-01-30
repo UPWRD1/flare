@@ -47,8 +47,8 @@ pub struct CompilerErr(Box<dyn ReportableError>);
 
 use crate::{
     FileCtx, FileID,
-    passes::midend::typing::{Row, TyUniVar, Type},
-    resource::rep::files::FileSource,
+    passes::frontend::typing::{Row, TyUniVar, Type},
+    resource::rep::frontend::files::FileSource,
 };
 
 impl Display for CompilerErr {

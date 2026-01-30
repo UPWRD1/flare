@@ -1,6 +1,6 @@
 mod helper {
     use chumsky::prelude::*;
-    use flare_internals::resource::rep::{Spanned, ast::NodeId};
+    use flare_internals::resource::rep::common::{NodeId, Spanned};
     use internment::Intern;
     pub struct SpanGenerator {
         next: usize,
@@ -32,7 +32,7 @@ mod helper {
 
 #[cfg(test)]
 mod tests {
-    use flare_internals::passes::midend::{resolution::subst_generic_type, typing::Type};
+    use flare_internals::passes::frontend::{resolution::subst_generic_type, typing::Type};
 
     use crate::helper::SpanGenerator;
 

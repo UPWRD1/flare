@@ -15,11 +15,10 @@
 use std::{fs::File, io::Write, panic, path::PathBuf, time::Instant};
 
 use clap::{Parser, ValueEnum, crate_description, crate_version};
-use flare_internals::{
-    Context,
-    passes::backend::{c::C, lir::LIRTarget, lowering::ir::IRTarget, target::Target},
-    resource::errors::CompResult,
-};
+use flare_internals::{Context, {
+    passes::backend::target::{c::C, lirtarget::LIRTarget, irtarget::IRTarget, Target},
+    resource::{errors::CompResult},
+}};
 fn enable_loggin() {
     if cfg!(debug_assertions) {
         pretty_env_logger::formatted_builder()
