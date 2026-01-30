@@ -443,7 +443,7 @@ impl IR {
 
                     if ty != &branch.body.type_of() {
                         unreachable!(
-                            "ICE: Branch body has unexpected type: ty {ty:?} vs branch: {:?}",
+                            "ICE: Branch body has unexpected return type: ty {ty:?} vs branch: {:?}",
                             branch.body.type_of()
                         )
                     }

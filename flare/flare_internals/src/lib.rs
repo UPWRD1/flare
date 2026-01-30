@@ -285,7 +285,9 @@ impl<const N: usize, T: Target> Context<N, T, Lower> {
 impl<const N: usize, T: Target> Context<N, T, Simplify> {
     pub fn monomorph(self) -> CompResult<Context<N, T, Monomorph>> {
         let ir = monomorph::monomorph(self.op.ir);
-        // let ir = simplify::simplify(ir);
+        // Sanity check
+        debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
+
         Ok(Context {
             op: Monomorph { ir },
             filectx: self.filectx,
