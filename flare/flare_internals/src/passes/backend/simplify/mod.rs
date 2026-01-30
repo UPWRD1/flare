@@ -384,7 +384,7 @@ let mut simplifier = Simplifier::new(& ref_ir);
         .map(|ir| {
             let mut ir = ir;
             for _ in 0..4 {
-                            let (_, occs) =
+            let (_, occs) =
                     occ_a.occurrence_analysis(&ir, &im::HashSet::with_hasher(FxBuildHasher));
                 simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
@@ -439,10 +439,8 @@ impl<'p> Simplifier<'p> {
                 IR::Str(i) => break self.rebuild(IR::Str(i), in_scope, ctx),
                 IR::Bool(b) => break self.rebuild(IR::Bool(b), in_scope, ctx),
                 IR::Unit => break self.rebuild(IR::Unit, in_scope, ctx),
-                IR::Particle(p) => {
-                    break self.rebuild(IR::Particle(p), in_scope, ctx);
-                }
-                // IR::Comment(_, r) => *r,
+                IR::Particle(p) => break self.rebuild(IR::Particle(p), in_scope, ctx),
+                                // IR::Comment(_, r) => *r,
 
                 IR::Fun(var, body) => {
                     let body =
@@ -502,12 +500,9 @@ impl<'p> Simplifier<'p> {
                     ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
                     *scrutinee
                 }
-                IR::Tag(ty, idx, ir) => {
-
-                    // break self.rebuild(ir, in_scope, ctx)
-                    
+                IR::Tag(ty, idx, body) => {
                     ctx.push((ContextEntry::Tag(ty, idx), self.subst.clone()));
-                    *ir
+                    *body
                 }
                 IR::Extern(_, _) => {
                     break self.rebuild(ir, in_scope, ctx);
@@ -707,16 +702,14 @@ impl<'p> Simplifier<'p> {
                     }
                 }
                 ContextEntry::Field(idx) => {
-                    if let IR::Tuple(irs) = ir {
+                    if let IR::Tuple(ref irs) = ir {
                         self.tuples_inlined += 1;
                         let field = irs[idx].clone();
-                        // ir = field;
                         return self.simplify(field, in_scope, ctx);
                     } else{
-                        // dbg!(&ir);
                         let obj = self.simplify(ir, in_scope.clone(), vec![]);
                         ir = IR::field(obj, idx);
-                    }
+                     }
                 }
                 ContextEntry::Tag(ty, idx) => ir = IR::tag(ty, idx, ir),
                 ContextEntry::Case(ty, b) => ir = IR::case(ty, ir, b),

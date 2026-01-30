@@ -68,9 +68,9 @@ package Main =
         # (combine (id (extract v)) (id @ok )).0
         
 
-        let val = Some ("3") in
-        let mapped = map val (fn x => to_num x) in
-        unwrap_or mapped 0
+        let val = Some (10) in
+        let mapped = map val (fn x => x * 2) in
+        unwrap_or mapped 8005882300
         
     # let choose l r choice: ?T -> ?U -> bool -> |Left ?T, Right ?U| =
     #     if choice then |Left l| else |Right r|

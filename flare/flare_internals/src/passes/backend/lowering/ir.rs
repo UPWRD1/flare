@@ -418,9 +418,10 @@ impl IR {
 
                 if body.type_of() != elems[*tag] {
                     unreachable!(
-                        "Tagged value has element with the wrong type {} vs {}",
+                        "Tagged value has element with the wrong type {} vs {}, \nir = {}",
                         body.type_of(),
-                        elems[*tag]
+                        elems[*tag],
+                        self,
                     )
                 }
 
@@ -521,12 +522,8 @@ impl IR {
     pub fn is_trivial(&self) -> bool {
         matches!(
             self,
-            Self::Var(_)
-                | Self::Num(_)
-                | Self::Str(_)
-                | Self::Unit
-                | Self::Bool(_)
-                | Self::Particle(_)
+            // Self::Var(_) |
+            Self::Num(_) | Self::Str(_) | Self::Unit | Self::Bool(_) | Self::Particle(_)
         )
     }
     pub fn is_value(&self) -> bool {
