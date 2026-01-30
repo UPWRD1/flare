@@ -236,7 +236,7 @@ impl Monomorpher {
 
     fn instantiate_monomorph(&self, ir: IR, morph: Monomorph) -> IR {
         match ir {
-            IR::TyFun(k, body) => IR::ty_fun(k, self.instantiate_monomorph(*body, morph)),
+            IR::TyFun(k, body) => self.instantiate_monomorph(*body, morph),
             IR::TyApp(body, app) => {
                 // dbg!(&t);
                 let new_app = match app {

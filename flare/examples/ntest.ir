@@ -1,21 +1,21 @@
 item #0: is
-tyfn Type => fn [$0:num] => $0 become num in {unit | num}
+extern_to_num
 end item #0
 
 item #1: is
-tyfn Type => unit become unit in {unit | num}
+unit become unit in {unit | num}
 end item #1
 
 item #2: is
-fn [$0:{unit | num}, $1:num -> num] =>
+fn [$0:{unit | str}, $1:str -> num] =>
   let $6:unit -> {unit | num} = fn [$31:unit] => #1
   in
-    fn [$7:{unit | num}] =>
+    fn [$7:{unit | str}] =>
       match $7:
         | $8:unit then #1,
-        | $9:num then let $16:num = $9
+        | $9:str then let $16:str = $9
           in
-            let $16:num = $16
+            let $16:str = $16
             in
               let $16:num = $1(
                 $16)
@@ -25,23 +25,22 @@ fn [$0:{unit | num}, $1:num -> num] =>
 end item #2
 
 item #3: is
-tyfn Type =>
-  fn [$0:{unit | num}, $1:num] =>
-    match $0:
-      | $8:unit then $1,
-      | $9:num then let $16:num = $9
+fn [$0:{unit | num}, $1:num] =>
+  match $0:
+    | $8:unit then $1,
+    | $9:num then let $16:num = $9
+      in
+        let $16:num = $16
         in
-          let $16:num = $16
-          in
-            $16
+          $16
 end item #3
 
 item #4: is
-let $0:{unit | num} = #0(
-  10)
+let $0:{unit | str} = #3(
+  "10")
 in
   let $1:{unit | num} = #2(
-    $0, fn [$2:num] => $2*2)
+    $0, fn [$2:str] => #0($2))
   in
     #3(
     $1, 8005882300)
