@@ -15,10 +15,13 @@
 use std::{fs::File, io::Write, panic, path::PathBuf, time::Instant};
 
 use clap::{Parser, ValueEnum, crate_description, crate_version};
-use flare_internals::{Context, {
-    passes::backend::target::{c::C, lirtarget::LIRTarget, irtarget::IRTarget, Target},
-    resource::{errors::CompResult},
-}};
+use flare_internals::{
+    Context,
+    {
+        passes::backend::target::{Target, c::C, lirtarget::LIRTarget, native::Native},
+        resource::errors::CompResult,
+    },
+};
 fn enable_loggin() {
     if cfg!(debug_assertions) {
         pretty_env_logger::formatted_builder()
@@ -76,16 +79,16 @@ struct Cli {
     #[arg(short = 'o', long = "output")]
     output_file: PathBuf,
 
-    #[arg(short = 'e', long = "emit", default_value_t = EmitOptions::IR, value_enum)]
+    #[arg(short = 'e', long = "emit", default_value_t = EmitOptions::default(), value_enum)]
     emit: EmitOptions,
 }
 
 #[derive(Copy, Clone, ValueEnum, Default)]
 enum EmitOptions {
-    #[default]
-    IR,
     LIR,
     C,
+    #[default]
+    O,
 }
 
 macro_rules! make_target {
@@ -111,7 +114,7 @@ macro_rules! make_target {
                 println!("Compiled  in {elapsed:.2?}",);
                 let f = $cli.output_file.with_extension(target.ext());
                 let mut f = File::create(f).unwrap();
-                f.write_all(output.as_bytes())?;
+                f.write_all(&output)?;
 
                 Ok(())
             })
@@ -130,10 +133,11 @@ fn main() -> CompResult<()> {
 
     unsafe { backtrace_on_stack_overflow::enable() };
     match cli.emit {
-        EmitOptions::IR => {
-            make_target!(IRTarget, cli)
-        }
+        // EmitOptions::IR => {
+        //     make_target!(IRTarget, cli)
+        // }
         EmitOptions::LIR => make_target!(LIRTarget, cli),
         EmitOptions::C => make_target!(C, cli),
+        EmitOptions::O => make_target!(Native, cli),
     }
 }

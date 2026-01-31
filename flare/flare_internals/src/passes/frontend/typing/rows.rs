@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, fmt::Display, hash};
+use std::{collections::BTreeSet, fmt::Display};
 
 use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
@@ -6,10 +6,7 @@ use itertools::Itertools;
 
 use crate::{
     passes::frontend::typing::{Evidence, TyUniVar, TypeScheme, types::Type},
-    resource::rep::{
-        common::{Spanned, NodeId},
-        frontend::ast::{Label},
-    },
+    resource::rep::{common::Spanned, frontend::ast::Label},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

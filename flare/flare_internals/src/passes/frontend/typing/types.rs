@@ -6,15 +6,14 @@ use internment::Intern;
 
 use crate::{
     passes::frontend::typing::{
-        ClosedRow, TypeScheme,
+        TypeScheme,
         rows::{Row, RowUniVar},
     },
     resource::{
         errors::CompResult,
         rep::{
-            common::{Spanned, Ident},
-            frontend::ast::{ItemId, Label},
-            
+            common::{Ident, Spanned},
+            frontend::ast::Label,
         },
     },
 };
@@ -152,12 +151,12 @@ impl Type {
             },
             Self::TypeFun(l, r) => {
                 l.0.occurs_check(var).map_err(|_| *self)?;
-                l.0.occurs_check(var).map_err(|_| *self)
+                r.0.occurs_check(var).map_err(|_| *self)
             }
 
             Self::TypeApp(l, r) => {
                 l.0.occurs_check(var).map_err(|_| *self)?;
-                l.0.occurs_check(var).map_err(|_| *self)
+                r.0.occurs_check(var).map_err(|_| *self)
             }
             _ => todo!("{self:?}"),
         }

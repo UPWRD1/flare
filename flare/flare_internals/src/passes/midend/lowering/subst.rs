@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 
 use crate::resource::rep::midend::irtype::{IRType, Row, TyApp, TypeVar};
 
-
 #[derive(Clone)]
 pub enum Subst {
     TyPayload(IRType),
@@ -58,7 +57,9 @@ impl Subst {
 
     pub fn subst_ty(self, haystack: IRType, needle: usize) -> IRType {
         match haystack {
-            IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => haystack,
+            IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => {
+                haystack
+            }
             IRType::Var(type_var) => match type_var.0.cmp(&needle) {
                 Ordering::Equal => self.subst_ty_var(),
                 Ordering::Less => IRType::Var(type_var),
@@ -81,7 +82,9 @@ impl Subst {
 
     pub fn subst_ty_final(self, haystack: IRType, needle: usize) -> IRType {
         match haystack {
-            IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => haystack,
+            IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => {
+                haystack
+            }
             IRType::Var(type_var) => match type_var.0.cmp(&needle) {
                 Ordering::Equal => self.subst_ty_var(),
                 Ordering::Less => IRType::Var(type_var),

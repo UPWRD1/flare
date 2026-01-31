@@ -1,36 +1,19 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt::Display,
-};
+use std::collections::BTreeMap;
 
-use internment::Intern;
-use itertools::Itertools;
-use ordered_float::OrderedFloat;
 use rustc_hash::{FxBuildHasher, FxHashMap};
-use tiny_pretty::Doc;
 
-use crate::{passes::backend::target::irtarget, resource::{
-    pretty::{DocExt, Render, },
-    rep::{
-        backend::{
-            lir::{Item, LIR, Var},
-            types::LIRType,
-        },
-        midend::{ir::{IR, ItemId}, irtype::{ self, IRType, }},
+use crate::resource::rep::{
+    backend::{
+        lir::{Item, LIR, Var},
+        types::LIRType,
     },
-}};
+    midend::irtype::{self, IRType},
+};
 
 use crate::{
-    passes::{
-        backend::target::Target,
-        midend::lowering::lower_ast::{ItemSupply, VarSupply},
-    },
-    resource::rep::{
-        frontend::ast::BinOp,
-        midend::ir::{self, Param},
-    },
+    passes::midend::lowering::lower_ast::{ItemSupply, VarSupply},
+    resource::rep::midend::ir::{self, Param},
 };
-
 
 #[derive(Debug, Clone)]
 pub struct ClosureConvertOut {
@@ -48,12 +31,12 @@ impl ClosureConvert {
     fn convert(&mut self, ir: ir::IR, env: im::HashMap<ir::Var, Var, FxBuildHasher>) -> LIR {
         match ir {
             ir::IR::Num(n) => {
-                if n.fract() == 0.0 {
-                    let n = n.0 as i32;
-                    LIR::Int(n)
-                } else {
-                    LIR::Float(n)
-                }
+                // if n.fract() == 0.0 {
+                //     let n = n.0 as i32;
+                //     LIR::Int(n)
+                // } else {
+                LIR::Float(n)
+                // }
             }
             ir::IR::Str(s) => LIR::Str(s),
             ir::IR::Unit => LIR::Unit,
@@ -106,8 +89,8 @@ impl ClosureConvert {
                     .collect(),
             ),
 
-            ir::IR::Tag(t, u, ir) => self.convert(*ir, env),
-            ir::IR::Item(t, d) => LIR::Item(d),
+            ir::IR::Tag(_, _, ir) => self.convert(*ir, env), //TODO: special tag for unions
+            ir::IR::Item(_, d) => LIR::Item(d),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             ir::IR::Bin(l, op, r) => {
                 LIR::binop(self.convert(*l, env.clone()), op, self.convert(*r, env))
@@ -119,7 +102,7 @@ impl ClosureConvert {
                     .map(|b| ir::IR::fun(b.param, b.body))
                     .map(|ir| self.convert(ir, env.clone())),
             ),
-            ir::IR::Extern(n, t) => LIR::Extern(n),
+            ir::IR::Extern(n, _t) => LIR::Extern(n),
             _ => todo!("{ir:?}"),
         }
     }
@@ -180,7 +163,7 @@ impl ClosureConvert {
 }
 
 pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
-    let mut var_supply = VarSupply::default();
+    let var_supply = VarSupply::default();
     // let mut env = im::HashMap::with_hasher(FxBuildHasher);
     let mut converter = ClosureConvert {
         var_supply,
@@ -230,6 +213,11 @@ fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
 fn lower_ty(ty: &IRType) -> LIRType {
     match ty {
         IRType::Num => LIRType::Float,
+        // IRType::Num => match specifier {
+        //     irtype::Specifier::I32 => LIRType::Int,
+        //     irtype::Specifier::F64 => LIRType::Float,
+        //     irtype::Specifier::Unknown => panic!("Unknown specifier"), // LIRType::Float,
+        // },
         IRType::Str => LIRType::String,
         IRType::Unit => LIRType::Unit,
         IRType::Fun(arg, ret) => LIRType::closure(lower_ty(arg), lower_ty(ret)),
@@ -238,14 +226,14 @@ fn lower_ty(ty: &IRType) -> LIRType {
         }
         IRType::Prod(r) => LIRType::Array(lower_row(r)),
         IRType::Sum(r) => LIRType::Union(lower_row(r)),
-        IRType::Particle(p) => LIRType::String,
+        IRType::Particle(_) => LIRType::String,
         _ => todo!("{ty:?}"),
     }
 }
 
 fn lower_row(row: &irtype::Row) -> Vec<LIRType> {
     match row {
-        irtype::Row::Open(type_var) => todo!(),
+        irtype::Row::Open(_type_var) => todo!(),
         irtype::Row::Closed(items) => items.iter().map(lower_ty).collect(),
     }
 }

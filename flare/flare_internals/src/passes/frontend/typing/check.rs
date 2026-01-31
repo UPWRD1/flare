@@ -91,18 +91,18 @@ impl Solver<'_> {
                     .with_typed_ast(|term| Spanned(Expr::Label(ast_lbl, term).into(), id))
             }
 
-            (ast @ (Expr::Concat(_, _) | Expr::Project(_, _)), Type::Label(lbl, ty)) => {
+            (Expr::Concat(_, _) | Expr::Project(_, _), Type::Label(lbl, ty)) => {
                 // Cast a singleton row into a product
                 self.check(
                     env,
-                    Spanned(ast.into(), id),
+                    the_ast,
                     Spanned(
                         Type::Prod(Spanned(Row::single(lbl, ty).into(), id)).into(),
                         lbl.0.1,
                     ),
                 )
             }
-            (ast @ (Expr::Branch(_, _) | Expr::Inject(_, _)), Type::Label(lbl, ty)) => self.check(
+            (Expr::Branch(_, _) | Expr::Inject(_, _), Type::Label(lbl, ty)) => self.check(
                 env,
                 the_ast,
                 // Spanned(ast.into(), id),

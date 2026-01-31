@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::frontend::typing::{self, Evidence}, resource::rep::midend::irtype::{IRType, Kind, Row, TypeVar},
+    passes::frontend::typing::{self, Evidence},
+    resource::rep::midend::irtype::{IRType, Kind, Row, Specifier, TypeVar},
 };
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -69,11 +70,7 @@ impl LowerTypes {
     pub fn lower_ev_ty(&self, evidence: &typing::Evidence) -> IRType {
         let typing::Evidence::RowEquation {
             left, right, goal, ..
-        } = evidence
-        else {
-            panic!("bad ev: {evidence:?}")
-        };
-
+        } = evidence;
         let left = self.lower_row_ty(*left.0);
         let (left_prod, left_sum) = (IRType::prod(left.clone()), IRType::sum(left));
 

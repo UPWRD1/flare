@@ -8,10 +8,7 @@ use crate::{
         rows::{RowCombination, RowVar},
         types::TypeVar,
     },
-    resource::rep::{
-       common::{Spanned, NodeId},
-        frontend::ast::{Expr},
-    },
+    resource::rep::{common::Spanned, frontend::ast::Expr},
 };
 
 #[derive(Debug)]
@@ -155,7 +152,7 @@ impl Solver<'_> {
         &mut self,
         unsub_ast: Spanned<Intern<Expr<Typed>>>,
     ) -> SubstOut<Spanned<Intern<Expr<Typed>>>> {
-        let id = unsub_ast.1;
+        // let id = unsub_ast.1;
         match *unsub_ast.0 {
             Expr::Ident(v) => self
                 .substitute_ty(v.1)

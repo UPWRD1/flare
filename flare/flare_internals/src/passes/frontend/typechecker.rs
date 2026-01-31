@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use internment::Intern;
 
@@ -6,23 +6,21 @@ use petgraph::graph::NodeIndex;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::{
-        midend::lowering::subst::{self, Subst},
-        frontend::{
-            environment::Environment,
-            typing::{
-                ClosedRow, Evidence, ItemSource, Row, RowVar, Solver, Type, TypeScheme, TypeVar,
-                TypesOutput,
-            },
+    passes::frontend::{
+        environment::Environment,
+        typing::{
+            ClosedRow, Evidence, ItemSource, Row, RowVar, Solver, Type, TypeScheme, TypeVar,
+            TypesOutput,
         },
     },
     resource::{
         errors::{CompResult, DynamicErr, ErrorCollection},
         rep::{
-            common::{Spanned, Ident, NodeId},
-            frontend::{ast::{Expr, ItemId, Kind, LambdaInfo,  Untyped},
-           
-            entry::{FunctionItem, ItemKind}},
+            common::{Ident, Spanned},
+            frontend::{
+                ast::{Expr, ItemId, Kind, LambdaInfo, Untyped},
+                entry::{FunctionItem, ItemKind},
+            },
         },
     },
 };
@@ -32,16 +30,16 @@ pub struct Typechecker {
     context: ItemSource,
     env: Environment,
     type_var_count: usize,
-    row_var_count: usize,
+    // row_var_count: usize,
 }
 
-#[derive(Default, Debug)]
-enum TyappState {
-    #[default]
-    Outside,
-    Arg,
-    Inside,
-}
+// #[derive(Default, Debug)]
+// enum TyappState {
+//     #[default]
+//     Outside,
+//     Arg,
+//     Inside,
+// }
 
 #[derive(Default, Debug)]
 struct TypeFixer {
@@ -49,8 +47,8 @@ struct TypeFixer {
     unbound_rows: BTreeSet<RowVar>,
     pub types_to_name: FxHashMap<TypeVar, Intern<String>>,
     evidence: Vec<Evidence>,
-    seen_row_vars: FxHashMap<NodeId, RowVar>,
-    inside_type_fun: TyappState,
+    // seen_row_vars: FxHashMap<NodeId, RowVar>,
+    // inside_type_fun: TyappState,
 }
 
 impl Typechecker {
@@ -59,7 +57,7 @@ impl Typechecker {
             item_order,
             env,
             type_var_count: 0,
-            row_var_count: 0,
+            // row_var_count: 0,
             context: ItemSource::new(FxHashMap::default()),
         }
     }
@@ -82,7 +80,6 @@ impl Typechecker {
                             unbound_types,
                             unbound_rows,
                             types_to_name,
-                            evidence,
                             ..
                         },
                         ty,
@@ -139,11 +136,11 @@ impl Typechecker {
         v
     }
 
-    fn new_row_var(&mut self) -> RowVar {
-        let v = RowVar(self.row_var_count.to_string().into());
-        self.row_var_count += 1;
-        v
-    }
+    // fn new_row_var(&mut self) -> RowVar {
+    //     let v = RowVar(self.row_var_count.to_string().into());
+    //     self.row_var_count += 1;
+    //     v
+    // }
 
     fn helper(&mut self, t: Spanned<Intern<Type>>, f: &mut TypeFixer) -> Spanned<Intern<Type>> {
         // dbg!(t);

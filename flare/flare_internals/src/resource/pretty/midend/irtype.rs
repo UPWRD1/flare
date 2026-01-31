@@ -5,7 +5,7 @@ use tiny_pretty::Doc;
 
 use crate::resource::{
     pretty::{INC, Render},
-    rep::midend::irtype::{Row, TyApp, IRType},
+    rep::midend::irtype::{IRType, Row, TyApp},
 };
 
 impl Render for IRType {

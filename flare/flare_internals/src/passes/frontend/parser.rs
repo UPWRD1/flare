@@ -27,7 +27,7 @@ enum Token {
     Ident(&'static str),
     // Ident(),
     // Ident(Spur),
-    Num(f64),
+    Num(f32),
 
     Strlit(&'static str),
     // Strlit(Intern<String>),

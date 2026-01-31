@@ -9,7 +9,10 @@ use crate::{
     resource::rep::{
         common::{NodeId, Spanned},
         frontend::ast::{self, Direction, Expr},
-        midend::{ir::{IR, ItemId, Var, VarId}, irtype::{IRType, Kind, Row, TyApp, TypeVar}},
+        midend::{
+            ir::{IR, ItemId, Var, VarId},
+            irtype::{IRType, Kind, Row, TyApp, TypeVar},
+        },
     },
 };
 
@@ -349,8 +352,7 @@ impl<'source> LowerAst<'source> {
                                 "Unsolved evidence appeared in AST that wasn't in type scheme"
                             );
                         }
-                    }
-                    _ => panic!("bad ev: {ev:?}"),
+                    } // _ => panic!("bad ev: {ev:?}"),
                 };
                 let param = self.var_supply.supply();
 

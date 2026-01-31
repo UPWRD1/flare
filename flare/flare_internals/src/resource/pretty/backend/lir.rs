@@ -23,7 +23,7 @@ impl Render for LIR {
             Self::Str(s) => Doc::text(format!("{s}")),
             Self::Unit => Doc::text("unit".to_string()),
             Self::Float(f) => Doc::text(format!("{f}f")),
-            Self::Closure(t, item_id, vars) => Doc::text("closure")
+            Self::Closure(_, item_id, vars) => Doc::text("closure")
                 .space()
                 .text(format!("{}", item_id.0))
                 .append(

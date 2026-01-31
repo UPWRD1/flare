@@ -1,21 +1,27 @@
-default: show 
-
+default: show
+    
 build: 
     cargo build -p flarec
 
 release: 
     cargo build --release -p flarec
 
-run emit='ir':
+run emit='o':
     cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.ir --emit {{emit}}
 
-show emit='ir':
+show emit='o':
     just run {{emit}}
     bat examples/ntest.{{emit}}   
-
+    
+full:
+    just run
+    objdump -DS examples/ntest.o
+    clang examples/ntest.o -o examples/ntest 
+    ./examples/ntest
+    echo $?
 
 compile path:
-    cargo run -p flarec --  {{path}} -o 
+    cargo run -p flarec -- {{path}} -o {{path}}
 
 run-release:
     cargo run --release -p flarec -- examples/ntest.flr examples/option.flr -o examples/ntest.ir

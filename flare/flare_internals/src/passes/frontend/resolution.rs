@@ -1,12 +1,12 @@
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 use petgraph::{
-    algo::{kosaraju_scc, scc::tarjan_scc, toposort},
+    algo::toposort,
     dot::Config,
     graph::NodeIndex,
-    visit::{Bfs, Dfs, IntoNodeReferences, Topo, Walker},
+    visit::{Dfs, IntoNodeReferences, Walker},
 };
-use rustc_hash::{FxBuildHasher, FxHashSet};
+use rustc_hash::FxHashSet;
 
 // const INTRINSIC_FUNC_ADD: usize = 0;
 // const INTRINSIC_FUNC_SUB: usize = 1;
@@ -30,12 +30,15 @@ use crate::{
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
-            common::Spanned,
             common::Ident,
-            frontend::{ast::{Direction, Expr, ItemId, Kind, Label, LambdaInfo, MatchArm, Pattern, Untyped},
-            
-            entry::{FunctionItem, Item, ItemKind, PackageEntry},
-            quantifier::QualifierFragment,}
+            common::Spanned,
+            frontend::{
+                ast::{
+                    Direction, Expr, ItemId, Kind, Label, LambdaInfo, MatchArm, Pattern, Untyped,
+                },
+                entry::{FunctionItem, Item, ItemKind, PackageEntry},
+                quantifier::QualifierFragment,
+            },
         },
     },
 };
@@ -162,7 +165,7 @@ impl<const N: usize> Resolver<N> {
         self.dag.reverse();
         // dbg!(&reachable);
         // let sorted = reachable;
-        let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
+        let sorted: Vec<NodeIndex> = toposort(&self.dag, None)
             // self.debug();
             // let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
             .into_iter()
@@ -315,7 +318,7 @@ impl<const N: usize> Resolver<N> {
             }
             Type::Label(l, the_r) => {
                 let new_t = self.analyze_type(the_r);
-                dbg!(new_t);
+                // dbg!(new_t);
                 t.modify(Type::Label(l, new_t))
             }
             Type::User(name, instanced_generics) => {
@@ -323,9 +326,12 @@ impl<const N: usize> Resolver<N> {
                 // dbg!(the_item.get_type_universal());
                 if let Ok(item_id) = the_item {
                     // self.dag_add(item_id);
-                    let the_item = self.env.value(NodeIndex::new(item_id.0)).unwrap();
+                    let the_item = self
+                        .env
+                        .value(NodeIndex::new(item_id.0))
+                        .expect("Item has not been defined in the environment");
 
-                    if let ItemKind::Type(_, generics, new_t) = the_item.kind {
+                    if let ItemKind::Type(_, _generics, new_t) = the_item.kind {
                         // if !instanced_generics.is_empty() {
                         let analyzed_instances: Vec<_> = instanced_generics
                             .iter()
@@ -526,7 +532,7 @@ impl<const N: usize> Resolver<N> {
                 let branches = branches
                     .into_iter()
                     .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
-                    .unwrap();
+                    .expect("Branches was empty; match has no arms");
 
                 expr.convert(Expr::Call(branches, matchee))
             }
@@ -584,10 +590,10 @@ impl<const N: usize> Resolver<N> {
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
         let l = self.analyze_expr(l, vars);
-        if let Expr::Item(id, k) = *l.0 {
+        if let Expr::Item(_, _) = *l.0 {
             self.resolve_name_expr(r)
         } else if let Expr::Ident(n) = *l.0 {
-            if let Some((variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
+            if let Some((_variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
                 let projection: Spanned<Intern<Expr<Untyped>>> = {
                     let combo = *val;
                     let id = r.ident().expect("Expression should be nameable");
@@ -601,7 +607,7 @@ impl<const N: usize> Resolver<N> {
             } else {
                 todo!()
             }
-        } else if let Expr::Unlabel(combo, label) = *l.0 {
+        } else if let Expr::Unlabel(_combo, _labell) = *l.0 {
             self.resolve_name_expr(r)
         } else {
             let ex = l.convert(Expr::Project(Direction::Right, l));

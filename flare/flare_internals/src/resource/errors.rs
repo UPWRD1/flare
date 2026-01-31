@@ -166,7 +166,7 @@ impl DynamicErr {
             ..self
         }
     }
-    pub fn generate_sources<'src>(&self, context: &FileCtx) -> Vec<(String, String)> {
+    pub fn generate_sources(&self, context: &FileCtx) -> Vec<(String, String)> {
         let mut source_ids: Vec<u64> = vec![];
         let label_origin = self
             .label

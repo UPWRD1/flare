@@ -22,8 +22,8 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
-                        frontend::ast::{Expr, ItemId, Kind,  Untyped, Variable},
-            common::{Ident, Spanned, NodeId},
+            common::{Ident, NodeId, Spanned},
+            frontend::ast::{Expr, ItemId, Kind, Untyped, Variable},
         },
     },
 };
@@ -317,7 +317,7 @@ impl<'env> Solver<'env> {
         signature: TypeScheme,
     ) -> CompResult<TypesOutput> {
         // dbg!(&signature);
-        let id = ast.id();
+        // let id = ast.id();
         // We start with `check` instead of `infer`.
         let mut out = self.check(im::HashMap::default(), ast, signature.ty);
 

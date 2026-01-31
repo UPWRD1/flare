@@ -2,11 +2,11 @@ use std::fmt::Display;
 
 use internment::Intern;
 use ordered_float::OrderedFloat;
-use rustc_hash::FxHashMap;
 
-use crate::resource::rep::{frontend::ast::BinOp, midend::irtype::{IRType, Kind, Row, TyApp}};
-
-
+use crate::resource::rep::{
+    frontend::ast::BinOp,
+    midend::irtype::{IRType, Kind, Row, Specifier, TyApp},
+};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Default)]
 #[repr(transparent)]
@@ -42,7 +42,6 @@ impl Var {
     }
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Branch {
     pub param: Var,
@@ -62,13 +61,10 @@ pub enum Param {
     Val(Var),
 }
 
-
-
-
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub enum IR {
     Var(Var),
-    Num(OrderedFloat<f64>),
+    Num(OrderedFloat<f32>),
     Str(Intern<String>),
     Bool(bool),
     #[default]
@@ -172,8 +168,14 @@ impl IR {
     pub fn type_of(&self) -> IRType {
         match self {
             Self::Var(v) => v.ty.clone(),
-            Self::Num(_) => IRType::Num,
-
+            Self::Num(n) => IRType::Num,
+            //     ({
+            //     if n.fract() == 0.0 {
+            //         Specifier::I32
+            //     } else {
+            //         Specifier::F64
+            //     }
+            // }),
             Self::Str(_) => IRType::Str,
             Self::Bool(_) => IRType::Bool,
             Self::Unit => IRType::Unit,
@@ -193,7 +195,7 @@ impl IR {
                         );
                     }
                     *ret_ty
-                } else if let Self::Item(t, id) = &**fun {
+                } else if let Self::Item(t, _) = &**fun {
                     t.clone().into_ret_ty()
                 } else {
                     unreachable!("IR used non-function type as a function: {fun}")
@@ -307,6 +309,29 @@ impl IR {
                     unreachable!("Expected number type in arithmatic operation while generating IR",)
                 }
                 IRType::Num
+                //     (
+                //     match (lty, op, rty) {
+                //     (
+                //         IRType::Num(Specifier::I32),
+                //         (BinOp::Add | BinOp::Sub | BinOp::Mul),
+                //         IRType::Num(Specifier::I32),
+                //     ) => Specifier::I32,
+                //     (IRType::Num(Specifier::I32), (BinOp::Div), IRType::Num(Specifier::I32)) => {
+                //         if let (IR::Num(l), IR::Num(r)) = (l, r) {
+                //             if l.rem_euclid(**r) == 0.0 {
+                //                 Specifier::I32
+                //             } else {
+                //                 Specifier::F64
+                //             }
+                //         } else {
+                //             Specifier::Unknown
+                //         }
+                //     }
+                //     (IRType::Num(_), _, IRType::Num(_)) => Specifier::F64,
+                //     _ => unreachable!(
+                //         "Expected number type in arithmatic operation while generating IR",
+                //     ),
+                // })
             }
             BinOp::And | BinOp::Or => {
                 let lty = l.type_of();
@@ -385,6 +410,7 @@ impl IR {
             | Self::Fun(_, _)
             | Self::Tag(_, _, _)
             | Self::Case(_, _, _) => true,
+            Self::Item(_, _) | Self::Extern(_, _) => false,
             _ => todo!("{self:?}"),
         }
     }
@@ -460,7 +486,7 @@ impl<'a> Iterator for IrIterator<'a> {
                     self.stack.push(r); // push right first so left is processed next (LIFO)
                     self.stack.push(l);
                 }
-                IR::Local(var, defn, body) => {
+                IR::Local(_, defn, body) => {
                     self.stack.push(body);
                     self.stack.push(defn);
                 }
@@ -493,7 +519,7 @@ impl<'a> Iterator for IrIterator<'a> {
     }
 }
 
-struct IRModule {
-    externs: FxHashMap<ItemId, Intern<String>>,
-    items: FxHashMap<ItemId, IR>,
-}
+// struct IRModule {
+//     externs: FxHashMap<ItemId, Intern<String>>,
+//     items: FxHashMap<ItemId, IR>,
+// }

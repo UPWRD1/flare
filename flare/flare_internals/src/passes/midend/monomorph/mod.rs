@@ -6,7 +6,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     passes::midend::{lowering::lower_ast::ItemSupply, simplify},
-    resource::rep::midend::{ir::{Branch, IR, ItemId}, irtype::{IRType, TyApp}},
+    resource::rep::midend::{
+        ir::{Branch, IR, ItemId},
+        irtype::{IRType, TyApp},
+    },
 };
 
 // How to Monomorph

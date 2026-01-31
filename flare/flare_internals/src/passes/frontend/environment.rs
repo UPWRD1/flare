@@ -15,10 +15,12 @@ use crate::{
         errors::{self, CompResult, DynamicErr},
         rep::{
             // concretetypes::{EnumVariant, Ty},
-            
-            common::Spanned, frontend::{ast::{Definition, Expr, ImplDef, Program, Untyped},
-            entry::{FunctionItem, Item, ItemKind, PackageEntry},
-            quantifier::QualifierFragment,}
+            common::Spanned,
+            frontend::{
+                ast::{Definition, Expr, ImplDef, Program, Untyped},
+                entry::{FunctionItem, Item, ItemKind, PackageEntry},
+                quantifier::QualifierFragment,
+            },
         },
     },
 };
@@ -198,7 +200,10 @@ impl Environment {
             .map(|(package_name, package_imports)| {
                 let new_package_imports: FxHashSet<_> = package_imports
                     .into_iter()
-                    .flat_map(|import_expr| QualifierFragment::from_expr(&import_expr).unwrap())
+                    .flat_map(|import_expr| {
+                        QualifierFragment::from_expr(&import_expr)
+                            .expect("Could not generate qualifier fragment")
+                    })
                     .collect();
                 Ok((package_name, new_package_imports))
             })
@@ -232,7 +237,7 @@ impl Environment {
         >,
     ) -> NodeIndex {
         path.windows(2)
-            .map(|x| {
+            .map(|path| {
                 let [left, right] = path else {
                     panic!("Path is invalid")
                 };
@@ -252,7 +257,7 @@ impl Environment {
                 }
             })
             .next_back()
-            .unwrap()
+            .expect("Path was empty")
     }
 
     /// Builds an impl definition

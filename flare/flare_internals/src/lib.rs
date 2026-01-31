@@ -34,22 +34,25 @@
     clippy::cloned_instead_of_copied,
     clippy::used_underscore_binding,
     clippy::unwrap_in_result,
+    unused_allocation,
     // clippy::min_ident_chars,
     )]
 #[warn(
     clippy::large_stack_frames,
-    clippy::panic,
+    // clippy::panic,
     clippy::dbg_macro,
     clippy::unwrap_used,
     // clippy::restriction
 )]
 #[allow(
-    warnings,
+    // warnings,
+    unused_variables,
     clippy::must_use_candidate,
     clippy::return_self_not_must_use,
     clippy::type_complexity,
     clippy::diverging_sub_expression,
-    clippy::missing_panics_doc
+    clippy::missing_panics_doc,
+    unstable_name_collisions
 )]
 pub mod passes;
 pub mod resource;
@@ -65,6 +68,10 @@ use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
     passes::{
+        backend::{
+            lir::{ClosureConvertOut, closure_convert},
+            target::{Generator, Target},
+        },
         frontend::{
             environment::Environment,
             parser,
@@ -73,11 +80,7 @@ use crate::{
             typing::{ItemSource, Type, TypesOutput},
         },
         //backend::{flatten::Flattener, gen::Generator},
-        midend::{
-            lowering::Lowerer,
-            monomorph, reduce, simplify,
-           },backend::target   ::{Generator, Target},
-        
+        midend::{lowering::Lowerer, monomorph, reduce, simplify},
     },
     resource::{
         errors::{CompResult, CompilerErr},
@@ -131,8 +134,8 @@ pub struct Monomorph {
     ir: Vec<IR>,
 }
 
-pub struct Convert<T: Target> {
-    converted: Vec<T::Input>,
+pub struct Convert {
+    converted: Vec<ClosureConvertOut>,
 }
 
 pub struct Generate<T: Target> {
@@ -312,8 +315,8 @@ impl<const N: usize, T: Target> Context<N, T, Monomorph> {
     }
 }
 impl<const N: usize, T: Target> Context<N, T, Reduce> {
-    pub fn convert(self) -> CompResult<Context<N, T, Convert<T>>> {
-        let converted = self.target.convert(self.op.ir);
+    pub fn convert(self) -> CompResult<Context<N, T, Convert>> {
+        let converted = closure_convert(self.op.ir);
         Ok(Context {
             op: Convert { converted },
             filectx: self.filectx,
@@ -323,23 +326,23 @@ impl<const N: usize, T: Target> Context<N, T, Reduce> {
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Convert<T>> {
+impl<const N: usize, T: Target> Context<N, T, Convert> {
     pub fn generate(self) -> CompResult<Context<N, T, Generate<T>>> {
-        let g = Generator::new(self.target, self.op.converted);
+        let g = Generator::new(self.target.clone(), self.op.converted);
 
         let output = g.generate();
         Ok(Context {
             op: Generate { output },
             filectx: self.filectx,
-            target: self.target,
+            target: self.target.clone(),
             intrinsics: self.intrinsics,
         })
     }
 }
 
 impl<const N: usize, T: Target> Context<N, T, Generate<T>> {
-    pub fn finish(self) -> CompResult<T::Output> {
-        Ok(self.op.output)
+    pub fn finish(self) -> CompResult<Vec<u8>> {
+        Ok((self.op.output).into())
     }
 }
 

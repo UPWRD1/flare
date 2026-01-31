@@ -1,26 +1,24 @@
 use std::fmt::Debug;
 
+use crate::passes::backend::lir::ClosureConvertOut;
+
 pub mod c;
-pub mod lirtarget;
 pub mod irtarget;
+pub mod lirtarget;
+pub mod native;
 
-use crate::resource::rep::midend::ir::IR;
-
-pub trait Target: Copy {
-    type Partial: Default;
-    type Output: Default + Debug;
-    type Input: Debug;
+pub trait Target: Clone {
+    type Output: Into<Vec<u8>> + Default + Debug;
+    // type Input: Debug;
     // fn generate(&mut self);
     // fn generate_item(&mut self, Type)
-    fn generate(&mut self, ir: Self::Input) -> Self::Partial;
-    fn finish(&self, p: Vec<Self::Partial>) -> Self::Output;
+    fn generate(&mut self, input: Vec<ClosureConvertOut>) -> Self::Output;
     fn ext(&self) -> &str;
-    fn convert(&self, ir: Vec<IR>) -> Vec<Self::Input>;
 }
 
 pub struct Generator<T: Target> {
     target: T,
-    inputs: Vec<T::Input>,
+    input: Vec<ClosureConvertOut>,
 }
 
 // impl Generator<C> {
@@ -42,15 +40,12 @@ pub struct Generator<T: Target> {
 
 impl<T: Target> Generator<T> {
     pub fn generate(mut self) -> T::Output {
-        let mut v: Vec<T::Partial> = vec![];
-        for input in self.inputs {
-            v.push(self.target.generate(input));
-        }
-        self.target.finish(v)
+        self.target.generate(self.input)
     }
 }
+
 impl<T: Target> Generator<T> {
-    pub fn new(target: T, inputs: Vec<T::Input>) -> Self {
-        Self { target, inputs }
+    pub fn new(target: T, input: Vec<ClosureConvertOut>) -> Self {
+        Self { target, input }
     }
 }

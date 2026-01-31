@@ -1,6 +1,5 @@
 use internment::Intern;
 
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
 pub struct TypeVar(pub usize);
 
@@ -16,8 +15,16 @@ pub enum Row {
     Closed(Vec<IRType>),
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
+pub enum Specifier {
+    I32,
+    F64,
+    Unknown,
+}
+
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Default)]
 pub enum IRType {
+    // Num(Specifier),
     Num,
     #[default]
     Unit,
@@ -49,7 +56,6 @@ impl IRType {
         }
     }
 }
-
 
 impl IRType {
     #[must_use]

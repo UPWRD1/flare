@@ -8,7 +8,7 @@ use crate::{
     resource::{
         errors::{CompResult, DynamicErr},
         rep::{
-            common::{Ident, Spanned, NodeId},
+            common::{Ident, Spanned},
             frontend::files::FileID,
         },
     },
@@ -17,8 +17,6 @@ use crate::{
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use ordered_float::OrderedFloat;
-
-
 
 pub trait Variable:
     Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display
@@ -135,8 +133,6 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Label(pub Spanned<Intern<String>>);
 
-
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 pub struct ItemId(pub usize);
 
@@ -159,7 +155,7 @@ where
 {
     Ident(V),
     // Param(V),
-    Number(ordered_float::OrderedFloat<f64>),
+    Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Bool(bool),
     Unit,
@@ -278,7 +274,6 @@ impl<V: Variable> Ident for Spanned<Intern<Expr<V>>> {
     }
 }
 
-
 impl<V: Variable> Spanned<Intern<Expr<V>>> {
     pub fn id(&self) -> SimpleSpan<usize, u64> {
         self.1
@@ -286,7 +281,7 @@ impl<V: Variable> Spanned<Intern<Expr<V>>> {
 }
 
 impl<V: Variable> Expr<V> {
-    pub fn get_num(&self, span: SimpleSpan<usize, u64>) -> CompResult<OrderedFloat<f64>> {
+    pub fn get_num(&self, span: SimpleSpan<usize, u64>) -> CompResult<OrderedFloat<f32>> {
         match self {
             Self::Number(n) => Ok(*n),
             _ => Err(DynamicErr::new("Not a number").label("here", span).into()),

@@ -23,7 +23,7 @@ pub enum LIR {
     Str(Intern<String>),
     #[default]
     Unit,
-    Float(OrderedFloat<f64>),
+    Float(OrderedFloat<f32>),
     Closure(LIRType, ir::ItemId, Vec<Var>),
     Apply(Box<Self>, Box<Self>),
     BulkApply(Box<Self>, Vec<Self>),

@@ -2,11 +2,8 @@ use internment::Intern;
 
 use crate::{
     passes::{
+        backend::{lir::ClosureConvertOut, target::Target},
         frontend::typing::{Type, Typed},
-        backend::{
-            lir::{ClosureConvertOut, closure_convert},
-            target::Target,
-        },
     },
     resource::rep::{
         common::Spanned,
@@ -14,7 +11,6 @@ use crate::{
             ast::{Expr, Variable},
             entry::FunctionItem,
         },
-        midend::ir,
     },
 };
 
@@ -24,21 +20,12 @@ pub struct C;
 impl Target for C {
     type Output = String;
 
-    type Partial = String;
-    type Input = ClosureConvertOut;
-    fn finish(&self, p: Vec<Self::Partial>) -> Self::Output {
-        p.join(" ")
-    }
-
-    fn generate(&mut self, ir: ClosureConvertOut) -> Self::Partial {
+    fn generate(&mut self, ir: Vec<ClosureConvertOut>) -> Self::Output {
         todo!()
     }
+
     fn ext(&self) -> &str {
         "c"
-    }
-
-    fn convert(&self, ir: Vec<ir::IR>) -> Vec<Self::Input> {
-        closure_convert(ir)
     }
 }
 
