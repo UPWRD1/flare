@@ -30,13 +30,16 @@ package Main =
     # extern display: ?T -> str
 
     type Wrapper[?X] = {data: ?X, extra: str}
+    # type Wrapper[?T] = {data: ?T}
 
     let new_Wrapper t : ?T -> Wrapper[?T] =
         {data = id (t), extra= "hello"}
+        # {data = t}
 
     let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
         let v = f(w.data) in 
         {data = v, extra= w.extra}
+        # {data = v}
 
     let extract w : Wrapper[?T] -> ?T =
         w.data
@@ -58,8 +61,8 @@ package Main =
     let seven :num = 7
                  
     let main: num =
-        let mul = fn x y => x * y in
-        let the_num = seven in
+        # let mul = fn x y => x * y in
+        # let the_num = seven in
         # let seven = seven in
         # let ten = to_num "10" in f ((m rand  4) ten) in
         # let val =  Some (new_Wrapper "10") in
@@ -68,15 +71,16 @@ package Main =
         # extract unwrapped
         
         #
-        # let v = new_Wrapper 10 in
-        # let mapped = map_wrapper v (fn data => data * 2) in
+        let v = new_Wrapper 10 in
+        let mapped = map_wrapper v (fn data => data * 2) in
+        extract mapped
         # (combine (id (extract v)) (id @ok )).0
         
 
         # let val = Some ("10") in
         # let mapped = map val (fn x => to_num x ) in
         # unwrap_or mapped 7
-        puts "hello world\0"
+        # puts "hello world\0"
         # seven
 
         

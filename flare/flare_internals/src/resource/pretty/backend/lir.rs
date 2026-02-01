@@ -20,7 +20,7 @@ impl Render for LIR {
         match self {
             Self::Var(var) => Doc::text(format!("${}", var.id.0)),
             Self::Int(i) => Doc::text(format!("{i}i")),
-            Self::Str(s) => Doc::text(format!("{s}")),
+            Self::Str(s) => Doc::text(format!("\"{s}\"s")),
             Self::Unit => Doc::text("unit".to_string()),
             Self::Float(f) => Doc::text(format!("{f}f")),
             Self::Closure(_, item_id, vars) => Doc::text("closure")
@@ -29,9 +29,7 @@ impl Render for LIR {
                 .append(
                     Doc::list(
                         vars.iter()
-                            .map(|x| {
-                                Doc::text(format!("${}: ", x.id.0,)).append(x.ty.clone().render())
-                            })
+                            .map(|x| Doc::text(format!("${}: ", x.id.0,)).append(x.ty.render()))
                             .intersperse(Doc::text(", "))
                             .collect(),
                     )

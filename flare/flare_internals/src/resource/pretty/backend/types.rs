@@ -32,9 +32,10 @@ impl Render for LIRType {
                             .intersperse(Doc::text(", "))
                             .collect(),
                     )
-                    .brackets()
-                    .nest(2),
-                ),
+                    .brackets(),
+                )
+                .nest(2)
+                .hard_line(),
             Self::Array(v) => Doc::list(
                 v.iter()
                     .map(|el| el.render())

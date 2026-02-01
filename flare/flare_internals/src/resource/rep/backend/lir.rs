@@ -167,7 +167,13 @@ impl LIR {
             LIR::Local(.., body) => body.type_of(),
             LIR::Access(lir, _) => todo!(),
             LIR::Struct(lirs) => todo!(),
-            LIR::Field(lir, _) => todo!(),
+            LIR::Field(lir, idx) => {
+                if let LIR::Struct(ref fields) = **lir {
+                    fields[*idx].type_of()
+                } else {
+                    panic!("Field expression is on non-struct element: {lir}")
+                }
+            }
             LIR::Case(lir, lirs) => todo!(),
             LIR::Item(_, t) => *t,
             LIR::Extern(_, t) => *t,

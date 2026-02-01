@@ -1,4 +1,49 @@
 closures = 
-fn 0() -> [str -> f64] {
-	extern_puts(hello world\0)
+fn 0($0: {f64,str}) -> f64 {
+	$0[0]
+}
+---------------------
+
+closures = fn 1($2: code: 
+    [str -> {f64,str}]
+  env: 
+  [f64]
+,$1: str) -> {f64,str} {
+	let $3 = $2^1 in {$3,$1}
+}
+
+fn 2($0: {f64,str},$1: [f64 -> f64]) -> {f64,str} {
+	let $0 = $1($0[0]) in closure 1[$0: f64]($0[1])
+}
+---------------------
+
+closures = 
+fn 3($0: f64) -> f64 {
+	$0
+}
+---------------------
+
+closures = fn 4($6: code: 
+    [str -> {f64,str}]
+  env: 
+  [f64]
+,$5: str) -> {f64,str} {
+	let $7 = $6^1 in {$7,$5}
+}
+
+fn 5($0: f64) -> {f64,str} {
+	let $4 = #2($0) in closure 4[$4: f64]("hello"s)
+}
+---------------------
+
+closures = fn 6($8: code: 
+    [f64 -> f64]
+  env: 
+  []
+,$4: f64) -> f64 {
+	$4 * 2i
+}
+
+fn 7() -> f64 {
+	#0(#1(closure 6[],#3(10i)))
 }

@@ -236,19 +236,19 @@ IR::Item(t, id) => {
         IR::Bin(ir, bin_op, ir1) => todo!(),
   }
 }
-struct OccuranceAnalyzer<'i> {
-    items: &'i [IR],
+struct OccuranceAnalyzer {
+    // items: &'i [IR],
     in_branch: bool,
 }
-impl<'i> OccuranceAnalyzer<'i> {
-    pub fn new(items: &'i [IR]) -> Self {
-        Self { items, in_branch: false }
+impl OccuranceAnalyzer {
+    pub fn new() -> Self {
+        Self { in_branch: false }
     }
 
     fn occurrence_analysis(
         &mut self,
         ir: &IR,
-        seen: &im::HashSet<ItemId, FxBuildHasher>,
+        // seen: &im::HashSet<ItemId, FxBuildHasher>,
     ) -> (FxHashSet<VarId>, Occurrences) {
         match ir {
             IR::Var(var) => {
@@ -261,15 +261,15 @@ impl<'i> OccuranceAnalyzer<'i> {
             }
             // IR::Comment(_, r) => self.occurrence_analysis(r, seen),
             IR::Bin(l, _, r) => {
-                let (mut free, occs) = self.occurrence_analysis(l, seen);
-                let (r_free, r_occs) = self.occurrence_analysis(r, seen);
+                let (mut free, occs) = self.occurrence_analysis(l, );
+                let (r_free, r_occs) = self.occurrence_analysis(r, );
 
                 free.extend(r_free);
                 (free, occs.merge(r_occs))
             }
 
             IR::Fun(var, ir) => {
-                let (mut free, mut occs) = self.occurrence_analysis(ir, seen);
+                let (mut free, mut occs) = self.occurrence_analysis(ir);
                 free.remove(&var.id);
                 occs.vars.entry(var.id).or_insert(Occurrence::Dead);
                 let occs = occs.in_fun(&free);
@@ -277,26 +277,26 @@ impl<'i> OccuranceAnalyzer<'i> {
             }
 
             IR::App(fun, arg) => {
-                let (mut fun_free, fun_occs) = self.occurrence_analysis(fun, seen);
-                let (arg_free, arg_occs) = self.occurrence_analysis(arg, seen);
+                let (mut fun_free, fun_occs) = self.occurrence_analysis(fun);
+                let (arg_free, arg_occs) = self.occurrence_analysis(arg);
                 fun_free.extend(arg_free);
                 (fun_free, fun_occs.merge(arg_occs))
             }
-            IR::TyFun(_, ir) | IR::TyApp(ir, _) | IR::Field(ir, _) | IR::Tag(_, _, ir) => self.occurrence_analysis(ir, seen),
+            IR::TyFun(_, ir) | IR::TyApp(ir, _) | IR::Field(ir, _) | IR::Tag(_, _, ir) => self.occurrence_analysis(ir),
             IR::Local(var, defn, body) => {
-                let (mut free, mut occs) = self.occurrence_analysis(body, seen);
-                let (defn_free, defn_occs) = self.occurrence_analysis(defn, seen);
+                let (mut free, mut occs) = self.occurrence_analysis(body);
+                let (defn_free, defn_occs) = self.occurrence_analysis(defn);
                 free.extend(defn_free);
                 free.remove(&var.id);
                 occs.vars.entry(var.id).or_insert(Occurrence::Dead);
                 (free, defn_occs.merge(occs))
             }
             IR::If(c, t, o) => {
-                let (mut free, mut occs) = self.occurrence_analysis(c, seen);
+                let (mut free, mut occs) = self.occurrence_analysis(c);
 
-                let (then_free, then_occs) = self.occurrence_analysis(t, seen);
+                let (then_free, then_occs) = self.occurrence_analysis(t);
 
-                let (other_free, other_occs) = self.occurrence_analysis(o, seen);
+                let (other_free, other_occs) = self.occurrence_analysis(o);
 
                 free.extend(then_free);
                 free.extend(other_free);
@@ -312,7 +312,7 @@ impl<'i> OccuranceAnalyzer<'i> {
                 let mut free = FxHashSet::default();
                 for elem in elements {
                     // dbg!(elem);
-                    let (elem_free, elem_occs) = self.occurrence_analysis(elem, seen);
+                    let (elem_free, elem_occs) = self.occurrence_analysis(elem);
                     free.extend(elem_free);
                     occs = occs.merge(elem_occs);
                 }
@@ -320,11 +320,11 @@ impl<'i> OccuranceAnalyzer<'i> {
             }
             IR::Case(_, scrutinee, branches) => {
                 let (mut scrutinee_free, mut scrutinee_occs) =
-                    self.occurrence_analysis(scrutinee, seen);
+                    self.occurrence_analysis(scrutinee);
                 self.in_branch = true;
                 for branch in branches {
                     let (mut branch_free, mut branch_occs) =
-                        self.occurrence_analysis(&branch.body, seen);
+                        self.occurrence_analysis(&branch.body);
                     branch_free.remove(&branch.param.id);
 
                     branch_occs
@@ -342,13 +342,13 @@ impl<'i> OccuranceAnalyzer<'i> {
 
             IR::Item(_, id) => {
                 // dbg!(self.items.len(), id);
-                if seen.contains(id) {
+                // if seen.contains(id) {
                     // We are analyzing a recursive function
                     (Default::default(), Default::default())
-                } else {
-                    let seen = seen.update(*id);
-                    self.occurrence_analysis(&self.items[id.0 as usize], &seen)
-                }
+                // } else {
+                //     let seen = seen.update(*id);
+                //     self.occurrence_analysis(&self.items[id.0 as usize], &seen)
+                // }
             }
             IR::Extern(_, _) => (Default::default(), Default::default()),
             // _ => todo!("{ir:?}"),
@@ -386,7 +386,7 @@ enum ContextEntry {
 }
 
 #[derive(Default)]
-struct Simplifier<'p> {
+struct Simplifier {
     occs: Occurrences,
     subst: Subst,
     saturated_fun_count: usize,
@@ -394,22 +394,22 @@ struct Simplifier<'p> {
     locals_inlined: usize,
     tuples_inlined: usize,
     inline_size_threshold: usize,
-    items: &'p [IR],
+    // items: &'p [IR],
 
-    seen_items: FxHashSet<ItemId>,
+    // seen_items: FxHashSet<ItemId>,
 }
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
 let ref_ir = the_ir.clone();
-let mut occ_a = OccuranceAnalyzer::new(&ref_ir);
-let mut simplifier = Simplifier::new(& ref_ir);
+let mut occ_a = OccuranceAnalyzer::new();
+let mut simplifier = Simplifier::new();
     the_ir
                 .into_iter()
         .map(|ir| {
             let mut ir = ir;
             for _ in 0..2 {
             let (_, occs) =
-                occ_a.occurrence_analysis(&ir, &im::HashSet::with_hasher(FxBuildHasher));
+                occ_a.occurrence_analysis(&ir);
                 simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
@@ -422,11 +422,11 @@ let mut simplifier = Simplifier::new(& ref_ir);
         .collect()
 }
 
-impl<'p> Simplifier<'p> {
-    fn new( prev: &'p [IR]) -> Self {
+impl Simplifier {
+    fn new() -> Self {
         Self {
             // occs:,
-            items: prev,
+            // items: prev,
             inline_size_threshold: 60, // GHC magic number is 60
             subst: FxHashMap::default(),
             ..Default::default()        }
@@ -533,13 +533,13 @@ impl<'p> Simplifier<'p> {
                 }
                 IR::Item(_, itemid) => {
                     // dbg!(self.items.len());
-                    // break self.rebuild(ir, in_scope, ctx);
-                    match self.item_inline(itemid, &in_scope, &ctx) {
-                        ControlFlow::Continue(c) => c,
-                        ControlFlow::Break(_) => {
-                            break self.rebuild(ir, in_scope, ctx);
-                        }
-                    }
+                    break self.rebuild(ir, in_scope, ctx);
+                    // match self.item_inline(itemid, &in_scope, &ctx) {
+                        // ControlFlow::Continue(c) => c,
+                        // ControlFlow::Break(_) => {
+                            // break self.rebuild(ir, in_scope, ctx);
+                        // }
+                    // }
                 }
             }
         }
@@ -626,39 +626,39 @@ impl<'p> Simplifier<'p> {
             })
                 }
 
-    fn item_inline(
-        &mut self,
-        itemid: ItemId,
-        in_scope: &InScope,
-        ctx: &SimplifierContext,
-    ) -> ControlFlow<ItemId, IR> {
-        if self.seen_items.contains(&itemid) {
-            ControlFlow::Break(itemid)
-        } else {
-            self.seen_items.insert(itemid);
-            self.items
-                .get(itemid.0 as usize)
-                .map_or_else(
-|| {
-                    unreachable!(
-                        "Unknown item encountered in simplification: {:?}\nin_scope: {:?}",
-                        itemid, in_scope
-                    )
-                }    ,                |definition| {
+//     fn item_inline(
+//         &mut self,
+//         itemid: ItemId,
+//         in_scope: &InScope,
+//         ctx: &SimplifierContext,
+//     ) -> ControlFlow<ItemId, IR> {
+//         if self.seen_items.contains(&itemid) {
+//             ControlFlow::Break(itemid)
+//         } else {
+//             self.seen_items.insert(itemid);
+//             self.items
+//                 .get(itemid.0 as usize)
+//                 .map_or_else(
+// || {
+//                     unreachable!(
+//                         "Unknown item encountered in simplification: {:?}\nin_scope: {:?}",
+//                         itemid, in_scope
+//                     )
+//                 }    ,                |definition| {
                         
-                    if definition.size() < self.inline_size_threshold 
-                        && self.some_benefit(definition, in_scope, ctx)
-                    // if self.some_benefit(definition, in_scope, ctx)
-                    {
-                        self.subst = Subst::default();
-                        ControlFlow::Continue(definition.clone())
-                    } else {
-                        ControlFlow::Break(itemid)
-                    }
-                })
+//                     if definition.size() < self.inline_size_threshold 
+//                         && self.some_benefit(definition, in_scope, ctx)
+//                     // if self.some_benefit(definition, in_scope, ctx)
+//                     {
+//                         self.subst = Subst::default();
+//                         ControlFlow::Continue(definition.clone())
+//                     } else {
+//                         ControlFlow::Break(itemid)
+//                     }
+//                 })
                 
-        }
-    }
+//         }
+//     }
 
     fn should_inline(
         &self,
@@ -676,7 +676,7 @@ impl<'p> Simplifier<'p> {
             Occurrence::Many => {
                 // dbg!(&ir);
                 // dbg!(ir.size());
-                let small_enough = ir.size() <= self.inline_size_threshold * 3  ;
+                let small_enough = ir.size() <= self.inline_size_threshold   ;
                 ir.is_value() && small_enough && self.some_benefit(ir, in_scope, ctx)
             }
         }

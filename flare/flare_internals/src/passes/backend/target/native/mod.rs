@@ -12,15 +12,13 @@ use crate::resource::rep::backend::types::LIRType;
 use crate::resource::rep::frontend::ast::BinOp;
 use crate::resource::rep::midend::ir::ItemId;
 
+
+pub mod closures;
+
 const ENTRYPOINT_FUNCTION_SYMBOL: &str = "main";
 
 #[derive(Clone, Copy, Default)]
 pub struct Native;
-
-// enum LocalOrParam {
-//     Local(Value), // Value of the local variable
-//     Param(usize), // Index of the parameter in the function signature
-// }
 
 pub struct IRConverter<'builder_ctx, 'module> {
     builder: FunctionBuilder<'builder_ctx>,
@@ -194,7 +192,7 @@ pub struct NativeGen {
     module: ObjectModule,
     ctx: codegen::Context,
     fctx: FunctionBuilderContext,
-   }
+}
 
 impl NativeGen {
     fn new(isa: Arc<dyn isa::TargetIsa>) -> Self {
@@ -365,8 +363,7 @@ for (item, (sig, function_id)) in funcs.into_iter().zip(ids) {
 
         product.emit().expect("Could not emit bytes")
 
-               // todo!()
-    }
+}
 
     fn ext(&self) -> &str {
         "o"

@@ -91,7 +91,7 @@ impl ClosureConvert {
             ),
 
             ir::IR::Tag(_, _, ir) => self.convert(*ir, env), //TODO: special tag for unions
-            ir::IR::Item(t, d) => panic!("Should have been caught in application"), //LIR::Item(d, lower_ty(&t)),
+            ir::IR::Item(t, d) => LIR::Item(d, lower_ty(&t)),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             ir::IR::Bin(l, op, r) => {
                 LIR::binop(self.convert(*l, env.clone()), op, self.convert(*r, env))
@@ -186,10 +186,10 @@ fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
             }
         })
         .collect();
-    // let ret_ty = lower_ty(&ir.type_of());
+    let ret_ty = lower_ty(&ir.type_of());
 
     let body = conversion.convert(ir, env);
-    let ret_ty = body.type_of();
+    // let ret_ty = body.type_of();
     let id = conversion.item_supply.supply();
     ClosureConvertOut {
         item: Item {
