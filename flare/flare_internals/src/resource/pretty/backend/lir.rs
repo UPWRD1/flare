@@ -23,7 +23,7 @@ impl Render for LIR {
             Self::Str(s) => Doc::text(format!("\"{s}\"s")),
             Self::Unit => Doc::text("unit".to_string()),
             Self::Float(f) => Doc::text(format!("{f}f")),
-            Self::Closure(_, item_id, vars) => Doc::text("closure")
+            Self::ClosureApply(_, item_id, vars) => Doc::text("closure")
                 .space()
                 .text(format!("{}", item_id.0))
                 .append(
@@ -65,7 +65,7 @@ impl Render for LIR {
                     .collect(),
             )
             .braces(),
-            Self::Field(ir, u) => ir.render().append(Doc::text(u.to_string()).brackets()),
+            Self::Field(ir, u) => ir.render().text(".").append(Doc::text(u.to_string())),
             Self::Item(id, _) => Doc::text(format!("#{}", id.0)),
             Self::Extern(n, _) => Doc::text(format!("extern_{}", n)),
             Self::BinOp(l, op, r) => l.render().space().text(format!("{op}")).space().render(*r),

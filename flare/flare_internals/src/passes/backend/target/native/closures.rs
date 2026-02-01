@@ -131,7 +131,9 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             let returned = closure.inst_results(call).to_vec();
             closure.ins().return_(&returned);
 
-            self.module.define_function(func_id, &mut ctx).unwrap();
+            self.module
+                .define_function(func_id, &mut ctx)
+                .expect("Could not define forwarding function");
         };
 
         (func_id, sig)

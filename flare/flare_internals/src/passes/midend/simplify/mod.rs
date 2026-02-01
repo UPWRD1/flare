@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
-use crate::resource::rep::{frontend::ast::BinOp, midend::{ir::{Branch, IR, ItemId, Var, VarId}, irtype::{IRType, Kind, Row, TyApp}}};
+use crate::resource::rep::{frontend::ast::BinOp, midend::{ir::{Branch, IR,  Var, VarId}, irtype::{IRType, Kind, Row, TyApp}}};
 #[allow(dead_code)]
 enum Arg<'a> {
     Val(&'a IR),
@@ -625,41 +625,7 @@ impl Simplifier {
                 _ => ControlFlow::Break(var.clone()),
             })
                 }
-
-//     fn item_inline(
-//         &mut self,
-//         itemid: ItemId,
-//         in_scope: &InScope,
-//         ctx: &SimplifierContext,
-//     ) -> ControlFlow<ItemId, IR> {
-//         if self.seen_items.contains(&itemid) {
-//             ControlFlow::Break(itemid)
-//         } else {
-//             self.seen_items.insert(itemid);
-//             self.items
-//                 .get(itemid.0 as usize)
-//                 .map_or_else(
-// || {
-//                     unreachable!(
-//                         "Unknown item encountered in simplification: {:?}\nin_scope: {:?}",
-//                         itemid, in_scope
-//                     )
-//                 }    ,                |definition| {
-                        
-//                     if definition.size() < self.inline_size_threshold 
-//                         && self.some_benefit(definition, in_scope, ctx)
-//                     // if self.some_benefit(definition, in_scope, ctx)
-//                     {
-//                         self.subst = Subst::default();
-//                         ControlFlow::Continue(definition.clone())
-//                     } else {
-//                         ControlFlow::Break(itemid)
-//                     }
-//                 })
-                
-//         }
-//     }
-
+    
     fn should_inline(
         &self,
         ir: &IR,

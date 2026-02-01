@@ -149,7 +149,7 @@ impl ClosureConvert {
                 body,
             },
         );
-        LIR::Closure(closure_ty, item, vars)
+        LIR::ClosureApply(closure_ty, item, vars)
     }
 }
 

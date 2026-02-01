@@ -24,7 +24,7 @@ pub enum LIR {
     #[default]
     Unit,
     Float(OrderedFloat<f32>),
-    Closure(LIRType, ir::ItemId, Vec<Var>),
+    ClosureApply(LIRType, ir::ItemId, Vec<Var>),
     Apply(Box<Self>, Box<Self>),
     BulkApply(Box<Self>, Vec<Self>),
     Local(Var, Box<Self>, Box<Self>),
@@ -68,7 +68,7 @@ impl LIR {
                 free.insert(*var);
             }
             Self::Int(_) | Self::Float(_) | Self::Unit | Self::Str(_) => {}
-            Self::Closure(_, _, vars) => {
+            Self::ClosureApply(_, _, vars) => {
                 for var in vars {
                     free.insert(*var);
                 }
@@ -122,7 +122,7 @@ impl LIR {
             | Self::Str(_)
             | Self::Item(..)
             | Self::Extern(..) => {}
-            Self::Closure(_, _, vars) => {
+            Self::ClosureApply(_, _, vars) => {
                 for var in vars.iter_mut() {
                     if let Some(new_var) = subst.get(var) {
                         *var = *new_var;
@@ -161,7 +161,7 @@ impl LIR {
             LIR::Str(_) => LIRType::String,
             LIR::Unit => LIRType::Unit,
             LIR::Float(_) => LIRType::Float,
-            LIR::Closure(t, _, _) => *t,
+            LIR::ClosureApply(t, _, _) => *t,
             LIR::Apply(func, arg) => func.type_of(),
             LIR::BulkApply(func, _) => func.type_of(),
             LIR::Local(.., body) => body.type_of(),

@@ -15,15 +15,7 @@ impl Render for LIRType {
             Self::String => Doc::text("str"),
             Self::Unit => Doc::text("unit"),
             Self::Closure(l, r) => l.render().space().text("->").space().render(*r).brackets(),
-            Self::ClosureEnv(c, params) => Doc::text("code:")
-                .space()
-                .hard_line()
-                .render(*c)
-                .nest(2)
-                .hard_line()
-                .text("env:")
-                .space()
-                .hard_line()
+            Self::ClosureEnv(c, params) => Doc::text("|")
                 .append(
                     Doc::list(
                         params
@@ -32,10 +24,9 @@ impl Render for LIRType {
                             .intersperse(Doc::text(", "))
                             .collect(),
                     )
-                    .brackets(),
+                    .text("|"),
                 )
-                .nest(2)
-                .hard_line(),
+                .render(*c),
             Self::Array(v) => Doc::list(
                 v.iter()
                     .map(|el| el.render())

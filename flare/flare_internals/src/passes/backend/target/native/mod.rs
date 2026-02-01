@@ -4,14 +4,12 @@ use cranelift::codegen::ir::{BlockArg, Function};
 use cranelift::module::{FuncId, Linkage, Module};
 use cranelift::object::{ObjectBuilder, ObjectModule};
 use cranelift::prelude::*;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap};
 
 use crate::passes::backend::{lir::ClosureConvertOut, target::Target};
 use crate::resource::rep::backend::lir::{Item, LIR, Var};
 use crate::resource::rep::backend::types::LIRType;
 use crate::resource::rep::frontend::ast::BinOp;
-use crate::resource::rep::midend::ir::ItemId;
-
 
 pub mod closures;
 
@@ -85,7 +83,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx,'module> {
             LIR::Str(intern) => todo!(),
             LIR::Unit => todo!(),
             LIR::Float(f) => self.builder.ins().f32const(f.0),
-            LIR::Closure(lirtype, item_id, vars) => todo!(),
+            LIR::ClosureApply(lirtype, item_id, vars) => todo!(),
             LIR::Apply(lir, lir1) => todo!(),
             LIR::BulkApply(func, args) => {
                 
@@ -175,7 +173,7 @@ self.builder.inst_results(the_call)[0]
 
 
 fn translate_ty( ty: LIRType) -> types::Type {
-        match ty {
+    match ty {
             LIRType::Int => types::I32,
             LIRType::Float => types::F32,
             LIRType::String => types::I8X8,
@@ -184,8 +182,8 @@ fn translate_ty( ty: LIRType) -> types::Type {
             LIRType::Union(lirtypes) => todo!(),
             LIRType::Closure(lirtype, lirtype1) => todo!(),
             LIRType::ClosureEnv(lirtype, lirtypes) => todo!(),
-        }
     }
+}
 
 pub struct NativeGen {
     isa: Arc<dyn isa::TargetIsa>,
@@ -232,7 +230,6 @@ impl NativeGen {
         }
     }
 
-    
     fn convert_signature(&self, item: &Item) -> Signature {
         let returns = vec![AbiParam::new(translate_ty(item.ret_ty))];
         let params = item.params.iter().map(|var| AbiParam::new(translate_ty(var.ty))).collect();
@@ -240,8 +237,7 @@ impl NativeGen {
     }
 
     fn preload_function(&mut self, item: &Item) -> (Signature, FuncId) {
-        
- let function_name = format!("flare_f_{}", item.id.0);
+        let function_name = format!("flare_f_{}", item.id.0);
         let sig = self.convert_signature(item);
         let function_id = self
             .module
@@ -323,6 +319,10 @@ impl Target for Native {
     type Output = Vec<u8>;
 #[allow(clippy::unwrap_used)]
     fn generate(&mut self, lir: Vec<ClosureConvertOut>) -> Self::Output {
+        enum IsClosure {
+            Yes,
+            No,
+        }
         let isa = {
             let mut builder = settings::builder();
 
@@ -344,13 +344,24 @@ impl Target for Native {
         let mut native_gen = NativeGen::new(isa.clone());
 
     
-                let funcs: Vec<Item> = lir.into_iter().flat_map(|mut cco|{cco.closure_items.insert(ItemId((cco.closure_items.len() + 1) as u32), cco.item); cco.closure_items.into_values() }).collect();
+        let funcs: Vec<(Item, IsClosure)> = lir
+            .into_iter()
+            .flat_map(|cco|{
+                let mut new_items:Vec<(Item, IsClosure)> = Vec::with_capacity(cco.closure_items.len() + 1);
+                new_items.extend(cco.closure_items.into_values().map(|closure| (closure, IsClosure::Yes)));
+                new_items.push((cco.item, IsClosure::No));
+                new_items
+            })
+            .collect();
 
+        let ids:Vec<(Signature, FuncId)> = funcs
+            .iter()
+            .map(|(func, _)| native_gen.preload_function(func))
+            .collect();
         
-        let ids:Vec<(Signature, FuncId)> = funcs.iter().map(|func| native_gen.preload_function(func)).collect();
+        let main_id = ids.last().unwrap().1;
         
-let main_id = ids.last().unwrap().1;
-for (item, (sig, function_id)) in funcs.into_iter().zip(ids) {
+        for ((item, is_closure), (sig, function_id)) in funcs.into_iter().zip(ids) {
             native_gen.generate_function(sig, item, function_id);
         }
         

@@ -64,7 +64,7 @@ impl Target for LIRTarget {
             .map(|ir| {
                 let closures = self.render_closures(ir.closure_items);
                 let main_body = self.render_item(ir.item);
-                format!("closures = {closures}\n{main_body}")
+                format!("{closures}\n{main_body}")
             })
             .join("---------------------\n\n")
     }
