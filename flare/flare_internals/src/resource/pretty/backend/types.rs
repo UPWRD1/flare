@@ -27,8 +27,8 @@ impl Render for LIRType {
                 .append(
                     Doc::list(
                         params
-                            .into_iter()
-                            .map(Render::render)
+                            .iter()
+                            .map(|p| p.render())
                             .intersperse(Doc::text(", "))
                             .collect(),
                     )
@@ -36,16 +36,16 @@ impl Render for LIRType {
                     .nest(2),
                 ),
             Self::Array(v) => Doc::list(
-                v.into_iter()
-                    .map(Render::render)
+                v.iter()
+                    .map(|el| el.render())
                     .intersperse(Doc::text(","))
                     .collect(),
             )
             .braces(),
 
             Self::Union(v) => Doc::list(
-                v.into_iter()
-                    .map(Render::render)
+                v.iter()
+                    .map(|p| p.render())
                     .intersperse(Doc::text("|"))
                     .collect(),
             )

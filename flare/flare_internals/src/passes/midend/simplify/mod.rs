@@ -533,13 +533,13 @@ impl<'p> Simplifier<'p> {
                 }
                 IR::Item(_, itemid) => {
                     // dbg!(self.items.len());
-                    break self.rebuild(ir, in_scope, ctx);
-                    // match self.item_inline(itemid, &in_scope, &ctx) {
-                        // ControlFlow::Continue(c) => c,
-                        // ControlFlow::Break(_) => {
-                            // break self.rebuild(ir, in_scope, ctx);
-                        // }
-                    // }
+                    // break self.rebuild(ir, in_scope, ctx);
+                    match self.item_inline(itemid, &in_scope, &ctx) {
+                        ControlFlow::Continue(c) => c,
+                        ControlFlow::Break(_) => {
+                            break self.rebuild(ir, in_scope, ctx);
+                        }
+                    }
                 }
             }
         }

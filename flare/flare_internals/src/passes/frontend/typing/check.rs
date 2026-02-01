@@ -27,10 +27,9 @@ impl Solver<'_> {
         // dbg!(&self.tables.row_unification_table);
         match (*the_ast.0, *the_ty.0) {
             // Primitives
-            (Expr::Number(n), Type::Num) => {
-                GenOut::new(vec![], Spanned(Expr::Number(n).into(), id))
-            }
-
+            // (Expr::Number(n), Type::Num) => {
+            //     GenOut::new(vec![], Spanned(Expr::Number(n).into(), id))
+            // }
             (Expr::String(s), Type::String) => {
                 GenOut::new(vec![], Spanned(Expr::String(s).into(), id))
             }

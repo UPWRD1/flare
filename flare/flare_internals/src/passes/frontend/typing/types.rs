@@ -48,9 +48,8 @@ pub struct TypeVar(pub usize);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum Type {
-    Infer,
+    // Infer,
     Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
-
     Unifier(TyUniVar),
     Generic(Spanned<Intern<String>>),
     // Template(Spanned<Intern<String>>),
@@ -158,7 +157,9 @@ impl Type {
                 l.0.occurs_check(var).map_err(|_| *self)?;
                 r.0.occurs_check(var).map_err(|_| *self)
             }
-            _ => todo!("{self:?}"),
+            Self::Package(_) => Ok(()),
+            Self::User(..) | Self::Hole => unreachable!("Shouldn't happen"),
+            Self::Subtable(_, _) => todo!(), // _ => todo!("{self:?}"),
         }
     }
 

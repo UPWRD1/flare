@@ -99,7 +99,7 @@ enum Token {
     TyUnit,
     Myself,
     Metatype,
-    TyInfer,
+    TyInt,
 }
 
 impl std::fmt::Display for Token {
@@ -158,7 +158,7 @@ impl std::fmt::Display for Token {
             Self::Then => write!(f, "then"),
             Self::Type => write!(f, "type"),
             Self::Def => write!(f, "def"),
-            Self::TyInfer => write!(f, "infer"),
+            Self::TyInt => write!(f, "int"),
             Self::TyNum => write!(f, "num"),
             Self::TyStr => write!(f, "str"),
             Self::TyBool => write!(f, "bool"),
@@ -232,7 +232,7 @@ where
                 "if" => Token::If,
                 "impl" => Token::Impl,
                 "in" => Token::In,
-                "infer" => Token::TyInfer,
+                "int" => Token::TyInt,
                 "let" => Token::Let,
                 "match" => Token::Match,
                 "or" => Token::Or,
@@ -850,7 +850,7 @@ where
                 just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
                 just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
                 just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
-                just(Token::TyInfer).map_with(|_, e| Spanned(Intern::from(Type::Infer), e.span())),
+                // just(Token::TyInt).map_with(|_, e| Spanned(Intern::from(Type::Int), e.span())),
 
 
 

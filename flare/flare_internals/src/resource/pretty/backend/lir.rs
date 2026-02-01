@@ -68,8 +68,8 @@ impl Render for LIR {
             )
             .braces(),
             Self::Field(ir, u) => ir.render().append(Doc::text(u.to_string()).brackets()),
-            Self::Item(id) => Doc::text(format!("#{}", id.0)),
-            Self::Extern(n) => Doc::text(format!("extern_{}", n)),
+            Self::Item(id, _) => Doc::text(format!("#{}", id.0)),
+            Self::Extern(n, _) => Doc::text(format!("extern_{}", n)),
             Self::BinOp(l, op, r) => l.render().space().text(format!("{op}")).space().render(*r),
             Self::Case(scrutinee, branches) => Doc::text("case").space().render(*scrutinee).append(
                 Doc::list(

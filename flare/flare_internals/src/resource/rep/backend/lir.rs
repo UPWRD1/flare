@@ -10,7 +10,7 @@ use crate::resource::rep::{
     midend::ir::{self, ItemId},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Var {
     pub id: ir::VarId,
     pub ty: LIRType,
@@ -32,8 +32,8 @@ pub enum LIR {
     Struct(Vec<Self>),
     Field(Box<Self>, usize),
     Case(Box<Self>, Vec<Self>),
-    Item(ir::ItemId),
-    Extern(Intern<String>),
+    Item(ir::ItemId, LIRType),
+    Extern(Intern<String>, LIRType),
     BinOp(Box<Self>, BinOp, Box<Self>),
 }
 
@@ -65,12 +65,12 @@ impl LIR {
     fn free_vars_aux(&self, free: &mut BTreeSet<Var>) {
         match self {
             Self::Var(var) => {
-                free.insert(var.clone());
+                free.insert(*var);
             }
             Self::Int(_) | Self::Float(_) | Self::Unit | Self::Str(_) => {}
             Self::Closure(_, _, vars) => {
                 for var in vars {
-                    free.insert(var.clone());
+                    free.insert(*var);
                 }
             }
             Self::Apply(fun, arg) => {
@@ -88,7 +88,7 @@ impl LIR {
             }
             Self::Access(ir, _) | Self::Field(ir, _) => ir.free_vars_aux(free),
             Self::Struct(v) => v.iter().for_each(|ir| ir.free_vars_aux(free)),
-            Self::Item(_) | Self::Extern(_) => {}
+            Self::Item(..) | Self::Extern(..) => {}
 
             Self::BinOp(l, _, r) => {
                 l.free_vars_aux(free);
@@ -113,19 +113,19 @@ impl LIR {
         match self {
             Self::Var(var) => {
                 if let Some(new_var) = subst.get(var) {
-                    *var = new_var.clone();
+                    *var = *new_var;
                 }
             }
             Self::Int(_)
             | Self::Float(_)
             | Self::Unit
             | Self::Str(_)
-            | Self::Item(_)
-            | Self::Extern(_) => {}
+            | Self::Item(..)
+            | Self::Extern(..) => {}
             Self::Closure(_, _, vars) => {
                 for var in vars.iter_mut() {
                     if let Some(new_var) = subst.get(var) {
-                        *var = new_var.clone();
+                        *var = *new_var;
                     }
                 }
             }
@@ -151,6 +151,27 @@ impl LIR {
                 scrutinee.rename(subst);
                 branches.iter_mut().for_each(|branch| branch.rename(subst));
             }
+        }
+    }
+
+    pub fn type_of(&self) -> LIRType {
+        match self {
+            LIR::Var(var) => var.ty,
+            LIR::Int(_) => LIRType::Int,
+            LIR::Str(_) => LIRType::String,
+            LIR::Unit => LIRType::Unit,
+            LIR::Float(_) => LIRType::Float,
+            LIR::Closure(t, _, _) => *t,
+            LIR::Apply(func, arg) => func.type_of(),
+            LIR::BulkApply(func, _) => func.type_of(),
+            LIR::Local(.., body) => body.type_of(),
+            LIR::Access(lir, _) => todo!(),
+            LIR::Struct(lirs) => todo!(),
+            LIR::Field(lir, _) => todo!(),
+            LIR::Case(lir, lirs) => todo!(),
+            LIR::Item(_, t) => *t,
+            LIR::Extern(_, t) => *t,
+            LIR::BinOp(left, ..) => left.type_of(),
         }
     }
 }

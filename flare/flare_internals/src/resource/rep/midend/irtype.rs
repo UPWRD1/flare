@@ -17,8 +17,8 @@ pub enum Row {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
 pub enum Specifier {
-    I32,
-    F64,
+    Int,
+    Float,
     Unknown,
 }
 

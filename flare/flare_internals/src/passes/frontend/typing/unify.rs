@@ -26,7 +26,7 @@ impl Solver<'_> {
     pub fn normalize_ty(&mut self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
         match *ty.0 {
             Type::Num
-            | Type::String
+                       | Type::String
             | Type::Bool
             | Type::Unit
             | Type::Particle(_)

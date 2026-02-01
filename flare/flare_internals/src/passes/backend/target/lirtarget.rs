@@ -15,7 +15,7 @@ pub struct LIRTarget;
 impl LIRTarget {
     fn render_item(&self, item: Item) -> String {
         format!(
-            "fn {}({}) {{\n\t{}\n}}\n",
+            "fn {}({}) -> {} {{\n\t{}\n}}\n",
             item.id.0,
             item.params
                 .iter()
@@ -23,7 +23,7 @@ impl LIRTarget {
                     "${}: {}",
                     x.id.0,
                     tiny_pretty::print(
-                        &x.ty.clone().render(),
+                        &x.ty.render(),
                         &tiny_pretty::PrintOptions {
                             width: 80,
                             ..Default::default()
@@ -31,6 +31,13 @@ impl LIRTarget {
                     )
                 ))
                 .join(","),
+            tiny_pretty::print(
+                &item.ret_ty.render(),
+                &tiny_pretty::PrintOptions {
+                    width: 80,
+                    ..Default::default()
+                }
+            ),
             tiny_pretty::print(
                 &item.body.render(),
                 &tiny_pretty::PrintOptions {

@@ -26,6 +26,10 @@ impl Solver<'_> {
                 ast.convert(Type::Num),
             ),
 
+            // Expr::Number(n) => (
+            //                 GenOut::new(vec![], ast.convert(Expr::Number(n))),
+            //                 ast.convert(Type::Num),
+            //             ),
             Expr::String(s) => (
                 GenOut::new(vec![], ast.convert(Expr::String(s))),
                 ast.convert(Type::String),

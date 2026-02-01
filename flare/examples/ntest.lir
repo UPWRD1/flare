@@ -1,16 +1,4 @@
 closures = 
-fn 0($0: f64,$1: f64) {
-	$0 * $1
-}
----------------------
-
-closures = 
-fn 1() {
-	7f
-}
----------------------
-
-closures = 
-fn 2() {
-	let $0 = #1 in #0(5f,$0)
+fn 0() -> [str -> f64] {
+	extern_puts(hello world\0)
 }

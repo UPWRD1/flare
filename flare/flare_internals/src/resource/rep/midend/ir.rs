@@ -5,7 +5,7 @@ use ordered_float::OrderedFloat;
 
 use crate::resource::rep::{
     frontend::ast::BinOp,
-    midend::irtype::{IRType, Kind, Row, Specifier, TyApp},
+    midend::irtype::{IRType, Kind, Row, TyApp},
 };
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Default)]
@@ -169,11 +169,12 @@ impl IR {
         match self {
             Self::Var(v) => v.ty.clone(),
             Self::Num(n) => IRType::Num,
-            //     ({
+            // Self::Num(n) => IRType::Num({
+            //     // dbg!(n.fract());
             //     if n.fract() == 0.0 {
-            //         Specifier::I32
+            //         Specifier::Int
             //     } else {
-            //         Specifier::F64
+            //         Specifier::Float
             //     }
             // }),
             Self::Str(_) => IRType::Str,
@@ -305,10 +306,10 @@ impl IR {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                 let lty = l.type_of();
                 let rty = r.type_of();
-                if lty != rty || lty != IRType::Num {
+                if lty != rty || !matches!(lty, IRType::Num) {
                     unreachable!("Expected number type in arithmatic operation while generating IR",)
                 }
-                IRType::Num
+                lty
                 //     (
                 //     match (lty, op, rty) {
                 //     (

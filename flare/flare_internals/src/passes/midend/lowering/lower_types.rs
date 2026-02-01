@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     passes::frontend::typing::{self, Evidence},
-    resource::rep::midend::irtype::{IRType, Kind, Row, Specifier, TypeVar},
+    resource::rep::midend::irtype::{IRType, Kind, Row, TypeVar},
 };
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]

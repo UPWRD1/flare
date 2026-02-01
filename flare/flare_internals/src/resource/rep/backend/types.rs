@@ -1,20 +1,39 @@
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+use internment::Intern;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LIRType {
     Int,
     Float,
     String,
     Unit,
-    Array(Vec<Self>),
-    Union(Vec<Self>),
-    Closure(Box<Self>, Box<Self>),
-    ClosureEnv(Box<Self>, Vec<Self>),
+    Array(Intern<[Self]>),
+    Union(Intern<[Self]>),
+    Closure(Intern<Self>, Intern<Self>),
+    ClosureEnv(Intern<Self>, Intern<[Self]>),
 }
+
 impl LIRType {
     pub fn closure(l: Self, r: Self) -> Self {
-        Self::Closure(Box::new(l), Box::new(r))
+        Self::Closure(l.into(), r.into())
     }
 
     pub fn closure_env(l: Self, r: Vec<Self>) -> Self {
-        Self::ClosureEnv(Box::new(l), r)
+        Self::ClosureEnv(l.into(), r.as_slice().into())
+    }
+
+    pub fn destructure_closure(self) -> (Vec<Self>, Self) {
+        fn worker(t: &LIRType, v: &mut Vec<LIRType>) {
+            match t {
+                LIRType::Closure(l, r) => {
+                    v.push(**l);
+                    worker(&r, v);
+                }
+                _ => v.push(*t),
+            }
+        }
+        let mut v = vec![];
+        worker(&self, &mut v);
+        let (ret, args) = v.split_last().expect("Could not destructure arrow");
+        (args.to_vec(), *ret)
     }
 }

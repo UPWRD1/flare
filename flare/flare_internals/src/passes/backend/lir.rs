@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use internment::Intern;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::resource::rep::{
@@ -31,16 +32,16 @@ impl ClosureConvert {
     fn convert(&mut self, ir: ir::IR, env: im::HashMap<ir::Var, Var, FxBuildHasher>) -> LIR {
         match ir {
             ir::IR::Num(n) => {
-                // if n.fract() == 0.0 {
-                //     let n = n.0 as i32;
-                //     LIR::Int(n)
-                // } else {
-                LIR::Float(n)
-                // }
+                if n.fract() == 0.0 {
+                    let n = n.0 as i32;
+                    LIR::Int(n)
+                } else {
+                    LIR::Float(n)
+                }
             }
             ir::IR::Str(s) => LIR::Str(s),
             ir::IR::Unit => LIR::Unit,
-            ir::IR::Var(var) => LIR::Var(env[&var].clone()),
+            ir::IR::Var(var) => LIR::Var(env[&var]),
             ir::IR::Particle(p) => LIR::Str(p),
 
             ir::IR::Local(var, defn, body) => {
@@ -49,7 +50,7 @@ impl ClosureConvert {
                     id: self.var_supply.supply_for(var.id),
                     ty: lower_ty(&var.ty),
                 };
-                let body = self.convert(*body, env.update(var, v.clone()));
+                let body = self.convert(*body, env.update(var, v));
                 LIR::local(v, defn, body)
             }
             ir::IR::Fun(fun_var, body) => {
@@ -58,7 +59,7 @@ impl ClosureConvert {
                     ty: lower_ty(&fun_var.ty),
                 };
 
-                self.make_closure(var.clone(), *body, env.update(fun_var, var))
+                self.make_closure(var, *body, env.update(fun_var, var))
             }
             ir::IR::App(fun, arg) => {
                 if let ir::IR::App(_, _) = *fun {
@@ -90,7 +91,7 @@ impl ClosureConvert {
             ),
 
             ir::IR::Tag(_, _, ir) => self.convert(*ir, env), //TODO: special tag for unions
-            ir::IR::Item(_, d) => LIR::Item(d),
+            ir::IR::Item(t, d) => panic!("Should have been caught in application"), //LIR::Item(d, lower_ty(&t)),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             ir::IR::Bin(l, op, r) => {
                 LIR::binop(self.convert(*l, env.clone()), op, self.convert(*r, env))
@@ -102,7 +103,7 @@ impl ClosureConvert {
                     .map(|b| ir::IR::fun(b.param, b.body))
                     .map(|ir| self.convert(ir, env.clone())),
             ),
-            ir::IR::Extern(n, _t) => LIR::Extern(n),
+            ir::IR::Extern(n, t) => LIR::Extern(n, lower_ty(&t)),
             _ => todo!("{ir:?}"),
         }
     }
@@ -118,14 +119,11 @@ impl ClosureConvert {
         let mut free_vars = body.free_vars();
         free_vars.remove(&var);
 
-        let vars: Vec<Var> = free_vars.iter().cloned().collect();
-        let closure_ty = LIRType::closure(var.ty.clone(), ret.clone());
+        let vars: Vec<Var> = free_vars.iter().copied().collect();
+        let closure_ty = LIRType::closure(var.ty, ret);
         let env_var = Var {
             id: self.var_supply.supply(),
-            ty: LIRType::closure_env(
-                closure_ty.clone(),
-                vars.iter().map(|var| var.ty.clone()).collect(),
-            ),
+            ty: LIRType::closure_env(closure_ty, vars.iter().map(|var| var.ty).collect()),
         };
 
         let subst = free_vars
@@ -133,15 +131,8 @@ impl ClosureConvert {
             .enumerate()
             .map(|(i, var)| {
                 let id = self.var_supply.supply();
-                let new_var = Var {
-                    id,
-                    ty: var.ty.clone(),
-                };
-                body = LIR::local(
-                    new_var.clone(),
-                    LIR::access(LIR::Var(env_var.clone()), i + 1),
-                    body.clone(),
-                );
+                let new_var = Var { id, ty: var.ty };
+                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
                 (var, new_var)
             })
             .collect::<FxHashMap<_, _>>();
@@ -190,14 +181,15 @@ fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
                     id,
                     ty: lower_ty(&lower_var.ty),
                 };
-                env.insert(lower_var, var.clone());
+                env.insert(lower_var, var);
                 var
             }
         })
         .collect();
-    let ret_ty = lower_ty(&ir.type_of());
+    // let ret_ty = lower_ty(&ir.type_of());
 
     let body = conversion.convert(ir, env);
+    let ret_ty = body.type_of();
     let id = conversion.item_supply.supply();
     ClosureConvertOut {
         item: Item {
@@ -213,11 +205,6 @@ fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
 fn lower_ty(ty: &IRType) -> LIRType {
     match ty {
         IRType::Num => LIRType::Float,
-        // IRType::Num => match specifier {
-        //     irtype::Specifier::I32 => LIRType::Int,
-        //     irtype::Specifier::F64 => LIRType::Float,
-        //     irtype::Specifier::Unknown => panic!("Unknown specifier"), // LIRType::Float,
-        // },
         IRType::Str => LIRType::String,
         IRType::Unit => LIRType::Unit,
         IRType::Fun(arg, ret) => LIRType::closure(lower_ty(arg), lower_ty(ret)),
@@ -231,9 +218,14 @@ fn lower_ty(ty: &IRType) -> LIRType {
     }
 }
 
-fn lower_row(row: &irtype::Row) -> Vec<LIRType> {
+fn lower_row(row: &irtype::Row) -> Intern<[LIRType]> {
     match row {
         irtype::Row::Open(_type_var) => todo!(),
-        irtype::Row::Closed(items) => items.iter().map(lower_ty).collect(),
+        irtype::Row::Closed(items) => items
+            .iter()
+            .map(lower_ty)
+            .collect::<Vec<_>>()
+            .as_slice()
+            .into(),
     }
 }

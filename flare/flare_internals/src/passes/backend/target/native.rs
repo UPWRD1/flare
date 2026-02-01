@@ -92,10 +92,11 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx,'module> {
             LIR::BulkApply(func, args) => {
                 
 let args: Vec<_> = args.into_iter().flat_map(|arg| self.convert_lir(arg)).collect();
-                let the_fun = if let LIR::Item(id) = *func {
+                let the_fun = if let LIR::Item(id, ..) = *func {
                                         FuncId::from_u32(id.0)
                     
-                 } else {
+                 }                  
+              else {
                     todo!()
                 };
                 let the_fun = self.module.declare_func_in_func(the_fun, self.builder.func);
@@ -123,7 +124,7 @@ let var_ty = self.builder.func.stencil.dfg.value_type(defn);
             LIR::Struct(lirs) => todo!(),
             LIR::Field(lir, _) => todo!(),
             LIR::Case(lir, lirs) => todo!(),
-            LIR::Item(item_id) =>  {
+            LIR::Item(item_id, _) =>  {
                 // solo item indicates no args
 let the_fun = FuncId::from_u32(item_id.0);
 let the_fun = self.module.declare_func_in_func(the_fun, self.builder.func);
@@ -131,7 +132,25 @@ let the_call = self.builder.ins().call(the_fun, &Vec::new());
                 
 self.builder.inst_results(the_call)[0]
             },
-            LIR::Extern(intern) => todo!(),
+            LIR::Extern(name, t) => {
+                let (param_tys, ret_ty) = t.destructure_closure();
+                let params = param_tys.into_iter().map(|ty| {
+                    let t = translate_ty(ty);
+                    AbiParam::new(t)
+                }).collect();
+                let returns = vec![AbiParam::new(translate_ty(ret_ty))];
+                let sig = Signature {
+                    params,
+                    returns,
+                    call_conv: self.module.isa().default_call_conv()
+                };
+                let the_fun = self.module.declare_function(&name, Linkage::Import, &sig).expect("could not declare extern");
+
+let the_fun = self.module.declare_func_in_func(the_fun, self.builder.func);
+let the_call = self.builder.ins().call(the_fun, &Vec::new());
+
+self.builder.inst_results(the_call)[0]
+                           },
             LIR::BinOp(left, op, right) => self.convert_bin_op(*left, op, *right),
         };
         vec![res]
@@ -217,8 +236,8 @@ impl NativeGen {
 
     
     fn convert_signature(&self, item: &Item) -> Signature {
-        let returns = vec![AbiParam::new(translate_ty(item.ret_ty.clone()))];
-        let params = item.params.iter().map(|var| AbiParam::new(translate_ty(var.ty.clone()))).collect();
+        let returns = vec![AbiParam::new(translate_ty(item.ret_ty))];
+        let params = item.params.iter().map(|var| AbiParam::new(translate_ty(var.ty))).collect();
          Signature { params, returns, call_conv: self.isa.default_call_conv() }
     }
 
@@ -276,11 +295,16 @@ impl NativeGen {
         let flare_entry_func = self.module.declare_func_in_func(flare_main, builder.func);
 
         let call_flare = builder.ins().call(flare_entry_func, &Vec::new());
-        let result_value = builder.inst_results(call_flare)[0];
-        let cast = builder.ins().fcvt_to_uint_sat(types::I32, result_value);
-        // Use the result of the addition as an exit code
-        builder.ins().return_(&[cast]);
+        let result_value = {
+            let temp_result = builder.inst_results(call_flare)[0];
+            // if flare returns a float, cast it to an int for the exit code
+            if builder.func.signature.returns[0].value_type == types::F32 {
+                builder.ins().fcvt_to_uint_sat(types::I32, temp_result)      
+            } else {
+                temp_result
+            }};
 
+builder.ins().return_(&[result_value]);
         if let Err(err) = codegen::verify_function(builder.func, self.isa.as_ref()) {
             panic!("verifier error: {err}");
         }
