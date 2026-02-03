@@ -6,7 +6,7 @@ pub enum LIRType {
     Float,
     String,
     Unit,
-    Array(Intern<[Self]>),
+    Struct(Intern<[Self]>),
     Union(Intern<[Self]>),
     Closure(Intern<Self>, Intern<Self>),
     ClosureEnv(Intern<Self>, Intern<[Self]>),

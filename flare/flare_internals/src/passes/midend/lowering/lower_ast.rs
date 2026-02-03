@@ -1,3 +1,5 @@
+use std::hash::Hash;
+
 use internment::Intern;
 use rustc_hash::FxHashMap;
 
@@ -42,13 +44,13 @@ impl<K: Eq + std::hash::Hash> VarSupply<K> {
 }
 
 #[derive(Default)]
-pub struct ItemSupply {
+pub struct ItemSupply<T: Eq + Hash> {
     pub next: u32,
-    cache: FxHashMap<ast::ItemId, ItemId>,
+    cache: FxHashMap<T, ItemId>,
 }
 
-impl ItemSupply {
-    pub fn supply_for(&mut self, item: ast::ItemId) -> ItemId {
+impl<T: Eq + Hash> ItemSupply<T> {
+    pub fn supply_for(&mut self, item: T) -> ItemId {
         self.cache
             .entry(item)
             .or_insert_with(|| {
@@ -64,6 +66,13 @@ impl ItemSupply {
         self.next += 1;
         ItemId(ir_item)
     }
+
+    pub fn new() -> Self {
+        Self {
+            next: 0,
+            cache: FxHashMap::default(),
+        }
+    }
 }
 
 pub struct LowerAst<'source> {
@@ -75,7 +84,7 @@ pub struct LowerAst<'source> {
     branch_to_ret_ty: &'source FxHashMap<NodeId, Spanned<Intern<typing::Type>>>,
     item_wrappers: &'source FxHashMap<NodeId, ItemWrapper>,
     item_source: &'source ItemSource,
-    item_supply: &'source mut ItemSupply,
+    item_supply: &'source mut ItemSupply<ast::ItemId>,
 }
 
 pub struct LowerSolvedEv<'supply> {
@@ -315,7 +324,7 @@ impl<'source> LowerAst<'source> {
         branch_to_ret_ty: &'source FxHashMap<NodeId, Spanned<Intern<typing::Type>>>,
         item_wrappers: &'source FxHashMap<NodeId, ItemWrapper>,
         item_source: &'source ItemSource,
-        item_supply: &'source mut ItemSupply,
+        item_supply: &'source mut ItemSupply<ast::ItemId>,
     ) -> Self {
         Self {
             var_supply,

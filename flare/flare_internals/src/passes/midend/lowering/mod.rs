@@ -12,7 +12,10 @@ use crate::{
     },
     resource::rep::{
         frontend::ast::{self, ItemId},
-        midend::{ir::{IR, Var}, irtype::{IRType, Kind, TypeVar}},
+        midend::{
+            ir::{IR, Var},
+            irtype::{IRType, Kind, TypeVar},
+        },
     },
 };
 
@@ -78,12 +81,12 @@ impl ItemSource {
 pub struct Lowerer {
     // items: Vec<TypesOutput>,
     // source: typing::ItemSource,
-    item_supply: ItemSupply,
+    item_supply: ItemSupply<ast::ItemId>,
 }
 impl Lowerer {
     pub fn new() -> Self {
         Self {
-            item_supply: ItemSupply::default(),
+            item_supply: ItemSupply::new(),
         }
     }
 

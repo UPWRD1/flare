@@ -11,25 +11,25 @@ use crate::resource::{
 
 impl Render for Var {
     fn render(self) -> Doc<'static> {
-        Doc::text(format!("${}", self.id.0))
+        Doc::text(format!("v{}", self.id.0))
     }
 }
 
 impl Render for LIR {
     fn render(self) -> Doc<'static> {
         match self {
-            Self::Var(var) => Doc::text(format!("${}", var.id.0)),
+            Self::Var(var) => Doc::text(format!("v{}", var.id.0)),
             Self::Int(i) => Doc::text(format!("{i}i")),
             Self::Str(s) => Doc::text(format!("\"{s}\"s")),
             Self::Unit => Doc::text("unit".to_string()),
             Self::Float(f) => Doc::text(format!("{f}f")),
-            Self::ClosureApply(_, item_id, vars) => Doc::text("closure")
+            Self::ClosureBuild(_, item_id, vars) => Doc::text("closure")
                 .space()
                 .text(format!("{}", item_id.0))
                 .append(
                     Doc::list(
                         vars.iter()
-                            .map(|x| Doc::text(format!("${}: ", x.id.0,)).append(x.ty.render()))
+                            .map(|x| Doc::text(format!("v{}: ", x.id.0,)).append(x.ty.render()))
                             .intersperse(Doc::text(", "))
                             .collect(),
                     )

@@ -1,4 +1,7 @@
 use cranelift::prelude::{FunctionBuilder, InstBuilder, Signature, Value};
+use internment::Intern;
+
+use crate::resource::rep::backend::types::LIRType;
 
 pub struct Closure {
     pub data: Value,

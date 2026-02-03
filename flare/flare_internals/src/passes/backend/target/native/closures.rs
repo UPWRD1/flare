@@ -17,7 +17,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     }
 
     pub fn construct_closure(&mut self, closure_id: FuncId, captures: &[Value]) -> Closure {
-        let boxed_captures = self.stack_alloc_captures(captures);
+        let boxed_captures = self.stack_alloc_struct(captures);
 
         let (forwarding_func_ref, sig) = {
             let capture_types = captures
@@ -147,7 +147,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         of.bytes()
     }
 
-    fn alignment_of_struct(fields: &[Type]) -> u32 {
+    pub fn alignment_of_struct(fields: &[Type]) -> u32 {
         let mut alignment = 0;
 
         // Since we don't have nested structs, the alignment of a struct is simply its largest field.
@@ -158,7 +158,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
         alignment
     }
-    fn size_of_struct(fields: &[Type]) -> u32 {
+    pub fn size_of_struct(fields: &[Type]) -> u32 {
         // let fields = fields.collect();
         let mut size = 0;
 
@@ -180,7 +180,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         size
     }
 
-    fn offset_of_field(field: usize, fields: &[Type]) -> i32 {
+    pub fn offset_of_field(field: usize, fields: &[Type]) -> i32 {
         let mut offset = 0;
 
         // Go through all fields prior to this one and increment offset by their size and padding
@@ -195,7 +195,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
         offset
     }
-    pub fn stack_alloc_captures(&mut self, captures: &[Value]) -> Value {
+
+    pub fn stack_alloc_struct(&mut self, captures: &[Value]) -> Value {
         let size_t = self.module.isa().pointer_type();
 
         let types = captures
@@ -222,7 +223,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         self.builder.ins().stack_addr(size_t, slot, 0)
     }
 
-    fn type_of_value(&self, v: Value) -> Type {
+    pub fn type_of_value(&self, v: Value) -> Type {
         self.builder.func.stencil.dfg.value_type(v)
     }
 }

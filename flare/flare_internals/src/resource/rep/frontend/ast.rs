@@ -133,7 +133,7 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Label(pub Spanned<Intern<String>>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, Default)]
 pub struct ItemId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Default)]

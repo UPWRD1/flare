@@ -24,7 +24,7 @@ pub struct ClosureConvertOut {
 
 struct ClosureConvert {
     var_supply: VarSupply<ir::VarId>,
-    item_supply: ItemSupply,
+    item_supply: ItemSupply<ir::ItemId>,
     items: BTreeMap<ir::ItemId, Item>,
 }
 
@@ -76,6 +76,7 @@ impl ClosureConvert {
                     LIR::BulkApply(Box::new(closure), args)
                 } else {
                     let closure = self.convert(*fun, env.clone());
+                    // dbg!(&closure);
                     let arg = self.convert(*arg, env);
                     LIR::apply(closure, arg)
                 }
@@ -91,6 +92,7 @@ impl ClosureConvert {
             ),
 
             ir::IR::Tag(_, _, ir) => self.convert(*ir, env), //TODO: special tag for unions
+            // ir::IR::Item(t, d) => LIR::Item(self.item_supply.supply_for(d), lower_ty(&t)),
             ir::IR::Item(t, d) => LIR::Item(d, lower_ty(&t)),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             ir::IR::Bin(l, op, r) => {
@@ -149,7 +151,7 @@ impl ClosureConvert {
                 body,
             },
         );
-        LIR::ClosureApply(closure_ty, item, vars)
+        LIR::ClosureBuild(closure_ty, item, vars)
     }
 }
 
@@ -158,7 +160,7 @@ pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
     // let mut env = im::HashMap::with_hasher(FxBuildHasher);
     let mut converter = ClosureConvert {
         var_supply,
-        item_supply: ItemSupply::default(),
+        item_supply: ItemSupply::new(),
         items: BTreeMap::default(),
     };
     ir.into_iter()
@@ -186,10 +188,10 @@ fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
             }
         })
         .collect();
-    let ret_ty = lower_ty(&ir.type_of());
-
+    // let ret_ty = lower_ty(&ir.type_of());
+    // dbg!(ret_ty);
     let body = conversion.convert(ir, env);
-    // let ret_ty = body.type_of();
+    let ret_ty = body.type_of();
     let id = conversion.item_supply.supply();
     ClosureConvertOut {
         item: Item {
@@ -211,7 +213,7 @@ fn lower_ty(ty: &IRType) -> LIRType {
         IRType::Var(_) | IRType::TyFun(..) => {
             unreachable!("Type function or variable appeared after monomorphization: {ty:?}")
         }
-        IRType::Prod(r) => LIRType::Array(lower_row(r)),
+        IRType::Prod(r) => LIRType::Struct(lower_row(r)),
         IRType::Sum(r) => LIRType::Union(lower_row(r)),
         IRType::Particle(_) => LIRType::String,
         _ => todo!("{ty:?}"),

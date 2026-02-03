@@ -11,7 +11,7 @@ impl Render for LIRType {
         // dbg!(&self);
         match self {
             Self::Int => Doc::text("i32"),
-            Self::Float => Doc::text("f64"),
+            Self::Float => Doc::text("f32"),
             Self::String => Doc::text("str"),
             Self::Unit => Doc::text("unit"),
             Self::Closure(l, r) => l.render().space().text("->").space().render(*r).brackets(),
@@ -27,7 +27,7 @@ impl Render for LIRType {
                     .text("|"),
                 )
                 .render(*c),
-            Self::Array(v) => Doc::list(
+            Self::Struct(v) => Doc::list(
                 v.iter()
                     .map(|el| el.render())
                     .intersperse(Doc::text(","))

@@ -20,7 +20,7 @@ impl LIRTarget {
             item.params
                 .iter()
                 .map(|x| format!(
-                    "${}: {}",
+                    "v{}: {}",
                     x.id.0,
                     tiny_pretty::print(
                         &x.ty.render(),
