@@ -5,7 +5,7 @@ use petgraph::{dot::Config, prelude::*};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    passes::midend::{lowering::lower_ast::ItemSupply, simplify},
+    passes::midend::simplify,
     resource::rep::midend::{
         ir::{Branch, IR, ItemId},
         irtype::{IRType, TyApp},
@@ -343,7 +343,7 @@ impl Monomorpher {
         match ir {
             IR::TyFun(k, body) => self.instantiate_replacement(*body, replacement),
             IR::TyApp(body, app) => {
-                fn probe_item(ir: &IR, mut app_accum: Vec<TyApp>) -> Option<(Monomorph, IRType)> {
+                fn probe_item(ir: &IR, app_accum: Vec<TyApp>) -> Option<(Monomorph, IRType)> {
                     // dbg!(ir);
                     match ir {
                         IR::TyApp(ir, t) => probe_item(ir, [app_accum, vec![t.clone()]].concat()),

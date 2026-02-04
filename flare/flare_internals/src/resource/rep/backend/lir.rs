@@ -165,7 +165,13 @@ impl LIR {
             LIR::Apply(func, arg) => func.type_of(),
             LIR::BulkApply(func, _) => func.type_of(),
             LIR::Local(.., body) => body.type_of(),
-            LIR::Access(lir, _) => todo!(),
+            LIR::Access(closure, t) => {
+                if let LIRType::ClosureEnv(_, env) = closure.type_of() {
+                    env[*t]
+                } else {
+                    panic!("Not a closure")
+                }
+            }
             LIR::Struct(lirs) => LIRType::Struct(
                 lirs.iter()
                     .map(|lir| lir.type_of())

@@ -28,14 +28,16 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
             let (func_id, sig) = self.create_forwarding_func(closure_id, &capture_types);
 
-            let fref = self.module.declare_func_in_func(func_id, self.builder.func);
-            let size_t = self.module.isa().pointer_type();
-            (self.builder.ins().func_addr(size_t, fref), sig) //TODO use function indication for virualvalue
+            // let fref = self.module.declare_func_in_func(func_id, self.builder.func);
+            // let size_t = self.module.isa().pointer_type();
+            //(self.builder.ins().func_addr(size_t, fref), sig) //TODO use function indication for virualvalue
+
+            (func_id, sig)
         };
 
         Closure {
-            data: Box::new(VirtualValue::Scalar(boxed_captures)),
-            func: Box::new(VirtualValue::Scalar(forwarding_func_ref)),
+            captures: Box::new(VirtualValue::Scalar(boxed_captures)),
+            func: Box::new(VirtualValue::Func(forwarding_func_ref)),
             sig,
         }
     }
@@ -103,34 +105,35 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             let mut ctx = codegen::Context::new();
             let mut fctx = FunctionBuilderContext::new();
 
-            let mut closure = FunctionBuilder::new(&mut ctx.func, &mut fctx);
-            closure.func.signature = sig.clone();
+            let mut closure_builder = FunctionBuilder::new(&mut ctx.func, &mut fctx);
+            closure_builder.func.signature = sig.clone();
 
-            let block = closure.create_block();
-            closure.append_block_params_for_function_params(block);
-            closure.switch_to_block(block);
+            let block = closure_builder.create_block();
+            closure_builder.append_block_params_for_function_params(block);
+            closure_builder.switch_to_block(block);
 
             let mut real_call_params =
-                Vec::with_capacity(captys.len() + closure.func.signature.params.len() - 1);
+                Vec::with_capacity(captys.len() + closure_builder.func.signature.params.len() - 1);
 
             // Dereference the captures and add them as implicit parameters
             let mut offset = 0;
             for &ty in captys {
-                let ptr = closure.block_params(block)[0];
-                let v = closure.ins().load(ty, MemFlags::new(), ptr, offset);
+                let ptr = closure_builder.block_params(block)[0];
+                let v = closure_builder.ins().load(ty, MemFlags::new(), ptr, offset);
                 real_call_params.push(v);
                 offset += ty.bytes() as i32;
             }
 
             // Add all other parameters from the forwarding function
-            for &v in &closure.block_params(block)[1..] {
+            for &v in &closure_builder.block_params(block)[1..] {
                 real_call_params.push(v);
             }
 
-            let f_ref = self.module.declare_func_in_func(f, closure.func);
-            let call = closure.ins().call(f_ref, &real_call_params);
-            let returned = closure.inst_results(call).to_vec();
-            closure.ins().return_(&returned);
+            let f_ref = self.module.declare_func_in_func(f, closure_builder.func);
+
+            let call = closure_builder.ins().call(f_ref, &real_call_params);
+            let returned = closure_builder.inst_results(call).to_vec();
+            closure_builder.ins().return_(&returned);
 
             self.module
                 .define_function(func_id, &mut ctx)

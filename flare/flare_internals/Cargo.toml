@@ -11,6 +11,7 @@ categories = ["compilers"]
 [dependencies]
 anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
+bimap = "0.6.3"
 chumsky = {version = "0.12.0", features = ["pratt", "memoization",] }
 cranelift = {version = "0.128.1", features = ["module", "object"]}
 ena = "0.14.3"
