@@ -99,8 +99,9 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         if let Some(v) = self.scope.get(&var) {
             v.clone()
         } else if let Some(v) = block_params.get(var.id.0) {
-            // dbg!(v, self.type_of_value(*v));
-            VirtualValue::Scalar(*v)
+            dbg!(v, self.type_of_value(*v));
+            todo!()
+        // VirtualValue::Scalar(*v)
         } else {
             panic!("Undefined variable {var:?}")
         }
@@ -117,7 +118,13 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             LIR::Str(intern) => todo!(),
             LIR::Unit => todo!(),
             LIR::Float(f) => self.float(f),
-            LIR::ClosureBuild(_, closure_id, capt_vars) => todo!(),
+            LIR::ClosureBuild(_, closure_id, capt_vars) => {
+                // dbg!(capt_vars);
+                let func_id = self.types.function_names.get_by_right(&closure_id).unwrap();
+                // todo!()
+                let captures: Vec<_> = capt_vars.iter().map(|v| self.get_var(*v)).collect();
+                VirtualValue::Closure(self.construct_closure(*func_id, &captures))
+            }
             LIR::Apply(func, arg) => {
                 let func = self.convert_lir(*func);
                 let arg = self.convert_lir(*arg);
@@ -145,12 +152,12 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                     .into_iter()
                     .map(|f| (f.type_of(), self.convert_lir(f)))
                     .unzip();
+                let struct_ty = LIRType::Struct(types.as_slice().into());
 
-                self.construct_struct(types.as_slice().into(), &fields)
+                self.construct_struct(struct_ty, &fields)
             }
             LIR::Field(obj, idx) => {
                 // dbg!(&obj);
-
                 let obj = &self.convert_lir(*obj);
                 // dbg!(&obj);
                 self.destruct_field(obj, idx)
@@ -220,7 +227,8 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                     self.scope.insert(var, vparam);
                 }
                 VirtualValue::UnstableStruct { ty, fields } => {
-                    for (fp, ty) in fields.into_iter().zip(ty.iter()) {
+                    let the_types = ty.into_struct_fields();
+                    for (fp, ty) in fields.into_iter().zip(the_types.iter()) {
                         let new_var = Var {
                             id: VarId(var.id.0 + counter),
                             ty: *ty,
@@ -231,7 +239,9 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 }
                 VirtualValue::Closure(closure) => todo!(),
                 VirtualValue::Func(func_id) => todo!(),
-                VirtualValue::Pointer(value) => todo!(),
+                VirtualValue::Pointer(..) => {
+                    self.scope.insert(var, vparam);
+                }
             }
             // dbg!(&vparam);
         }
@@ -250,7 +260,7 @@ fn translate_ty(module: &ObjectModule, ty: LIRType) -> types::Type {
         LIRType::Int => types::I32,
         LIRType::Float => types::F32,
         LIRType::String => module.isa().pointer_type(),
-        LIRType::Unit => todo!(),
+        LIRType::Unit => types::I8,
 
         LIRType::Union(lirtypes) => todo!(),
         LIRType::Struct(_) | LIRType::Closure(..) | LIRType::ClosureEnv(..) => {

@@ -21,12 +21,20 @@ impl LIRType {
         Self::ClosureEnv(l.into(), r.as_slice().into())
     }
 
+    pub fn into_struct_fields(&self) -> Vec<Self> {
+        match self {
+            LIRType::Struct(intern) => intern.to_vec(),
+            LIRType::ClosureEnv(_, env) => env.to_vec(),
+            _ => unimplemented!("NOt a struct"),
+        }
+    }
+
     pub fn destructure_closure(self) -> (Vec<Self>, Self) {
         fn worker(t: &LIRType, v: &mut Vec<LIRType>) {
             match t {
                 LIRType::Closure(l, r) => {
                     v.push(**l);
-                    worker(&r, v);
+                    worker(r, v);
                 }
                 _ => v.push(*t),
             }

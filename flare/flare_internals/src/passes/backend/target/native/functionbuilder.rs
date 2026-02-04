@@ -1,6 +1,6 @@
 use bimap::BiMap;
 use cranelift::{
-    codegen::ir::ArgumentPurpose,
+    codegen::ir::{ArgumentPurpose, SigRef},
     frontend::FuncInstBuilder,
     module::{FuncId, Linkage, Module},
     object::ObjectModule,
@@ -14,7 +14,7 @@ use crate::{
     resource::rep::{
         backend::{
             lir::{Item, Var},
-            native::VirtualValue,
+            native::{Closure, PointeeType, VirtualValue},
             types::LIRType,
         },
         midend::ir::ItemId,
@@ -29,7 +29,7 @@ pub enum Param {
 
 #[derive(Debug)]
 pub struct LookupTable {
-    struct_fields: FxHashMap<Intern<[LIRType]>, Vec<Type>>,
+    struct_fields: FxHashMap<LIRType, Vec<Type>>,
     pub function_types: FxHashMap<ItemId, (Vec<LIRType>, LIRType)>,
     pub function_sigs: FxHashMap<ItemId, Signature>,
     pub function_names: BiMap<FuncId, ItemId>,
@@ -58,17 +58,19 @@ impl LookupTable {
                     .iter()
                     .map(|ty| self.generate_struct_table(module, *ty))
                     .collect();
-                self.struct_fields.insert(tys, new_tys);
+                self.struct_fields.insert(ty, new_tys);
                 module.isa().pointer_type()
             }
             LIRType::Union(intern) => todo!(),
             LIRType::Closure(intern, intern1) => module.isa().pointer_type(),
             LIRType::ClosureEnv(f, env) => {
-                let new_tys = env
+                let mut new_tys: Vec<Type> = env
                     .iter()
                     .map(|ty| self.generate_struct_table(module, *ty))
                     .collect();
-                self.struct_fields.insert(env, new_tys);
+                let new_f = self.generate_struct_table(module, *f);
+                new_tys.insert(0, new_f);
+                self.struct_fields.insert(ty, new_tys);
                 module.isa().pointer_type()
             }
         }
@@ -151,78 +153,80 @@ impl LookupTable {
         if let Some(sig) = self.function_sigs.get(fname) {
             sig.clone()
         } else {
-            // Get the type signatures from our source language
             let (fparams, fret) = self
                 .function_types
                 .get(fname)
                 .unwrap_or_else(|| panic!("function not found: {:?}", fname));
+            let sig = self.make_sig(call_conv, fparams.clone(), *fret);
+            self.function_sigs.insert(*fname, sig.clone());
+            sig
+        }
+    }
 
-            // Buffers for the Cranelift type signature.
-            let mut params = vec![];
-            let mut returns = vec![];
-            let size_t = self.ptr_type(); // If the return value is a large struct that's passed as pointer, instead of returning its
-            // values directly, we use an out pointer as the first parameter. The callee will write
-            // the result to that pointer, instead of returning directly through the return registers.
-            match fret {
-                LIRType::Int => returns.push(AbiParam::new(types::I32)),
-                LIRType::Float => returns.push(AbiParam::new(types::F32)),
+    pub fn make_sig(
+        &self,
+        call_conv: isa::CallConv,
+        fparams: Vec<LIRType>,
+        fret: LIRType,
+    ) -> Signature {
+        // Get the type signatures from our source language
+        // Buffers for the Cranelift type signature.
+        let mut params = vec![];
+        let mut returns = vec![];
+        let size_t = self.ptr_type();
+        // If the return value is a large struct that's passed as pointer, instead of returning its
+        // values directly, we use an out pointer as the first parameter. The callee will write
+        // the result to that pointer, instead of returning directly through the return registers.
+        match fret {
+            LIRType::Int => returns.push(AbiParam::new(types::I32)),
+            LIRType::Float => returns.push(AbiParam::new(types::F32)),
+            LIRType::String | LIRType::Closure(..) => params.push(AbiParam::new(size_t)),
+            LIRType::Struct(name) => match self.struct_passing_mode(fret) {
+                StructPassingMode::ByScalars => {
+                    self.for_scalars_of_struct(&mut |ty| returns.push(AbiParam::new(ty)), fret)
+                }
+                StructPassingMode::ByPointer => {
+                    // The `ArgumentPurpose` is needed in-case our target architecture expects the
+                    // out pointer to use a specific register.
+                    let param = AbiParam::special(size_t, ArgumentPurpose::StructReturn);
+                    params.push(param);
+                }
+            },
+
+            _ => todo!("{fret:?}"),
+        };
+        for p in fparams {
+            match p {
+                LIRType::Int => params.push(AbiParam::new(types::I32)),
+                LIRType::Unit => params.push(AbiParam::new(types::I8)),
+                LIRType::Float => params.push(AbiParam::new(types::F32)),
+
                 LIRType::String | LIRType::Closure(..) => params.push(AbiParam::new(size_t)),
-                LIRType::Struct(name) => match self.struct_passing_mode(*name) {
+
+                LIRType::Struct(fields) => match self.struct_passing_mode(p) {
                     StructPassingMode::ByScalars => {
-                        self.for_scalars_of_struct(&mut |ty| returns.push(AbiParam::new(ty)), *name)
+                        self.for_scalars_of_struct(&mut |clty| params.push(AbiParam::new(clty)), p);
                     }
                     StructPassingMode::ByPointer => {
-                        // The `ArgumentPurpose` is needed in-case our target architecture expects the
-                        // out pointer to use a specific register.
-                        let param = AbiParam::special(size_t, ArgumentPurpose::StructReturn);
-                        params.push(param);
+                        params.push(AbiParam::new(size_t));
                     }
                 },
 
-                _ => todo!("{fret:?}"),
-            };
-
-            for p in fparams {
-                match p {
-                    LIRType::Int => params.push(AbiParam::new(types::I32)),
-                    LIRType::Float => params.push(AbiParam::new(types::F32)),
-
-                    LIRType::String | LIRType::Closure(..) => params.push(AbiParam::new(size_t)),
-
-                    LIRType::Struct(fields) => match self.struct_passing_mode(*fields) {
-                        StructPassingMode::ByScalars => {
-                            self.for_scalars_of_struct(
-                                &mut |clty| params.push(AbiParam::new(clty)),
-                                *fields,
-                            );
-                        }
-                        StructPassingMode::ByPointer => {
-                            params.push(AbiParam::new(size_t));
-                        }
-                    },
-
-                    LIRType::ClosureEnv(f, env) => match self.struct_passing_mode(*env) {
-                        StructPassingMode::ByScalars => {
-                            self.for_scalars_of_struct(
-                                &mut |clty| params.push(AbiParam::new(clty)),
-                                *env,
-                            );
-                        }
-                        StructPassingMode::ByPointer => {
-                            params.push(AbiParam::new(size_t));
-                        }
-                    },
-                    _ => todo!("{p:?}"),
-                }
+                LIRType::ClosureEnv(f, env) => match self.struct_passing_mode(p) {
+                    StructPassingMode::ByScalars => {
+                        self.for_scalars_of_struct(&mut |clty| params.push(AbiParam::new(clty)), p);
+                    }
+                    StructPassingMode::ByPointer => {
+                        params.push(AbiParam::new(size_t));
+                    }
+                },
+                _ => todo!("{p:?}"),
             }
-
-            let sig = Signature {
-                params,
-                returns,
-                call_conv,
-            };
-            self.function_sigs.insert(*fname, sig.clone());
-            sig
+        }
+        Signature {
+            params,
+            returns,
+            call_conv,
         }
     }
 
@@ -232,17 +236,19 @@ impl LookupTable {
     {
         match ty {
             LIRType::Int => f(types::I32),
+            LIRType::Unit => f(types::I8),
             LIRType::Float => f(types::F32),
             LIRType::String => f(self.ptr_type()),
-            LIRType::Struct(name) => self.for_scalars_of_struct(f, name),
+            LIRType::Struct(name) => self.for_scalars_of_struct(f, ty),
             _ => todo!("{ty:?}"),
         }
     }
 
-    pub fn for_scalars_of_struct<F>(&self, f: &mut F, name: Intern<[LIRType]>)
+    pub fn for_scalars_of_struct<F>(&self, f: &mut F, name: LIRType)
     where
         F: FnMut(Type),
     {
+        let name = name.into_struct_fields();
         name.iter().for_each(|&ty| self.for_scalars(f, ty))
     }
 
@@ -252,7 +258,7 @@ impl LookupTable {
     }
 
     // If a struct fits in two registers, then avoid stack allocating it.
-    pub fn struct_passing_mode(&self, fields: Intern<[LIRType]>) -> StructPassingMode {
+    pub fn struct_passing_mode(&self, fields: LIRType) -> StructPassingMode {
         let mut scalars = 0;
         self.for_scalars_of_struct(&mut |_| scalars += 1, fields);
         if scalars < 1 {
@@ -266,6 +272,20 @@ impl LookupTable {
 impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     pub fn ins(&mut self) -> FuncInstBuilder<'_, 'bctx> {
         self.builder.ins()
+    }
+
+    pub fn as_value(&mut self, value: &VirtualValue) -> Value {
+        match value {
+            VirtualValue::Scalar(value) => *value,
+            VirtualValue::Pointer(_, ptr) => *ptr,
+            VirtualValue::StackStruct { ty: _, ptr } => *ptr,
+            VirtualValue::Func(func) => {
+                let ptr = self.types.ptr_type();
+                let fref = self.module.declare_func_in_func(*func, self.builder.func);
+                self.ins().func_addr(ptr, fref)
+            }
+            _ => todo!("{value:?}"),
+        }
     }
 
     pub fn int(&mut self, n: impl Into<i64>) -> VirtualValue {
@@ -309,33 +329,48 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 let v = f(self, types::F32);
                 VirtualValue::Scalar(v)
             }
-            LIRType::String | LIRType::Closure(..) => {
+            LIRType::String => {
                 let size_t = self.module.isa().pointer_type();
                 let ptr = f(self, size_t);
-                VirtualValue::Scalar(ptr)
+                VirtualValue::Pointer(PointeeType::String, ptr)
+            }
+            LIRType::Closure(..) => {
+                let size_t = self.module.isa().pointer_type();
+                let ptr = f(self, size_t);
+                let (args, ret) = p.destructure_closure();
+                VirtualValue::Pointer(PointeeType::Func(args, ret), ptr)
             }
             LIRType::Struct(ty) => {
-                if is_root && self.types.struct_passing_mode(ty) == StructPassingMode::ByPointer {
+                if is_root && self.types.struct_passing_mode(p) == StructPassingMode::ByPointer {
                     let size_t = self.module.isa().pointer_type();
                     let ptr = f(self, size_t);
-                    VirtualValue::StackStruct { ty, ptr }
+                    VirtualValue::StackStruct { ty: p, ptr }
                 } else {
                     let fields = ty
                         .iter()
                         .map(|ty| self.type_to_virtual_value(f, false, *ty))
                         .collect();
 
-                    VirtualValue::UnstableStruct { ty, fields }
+                    VirtualValue::UnstableStruct { ty: p, fields }
                 }
             }
 
             LIRType::ClosureEnv(fun, env) => {
+                // let captures = env
+                //     .iter()
+                //     .map(|cap| self.type_to_virtual_value(f, false, *cap));
+                // self.
+                // let Closure {
+                //     captures,
+                //     func,
+                //     sig,
+                // };
                 let new_types: Intern<[LIRType]> =
                     [[*fun].as_slice(), &env].concat().as_slice().into();
-                if is_root && self.types.struct_passing_mode(env) == StructPassingMode::ByPointer {
+                if is_root && self.types.struct_passing_mode(p) == StructPassingMode::ByPointer {
                     let size_t = self.module.isa().pointer_type();
                     let ptr = f(self, size_t);
-                    VirtualValue::StackStruct { ty: new_types, ptr }
+                    VirtualValue::StackStruct { ty: p, ptr }
                 } else {
                     let mut fields = Vec::with_capacity(1 + env.len());
                     fields.push(self.type_to_virtual_value(f, false, *fun));
@@ -345,11 +380,12 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                             .collect::<Vec<_>>(),
                     );
 
-                    VirtualValue::UnstableStruct {
-                        ty: new_types,
-                        fields,
-                    }
+                    VirtualValue::UnstableStruct { ty: p, fields }
                 }
+            }
+            LIRType::Unit => {
+                let v = f(self, types::I8);
+                VirtualValue::Scalar(v)
             }
             _ => todo!("{p:?}"),
         }
@@ -390,11 +426,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         }
     }
 
-    pub fn construct_struct(
-        &mut self,
-        ty: Intern<[LIRType]>,
-        fields: &[VirtualValue],
-    ) -> VirtualValue {
+    pub fn construct_struct(&mut self, ty: LIRType, fields: &[VirtualValue]) -> VirtualValue {
         VirtualValue::UnstableStruct {
             ty,
             fields: fields.to_vec(),
@@ -413,8 +445,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     )
                 });
                 let offset = Self::offset_of_field(field, fields);
-
-                match ty[field] {
+                let field_ty = ty.into_struct_fields()[field];
+                match field_ty {
                     // Instead of actually dereferencing the inner struct here,
                     // we create another implicit stack pointer that's offset to where the inner struct starts.
                     //
@@ -434,7 +466,11 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                         let v = self.ins().load(types::F32, MemFlags::new(), *ptr, offset);
                         VirtualValue::Scalar(v)
                     }
-                    _ => todo!(),
+                    LIRType::Unit => {
+                        let v = self.ins().load(types::I8, MemFlags::new(), *ptr, offset);
+                        VirtualValue::Scalar(v)
+                    }
+                    _ => todo!("{field_ty:?}"),
                 }
             }
 
@@ -491,36 +527,31 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         }
     }
 
-    fn deref_fields(
-        &mut self,
-        buf: &mut Vec<Value>,
-        types: Intern<[LIRType]>,
-        src: Value,
-        src_offset: i32,
-    ) {
+    fn deref_fields(&mut self, buf: &mut Vec<Value>, types: LIRType, src: Value, src_offset: i32) {
+        let the_types = types.into_struct_fields();
         let fields = self.types.struct_fields.get(&types).unwrap();
         for (field, ty) in fields.iter().enumerate() {
             let offset = Self::offset_of_field(field, fields) + src_offset;
-            let fty = types[field];
+            let fty = the_types[field];
             match fty {
                 LIRType::Int => {
                     let v = self.ins().load(types::I32, MemFlags::new(), src, offset);
-
                     buf.push(v);
                 }
                 LIRType::Struct(type_) => {
-                    self.deref_fields(buf, type_, src, offset);
+                    self.deref_fields(buf, fty, src, offset);
                 }
                 _ => todo!(),
             }
         }
     }
 
-    fn copy_struct_fields(&mut self, type_: Intern<[LIRType]>, src: Value, dst: Value) {
+    fn copy_struct_fields(&mut self, type_: LIRType, src: Value, dst: Value) {
+        let the_types = type_.into_struct_fields();
         let fields = self.types.struct_fields.get(&type_).unwrap();
         for (field, fty) in fields.iter().enumerate() {
             let offset = Self::offset_of_field(field, fields);
-            let fty = type_[field];
+            let fty = the_types[field];
             match fty {
                 LIRType::Int => {
                     let n = self.ins().load(types::I32, MemFlags::new(), src, offset);
@@ -531,20 +562,14 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     let src = self.ins().iadd_imm(src, offset as i64);
                     let dst = self.ins().iadd_imm(dst, offset as i64);
 
-                    self.copy_struct_fields(type_, src, dst);
+                    self.copy_struct_fields(fty, src, dst);
                 }
                 _ => todo!(),
             }
         }
     }
 
-    fn write_struct_field(
-        &mut self,
-        name: Intern<[LIRType]>,
-        field: usize,
-        ptr: Value,
-        v: VirtualValue,
-    ) {
+    fn write_struct_field(&mut self, name: LIRType, field: usize, ptr: Value, v: VirtualValue) {
         let fields = self.types.struct_fields.get(&name).unwrap();
         let offset = Self::offset_of_field(field, fields);
 
@@ -588,48 +613,99 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     pub fn call_func(&mut self, func: VirtualValue, params: Vec<VirtualValue>) -> VirtualValue {
         match func {
-            VirtualValue::Func(func) => {
-                let mut call_params = vec![];
+            VirtualValue::Func(func_id) => self.call_direct_func(params, func_id),
+            VirtualValue::Pointer(t, ptr) => match t {
+                PointeeType::Func(from, to) => {
+                    let sig = self
+                        .types
+                        .make_sig(self.module.isa().default_call_conv(), from, to);
 
-                let ret = self.types.return_type_of(func);
-
-                // If the return type is too large to fit in return registers, we allocate space for it in
-                // the current stack frame and pass a pointer as the first parameter for the child function to
-                // write its return values to.
-                let mut out_ptr_return = None;
-                if let LIRType::Struct(name) = ret
-                    && self.types.struct_passing_mode(name) == StructPassingMode::ByPointer
-                {
-                    let fields = self.types.struct_fields.get(&name).unwrap();
-                    let ptr = self.stack_alloc_types(fields);
-                    call_params.push(ptr);
-                    out_ptr_return = Some(VirtualValue::StackStruct { ty: name, ptr });
+                    self.call_indirect_func(params, to, sig, ptr)
                 }
-
-                self.virtual_values_to_func_params(&mut call_params, params);
-
-                let mut register_returns = {
-                    // In order to call a function, we need to first map a global FuncId into a local FuncRef
-                    // inside the current.
-                    let fref = self.module.declare_func_in_func(func, self.builder.func);
-
-                    let call = self.ins().call(fref, &call_params);
-
-                    self.builder.inst_results(call).to_vec().into_iter()
-                };
-
-                // If the return values were handled through an out pointer, return that pointer
-                // Otherwise; collect the returned scalar values into a VirtualValue to turn it back into our typed abstraction.
-                out_ptr_return.unwrap_or_else(|| {
-                    self.type_to_virtual_value(
-                        &mut |_, _| register_returns.next().unwrap(),
-                        false,
-                        ret,
-                    )
-                })
-            }
-            VirtualValue::Closure(c) => c.call(&mut self.builder, &params),
+                _ => unreachable!(),
+            },
+            VirtualValue::Closure(c) => self.call_closure(c, &params),
             _ => panic!("Invalid function node {func:?}"),
         }
+    }
+
+    fn call_direct_func(&mut self, params: Vec<VirtualValue>, func: FuncId) -> VirtualValue {
+        let mut call_params = vec![];
+
+        let ret = self.types.return_type_of(func);
+
+        // If the return type is too large to fit in return registers, we allocate space for it in
+        // the current stack frame and pass a pointer as the first parameter for the child function to
+        // write its return values to.
+        let mut out_ptr_return = None;
+        if let LIRType::Struct(name) = ret
+            && self.types.struct_passing_mode(ret) == StructPassingMode::ByPointer
+        {
+            let fields = self.types.struct_fields.get(&ret).unwrap();
+            let ptr = self.stack_alloc_types(fields);
+            call_params.push(ptr);
+            out_ptr_return = Some(VirtualValue::StackStruct { ty: ret, ptr });
+        }
+
+        self.virtual_values_to_func_params(&mut call_params, params);
+
+        let mut register_returns = {
+            // In order to call a function, we need to first map a global FuncId into a local FuncRef
+            // inside the current.
+            let fref = self.module.declare_func_in_func(func, self.builder.func);
+
+            let call = self.ins().call(fref, &call_params);
+
+            self.builder.inst_results(call).to_vec().into_iter()
+        };
+
+        // If the return values were handled through an out pointer, return that pointer
+        // Otherwise; collect the returned scalar values into a VirtualValue to turn it back into our typed abstraction.
+        out_ptr_return.unwrap_or_else(|| {
+            self.type_to_virtual_value(&mut |_, _| register_returns.next().unwrap(), false, ret)
+        })
+    }
+
+    fn call_indirect_func(
+        &mut self,
+        params: Vec<VirtualValue>,
+        ret: LIRType,
+        sig: Signature,
+        ptr: Value,
+    ) -> VirtualValue {
+        let mut call_params = vec![];
+
+        // let ret = sig.returns;
+
+        // If the return type is too large to fit in return registers, we allocate space for it in
+        // the current stack frame and pass a pointer as the first parameter for the child function to
+        // write its return values to.
+        let mut out_ptr_return = None;
+        if let LIRType::Struct(name) = ret
+            && self.types.struct_passing_mode(ret) == StructPassingMode::ByPointer
+        {
+            let fields = self.types.struct_fields.get(&ret).unwrap();
+            let ptr = self.stack_alloc_types(fields);
+            call_params.push(ptr);
+            out_ptr_return = Some(VirtualValue::StackStruct { ty: ret, ptr });
+        }
+
+        self.virtual_values_to_func_params(&mut call_params, params);
+
+        let mut register_returns = {
+            // In order to call a function, we need to first map a global FuncId into a local FuncRef
+            // inside the current.
+            let sigref = self.builder.import_signature(sig);
+
+            let call = self.ins().call_indirect(sigref, ptr, &call_params);
+
+            self.builder.inst_results(call).to_vec().into_iter()
+        };
+
+        // If the return values were handled through an out pointer, return that pointer
+        // Otherwise; collect the returned scalar values into a VirtualValue to turn it back into our typed abstraction.
+        out_ptr_return.unwrap_or_else(|| {
+            self.type_to_virtual_value(&mut |_, _| register_returns.next().unwrap(), false, ret)
+        })
     }
 }

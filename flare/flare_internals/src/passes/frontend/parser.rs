@@ -476,6 +476,10 @@ where
                 // False
                 just(Token::False)
                     .map_with(|_, e| Spanned(Intern::from(Expr::Bool(false)), e.span())),
+
+// Unit
+                just(Token::TyUnit)
+                    .map_with(|_, e| Spanned(Intern::from(Expr::Unit), e.span())),
                 // Tuple Constructors
                 tuple,
                 table,
