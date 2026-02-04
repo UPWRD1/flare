@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use cranelift::{
     codegen::ir::ArgumentPurpose,
     frontend::FuncInstBuilder,
@@ -17,8 +15,6 @@ use crate::{
         midend::ir::ItemId,
     },
 };
-
-type Name = &'static str;
 
 #[derive(Debug)]
 pub struct LookupTable {
@@ -460,13 +456,13 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 // the current stack frame and pass a pointer as the first parameter for the child function to
                 // write its return values to.
                 let mut out_ptr_return = None;
-                if let LIRType::Struct(name) = ret {
-                    if self.types.struct_passing_mode(name) == StructPassingMode::ByPointer {
-                        let fields = self.types.struct_fields.get(&name).unwrap();
-                        let ptr = self.stack_alloc_types(fields);
-                        call_params.push(ptr);
-                        out_ptr_return = Some(VirtualValue::StackStruct { ty: name, ptr });
-                    }
+                if let LIRType::Struct(name) = ret
+                    && self.types.struct_passing_mode(name) == StructPassingMode::ByPointer
+                {
+                    let fields = self.types.struct_fields.get(&name).unwrap();
+                    let ptr = self.stack_alloc_types(fields);
+                    call_params.push(ptr);
+                    out_ptr_return = Some(VirtualValue::StackStruct { ty: name, ptr });
                 }
 
                 self.virtual_values_to_func_params(&mut call_params, params);
@@ -474,9 +470,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 let mut register_returns = {
                     // In order to call a function, we need to first map a global FuncId into a local FuncRef
                     // inside the current.
-                    let fref = self
-                        .module
-                        .declare_func_in_func(func, &mut self.builder.func);
+                    let fref = self.module.declare_func_in_func(func, self.builder.func);
 
                     let call = self.ins().call(fref, &call_params);
 

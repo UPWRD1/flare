@@ -227,7 +227,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     pub fn stack_alloc_types(&mut self, types: &[Type]) -> Value {
         let size_t = self.module.isa().pointer_type();
 
-        let size = Self::size_of_struct(&types);
+        let size = Self::size_of_struct(types);
 
         // Create the stack slot for the captures
         let slot = self.builder.create_sized_stack_slot(StackSlotData::new(

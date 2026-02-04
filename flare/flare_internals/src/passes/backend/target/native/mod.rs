@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cranelift::codegen::ir::{BlockArg, Function};
+use cranelift::codegen::ir::{Function};
 use cranelift::module::{FuncId, Linkage, Module};
 use cranelift::object::{ObjectBuilder, ObjectModule};
 use cranelift::prelude::*;
@@ -111,7 +111,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx,'module> {
                 self.call_func(func, args)
             },
             LIR::Local(var, defn, body) => {
-                let var_ty = translate_ty(&self.module, defn.type_of());
+                let var_ty = translate_ty(self.module, defn.type_of());
                 let defn = self.convert_lir(*defn);
                        
                 self.scope.insert(var, defn);
@@ -255,7 +255,7 @@ impl NativeGen {
   
     fn generate_function(&mut self,  item: Item) -> FuncId {
          let (function_id, sig) = self.lookuptable.declare_func(&mut self.module, &item.id);
-let converter = IRConverter::new(&mut self.ctx.func, &mut self.fctx, &mut self.module, &mut self.lookuptable);
+let converter = IRConverter::new(&mut self.ctx.func, &mut self.fctx, &mut self.module, &self.lookuptable);
         converter.convert(sig, item);
                       
         //println!("fn {function_name}:\n{}", &self.ctx.func);
@@ -350,7 +350,7 @@ impl Target for Native {
         };
 
         let len =  lir.len();
-        let mut funcs: Vec<(Item, FunctionPurpose)> = lir
+        let funcs: Vec<(Item, FunctionPurpose)> = lir
             .into_iter().enumerate()
             .flat_map(|(idx, cco)|{
                 let mut new_items:Vec<(Item, FunctionPurpose)> = Vec::with_capacity(cco.closure_items.len() + 1);
