@@ -4,7 +4,8 @@ use cranelift::{
 };
 
 use crate::{
-    passes::backend::target::native::IRConverter, resource::rep::backend::native::Closure,
+    passes::backend::target::native::IRConverter,
+    resource::rep::backend::native::{Closure, VirtualValue},
 };
 
 impl<'bctx, 'module> IRConverter<'bctx, 'module> {
@@ -17,7 +18,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     }
 
     pub fn construct_closure(&mut self, closure_id: FuncId, captures: &[Value]) -> Closure {
-        let boxed_captures = self.stack_alloc_struct(captures);
+        let boxed_captures = self.stack_alloc_values(captures);
 
         let (forwarding_func_ref, sig) = {
             let capture_types = captures
@@ -29,12 +30,12 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
             let fref = self.module.declare_func_in_func(func_id, self.builder.func);
             let size_t = self.module.isa().pointer_type();
-            (self.builder.ins().func_addr(size_t, fref), sig)
+            (self.builder.ins().func_addr(size_t, fref), sig) //TODO use function indication for virualvalue
         };
 
         Closure {
-            data: boxed_captures,
-            func: forwarding_func_ref,
+            data: Box::new(VirtualValue::Scalar(boxed_captures)),
+            func: Box::new(VirtualValue::Scalar(forwarding_func_ref)),
             sig,
         }
     }
@@ -196,7 +197,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         offset
     }
 
-    pub fn stack_alloc_struct(&mut self, captures: &[Value]) -> Value {
+    pub fn stack_alloc_values(&mut self, captures: &[Value]) -> Value {
         let size_t = self.module.isa().pointer_type();
 
         let types = captures
@@ -218,6 +219,22 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             self.builder.ins().stack_store(v, slot, offset);
             offset += Self::offset_of_field(i, &types);
         }
+
+        // Return the pointer
+        self.builder.ins().stack_addr(size_t, slot, 0)
+    }
+
+    pub fn stack_alloc_types(&mut self, types: &[Type]) -> Value {
+        let size_t = self.module.isa().pointer_type();
+
+        let size = Self::size_of_struct(&types);
+
+        // Create the stack slot for the captures
+        let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            size,
+            0,
+        ));
 
         // Return the pointer
         self.builder.ins().stack_addr(size_t, slot, 0)

@@ -29,11 +29,12 @@ package Main =
 
     # extern display: ?T -> str
 
+    
     type Wrapper[?X] = {data: ?X, extra: str}
     # type Wrapper[?T] = {data: ?T}
 
     let new_Wrapper t : ?T -> Wrapper[?T] =
-        {data = id (t), extra= "hello"}
+        {data = id (t), extra = "hello"}
         # {data = t}
 
     let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =

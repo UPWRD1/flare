@@ -134,7 +134,7 @@ impl ClosureConvert {
             .map(|(i, var)| {
                 let id = self.var_supply.supply();
                 let new_var = Var { id, ty: var.ty };
-                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
+                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i), body.clone());
                 (var, new_var)
             })
             .collect::<FxHashMap<_, _>>();

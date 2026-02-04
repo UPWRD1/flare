@@ -5,7 +5,7 @@ fn 0(v0: {f32,str}) -> f32 {
 ---------------------
 
 fn 1(v2: |f32|[str -> {f32,str}],v1: str) -> {f32,str} {
-	let v3 = v2^1 in {v3,v1}
+	let v3 = v2^0 in {v3,v1}
 }
 
 fn 2(v0: {f32,str},v1: [f32 -> f32]) -> [str -> {f32,str}] {
@@ -20,7 +20,7 @@ fn 3(v0: f32) -> f32 {
 ---------------------
 
 fn 4(v6: |f32|[str -> {f32,str}],v5: str) -> {f32,str} {
-	let v7 = v6^1 in {v7,v5}
+	let v7 = v6^0 in {v7,v5}
 }
 
 fn 5(v0: f32) -> [str -> {f32,str}] {

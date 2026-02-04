@@ -4,15 +4,18 @@ use cranelift::codegen::ir::{BlockArg, Function};
 use cranelift::module::{FuncId, Linkage, Module};
 use cranelift::object::{ObjectBuilder, ObjectModule};
 use cranelift::prelude::*;
-use rustc_hash::{ FxHashMap, };
+use rustc_hash::FxHashMap;
 
+use crate::passes::backend::target::native::functionbuilder::LookupTable;
 use crate::passes::backend::{lir::ClosureConvertOut, target::Target};
 use crate::resource::rep::backend::lir::{Item, LIR, Var};
+use crate::resource::rep::backend::native::VirtualValue;
 use crate::resource::rep::backend::types::LIRType;
 use crate::resource::rep::frontend::ast::BinOp;
 
 pub mod closures;
 pub mod functionbuilder;
+
 
 const ENTRYPOINT_FUNCTION_SYMBOL: &str = "main";
 
@@ -21,21 +24,22 @@ pub struct Native;
 
 pub struct IRConverter<'builder_ctx, 'module> {
     builder: FunctionBuilder<'builder_ctx>,
-    scope: FxHashMap<Var, usize>,
+    scope: FxHashMap<Var, VirtualValue>,
     module: &'module mut ObjectModule,
+    types: &'module LookupTable,
           
 }
 
 impl<'builder_ctx, 'module> IRConverter<'builder_ctx,'module> {
     fn new(func:&'builder_ctx mut Function, func_ctx: &'builder_ctx mut FunctionBuilderContext,
-         module: &'module mut ObjectModule) -> Self {
-        Self {builder:  FunctionBuilder::new(func,func_ctx), scope: FxHashMap::default(), module, }
+         module: &'module mut ObjectModule,types: &'module LookupTable) -> Self {
+        Self {builder:  FunctionBuilder::new(func,func_ctx), scope:FxHashMap::default(), module, types}
         
     }
-
-    fn convert_bin_op(&mut self, left: LIR, op: BinOp, right: LIR) -> Value {
-        fn convert_cmp(builder: &mut FunctionBuilder, left:Value, op: BinOp, right: Value) -> Value{
-            match op {
+   
+    fn convert_bin_op(&mut self, left: LIR, op: BinOp, right: LIR) -> VirtualValue {
+        fn convert_cmp(builder: &mut FunctionBuilder, left:Value, op: BinOp, right: Value) -> VirtualValue{
+            VirtualValue::Scalar(match op {
                 BinOp::Eq => builder.ins().fcmp(FloatCC::Equal, left, right),
                 BinOp::Neq => todo!(),
                 BinOp::Gt => todo!(),
@@ -43,20 +47,20 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx,'module> {
                 BinOp::Gte => todo!(),
                 BinOp::Lte => todo!(),
                 _ => unreachable!("Bad op")
-            }
+            })
         }
 
-        fn convert_arith(builder: &mut FunctionBuilder, left:Value, op: BinOp, right: Value) -> Value {
-            match op {
+        fn convert_arith(builder: &mut FunctionBuilder, left:Value, op: BinOp, right: Value) -> VirtualValue {
+            VirtualValue::Scalar(match op {
                 BinOp::Add => builder.ins().fadd(left, right),
                 BinOp::Sub => builder.ins().fsub(left,right),
                 BinOp::Mul => builder.ins().fmul(left, right),
                 BinOp::Div => builder.ins().fdiv(left,right),
                 _ => unreachable!("Bad op")
-            }
+            })
         }
-        let left = self.convert_lir(left)[0];
-        let right = self.convert_lir(right)[0];
+        let left = self.convert_lir(left).as_scalar();
+        let right = self.convert_lir(right).as_scalar();
         match op {
             BinOp::Eq         |    BinOp::Neq |            
             BinOp::Gt |            BinOp::Lt |
@@ -70,83 +74,75 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx,'module> {
         }
     }
 
+    fn get_var(&mut self, var: Var) -> VirtualValue {
+        let block_params = self.builder.block_params(self.builder.current_block().expect("Not in block"));
+        // TODO: use stack based representation for variables??
+        if let Some(v) = self.scope.get(&var) {
+            v.clone()
+        } else {
+            panic!("Undefined variable")
+        }
+       
+                // let index= var.id.0;
+    }
+
     // This returns a vec, which usually only contains one item.
     // This is an obvious performance issue, and should probably be fixed in the future.
-    fn convert_lir(&mut self, lir: LIR) -> Vec<Value> {
+    fn convert_lir(&mut self, lir: LIR) -> VirtualValue {
     
          match lir {
             LIR::Var(var) => {
-                // TODO: use stack based representation for variables
-                let index =  self.scope.get(&var).expect("undefined variable");
-               vec![self.builder.block_params(self.builder.current_block().expect("Not in block"))[*index]]
-                
+               self.get_var(var)                            
                 
             },
-            LIR::Int(n) => vec![self.builder.ins().iconst(types::I32, n as i64)], // Don't know why this conversion is needed, check docs later
-             // LIR::Int(n) => vec![self.builder.ins().f32const(n as f32)],
+            LIR::Int(n) => self.int(n),              
             LIR::Str(intern) => todo!(),
             LIR::Unit => todo!(),
-            LIR::Float(f) => vec![self.builder.ins().f32const(f.0)],
-            LIR::ClosureBuild(lirtype, item_id, vars) => todo!(),
+            LIR::Float(f) => self.float(f),
+            LIR::ClosureBuild(_, closure_id,capt_vars ) => todo!(),
             LIR::Apply(func, arg) => {
+                let func = self.convert_lir(*func);
                 let arg = self.convert_lir(*arg);
-                let the_fun = if let LIR::Item(id, ..) = *func {
-                                        FuncId::from_u32(id.0)    
-                 } else {
-                    let f = self.convert_lir(*func);
-                    todo!("{f:?}")
-                };
-                let the_fun = self.module.declare_func_in_func(the_fun, self.builder.func);
-let the_call = self.builder.ins().call(the_fun, &arg);
-                
-self.builder.inst_results(the_call).to_vec()
+                self.call_func(func, vec![arg])
             },
             LIR::BulkApply(func, args) => {
-                
-let args: Vec<_> = args.into_iter().flat_map(|arg| self.convert_lir(arg)).collect();
-                let the_fun = if let LIR::Item(id, ..) = *func {
-                                        FuncId::from_u32(id.0)
-                    
-                 }                  
-              else {
-                    todo!()
-                };
-                let the_fun = self.module.declare_func_in_func(the_fun, self.builder.func);
-let the_call = self.builder.ins().call(the_fun, &args);
-                
-self.builder.inst_results(the_call).to_vec()
+                let func = self.convert_lir(*func);
+                let args = args.into_iter().map(|arg| self.convert_lir(arg)).collect();
+                self.call_func(func, args)
             },
             LIR::Local(var, defn, body) => {
-                // let var_ty = translate_ty(var.ty);
-                self.scope.insert(var, self.builder.block_params(self.builder.current_block().expect("not_in_block")).len() );
-                let defn = self.convert_lir(*defn)[0];
-
-let var_ty = self.builder.func.stencil.dfg.value_type(defn);
-                let var = self.builder.declare_var(var_ty);
-                self.builder.def_var(var, defn );
-                let body_block= self.builder.create_block();
-                self.builder.append_block_param(body_block, var_ty);
-                // self.builder.seal_block(body_block);
-                self.builder.ins().jump(body_block, vec![&BlockArg::Value(defn)]);
-                self.builder.switch_to_block(body_block);
+                let var_ty = translate_ty(&self.module, defn.type_of());
+                let defn = self.convert_lir(*defn);
+                       
+                self.scope.insert(var, defn);
+                // // let body_block= self.builder.create_block();
+                // // self.builder.append_block_params_for_function_params(body_block);
+                // // self.builder.append_block_param(body_block, var_ty);
+                
+                
+                // // let current_block = self.builder.current_block().expect("not_in_block");
+                // // let mut block_args = self.builder.block_params(current_block).to_vec();
+                // // block_args.push(defn);
+                
+                // // let new_block_args:Vec<_> = block_args.iter().copied().map(BlockArg::Value).collect();                
+                
+                // self.builder.ins().jump(body_block, new_block_args.as_slice());
+                // self.builder.switch_to_block(body_block);
                 self.convert_lir(*body)
                 
             },
-            LIR::Access(lir, _) => todo!(),
+            LIR::Access(closure, idx) => {
+                let closure = self.convert_lir(*closure);
+                self.destruct_field(&closure, idx)
+            },
             LIR::Struct(fields) => {
-                let field_values:Vec<_> = fields.into_iter().flat_map(|f| self.convert_lir(f)            ).collect();
-                 vec![self.stack_alloc_struct(&field_values)]
+                let (types, fields): (Vec<_>, Vec<_>) = fields.into_iter().map(|f| (f.type_of(), self.convert_lir(f))).unzip();
                 
-              
-                          },
-            LIR::Field(lir, idx) => {
-                if let LIR::Struct(fields) = *lir {
-                    self.convert_lir(fields[idx].clone())
-                } else {
-                  let converted = self.convert_lir(*lir)[0];
-                  let res = self.type_of_value(converted);
-                  dbg!(res);
-                  todo!()            }
+                self.construct_struct(types.as_slice().into(), &fields)
+                            },
+            LIR::Field(obj, idx) => {
+                let obj = &self.convert_lir(*obj);
+                self.destruct_field(obj, idx)
             },
             LIR::Case(lir, lirs) => todo!(),
             LIR::Item(item_id, _) =>  {
@@ -155,15 +151,16 @@ let the_fun = FuncId::from_u32(item_id.0);
 let the_fun = self.module.declare_func_in_func(the_fun, self.builder.func);
 let the_call = self.builder.ins().call(the_fun, &Vec::new());
                 
-self.builder.inst_results(the_call).to_vec()
+VirtualValue::Scalar(self.builder.inst_results(the_call)[0])
             },
             LIR::Extern(name, t) => {
                 let (param_tys, ret_ty) = t.destructure_closure();
                 let params = param_tys.into_iter().map(|ty| {
-                    let t = translate_ty(self.module, ty);
-                    AbiParam::new(t)
-                }).collect();
-                let returns = vec![AbiParam::new(translate_ty(self.module, ret_ty))];
+                     translate_ty(self.module, ty)
+                   
+                }).map(AbiParam::new).collect();
+                
+                let returns = vec![translate_ty(self.module, ret_ty)].into_iter().map(AbiParam::new).collect();
                 let sig = Signature {
                     params,
                     returns,
@@ -174,34 +171,28 @@ self.builder.inst_results(the_call).to_vec()
 let the_fun = self.module.declare_func_in_func(the_fun, self.builder.func);
 let the_call = self.builder.ins().call(the_fun, &Vec::new());
 
-self.builder.inst_results(the_call).to_vec()                          },
-            LIR::BinOp(left, op, right) => vec![self.convert_bin_op(*left, op, *right)],
+            VirtualValue::Scalar(self.builder.inst_results(the_call)[0])                          },
+            LIR::BinOp(left, op, right) =>self.convert_bin_op(*left, op, *right),
         }
         
     }
 
     fn convert(mut self, sig: Signature, item: Item) {
         self.builder.func.signature = sig;
-        for (idx, param) in item.params.into_iter().enumerate() {
-            self.scope.insert(param, idx);
-        }
+        
                 
         let entry_block = self.builder.create_block();
         self.builder.append_block_params_for_function_params(entry_block);
         self.builder.switch_to_block(entry_block);
 
         let ret_val = self.convert_lir(item.body);
-        self.builder.ins().return_(&ret_val);
+        self.return_(ret_val);
        
         self.builder.seal_block(entry_block);
         self.builder.seal_all_blocks();
         self.builder.finalize();
-    }
-
-
-     
+    } 
 }
-
 
 fn translate_ty(module: &ObjectModule, ty: LIRType) -> types::Type {
     match ty {
@@ -209,11 +200,10 @@ fn translate_ty(module: &ObjectModule, ty: LIRType) -> types::Type {
             LIRType::Float => types::F32,
             LIRType::String => module.isa().pointer_type(),
             LIRType::Unit => todo!(),
-            LIRType::Struct(lirtypes) => todo!(),
+            
             LIRType::Union(lirtypes) => todo!(),
-            LIRType::Closure(lirtype, lirtype1) => module.isa().pointer_type(),            
-            LIRType::ClosureEnv(lirtype, lirtypes) => todo!(),
-    }
+            LIRType::Struct(_)    |            LIRType::Closure(..) |            LIRType::ClosureEnv(..)  => module.isa().pointer_type(),          
+       }
 }
 
 pub struct NativeGen {
@@ -221,11 +211,12 @@ pub struct NativeGen {
     module: ObjectModule,
     ctx: codegen::Context,
     fctx: FunctionBuilderContext,
+    lookuptable: LookupTable,
 }
 
 impl NativeGen {
-    fn new(isa: Arc<dyn isa::TargetIsa>) -> Self {
-        let module = {
+    fn new(isa: Arc<dyn isa::TargetIsa>, items:&[(Item, FunctionPurpose)]) -> Self {
+        let mut module = {
             let translation_unit_name = b"flarec";
             let libcall_names = cranelift::module::default_libcall_names();
             let builder =
@@ -235,11 +226,12 @@ impl NativeGen {
 
         let ctx = codegen::Context::new();
         let fctx = FunctionBuilderContext::new();
+        let lookuptable = LookupTable::new(&mut module, items);
         Self {
             isa,
             module,
             ctx,
-            fctx,
+            fctx,lookuptable
                     }
     }
 
@@ -260,86 +252,19 @@ impl NativeGen {
             returns: vec![AbiParam::new(types::I32)],
         }
     }
-
-    
-
-    pub fn convert_signature(&self, ref_params: &mut [Var], ret_ty: LIRType) -> Signature {
-        
-        let mut params = vec![];
-        let mut returns = vec![];
-        match ret_ty {
-            LIRType::Struct(intern) => params.push(AbiParam::new(self.isa.pointer_type())),            LIRType::Union(intern) => todo!(),
-            LIRType::Closure(l, r) => {
-                params.push(AbiParam::new(self.isa.pointer_type()))
-                // dbg!(l, r);
-                // todo!()
-            }
-            LIRType::ClosureEnv(intern, intern1) => todo!(),
-            _ => returns.push(AbiParam::new(translate_ty(&self.module, ret_ty))),
-        }
-        for param in ref_params {
-            match param.ty {
-                LIRType::Struct(intern) => params.push(AbiParam::new(self.isa.pointer_type())),
-                LIRType::Union(intern) => todo!(),
-                LIRType::Closure(l, r) => {
-                    params.push(AbiParam::new(self.isa.pointer_type()))
-                // dbg!(t, env);
-                // todo!()
-                }
-                LIRType::ClosureEnv(t, env) => {
-                    params.push(AbiParam::new(translate_ty(&self.module, *t)));
-                    params.push(AbiParam::new(self.isa.pointer_type()))
-                                    },
-            _ => params.push(AbiParam::new(translate_ty(&self.module, param.ty))),
-        }
-        }
-
-        Signature {
-            params,
-            returns,
-            call_conv: self.module.isa().default_call_conv(),
-        }
-    }
-
-    fn preload_function(&mut self, item: &mut Item) -> (Signature, FuncId) {
-        // dbg!(&item);
-        let ret_ty = item.body.type_of();
-        let function_name = format!("flare_f_{}", item.id.0);
-        let sig = self.convert_signature(&mut item.params, ret_ty);
-        
-        let function_id = self
-            .module
-            .declare_function(&function_name, Linkage::Export, &sig)
-            .expect("Could not declare function");
-        // self.itemid_to_funcid.insert(item.id, function_id);
-        (sig, function_id)
-    }
-
-    fn generate_function(&mut self, sig: Signature, item: Item, function_id: FuncId) {
-        let converter = IRConverter::new(&mut self.ctx.func, &mut self.fctx, &mut self.module);
+  
+    fn generate_function(&mut self,  item: Item) -> FuncId {
+         let (function_id, sig) = self.lookuptable.declare_func(&mut self.module, &item.id);
+let converter = IRConverter::new(&mut self.ctx.func, &mut self.fctx, &mut self.module, &mut self.lookuptable);
         converter.convert(sig, item);
                       
-        // println!("fn {function_name}:\n{}", &self.ctx.func);
+        //println!("fn {function_name}:\n{}", &self.ctx.func);
 
         self.module
             .define_function(function_id, &mut self.ctx)
             .expect("Could not define function");
         self.ctx.clear();
-    }
-
-    fn generate_closure(&mut self, sig: Signature, item: Item, function_id: FuncId) {
-       let converter = IRConverter::new(&mut self.ctx.func, &mut self.fctx, &mut self.module);
-       dbg!(sig);
-       todo!();
-        let f = converter.declare_real_function_for_closure();
-        converter.convert(sig, item);
-                      
-        // println!("fn {function_name}:\n{}", &self.ctx.func);
-
-        self.module
-            .define_function(function_id, &mut self.ctx)
-            .expect("Could not define function");
-        self.ctx.clear();
+        function_id
     }
 
     fn generate_main_func(&mut self, flare_main: FuncId) {
@@ -395,15 +320,18 @@ builder.ins().return_(&[result_value]);
     }
 }
 
+
+ pub enum FunctionPurpose {
+            Normal,
+            Closure,
+            Main,
+        }
+
 impl Target for Native {
     type Output = Vec<u8>;
 #[allow(clippy::unwrap_used)]
     fn generate(&mut self, lir: Vec<ClosureConvertOut>) -> Self::Output {
-        enum IsClosure {
-            Yes,
-            No,
-        }
-        let isa = {
+               let isa = {
             let mut builder = settings::builder();
 
             // disable optimizations so disassembly will more directly correlated to our Cranelift usage
@@ -421,37 +349,37 @@ impl Target for Native {
                 .unwrap()
         };
 
-        let mut native_gen = NativeGen::new(isa.clone());
-
-    
-        let mut funcs: Vec<(Item, IsClosure)> = lir
-            .into_iter()
-            .flat_map(|cco|{
-                let mut new_items:Vec<(Item, IsClosure)> = Vec::with_capacity(cco.closure_items.len() + 1);
-                new_items.extend(cco.closure_items.into_values().map(|closure| (closure, IsClosure::Yes)));
-                new_items.push((cco.item, IsClosure::No));
+        let len =  lir.len();
+        let mut funcs: Vec<(Item, FunctionPurpose)> = lir
+            .into_iter().enumerate()
+            .flat_map(|(idx, cco)|{
+                let mut new_items:Vec<(Item, FunctionPurpose)> = Vec::with_capacity(cco.closure_items.len() + 1);
+                new_items.extend(cco.closure_items.into_values().map(|closure| (closure, FunctionPurpose::Closure)));
+                if idx == len {
+                    new_items.push((cco.item, FunctionPurpose::Main));
+                } else {
+                new_items.push((cco.item, FunctionPurpose::Normal));
+                }
                 new_items
             })
             .collect();
 
-        let ids:Vec<(Signature, FuncId)> = funcs
-            .iter_mut()
-            .map(|(func, _)| native_gen.preload_function(func))
-            .collect();
-        
-        let main_id = ids.last().unwrap().1;
-        
-        for ((item, is_closure), (sig, function_id)) in funcs.into_iter().zip(ids) {
-            if let IsClosure::Yes = is_closure {
-                println!("closure");
-                native_gen.generate_closure(sig, item, function_id);
-            } else {
-                native_gen.generate_function(sig, item, function_id);
+        let mut native_gen = NativeGen::new(isa.clone(), &funcs);
+                
+                
+        for (item, purpose) in funcs.into_iter() {
+            match purpose {
+                FunctionPurpose::Normal | FunctionPurpose::Closure => {native_gen.generate_function(item);},
+                
+                FunctionPurpose::Main => {
+                    let main_id = native_gen.generate_function(item);
+native_gen.generate_main_func(main_id);
+                },
             }
+                        
         }
-        
-        native_gen.generate_main_func(main_id);
-
+       
+       
         
         let product = native_gen.module.finish();
         // Generate the object file.
