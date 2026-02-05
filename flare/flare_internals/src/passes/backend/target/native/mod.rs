@@ -174,6 +174,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             LIR::Case(lir, lirs) => todo!(),
             LIR::Item(item_id, _) => {
                 let func_id = self.types.function_names.get_by_right(&item_id).unwrap();
+
                 VirtualValue::Func(*func_id)
             }
             LIR::Extern(name, t) => {
@@ -207,7 +208,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         if let Some(obj_vv) = self.scope.get(ref_expr) {
             obj_vv.clone()
         } else {
-            dbg!(&obj);
+            // dbg!(&obj);
             let obj_vv = self.convert_lir(obj.clone());
             // dbg!(obj_vv);
             if let VirtualValue::Scalar(_) = obj_vv {

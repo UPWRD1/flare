@@ -375,7 +375,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
             LIRType::ClosureEnv(fun, env) => {
                 let new_types = p.closure_to_struct_rep().into_struct_fields();
-
+                let env_struct = LIRType::Struct(env);
                 if is_root && self.types.struct_passing_mode(p) == StructPassingMode::ByPointer {
                     let size_t = self.module.isa().pointer_type();
                     let ptr = f(self, size_t);
@@ -447,7 +447,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             VirtualValue::Scalar(s) => panic!("cannot destruct field from non-struct: {s:?}"),
 
             VirtualValue::StackStruct { ty, ptr } => {
-                let ty = if let LIRType::ClosureEnv(f, _) = ty {
+                let ty = if let LIRType::ClosureEnv(f, env) = ty {
                     if field == 0 {
                         **f
                     } else {
@@ -457,10 +457,6 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                         field -= 1;
                         tys[1]
                     }
-                    // let LIRType::Struct(tys) = ty.closure_to_struct_rep() else {
-                    //     unreachable!("Cannot get here")
-                    // };
-                    // tys[1]
                 } else {
                     *ty
                 };
@@ -666,6 +662,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 }
                 _ => unreachable!(),
             },
+            // VirtualValue::Scalar()
             VirtualValue::Closure(c) => self.call_closure(c, &params),
             _ => panic!("Invalid function node {func:?}"),
         }

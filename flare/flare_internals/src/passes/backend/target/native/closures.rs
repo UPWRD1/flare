@@ -22,6 +22,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     }
 
     pub fn call_closure(&mut self, closure: Closure, params: &[VirtualValue]) -> VirtualValue {
+        // dbg!(params);
+        // dbg!(&closure.sig);
         let mut real_params = vec![*closure.captures.clone()];
         real_params.extend_from_slice(params);
         let sigref = self.builder.import_signature(closure.sig.clone());
@@ -44,7 +46,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     pub fn construct_closure(&mut self, closure_id: FuncId, captures: &[VirtualValue]) -> Closure {
         let boxed_captures = self.stack_alloc_values(captures.to_vec());
-        let (forwarding_func_ref, sig) = {
+        let (forwarding_func_id, sig) = {
             let capture_types = captures
                 .iter()
                 .map(|v| {
@@ -55,7 +57,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
             let (func_id, sig) = self.create_forwarding_func(closure_id, &capture_types);
 
-            // let fref = self.module.declare_func_in_func(func_id, self.builder.func);
+            self.module.declare_func_in_func(func_id, self.builder.func);
             // let size_t = self.module.isa().pointer_type();
             //(self.builder.ins().func_addr(size_t, fref), sig) //TODO use function indication for virualvalue
 
@@ -69,7 +71,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         Closure {
             ty,
             captures: Box::new(boxed_captures),
-            func: Box::new(VirtualValue::Func(forwarding_func_ref)),
+            func: Box::new(VirtualValue::Func(forwarding_func_id)),
             sig,
         }
     }
@@ -109,26 +111,24 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         let symbol = format!("closure_forward_{f}");
         let id = self.types.function_names.get_by_left(&f).unwrap();
         let mut sig = self.types.function_sigs[id].clone();
-        // dbg!(&sig);
-        // Define the signature of the forwarding function to be that of the closure signature but
-        // with the opaque captures pointer added as the first parameter.
+        // let voidptr = self.module.isa().pointer_type();
+        // sig.params.insert(0, AbiParam::new(voidptr));
+
         // let sig = {
-        //     let mut sig_params = Vec::new();
+        //     let mut sig = Signature::new(isa::CallConv::Fast);
 
         //     // The implicit parameters from the capture will be replaced by an opaque pointer instead.
-        let voidptr = self.module.isa().pointer_type();
-        sig.params.insert(0, AbiParam::new(voidptr));
+        //     let voidptr = AbiParam::new(self.module.isa().pointer_type());
+        //     sig.params.insert(0, voidptr);
 
         //     let real_func_sig = self.signature_from_decl(f);
         //     for &p in real_func_sig.params.iter().skip(captys.len()) {
-        //         sig_params.push(p);
+        //         sig.params.push(p);
         //     }
-        //     let returns = real_func_sig.returns.clone();
+        //     sig.returns = real_func_sig.returns.clone();
 
-        //     self.types.make_sig(CallConv::Fast, sig_params, returns);
         //     sig
         // };
-
         // Declare the closure forwarding function
         let func_id = self
             .module
@@ -151,13 +151,13 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 Vec::with_capacity(captys.len() + closure_builder.func.signature.params.len() - 1);
 
             // Dereference the captures and add them as implicit parameters
-            // let mut offset = 0;
-            // for &ty in captys {
-            //     let ptr = closure_builder.block_params(block)[0];
-            //     let v = closure_builder.ins().load(ty, MemFlags::new(), ptr, offset);
-            //     real_call_params.push(v);
-            //     offset += ty.bytes() as i32;
-            // }
+            let mut offset = 0;
+            for &ty in captys {
+                let ptr = closure_builder.block_params(block)[0];
+                let v = closure_builder.ins().load(ty, MemFlags::new(), ptr, offset);
+                real_call_params.push(v);
+                offset += ty.bytes() as i32;
+            }
 
             // Add all other parameters from the forwarding function
             for &v in &closure_builder.block_params(block)[1..] {
