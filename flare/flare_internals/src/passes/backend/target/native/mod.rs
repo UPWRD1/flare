@@ -12,7 +12,6 @@ use crate::resource::rep::backend::lir::{Item, LIR, Var};
 use crate::resource::rep::backend::native::VirtualValue;
 use crate::resource::rep::backend::types::LIRType;
 use crate::resource::rep::frontend::ast::BinOp;
-use crate::resource::rep::midend::ir::VarId;
 
 pub mod closures;
 pub mod functionbuilder;
@@ -24,7 +23,7 @@ pub struct Native;
 
 pub struct IRConverter<'builder_ctx, 'module> {
     builder: FunctionBuilder<'builder_ctx>,
-    scope: FxHashMap<Var, VirtualValue>,
+    scope: FxHashMap<LIR, VirtualValue>,
     module: &'module mut ObjectModule,
     types: &'module LookupTable,
 }
@@ -91,38 +90,49 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
     }
 
     fn get_var(&mut self, var: Var) -> VirtualValue {
-        let block_params = self
-            .builder
-            .block_params(self.builder.current_block().expect("Not in block"));
         // dbg!(&self.scope);
         // TODO: use stack based representation for variables??
-        if let Some(v) = self.scope.get(&var) {
+        if let Some(v) = self.scope.get(&LIR::Var(var)) {
             v.clone()
-        } else if let Some(v) = block_params.get(var.id.0) {
-            dbg!(v, self.type_of_value(*v));
-            todo!()
-        // VirtualValue::Scalar(*v)
         } else {
-            panic!("Undefined variable {var:?}")
+            let block_params = self
+                .builder
+                .block_params(self.builder.current_block().expect("Not in block"));
+            if let Some(v) = block_params.get(var.id.0) {
+                VirtualValue::Scalar(*v)
+            } else {
+                dbg!(block_params);
+                panic!("Undefined variable {var:?}")
+            }
         }
 
         // let index= var.id.0;
+    }
+
+    fn scope_get(&mut self, var: LIR) -> VirtualValue {
+        if let Some(v) = self.scope.get(&var) {
+            v.clone()
+        } else {
+            dbg!(&self.scope);
+            panic!("Undefined variable {var:?}")
+        }
     }
 
     // This returns a vec, which usually only contains one item.
     // This is an obvious performance issue, and should probably be fixed in the future.
     fn convert_lir(&mut self, lir: LIR) -> VirtualValue {
         match lir {
-            LIR::Var(var) => self.get_var(var),
+            LIR::Var(_) => self.scope_get(lir),
             LIR::Int(n) => self.int(n),
             LIR::Str(intern) => todo!(),
             LIR::Unit => todo!(),
             LIR::Float(f) => self.float(f),
             LIR::ClosureBuild(_, closure_id, capt_vars) => {
-                // dbg!(capt_vars);
                 let func_id = self.types.function_names.get_by_right(&closure_id).unwrap();
-                // todo!()
-                let captures: Vec<_> = capt_vars.iter().map(|v| self.get_var(*v)).collect();
+                let captures: Vec<_> = capt_vars
+                    .iter()
+                    .map(|v| self.scope_get(LIR::Var(*v)))
+                    .collect();
                 VirtualValue::Closure(self.construct_closure(*func_id, &captures))
             }
             LIR::Apply(func, arg) => {
@@ -140,12 +150,16 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 let defn = self.convert_lir(*defn);
                 // self.builder.def_var(Variable::from_u32(var.id.0 as u32), defn.clone().as_value());
                 // dbg!(var);
-                self.scope.insert(var, defn);
+                self.scope.insert(LIR::Var(var), defn);
                 self.convert_lir(*body)
             }
-            LIR::Access(closure, idx) => {
-                let closure = self.convert_lir(*closure);
-                self.destruct_field(&closure, idx)
+            LIR::Access(ref closure, idx) => {
+                let closure = LIR::Field(closure.clone(), 1);
+
+                self.field(&lir, &closure, idx)
+
+                // self.destruct_field(&env_struct, idx)
+                // let closure = self.convert_lir(*closure);
             }
             LIR::Struct(fields) => {
                 let (types, fields): (Vec<_>, Vec<_>) = fields
@@ -156,12 +170,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
 
                 self.construct_struct(struct_ty, &fields)
             }
-            LIR::Field(obj, idx) => {
-                // dbg!(&obj);
-                let obj = &self.convert_lir(*obj);
-                // dbg!(&obj);
-                self.destruct_field(obj, idx)
-            }
+            LIR::Field(ref obj, idx) => self.field(&lir, obj, idx),
             LIR::Case(lir, lirs) => todo!(),
             LIR::Item(item_id, _) => {
                 let func_id = self.types.function_names.get_by_right(&item_id).unwrap();
@@ -194,6 +203,22 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         }
     }
 
+    fn field(&mut self, ref_expr: &LIR, obj: &LIR, idx: usize) -> VirtualValue {
+        if let Some(obj_vv) = self.scope.get(ref_expr) {
+            obj_vv.clone()
+        } else {
+            dbg!(&obj);
+            let obj_vv = self.convert_lir(obj.clone());
+            // dbg!(obj_vv);
+            if let VirtualValue::Scalar(_) = obj_vv {
+                // struct was destructured in arguments
+                obj_vv
+            } else {
+                self.destruct_field(&obj_vv, idx)
+            }
+        }
+    }
+
     pub fn create_entry_block(&mut self, params: &[LIRType]) -> (Block, Vec<VirtualValue>) {
         let block = self.builder.create_block();
         self.builder.seal_block(block);
@@ -219,28 +244,22 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
 
         let (entry_block, vparams) = self.create_entry_block(params);
         self.builder.switch_to_block(entry_block);
-        let mut counter = 0;
-        for (mut var, vparam) in item.params.into_iter().zip(vparams) {
-            var.id = VarId(var.id.0 + counter);
+        for (var, vparam) in item.params.into_iter().zip(vparams) {
             match vparam {
                 VirtualValue::Scalar(_) | VirtualValue::StackStruct { .. } => {
-                    self.scope.insert(var, vparam);
+                    self.scope.insert(LIR::Var(var), vparam);
                 }
                 VirtualValue::UnstableStruct { ty, fields } => {
                     let the_types = ty.into_struct_fields();
-                    for (fp, ty) in fields.into_iter().zip(the_types.iter()) {
-                        let new_var = Var {
-                            id: VarId(var.id.0 + counter),
-                            ty: *ty,
-                        };
+                    for (i, (fp, ty)) in fields.into_iter().zip(the_types.iter()).enumerate() {
+                        let new_var = LIR::index(LIR::Var(var), i);
                         self.scope.insert(new_var, fp);
-                        counter += 1;
                     }
                 }
                 VirtualValue::Closure(closure) => todo!(),
                 VirtualValue::Func(func_id) => todo!(),
                 VirtualValue::Pointer(..) => {
-                    self.scope.insert(var, vparam);
+                    self.scope.insert(LIR::Var(var), vparam);
                 }
             }
             // dbg!(&vparam);
@@ -263,8 +282,10 @@ fn translate_ty(module: &ObjectModule, ty: LIRType) -> types::Type {
         LIRType::Unit => types::I8,
 
         LIRType::Union(lirtypes) => todo!(),
-        LIRType::Struct(_) | LIRType::Closure(..) | LIRType::ClosureEnv(..) => {
-            module.isa().pointer_type()
+        LIRType::Closure(..) => module.isa().pointer_type(),
+        LIRType::Struct(_) | LIRType::ClosureEnv(..) => {
+            panic!("{ty:?}")
+            // module.isa().pointer_type()
         }
     }
 }
@@ -418,7 +439,9 @@ impl Target for Native {
         for (item, purpose) in funcs.into_iter() {
             match purpose {
                 FunctionPurpose::Normal | FunctionPurpose::Closure => {
+                    println!("{}", item);
                     native_gen.generate_function(item);
+                    println!("---------------------------------")
                 }
 
                 FunctionPurpose::Main => {

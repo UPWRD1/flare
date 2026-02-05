@@ -1,16 +1,9 @@
-use std::sync::Arc;
+use cranelift::{module::FuncId, prelude::*};
 
-use cranelift::{
-    codegen::ir::FuncRef,
-    module::{FuncId, Module},
-    object::ObjectModule,
-    prelude::*,
-};
-use internment::Intern;
-
-use crate::resource::rep::{backend::types::LIRType, midend::ir::ItemId};
+use crate::resource::rep::backend::types::LIRType;
 #[derive(Debug, Clone)]
 pub struct Closure {
+    pub ty: LIRType,
     pub captures: Box<VirtualValue>,
     pub func: Box<VirtualValue>,
     pub sig: Signature,

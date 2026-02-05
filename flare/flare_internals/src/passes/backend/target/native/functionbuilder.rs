@@ -1,12 +1,11 @@
 use bimap::BiMap;
 use cranelift::{
-    codegen::ir::{ArgumentPurpose, SigRef},
+    codegen::ir::ArgumentPurpose,
     frontend::FuncInstBuilder,
     module::{FuncId, Linkage, Module},
     object::ObjectModule,
     prelude::*,
 };
-use internment::Intern;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -14,7 +13,7 @@ use crate::{
     resource::rep::{
         backend::{
             lir::{Item, Var},
-            native::{Closure, PointeeType, VirtualValue},
+            native::{PointeeType, VirtualValue},
             types::LIRType,
         },
         midend::ir::ItemId,
@@ -63,15 +62,9 @@ impl LookupTable {
             }
             LIRType::Union(intern) => todo!(),
             LIRType::Closure(intern, intern1) => module.isa().pointer_type(),
-            LIRType::ClosureEnv(f, env) => {
-                let mut new_tys: Vec<Type> = env
-                    .iter()
-                    .map(|ty| self.generate_struct_table(module, *ty))
-                    .collect();
-                let new_f = self.generate_struct_table(module, *f);
-                new_tys.insert(0, new_f);
-                self.struct_fields.insert(ty, new_tys);
-                module.isa().pointer_type()
+            LIRType::ClosureEnv(..) => {
+                let closure_struct = ty.closure_to_struct_rep();
+                self.generate_struct_table(module, closure_struct)
             }
         }
     }
@@ -193,6 +186,21 @@ impl LookupTable {
                 }
             },
 
+            LIRType::ClosureEnv(f, env) => match self.struct_passing_mode(fret) {
+                StructPassingMode::ByScalars => {
+                    self.for_scalars_of_struct(
+                        &mut |clty| returns.push(AbiParam::new(clty)),
+                        fret,
+                        // LIRType::Struct(env),
+                    );
+                }
+                StructPassingMode::ByPointer => {
+                    // The `ArgumentPurpose` is needed in-case our target architecture expects the
+                    // out pointer to use a specific register.
+                    let param = AbiParam::special(size_t, ArgumentPurpose::StructReturn);
+                    params.push(param);
+                }
+            },
             _ => todo!("{fret:?}"),
         };
         for p in fparams {
@@ -214,7 +222,11 @@ impl LookupTable {
 
                 LIRType::ClosureEnv(f, env) => match self.struct_passing_mode(p) {
                     StructPassingMode::ByScalars => {
-                        self.for_scalars_of_struct(&mut |clty| params.push(AbiParam::new(clty)), p);
+                        self.for_scalars_of_struct(
+                            &mut |clty| params.push(AbiParam::new(clty)),
+                            // LIRType::Struct(env),
+                            p,
+                        );
                     }
                     StructPassingMode::ByPointer => {
                         params.push(AbiParam::new(size_t));
@@ -239,6 +251,11 @@ impl LookupTable {
             LIRType::Unit => f(types::I8),
             LIRType::Float => f(types::F32),
             LIRType::String => f(self.ptr_type()),
+            LIRType::Closure(l, r) => {
+                self.for_scalars(f, *l);
+                self.for_scalars(f, *r);
+                f(self.ptr_type());
+            }
             LIRType::Struct(name) => self.for_scalars_of_struct(f, ty),
             _ => todo!("{ty:?}"),
         }
@@ -253,6 +270,7 @@ impl LookupTable {
     }
 
     pub fn return_type_of(&self, id: FuncId) -> LIRType {
+        dbg!(&self.function_names);
         let fname = self.function_names.get_by_left(&id).unwrap();
         self.function_types[fname].1
     }
@@ -261,7 +279,7 @@ impl LookupTable {
     pub fn struct_passing_mode(&self, fields: LIRType) -> StructPassingMode {
         let mut scalars = 0;
         self.for_scalars_of_struct(&mut |_| scalars += 1, fields);
-        if scalars < 1 {
+        if scalars < 3 {
             StructPassingMode::ByScalars
         } else {
             StructPassingMode::ByPointer
@@ -316,7 +334,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     }
 
     // Maps our abstract Type to our abstract VirtualValue
-    fn type_to_virtual_value<F>(&mut self, f: &mut F, is_root: bool, p: LIRType) -> VirtualValue
+    pub fn type_to_virtual_value<F>(&mut self, f: &mut F, is_root: bool, p: LIRType) -> VirtualValue
     where
         F: FnMut(&mut Self, Type) -> Value,
     {
@@ -356,17 +374,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             }
 
             LIRType::ClosureEnv(fun, env) => {
-                // let captures = env
-                //     .iter()
-                //     .map(|cap| self.type_to_virtual_value(f, false, *cap));
-                // self.
-                // let Closure {
-                //     captures,
-                //     func,
-                //     sig,
-                // };
-                let new_types: Intern<[LIRType]> =
-                    [[*fun].as_slice(), &env].concat().as_slice().into();
+                let new_types = p.closure_to_struct_rep().into_struct_fields();
+
                 if is_root && self.types.struct_passing_mode(p) == StructPassingMode::ByPointer {
                     let size_t = self.module.isa().pointer_type();
                     let ptr = f(self, size_t);
@@ -379,7 +388,6 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                             .map(|ty| self.type_to_virtual_value(f, false, *ty))
                             .collect::<Vec<_>>(),
                     );
-
                     VirtualValue::UnstableStruct { ty: p, fields }
                 }
             }
@@ -433,12 +441,30 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         }
     }
 
-    pub fn destruct_field(&mut self, of: &VirtualValue, field: usize) -> VirtualValue {
+    pub fn destruct_field(&mut self, of: &VirtualValue, mut field: usize) -> VirtualValue {
+        // dbg!(&of, field);
         match of {
             VirtualValue::Scalar(s) => panic!("cannot destruct field from non-struct: {s:?}"),
 
             VirtualValue::StackStruct { ty, ptr } => {
-                let fields = self.types.struct_fields.get(ty).unwrap_or_else(|| {
+                let ty = if let LIRType::ClosureEnv(f, _) = ty {
+                    if field == 0 {
+                        **f
+                    } else {
+                        let LIRType::Struct(tys) = ty.closure_to_struct_rep() else {
+                            unreachable!("Cannot get here")
+                        };
+                        field -= 1;
+                        tys[1]
+                    }
+                    // let LIRType::Struct(tys) = ty.closure_to_struct_rep() else {
+                    //     unreachable!("Cannot get here")
+                    // };
+                    // tys[1]
+                } else {
+                    *ty
+                };
+                let fields = self.types.struct_fields.get(&ty).unwrap_or_else(|| {
                     panic!(
                         "Could not get {ty:?}, table: \n{:?}",
                         self.types.struct_fields
@@ -446,6 +472,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 });
                 let offset = Self::offset_of_field(field, fields);
                 let field_ty = ty.into_struct_fields()[field];
+                // dbg!(field_ty);
                 match field_ty {
                     // Instead of actually dereferencing the inner struct here,
                     // we create another implicit stack pointer that's offset to where the inner struct starts.
@@ -453,10 +480,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     // This makes dereferencing lazy.
                     LIRType::Struct(type_) => {
                         let new_ptr = self.ins().iadd_imm(*ptr, offset as i64);
-                        VirtualValue::StackStruct {
-                            ty: *ty,
-                            ptr: new_ptr,
-                        }
+                        VirtualValue::StackStruct { ty, ptr: new_ptr }
                     }
                     LIRType::Int => {
                         let v = self.ins().load(types::I32, MemFlags::new(), *ptr, offset);
@@ -469,6 +493,28 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     LIRType::Unit => {
                         let v = self.ins().load(types::I8, MemFlags::new(), *ptr, offset);
                         VirtualValue::Scalar(v)
+                    }
+                    LIRType::Closure(l, r) => {
+                        let ret: Type = self
+                            .types
+                            .make_sig(isa::CallConv::Fast, vec![*l], *r)
+                            .returns[0]
+                            .value_type;
+                        // let ret: Vec<Type> = self
+                        //     .types
+                        //     .make_sig(isa::CallConv::Fast, vec![*l], *r)
+                        //     .returns
+                        //     .iter()
+                        //     .map(|p| p.value_type)
+                        //     .collect();
+                        // if ret.len() == 1 {
+                        //     ret[0]
+                        // } else {
+                        // }
+                        // let pointer = self.types.ptr_type();
+                        let v = self.ins().load(ret, MemFlags::new(), *ptr, offset);
+                        dbg!(v);
+                        VirtualValue::Pointer(PointeeType::Func(vec![*l], *r), v)
                     }
                     _ => todo!("{field_ty:?}"),
                 }
@@ -504,10 +550,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             VirtualValue::UnstableStruct { ty, fields } => {
                 match self.types.struct_passing_mode(ty) {
                     StructPassingMode::ByScalars => {
-                        let fields = fields
-                            .iter()
-                            .map(VirtualValue::as_scalar)
-                            .collect::<Vec<_>>();
+                        let fields = fields.iter().map(|v| self.as_value(v)).collect::<Vec<_>>();
 
                         self.builder.ins().return_(&fields);
                     }
@@ -577,7 +620,6 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             VirtualValue::Scalar(value) => {
                 self.ins().store(MemFlags::new(), value, ptr, offset);
             }
-
             VirtualValue::UnstableStruct { ty, fields } => {
                 for (field, v) in fields.into_iter().enumerate() {
                     // let offset = offset + self.types.offset_of_field(type_, field);

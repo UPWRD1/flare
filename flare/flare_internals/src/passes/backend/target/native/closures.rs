@@ -1,3 +1,4 @@
+// A lot of this code was ripped from the cranelift examples page.
 use cranelift::{
     module::{FuncId, Linkage, Module},
     prelude::*,
@@ -5,7 +6,10 @@ use cranelift::{
 
 use crate::{
     passes::backend::target::native::IRConverter,
-    resource::rep::backend::native::{Closure, PointeeType, VirtualValue},
+    resource::rep::backend::{
+        native::{Closure, PointeeType, VirtualValue},
+        types::LIRType,
+    },
 };
 
 impl<'bctx, 'module> IRConverter<'bctx, 'module> {
@@ -22,23 +26,24 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         real_params.extend_from_slice(params);
         let sigref = self.builder.import_signature(closure.sig.clone());
         let func = self.as_value(&closure.func);
-        let call = self.builder.ins().call_indirect(
-            sigref,
-            func,
-            &real_params
-                .iter()
-                .map(|param| param.as_scalar())
-                .collect::<Vec<_>>(),
-        );
+        let new_params = real_params
+            .iter()
+            .map(|param| self.as_value(param))
+            .collect::<Vec<_>>();
+        let call = self.builder.ins().call_indirect(sigref, func, &new_params);
+        let ty = closure.ty.destructure_closure().1;
         match self.builder.inst_results(call) {
             [res] => VirtualValue::Scalar(*res),
-            res => panic!("many ret types"),
+            [] => params[0].clone(),
+            res => VirtualValue::UnstableStruct {
+                ty,
+                fields: res.iter().map(|val| VirtualValue::Scalar(*val)).collect(),
+            },
         }
     }
 
     pub fn construct_closure(&mut self, closure_id: FuncId, captures: &[VirtualValue]) -> Closure {
         let boxed_captures = self.stack_alloc_values(captures.to_vec());
-
         let (forwarding_func_ref, sig) = {
             let capture_types = captures
                 .iter()
@@ -57,7 +62,12 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             (func_id, sig)
         };
 
+        let name = self.types.function_names.get_by_left(&closure_id).unwrap();
+        let (args, ret) = self.types.function_types.get(name).unwrap();
+        let ty = args.iter().fold(*ret, |prev, c| LIRType::closure(*c, prev));
+
         Closure {
+            ty,
             captures: Box::new(boxed_captures),
             func: Box::new(VirtualValue::Func(forwarding_func_ref)),
             sig,

@@ -24,8 +24,19 @@ impl LIRType {
     pub fn into_struct_fields(&self) -> Vec<Self> {
         match self {
             LIRType::Struct(intern) => intern.to_vec(),
-            LIRType::ClosureEnv(_, env) => env.to_vec(),
-            _ => unimplemented!("NOt a struct"),
+            LIRType::ClosureEnv(..) => self.closure_to_struct_rep().into_struct_fields(),
+            // LIRType::ClosureEnv(_, env) => env.to_vec(),
+            _ => unimplemented!("NOt a struct: {self:?}"),
+        }
+    }
+
+    pub fn closure_to_struct_rep(self) -> Self {
+        match self {
+            LIRType::ClosureEnv(f, env) => {
+                let env_struct = LIRType::Struct(env);
+                LIRType::Struct(vec![*f, env_struct].as_slice().into())
+            }
+            _ => panic!("Not a closure {self:?}"),
         }
     }
 

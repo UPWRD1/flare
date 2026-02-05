@@ -161,13 +161,19 @@ impl LIR {
             LIR::Str(_) => LIRType::String,
             LIR::Unit => LIRType::Unit,
             LIR::Float(_) => LIRType::Float,
-            LIR::ClosureBuild(t, _, _) => *t,
+            // LIR::ClosureBuild(t, _, t) => *t,
+            LIR::ClosureBuild(f, _, env) => {
+                let env_tys: Vec<_> = env.iter().map(|v| v.ty).collect();
+                LIRType::ClosureEnv((*f).into(), env_tys.as_slice().into())
+            }
             LIR::Apply(func, arg) => func.type_of(),
             LIR::BulkApply(func, _) => func.type_of(),
             LIR::Local(.., body) => body.type_of(),
             LIR::Access(closure, t) => {
-                if let LIRType::ClosureEnv(_, env) = closure.type_of() {
-                    env[*t]
+                let t = *t;
+                if let LIRType::ClosureEnv(f, env) = closure.type_of() {
+                    // if the index is zero, we are accessing the function. if it is greater, we want the function.
+                    if t == 0 { *f } else { env[t - 1] }
                 } else {
                     panic!("Not a closure")
                 }

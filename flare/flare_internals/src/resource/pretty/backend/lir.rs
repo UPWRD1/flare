@@ -6,7 +6,7 @@ use tiny_pretty::Doc;
 
 use crate::resource::{
     pretty::{DocExt, Render},
-    rep::backend::lir::{LIR, Var},
+    rep::backend::lir::{Item, LIR, Var},
 };
 
 impl Render for Var {
@@ -23,18 +23,15 @@ impl Render for LIR {
             Self::Str(s) => Doc::text(format!("\"{s}\"s")),
             Self::Unit => Doc::text("unit".to_string()),
             Self::Float(f) => Doc::text(format!("{f}f")),
-            Self::ClosureBuild(_, item_id, vars) => Doc::text("closure")
-                .space()
-                .text(format!("{}", item_id.0))
-                .append(
-                    Doc::list(
-                        vars.iter()
-                            .map(|x| Doc::text(format!("v{}: ", x.id.0,)).append(x.ty.render()))
-                            .intersperse(Doc::text(", "))
-                            .collect(),
-                    )
-                    .brackets(),
-                ),
+            Self::ClosureBuild(_, item_id, vars) => Doc::text(format!("#{}", item_id.0)).append(
+                Doc::list(
+                    vars.iter()
+                        .map(|x| Doc::text(format!("v{}: ", x.id.0,)).append(x.ty.render()))
+                        .intersperse(Doc::text(", "))
+                        .collect(),
+                )
+                .brackets(),
+            ),
             Self::Apply(ir, ir1) => ir.render().append(ir1.render().parens()),
             Self::BulkApply(fun, args) => fun.render().append(
                 Doc::list(
@@ -84,6 +81,60 @@ impl Render for LIR {
     }
 }
 impl Display for LIR {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let doc = self.clone().render();
+        write!(
+            f,
+            "{}",
+            tiny_pretty::print(
+                &doc,
+                &tiny_pretty::PrintOptions {
+                    width: 80,
+                    ..Default::default()
+                }
+            )
+        )
+    }
+}
+
+impl Render for Item {
+    fn render(self) -> Doc<'static> {
+        Doc::text(format!(
+            "fn {}({}) -> {} {{\n\t{}\n}}\n",
+            self.id.0,
+            self.params
+                .iter()
+                .map(|x| format!(
+                    "v{}: {}",
+                    x.id.0,
+                    tiny_pretty::print(
+                        &x.ty.render(),
+                        &tiny_pretty::PrintOptions {
+                            width: 80,
+                            ..Default::default()
+                        }
+                    )
+                ))
+                .join(","),
+            tiny_pretty::print(
+                &self.ret_ty.render(),
+                &tiny_pretty::PrintOptions {
+                    width: 80,
+                    ..Default::default()
+                }
+            ),
+            tiny_pretty::print(
+                &self.body.render(),
+                &tiny_pretty::PrintOptions {
+                    width: 80,
+                    ..Default::default()
+                }
+            ),
+        ))
+    }
+}
+
+impl Display for Item {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let doc = self.clone().render();
         write!(

@@ -58,7 +58,6 @@ impl ClosureConvert {
                     id: self.var_supply.supply_for(fun_var.id),
                     ty: lower_ty(&fun_var.ty),
                 };
-
                 self.make_closure(var, *body, env.update(fun_var, var))
             }
             ir::IR::App(fun, arg) => {
@@ -134,7 +133,7 @@ impl ClosureConvert {
             .map(|(i, var)| {
                 let id = self.var_supply.supply();
                 let new_var = Var { id, ty: var.ty };
-                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i), body.clone());
+                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
                 (var, new_var)
             })
             .collect::<FxHashMap<_, _>>();
