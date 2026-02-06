@@ -59,7 +59,7 @@ fn main() -> CompResult<()> {
             "--generate" | "-g" => {
                 use bnf::Grammar;
 
-                let input = include_str!("/workspaces/allegro/flare/grammar.bnf");
+                let input = include_str!("../../grammar.bnf");
                 let grammar: Grammar = input.parse().unwrap();
                 let sentence = grammar.generate();
                 match sentence {
