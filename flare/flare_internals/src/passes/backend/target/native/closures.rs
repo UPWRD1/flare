@@ -26,11 +26,12 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         // dbg!(&closure.sig);
         let mut real_params = vec![*closure.captures.clone()];
         real_params.extend_from_slice(params);
+        // let real_params = params;
         let sigref = self.builder.import_signature(closure.sig.clone());
-        let func = self.as_value(&closure.func);
+        let func = self.as_value(&closure.func)[0];
         let new_params = real_params
             .iter()
-            .map(|param| self.as_value(param))
+            .flat_map(|param| self.as_value(param))
             .collect::<Vec<_>>();
         let call = self.builder.ins().call_indirect(sigref, func, &new_params);
         let ty = closure.ty.destructure_closure().1;
@@ -46,27 +47,27 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     pub fn construct_closure(&mut self, closure_id: FuncId, captures: &[VirtualValue]) -> Closure {
         let boxed_captures = self.stack_alloc_values(captures.to_vec());
+        dbg!(&boxed_captures);
         let (forwarding_func_id, sig) = {
-            let capture_types = captures
-                .iter()
-                .map(|v| {
-                    let v = self.as_value(v);
-                    self.type_of_value(v)
-                })
-                .collect::<Vec<_>>();
+            // let capture_types: Vec<_> = {
+            //     let vvs = captures
+            //         .iter()
+            //         .flat_map(|vv| self.as_value(vv))
+            //         .collect::<Vec<_>>();
+            //     vvs.into_iter().map(|v| self.type_of_value(v)).collect()
+            // };
 
-            let (func_id, sig) = self.create_forwarding_func(closure_id, &capture_types);
-
-            self.module.declare_func_in_func(func_id, self.builder.func);
-            // let size_t = self.module.isa().pointer_type();
-            //(self.builder.ins().func_addr(size_t, fref), sig) //TODO use function indication for virualvalue
+            let func_id = closure_id;
+            let sig = self.signature_from_decl(closure_id);
+            //create_forwarding_func(closure_id, &capture_types);
 
             (func_id, sig)
         };
-
-        let name = self.types.function_names.get_by_left(&closure_id).unwrap();
-        let (args, ret) = self.types.function_types.get(name).unwrap();
-        let ty = args.iter().fold(*ret, |prev, c| LIRType::closure(*c, prev));
+        let ty = {
+            let name = self.types.function_names.get_by_left(&closure_id).unwrap();
+            let (args, ret) = self.types.function_types.get(name).unwrap();
+            args.iter().fold(*ret, |prev, c| LIRType::closure(*c, prev))
+        };
 
         Closure {
             ty,
@@ -110,7 +111,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         // unique. You could for example use source code spans, capture type information, or a global counter.
         let symbol = format!("closure_forward_{f}");
         let id = self.types.function_names.get_by_left(&f).unwrap();
-        let mut sig = self.types.function_sigs[id].clone();
+        // let mut sig = self.types.function_sigs[id].clone();
+        let sig = self.signature_from_decl(f);
         // let voidptr = self.module.isa().pointer_type();
         // sig.params.insert(0, AbiParam::new(voidptr));
 
@@ -129,6 +131,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
         //     sig
         // };
+        // dbg!(&sig, sig2);
         // Declare the closure forwarding function
         let func_id = self
             .module
@@ -151,16 +154,17 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 Vec::with_capacity(captys.len() + closure_builder.func.signature.params.len() - 1);
 
             // Dereference the captures and add them as implicit parameters
-            let mut offset = 0;
-            for &ty in captys {
-                let ptr = closure_builder.block_params(block)[0];
-                let v = closure_builder.ins().load(ty, MemFlags::new(), ptr, offset);
-                real_call_params.push(v);
-                offset += ty.bytes() as i32;
-            }
+            // let mut offset = 0;
+            // for &ty in captys {
+            //     let ptr = closure_builder.block_params(block)[0];
+            //     let v = closure_builder.ins().load(ty, MemFlags::new(), ptr, offset);
+            //     real_call_params.push(v);
+            //     offset += ty.bytes() as i32;
+            // }
 
             // Add all other parameters from the forwarding function
-            for &v in &closure_builder.block_params(block)[1..] {
+            // for &v in &closure_builder.block_params(block)[1..] {
+            for &v in closure_builder.block_params(block) {
                 real_call_params.push(v);
             }
 
@@ -233,7 +237,10 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     pub fn stack_alloc_values(&mut self, captures: Vec<VirtualValue>) -> VirtualValue {
         let size_t = self.module.isa().pointer_type();
-        let v_values: Vec<_> = captures.into_iter().map(|v| self.as_value(&v)).collect();
+        let v_values: Vec<_> = captures
+            .into_iter()
+            .flat_map(|v| self.as_value(&v))
+            .collect();
         let types = v_values
             .iter()
             .map(|v| self.type_of_value(*v))

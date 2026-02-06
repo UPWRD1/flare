@@ -30,7 +30,7 @@ pub enum Param {
 pub struct LookupTable {
     struct_fields: FxHashMap<LIRType, Vec<Type>>,
     pub function_types: FxHashMap<ItemId, (Vec<LIRType>, LIRType)>,
-    pub function_sigs: FxHashMap<ItemId, Signature>,
+    // pub function_sigs: FxHashMap<ItemId, Signature>,
     pub function_names: BiMap<FuncId, ItemId>,
 
     ptr_size: u32,
@@ -72,14 +72,14 @@ impl LookupTable {
     pub fn new(module: &mut ObjectModule, items: &[(Item, FunctionPurpose)]) -> Self {
         let struct_fields = FxHashMap::default();
         let function_types = FxHashMap::default();
-        let function_sigs = FxHashMap::default();
+        // let function_sigs = FxHashMap::default();
         let function_names = BiMap::default();
         let ptr_size = module.isa().pointer_bytes() as u32;
 
         let mut me = Self {
             struct_fields,
             function_types,
-            function_sigs,
+            // function_sigs,
             function_names,
             ptr_size,
         };
@@ -96,7 +96,7 @@ impl LookupTable {
 
             let (f_id, sig) = me.declare_func(module, &item.id);
             me.function_names.insert(f_id, item.id);
-            me.function_sigs.insert(item.id, sig);
+            // me.function_sigs.insert(item.id, sig);
         }
         me
     }
@@ -143,17 +143,17 @@ impl LookupTable {
     /// Since Cranelift types/values can only represent primitives, a Struct will need to be passed
     /// either as multiple types/values or as a pointer implicitly.
     pub fn create_signature(&mut self, call_conv: isa::CallConv, fname: &ItemId) -> Signature {
-        if let Some(sig) = self.function_sigs.get(fname) {
-            sig.clone()
-        } else {
-            let (fparams, fret) = self
-                .function_types
-                .get(fname)
-                .unwrap_or_else(|| panic!("function not found: {:?}", fname));
-            let sig = self.make_sig(call_conv, fparams.clone(), *fret);
-            self.function_sigs.insert(*fname, sig.clone());
-            sig
-        }
+        // if let Some(sig) = self.function_sigs.get(fname) {
+        //     sig.clone()
+        // } else {
+        let (fparams, fret) = self
+            .function_types
+            .get(fname)
+            .unwrap_or_else(|| panic!("function not found: {:?}", fname));
+
+        // self.function_sigs.insert(*fname, sig.clone());
+        self.make_sig(call_conv, fparams.clone(), *fret)
+        // }
     }
 
     pub fn make_sig(
@@ -186,21 +186,23 @@ impl LookupTable {
                 }
             },
 
-            LIRType::ClosureEnv(f, env) => match self.struct_passing_mode(fret) {
-                StructPassingMode::ByScalars => {
-                    self.for_scalars_of_struct(
-                        &mut |clty| returns.push(AbiParam::new(clty)),
-                        fret,
-                        // LIRType::Struct(env),
-                    );
+            LIRType::ClosureEnv(f, env) => {
+                match self.struct_passing_mode(fret) {
+                    StructPassingMode::ByScalars => {
+                        self.for_scalars_of_struct(
+                            &mut |clty| returns.push(AbiParam::new(clty)),
+                            fret,
+                            // LIRType::Struct(env),
+                        );
+                    }
+                    StructPassingMode::ByPointer => {
+                        // The `ArgumentPurpose` is needed in-case our target architecture expects the
+                        // out pointer to use a specific register.
+                        let param = AbiParam::special(size_t, ArgumentPurpose::StructReturn);
+                        params.push(param);
+                    }
                 }
-                StructPassingMode::ByPointer => {
-                    // The `ArgumentPurpose` is needed in-case our target architecture expects the
-                    // out pointer to use a specific register.
-                    let param = AbiParam::special(size_t, ArgumentPurpose::StructReturn);
-                    params.push(param);
-                }
-            },
+            }
             _ => todo!("{fret:?}"),
         };
         for p in fparams {
@@ -220,18 +222,21 @@ impl LookupTable {
                     }
                 },
 
-                LIRType::ClosureEnv(f, env) => match self.struct_passing_mode(p) {
-                    StructPassingMode::ByScalars => {
-                        self.for_scalars_of_struct(
-                            &mut |clty| params.push(AbiParam::new(clty)),
-                            // LIRType::Struct(env),
-                            p,
-                        );
+                LIRType::ClosureEnv(f, env) => {
+                    // let env_struct = LIRType::Struct(env);
+                    match self.struct_passing_mode(p) {
+                        StructPassingMode::ByScalars => {
+                            self.for_scalars_of_struct(
+                                &mut |clty| params.push(AbiParam::new(clty)),
+                                // LIRType::Struct(env),
+                                p,
+                            );
+                        }
+                        StructPassingMode::ByPointer => {
+                            params.push(AbiParam::new(size_t));
+                        }
                     }
-                    StructPassingMode::ByPointer => {
-                        params.push(AbiParam::new(size_t));
-                    }
-                },
+                }
                 _ => todo!("{p:?}"),
             }
         }
@@ -270,7 +275,7 @@ impl LookupTable {
     }
 
     pub fn return_type_of(&self, id: FuncId) -> LIRType {
-        dbg!(&self.function_names);
+        // dbg!(&self.function_names);
         let fname = self.function_names.get_by_left(&id).unwrap();
         self.function_types[fname].1
     }
@@ -292,15 +297,20 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         self.builder.ins()
     }
 
-    pub fn as_value(&mut self, value: &VirtualValue) -> Value {
+    pub fn as_value(&mut self, value: &VirtualValue) -> Vec<Value> {
         match value {
-            VirtualValue::Scalar(value) => *value,
-            VirtualValue::Pointer(_, ptr) => *ptr,
-            VirtualValue::StackStruct { ty: _, ptr } => *ptr,
-            VirtualValue::Func(func) => {
+            VirtualValue::Scalar(value) => vec![*value],
+            VirtualValue::Pointer(_, ptr) => vec![*ptr],
+            VirtualValue::StackStruct { ty: _, ptr } => vec![*ptr],
+            VirtualValue::UnstableStruct { ty, fields } => {
+                fields.iter().flat_map(|vv| self.as_value(vv)).collect()
+            }
+            VirtualValue::Func(func_id) => {
                 let ptr = self.types.ptr_type();
-                let fref = self.module.declare_func_in_func(*func, self.builder.func);
-                self.ins().func_addr(ptr, fref)
+                let fref = self
+                    .module
+                    .declare_func_in_func(*func_id, self.builder.func);
+                vec![self.ins().func_addr(ptr, fref)]
             }
             _ => todo!("{value:?}"),
         }
@@ -313,6 +323,11 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     pub fn float(&mut self, n: impl Into<f32>) -> VirtualValue {
         let v = self.ins().f32const(n.into());
+        VirtualValue::Scalar(v)
+    }
+
+    pub fn unit(&mut self) -> VirtualValue {
+        let v = self.ins().iconst(types::I8, 0i64);
         VirtualValue::Scalar(v)
     }
 
@@ -374,20 +389,20 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             }
 
             LIRType::ClosureEnv(fun, env) => {
-                let new_types = p.closure_to_struct_rep().into_struct_fields();
+                // let new_type = p.closure_to_struct_rep();
+                // self.type_to_virtual_value(f, is_root, new_type)
                 let env_struct = LIRType::Struct(env);
                 if is_root && self.types.struct_passing_mode(p) == StructPassingMode::ByPointer {
                     let size_t = self.module.isa().pointer_type();
                     let ptr = f(self, size_t);
                     VirtualValue::StackStruct { ty: p, ptr }
                 } else {
-                    let mut fields = Vec::with_capacity(1 + env.len());
-                    fields.push(self.type_to_virtual_value(f, false, *fun));
-                    fields.extend(
-                        env.iter()
-                            .map(|ty| self.type_to_virtual_value(f, false, *ty))
-                            .collect::<Vec<_>>(),
-                    );
+                    let fields = p
+                        .closure_to_struct_rep()
+                        .into_struct_fields()
+                        .iter()
+                        .map(|ty| self.type_to_virtual_value(f, false, *ty))
+                        .collect::<Vec<_>>();
                     VirtualValue::UnstableStruct { ty: p, fields }
                 }
             }
@@ -447,16 +462,18 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             VirtualValue::Scalar(s) => panic!("cannot destruct field from non-struct: {s:?}"),
 
             VirtualValue::StackStruct { ty, ptr } => {
+                dbg!(ty, field);
                 let ty = if let LIRType::ClosureEnv(f, env) = ty {
-                    if field == 0 {
-                        **f
-                    } else {
-                        let LIRType::Struct(tys) = ty.closure_to_struct_rep() else {
-                            unreachable!("Cannot get here")
-                        };
-                        field -= 1;
-                        tys[1]
-                    }
+                    // if field == 0 {
+                    // **f
+                    // } else {
+                    let LIRType::Struct(tys) = ty.closure_to_struct_rep() else {
+                        unreachable!("Cannot get here")
+                    };
+                    // ty.closure_to_struct_rep()
+                    field -= 1;
+                    tys[1]
+                    // }
                 } else {
                     *ty
                 };
@@ -516,7 +533,14 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 }
             }
 
-            VirtualValue::UnstableStruct { fields, .. } => fields[field].clone(),
+            VirtualValue::UnstableStruct { fields, ty } => {
+                if let LIRType::ClosureEnv(..) = ty {
+                    self.destruct_field(&fields[1], field - 1)
+                    // fields[field - 1].clone()
+                } else {
+                    fields[field].clone()
+                }
+            }
             _ => todo!(),
         }
     }
@@ -546,7 +570,10 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             VirtualValue::UnstableStruct { ty, fields } => {
                 match self.types.struct_passing_mode(ty) {
                     StructPassingMode::ByScalars => {
-                        let fields = fields.iter().map(|v| self.as_value(v)).collect::<Vec<_>>();
+                        let fields = fields
+                            .iter()
+                            .flat_map(|v| self.as_value(v))
+                            .collect::<Vec<_>>();
 
                         self.builder.ins().return_(&fields);
                     }
@@ -617,8 +644,10 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 self.ins().store(MemFlags::new(), value, ptr, offset);
             }
             VirtualValue::UnstableStruct { ty, fields } => {
+                let field_types = self.types.struct_fields.get(&ty).unwrap();
                 for (field, v) in fields.into_iter().enumerate() {
                     // let offset = offset + self.types.offset_of_field(type_, field);
+                    let offset = Self::offset_of_field(field, field_types);
                     let nptr = self.ins().iadd_imm(ptr, offset as i64);
                     self.write_struct_field(ty, field, nptr, v);
                 }

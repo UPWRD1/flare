@@ -187,10 +187,10 @@ fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
             }
         })
         .collect();
-    // let ret_ty = lower_ty(&ir.type_of());
+    let ret_ty = lower_ty(&ir.type_of());
     // dbg!(ret_ty);
     let body = conversion.convert(ir, env);
-    let ret_ty = body.type_of();
+    // let ret_ty = body.type_of();
     let id = conversion.item_supply.supply();
     ClosureConvertOut {
         item: Item {

@@ -125,7 +125,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             LIR::Var(_) => self.scope_get(lir),
             LIR::Int(n) => self.int(n),
             LIR::Str(intern) => todo!(),
-            LIR::Unit => todo!(),
+            LIR::Unit => self.unit(),
             LIR::Float(f) => self.float(f),
             LIR::ClosureBuild(_, closure_id, capt_vars) => {
                 let func_id = self.types.function_names.get_by_right(&closure_id).unwrap();
@@ -154,12 +154,10 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 self.convert_lir(*body)
             }
             LIR::Access(ref closure, idx) => {
-                let closure = LIR::Field(closure.clone(), 1);
-
-                self.field(&lir, &closure, idx)
-
-                // self.destruct_field(&env_struct, idx)
-                // let closure = self.convert_lir(*closure);
+                // let closure = LIR::Field(closure.clone(), 1);
+                // self.field(&lir, &closure, idx)
+                let vv = self.convert_lir(*closure.clone());
+                self.destruct_field(&vv, idx)
             }
             LIR::Struct(fields) => {
                 let (types, fields): (Vec<_>, Vec<_>) = fields
@@ -173,9 +171,9 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             LIR::Field(ref obj, idx) => self.field(&lir, obj, idx),
             LIR::Case(lir, lirs) => todo!(),
             LIR::Item(item_id, _) => {
-                let func_id = self.types.function_names.get_by_right(&item_id).unwrap();
-
-                VirtualValue::Func(*func_id)
+                let func_id = *self.types.function_names.get_by_right(&item_id).unwrap();
+                let fref = self.module.declare_func_in_func(func_id, self.builder.func);
+                VirtualValue::Func(func_id)
             }
             LIR::Extern(name, t) => {
                 let (param_tys, ret_ty) = t.destructure_closure();
@@ -198,6 +196,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                     .module
                     .declare_function(&name, Linkage::Import, &sig)
                     .expect("could not declare extern");
+                let fref = self.module.declare_func_in_func(the_fun, self.builder.func);
                 VirtualValue::Func(the_fun)
             }
             LIR::BinOp(left, op, right) => self.convert_bin_op(*left, op, *right),

@@ -34,7 +34,9 @@ impl LIRType {
         match self {
             LIRType::ClosureEnv(f, env) => {
                 let env_struct = LIRType::Struct(env);
+
                 LIRType::Struct(vec![*f, env_struct].as_slice().into())
+                // LIRType::Struct(env)
             }
             _ => panic!("Not a closure {self:?}"),
         }
