@@ -8,7 +8,10 @@ use crate::resource::rep::{
         lir::{Item, LIR, Var},
         types::LIRType,
     },
-    midend::irtype::{self, IRType},
+    midend::{
+        ir::ItemId,
+        irtype::{self, IRType},
+    },
 };
 
 use crate::{
@@ -91,8 +94,8 @@ impl ClosureConvert {
             ),
 
             ir::IR::Tag(_, _, ir) => self.convert(*ir, env), //TODO: special tag for unions
-            // ir::IR::Item(t, d) => LIR::Item(self.item_supply.supply_for(d), lower_ty(&t)),
-            ir::IR::Item(t, d) => LIR::Item(d, lower_ty(&t)),
+            ir::IR::Item(t, d) => LIR::Item(self.item_supply.supply_for(d), lower_ty(&t)),
+            // ir::IR::Item(t, d) => LIR::Item(d, lower_ty(&t)),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             ir::IR::Bin(l, op, r) => {
                 LIR::binop(self.convert(*l, env.clone()), op, self.convert(*r, env))
@@ -133,7 +136,7 @@ impl ClosureConvert {
             .map(|(i, var)| {
                 let id = self.var_supply.supply();
                 let new_var = Var { id, ty: var.ty };
-                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
+                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i), body.clone());
                 (var, new_var)
             })
             .collect::<FxHashMap<_, _>>();
@@ -163,15 +166,20 @@ pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
         items: BTreeMap::default(),
     };
     ir.into_iter()
-        .map(|ir| convert(ir, &mut converter))
+        .enumerate()
+        .map(|(idx, ir)| {
+            let id = ItemId(idx as u32);
+            convert(ir, id, &mut converter)
+        })
         .collect()
 }
 
-fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
+fn convert(ir: ir::IR, id: ItemId, conversion: &mut ClosureConvert) -> ClosureConvertOut {
     let (params, ir) = ir.split_funs();
     let mut var_supply = VarSupply::default();
     let mut env = im::HashMap::with_hasher(FxBuildHasher);
 
+    let id = conversion.item_supply.supply_for(id);
     let params: Vec<_> = params
         .into_iter()
         .map(|param| match param {
@@ -191,7 +199,6 @@ fn convert(ir: ir::IR, conversion: &mut ClosureConvert) -> ClosureConvertOut {
     // dbg!(ret_ty);
     let body = conversion.convert(ir, env);
     // let ret_ty = body.type_of();
-    let id = conversion.item_supply.supply();
     ClosureConvertOut {
         item: Item {
             id,

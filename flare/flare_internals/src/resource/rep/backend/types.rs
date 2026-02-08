@@ -33,10 +33,19 @@ impl LIRType {
     pub fn closure_to_struct_rep(self) -> Self {
         match self {
             LIRType::ClosureEnv(f, env) => {
-                let env_struct = LIRType::Struct(env);
+                // let env_struct = LIRType::Struct(env);
+                // LIRType::Struct(vec![*f, env_struct].as_slice().into())
 
-                LIRType::Struct(vec![*f, env_struct].as_slice().into())
-                // LIRType::Struct(env)
+                // LIRType::Struct({
+                //     let env = env.into_iter().map(|t| t.clone());
+                //     vec![*f]
+                //         .into_iter()
+                //         .chain(env)
+                //         .collect::<Vec<_>>()
+                //         .as_slice()
+                //         .into()
+                // })
+                LIRType::Struct(env)
             }
             _ => panic!("Not a closure {self:?}"),
         }

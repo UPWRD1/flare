@@ -4,6 +4,7 @@ use crate::resource::rep::backend::types::LIRType;
 #[derive(Debug, Clone)]
 pub struct Closure {
     pub ty: LIRType,
+    // pub captures: Box<VirtualValue>,
     pub captures: Box<VirtualValue>,
     pub func: Box<VirtualValue>,
     pub sig: Signature,

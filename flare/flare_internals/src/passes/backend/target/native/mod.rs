@@ -123,12 +123,14 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
     fn convert_lir(&mut self, lir: LIR) -> VirtualValue {
         match lir {
             LIR::Var(_) => self.scope_get(lir),
-            LIR::Int(n) => self.int(n),
+            LIR::Int(n) => self.float(n as f32), //self.int(n),
             LIR::Str(intern) => todo!(),
             LIR::Unit => self.unit(),
             LIR::Float(f) => self.float(f),
             LIR::ClosureBuild(_, closure_id, capt_vars) => {
+                // dbg!(t);
                 let func_id = self.types.function_names.get_by_right(&closure_id).unwrap();
+
                 let captures: Vec<_> = capt_vars
                     .iter()
                     .map(|v| self.scope_get(LIR::Var(*v)))
@@ -137,6 +139,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             }
             LIR::Apply(func, arg) => {
                 let func = self.convert_lir(*func);
+                // dbg!(&func);
                 let arg = self.convert_lir(*arg);
                 self.call_func(func, vec![arg])
             }
@@ -146,7 +149,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 self.call_func(func, args)
             }
             LIR::Local(var, defn, body) => {
-                let var_ty = translate_ty(self.module, defn.type_of());
+                // let var_ty = translate_ty(self.module, defn.type_of());
                 let defn = self.convert_lir(*defn);
                 // self.builder.def_var(Variable::from_u32(var.id.0 as u32), defn.clone().as_value());
                 // dbg!(var);
@@ -154,10 +157,10 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 self.convert_lir(*body)
             }
             LIR::Access(ref closure, idx) => {
-                // let closure = LIR::Field(closure.clone(), 1);
-                // self.field(&lir, &closure, idx)
-                let vv = self.convert_lir(*closure.clone());
-                self.destruct_field(&vv, idx)
+                let closure = LIR::Field(closure.clone(), idx);
+                self.field(&closure, &lir, idx)
+                // let vv = self.convert_lir(closure);
+                // self.destruct_field(&vv, idx)
             }
             LIR::Struct(fields) => {
                 let (types, fields): (Vec<_>, Vec<_>) = fields
@@ -171,32 +174,21 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             LIR::Field(ref obj, idx) => self.field(&lir, obj, idx),
             LIR::Case(lir, lirs) => todo!(),
             LIR::Item(item_id, _) => {
+                // dbg!(item_id);
                 let func_id = *self.types.function_names.get_by_right(&item_id).unwrap();
-                let fref = self.module.declare_func_in_func(func_id, self.builder.func);
+                // let fref = self.module.declare_func_in_func(func_id, self.builder.func);
                 VirtualValue::Func(func_id)
             }
             LIR::Extern(name, t) => {
-                let (param_tys, ret_ty) = t.destructure_closure();
-                let params = param_tys
-                    .into_iter()
-                    .map(|ty| translate_ty(self.module, ty))
-                    .map(AbiParam::new)
-                    .collect();
-
-                let returns = vec![translate_ty(self.module, ret_ty)]
-                    .into_iter()
-                    .map(AbiParam::new)
-                    .collect();
-                let sig = Signature {
-                    params,
-                    returns,
-                    call_conv: self.module.isa().default_call_conv(),
-                };
+                let (fparams, fret) = t.destructure_closure();
+                let sig = self
+                    .types
+                    .make_sig(self.module.isa().default_call_conv(), fparams, fret);
                 let the_fun = self
                     .module
                     .declare_function(&name, Linkage::Import, &sig)
                     .expect("could not declare extern");
-                let fref = self.module.declare_func_in_func(the_fun, self.builder.func);
+                // let fref = self.module.declare_func_in_func(the_fun, self.builder.func);
                 VirtualValue::Func(the_fun)
             }
             LIR::BinOp(left, op, right) => self.convert_bin_op(*left, op, *right),
@@ -276,7 +268,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
 
 fn translate_ty(module: &ObjectModule, ty: LIRType) -> types::Type {
     match ty {
-        LIRType::Int => types::I32,
+        LIRType::Int => types::F32,
         LIRType::Float => types::F32,
         LIRType::String => module.isa().pointer_type(),
         LIRType::Unit => types::I8,
