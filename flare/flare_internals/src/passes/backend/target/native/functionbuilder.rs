@@ -258,8 +258,8 @@ impl LookupTable {
             LIRType::Float => f(types::F32),
             LIRType::String => f(self.ptr_type()),
             LIRType::Closure(l, r) => {
-                self.for_scalars(f, *l);
-                self.for_scalars(f, *r);
+                // self.for_scalars(f, *l);
+                // self.for_scalars(f, *r);
                 f(self.ptr_type());
             }
             LIRType::Struct(name) => self.for_scalars_of_struct(f, ty),
@@ -371,7 +371,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 let ptr = f(self, size_t);
                 VirtualValue::Pointer(PointeeType::String, ptr)
             }
-            LIRType::Closure(l, r) => {
+            LIRType::Closure(..) => {
                 // dbg!(r);
                 // let vv= self.type_to_virtual_value(f, is_root, *r);
                 // let res= self.as_value(vv);
@@ -456,19 +456,17 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 }
             }
             VirtualValue::Closure(c) => {
-                let the_captures = *c.captures;
-                self.virtual_value_to_func_params(buf, the_captures);
                 // dbg!(captures_value);
                 let the_func = *c.func;
                 self.virtual_value_to_func_params(buf, the_func);
+
+                let the_captures = *c.captures;
+                self.virtual_value_to_func_params(buf, the_captures);
                 // todo!()
             }
             VirtualValue::Func(f) => {
-                let sig = self.signature_from_decl(f);
-                let func = self.module.declare_func_in_func(f, self.builder.func);
-                let ptr_type = self.types.ptr_type();
-                let ptr = self.ins().func_addr(ptr_type, func);
-                buf.push(ptr);
+                let val = self.as_value(&v)[0];
+                buf.push(val);
             }
             _ => todo!("{v:?}"),
         }

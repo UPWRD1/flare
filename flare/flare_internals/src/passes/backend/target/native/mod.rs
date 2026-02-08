@@ -274,7 +274,7 @@ fn translate_ty(module: &ObjectModule, ty: LIRType) -> types::Type {
         LIRType::Unit => types::I8,
 
         LIRType::Union(lirtypes) => todo!(),
-        LIRType::Closure(..) => module.isa().pointer_type(),
+        LIRType::Closure(..)|// => module.isa().pointer_type(),
         LIRType::Struct(_) | LIRType::ClosureEnv(..) => {
             panic!("{ty:?}")
             // module.isa().pointer_type()
