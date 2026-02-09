@@ -9,7 +9,9 @@ use cranelift::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::backend::target::native::{FunctionPurpose, IRConverter, translate_ty},
+    passes::backend::target::native::{
+        ENTRYPOINT_FUNCTION_SYMBOL, FunctionPurpose, IRConverter, translate_ty,
+    },
     resource::rep::{
         backend::{
             lir::{Item, Var},
@@ -132,7 +134,7 @@ impl LookupTable {
 
         (
             module
-                .declare_function("main".to_string().as_str(), Linkage::Export, &sig)
+                .declare_function(ENTRYPOINT_FUNCTION_SYMBOL, Linkage::Export, &sig)
                 .expect("Could not declare function"),
             sig,
         )

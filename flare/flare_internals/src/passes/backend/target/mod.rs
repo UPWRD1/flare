@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-use crate::passes::backend::lir::ClosureConvertOut;
-
 pub mod c;
 pub mod irtarget;
 pub mod lirtarget;
@@ -9,16 +7,16 @@ pub mod native;
 
 pub trait Target: Clone {
     type Output: Into<Vec<u8>> + Default + Debug;
-    // type Input: Debug;
+    type Input: Debug;
     // fn generate(&mut self);
     // fn generate_item(&mut self, Type)
-    fn generate(&mut self, input: Vec<ClosureConvertOut>) -> Self::Output;
+    fn generate(&mut self, input: Vec<Self::Input>) -> Self::Output;
     fn ext(&self) -> &str;
 }
 
 pub struct Generator<T: Target> {
     target: T,
-    input: Vec<ClosureConvertOut>,
+    input: Vec<T::Input>,
 }
 
 // impl Generator<C> {
@@ -45,7 +43,7 @@ impl<T: Target> Generator<T> {
 }
 
 impl<T: Target> Generator<T> {
-    pub fn new(target: T, input: Vec<ClosureConvertOut>) -> Self {
+    pub fn new(target: T, input: Vec<T::Input>) -> Self {
         Self { target, input }
     }
 }

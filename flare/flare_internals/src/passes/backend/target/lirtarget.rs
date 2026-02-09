@@ -57,6 +57,7 @@ impl LIRTarget {
 }
 
 impl Target for LIRTarget {
+    type Input = ClosureConvertOut;
     type Output = String;
 
     fn generate(&mut self, ir: Vec<ClosureConvertOut>) -> Self::Output {

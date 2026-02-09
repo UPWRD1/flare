@@ -74,7 +74,7 @@ package Main =
         
         let v = new_Wrapper 10 in
         let mapped = map_wrapper v (fn data => data * 2) in
-        extract mapped
+        (extract mapped) - 20
         # (combine (id (extract v)) (id @ok )).0
         
          

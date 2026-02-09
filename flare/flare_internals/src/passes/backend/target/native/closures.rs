@@ -70,14 +70,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             }
         };
         // dbg!(&boxed_captures);
-        let (forwarding_func_id, sig) = {
-            // let func_id = closure_id;
-            // let sig = self.signature_from_decl(closure_id);
-            let (func_id, sig) =
-                self.create_forwarding_func(closure_id, captures, is_captures_by_pointer);
-
-            (func_id, sig)
-        };
+        let (forwarding_func_id, sig) =
+            self.create_forwarding_func(closure_id, captures, is_captures_by_pointer);
         let ty = {
             let name = self.types.function_names.get_by_left(&closure_id).unwrap();
             let (args, ret) = self.types.function_types.get(name).unwrap();
@@ -141,30 +135,6 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         let symbol = format!("closure_forward_{f}");
 
         let mut sig = self.signature_from_decl(f);
-
-        // let sig = {
-        //     let mut sig = Signature::new(isa::CallConv::Fast);
-
-        //     // The implicit parameters from the capture will be replaced by an opaque pointer instead.
-        //     // let voidptr = AbiParam::new(self.module.isa().pointer_type());
-        //     // sig.params.insert(0, voidptr);
-
-        //     // let real_func_sig = self.signature_from_decl(f);
-        //     // for &p in real_func_sig.params.iter().skip(captys.len()) {
-        //     //     sig.params.push(p);
-        //     // }
-
-        //     // let voidptr = AbiParam::new(self.module.isa().pointer_type());
-        //     // sig.params.insert(0, voidptr);
-
-        //     let real_func_sig = self.signature_from_decl(f);
-        //     for &p in real_func_sig.params.iter() {
-        //         sig.params.push(p);
-        //     }
-
-        //     sig.returns = real_func_sig.returns.clone();
-        //     sig
-        // };
 
         // Declare the closure forwarding function
         let func_id = self
@@ -314,11 +284,6 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             offset += Self::offset_of_field(i, &types);
         }
         let pointer = self.builder.ins().stack_addr(size_t, slot, 0);
-        // Return the pointer
-        // VirtualValue::Pointer(
-        //     PointeeType::Struct,
-        //     pointer,
-        // )
         VirtualValue::StackStruct { ty, ptr: pointer }
     }
 

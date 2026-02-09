@@ -41,6 +41,7 @@ pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
     let Some(main_idx) = m.graph_cache.get(&init_monomorph) else {
         unreachable!("Main was not added to cache");
     };
+
     m.generate_irs(*main_idx)
     // the_ir
 }

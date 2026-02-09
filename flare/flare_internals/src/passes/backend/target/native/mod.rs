@@ -383,6 +383,7 @@ pub enum FunctionPurpose {
 }
 
 impl Target for Native {
+    type Input = ClosureConvertOut;
     type Output = Vec<u8>;
     #[allow(clippy::unwrap_used)]
     fn generate(&mut self, lir: Vec<ClosureConvertOut>) -> Self::Output {
@@ -416,7 +417,7 @@ impl Target for Native {
                         .into_values()
                         .map(|closure| (closure, FunctionPurpose::Closure)),
                 );
-                if idx == len {
+                if idx == len - 1 {
                     new_items.push((cco.item, FunctionPurpose::Main));
                 } else {
                     new_items.push((cco.item, FunctionPurpose::Normal));
@@ -430,9 +431,9 @@ impl Target for Native {
         for (item, purpose) in funcs.into_iter() {
             match purpose {
                 FunctionPurpose::Normal | FunctionPurpose::Closure => {
-                    println!("{}", item);
+                    log::info!("{}", item);
                     native_gen.generate_function(item);
-                    println!("---------------------------------")
+                    log::info!("---------------------------------")
                 }
 
                 FunctionPurpose::Main => {

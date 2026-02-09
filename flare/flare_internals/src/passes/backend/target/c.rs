@@ -18,6 +18,7 @@ use crate::{
 pub struct C;
 #[allow(unused_variables)]
 impl Target for C {
+    type Input = ClosureConvertOut;
     type Output = String;
 
     fn generate(&mut self, ir: Vec<ClosureConvertOut>) -> Self::Output {
