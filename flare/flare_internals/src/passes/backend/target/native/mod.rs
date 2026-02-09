@@ -277,8 +277,7 @@ fn translate_ty(module: &ObjectModule, ty: LIRType) -> types::Type {
         LIRType::Closure(..)|// => module.isa().pointer_type(),
         LIRType::Struct(_) | LIRType::ClosureEnv(..) => {
             panic!("{ty:?}")
-            // module.isa().pointer_type()
-        }
+            }
     }
 }
 

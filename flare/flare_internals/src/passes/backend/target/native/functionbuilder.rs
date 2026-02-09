@@ -30,7 +30,7 @@ pub enum Param {
 pub struct LookupTable {
     struct_fields: FxHashMap<LIRType, Vec<Type>>,
     pub function_types: FxHashMap<ItemId, (Vec<LIRType>, LIRType)>,
-    // pub function_sigs: FxHashMap<ItemId, Signature>,
+    pub function_sigs: FxHashMap<ItemId, Signature>,
     pub function_names: BiMap<FuncId, ItemId>,
 
     ptr_size: u32,
@@ -72,14 +72,14 @@ impl LookupTable {
     pub fn new(module: &mut ObjectModule, items: &[(Item, FunctionPurpose)]) -> Self {
         let struct_fields = FxHashMap::default();
         let function_types = FxHashMap::default();
-        // let function_sigs = FxHashMap::default();
+        let function_sigs = FxHashMap::default();
         let function_names = BiMap::default();
         let ptr_size = module.isa().pointer_bytes() as u32;
 
         let mut me = Self {
             struct_fields,
             function_types,
-            // function_sigs,
+            function_sigs,
             function_names,
             ptr_size,
         };
@@ -143,17 +143,17 @@ impl LookupTable {
     /// Since Cranelift types/values can only represent primitives, a Struct will need to be passed
     /// either as multiple types/values or as a pointer implicitly.
     pub fn create_signature(&mut self, call_conv: isa::CallConv, fname: &ItemId) -> Signature {
-        // if let Some(sig) = self.function_sigs.get(fname) {
-        //     sig.clone()
-        // } else {
-        let (fparams, fret) = self
-            .function_types
-            .get(fname)
-            .unwrap_or_else(|| panic!("function not found: {:?}", fname));
-
-        // self.function_sigs.insert(*fname, sig.clone());
-        self.make_sig(call_conv, fparams.clone(), *fret)
-        // }
+        if let Some(sig) = self.function_sigs.get(fname) {
+            sig.clone()
+        } else {
+            let (fparams, fret) = self
+                .function_types
+                .get(fname)
+                .unwrap_or_else(|| panic!("function not found: {:?}", fname));
+            let sig = self.make_sig(call_conv, fparams.clone(), *fret);
+            self.function_sigs.insert(*fname, sig.clone());
+            sig
+        }
     }
 
     pub fn make_sig(
@@ -303,7 +303,6 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             VirtualValue::Scalar(value) => vec![*value],
             VirtualValue::Pointer(_, ptr) => vec![*ptr],
             VirtualValue::StackStruct { ty, ptr } => {
-                dbg!(ty);
                 vec![*ptr]
             }
             VirtualValue::UnstableStruct { ty, fields } => {
@@ -316,7 +315,11 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     .declare_func_in_func(*func_id, self.builder.func);
                 vec![self.ins().func_addr(ptr, fref)]
             }
-            _ => todo!("{value:?}"),
+            VirtualValue::Closure(c) => {
+                let mut vec = self.as_value(&c.captures);
+                vec.extend(self.as_value(&c.func));
+                vec
+            }
         }
     }
 
@@ -455,18 +458,16 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     }
                 }
             }
-            VirtualValue::Closure(c) => {
+            VirtualValue::Closure(..) => {
                 // dbg!(captures_value);
-                let the_func = *c.func;
-                self.virtual_value_to_func_params(buf, the_func);
+                let vals = self.as_value(&v);
+                buf.extend(vals);
 
-                let the_captures = *c.captures;
-                self.virtual_value_to_func_params(buf, the_captures);
                 // todo!()
             }
             VirtualValue::Func(f) => {
-                let val = self.as_value(&v)[0];
-                buf.push(val);
+                let val = self.as_value(&v);
+                buf.extend(val);
             }
             _ => todo!("{v:?}"),
         }

@@ -5,9 +5,9 @@ use cranelift::{
 };
 
 use crate::{
-    passes::backend::target::native::{IRConverter, NativeGen, functionbuilder::StructPassingMode},
+    passes::backend::target::native::{IRConverter, functionbuilder::StructPassingMode},
     resource::rep::backend::{
-        native::{Closure, PointeeType, VirtualValue},
+        native::{Closure, VirtualValue},
         types::LIRType,
     },
 };
@@ -205,10 +205,9 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         let block = closure_builder.create_block();
         closure_builder.append_block_params_for_function_params(block);
         closure_builder.switch_to_block(block);
-        let mut real_call_params =
-            Vec::with_capacity(captys.len() + closure_builder.func.signature.params.len() - 1);
         if is_captures_by_pointer {
-            // Dereference the captures and add them as implicit parameters
+            let mut real_call_params =
+                Vec::with_capacity(captys.len() + closure_builder.func.signature.params.len() - 1); // Dereference the captures and add them as implicit parameters
             let mut offset = 0;
             for (idx, &ty) in captys.iter().enumerate() {
                 let ptr = closure_builder.block_params(block)[0];
@@ -224,13 +223,16 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             {
                 real_call_params.push(v);
             }
+            real_call_params
         } else {
+            let mut real_call_params =
+                Vec::with_capacity(closure_builder.func.signature.params.len());
             // Add all  parameters from the forwarding function AT ONCE
             for &v in closure_builder.block_params(block) {
                 real_call_params.push(v);
             }
+            real_call_params
         }
-        real_call_params
     }
 
     fn alignment_of_scalar_type(of: &Type) -> u32 {

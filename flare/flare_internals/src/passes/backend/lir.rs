@@ -72,6 +72,7 @@ impl ClosureConvert {
                         args.push(self.convert(*arg, env.clone()));
                         b = f;
                     }
+                    args.reverse();
 
                     let closure = self.convert(*b, env.clone());
 
