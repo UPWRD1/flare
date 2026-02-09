@@ -1,50 +1,38 @@
 item #0: is
-extern_to_num
+fn [$0:{num * unit}] => $0.0
 end item #0
 
 item #1: is
-fn [$0:str] => $0 become str in {unit | str}
+fn [$0:{num * unit}, $1:num -> num] =>
+  [let $18:num = [$1](
+    $0.0)
+  in
+    fn [$19:unit] =>
+      {
+        $18,
+        $19}](
+  $0.1)
 end item #1
 
 item #2: is
-fn [$0:{unit | num}, $1:num] =>
-  match $0:
-    | $8:unit then $1,
-    | $9:num then $9
+fn [$0:num] => $0
 end item #2
 
 item #3: is
-unit become unit in {unit | num}
+fn [$0:num] =>
+  [let $2:num = [#2](
+    $0)
+  in
+    fn [$3:unit] =>
+      {
+        $2,
+        $3}](
+  unit)
 end item #3
 
 item #4: is
-fn [$0:{unit | str}, $1:str -> num] =>
-  [let $5:str -> {unit | num} = fn [$16:str] =>
-      let $16:num = [$1](
-        $16)
-      in
-        $16 become num in {unit | num}
-  in
-    fn [$6:unit -> {unit | num}, $7:{unit | str}] =>
-      match $7:
-        | $8:unit then [$6](
-          $8),
-        | $9:str then let $16:str = $9
-          in
-            let $16:num = [$1](
-              $16)
-            in
-              $16 become num in {unit | num}](
-  fn [$31:unit] => #3, $0)
+[#0](
+[#1](
+[#3](
+10), fn [$2:num] => $2*2))-20
 end item #4
-
-item #5: is
-let $0:{unit | str} = [#1](
-  "10")
-in
-  let $1:{unit | num} = [#4](
-    $0, fn [$2:str] => [#0]($2))
-  in
-    [#2](
-    $1, 8005882300)
-end item #5

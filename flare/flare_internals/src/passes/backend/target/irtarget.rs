@@ -1,33 +1,22 @@
-// use crate::{passes::backend::target::Target, resource::rep::midend::ir::IR};
+use crate::{
+    passes::backend::{lir::ClosureConvertOut, target::Target},
+    resource::rep::midend::ir::IR,
+};
 
-// #[derive(Clone, Copy, Default)]
-// pub struct IRTarget;
+#[derive(Clone, Copy, Default)]
+pub struct IRTarget;
 
-// impl Target for IRTarget {
-//     type Partial = IR;
+impl Target for IRTarget {
+    type Input = IR;
 
-//     type Output = String;
-//     // type Input = IR;
+    type Output = String;
+    // type Input = IR;
 
-//     fn generate(&mut self, ir: IR) -> Self::Partial {
-//         ir
-//     }
+    fn generate(&mut self, ir: Vec<ClosureConvertOut>) -> Self::Output {
+        unimplemented!("don't do this")
+    }
 
-//     fn finish(&self, p: Vec<Self::Partial>) -> Self::Output {
-//         p.into_iter()
-//             .enumerate()
-//             .map(|(i, x)| format!("item #{i}: is\n{x}\nend item #{i}"))
-//             .collect::<Vec<String>>()
-//             .join("\n\n")
-//     }
-
-//     fn output_to_bytes(output: Self::Output) -> Vec<u8> {
-//         output.into_bytes()
-//     }
-//     fn ext(&self) -> &str {
-//         "ir"
-//     }
-//     fn convert(&self, ir: Vec<IR>) -> Vec<Self::Input> {
-//         ir
-//     }
-// }
+    fn ext(&self) -> &str {
+        "ir"
+    }
+}

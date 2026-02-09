@@ -417,11 +417,16 @@ impl Monomorpher {
                     ir
                 }
             }
-            // IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => ir,
-            _ => ir,
-            // IR::If(ir, ir1, ir2) => todo!(),
-            // IR::Bin(ir, bin_op, ir1) => todo!(),
-            // IR::Extern(intern, _) => todo!(),
+            // IR::Bin(l, o, )
+            IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) | IR::Var(_) => ir,
+            // _ => ir,
+            IR::If(ir, ir1, ir2) => todo!(),
+            IR::Bin(l, op, r) => IR::bin(
+                self.instantiate_replacement(*l, replacement),
+                op,
+                self.instantiate_replacement(*r, replacement),
+            ),
+            IR::Extern(intern, _) => todo!(),
         }
     }
 }

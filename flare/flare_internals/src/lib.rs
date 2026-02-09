@@ -127,7 +127,7 @@ pub struct Simplify {
 }
 
 pub struct Reduce {
-    ir: Vec<IR>,
+    pub ir: Vec<IR>,
 }
 
 pub struct Monomorph {
