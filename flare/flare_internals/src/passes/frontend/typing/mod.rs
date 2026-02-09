@@ -8,6 +8,7 @@ mod unify;
 
 pub use rows::{ClosedRow, Row, RowVar};
 use rows::{RowCombination, RowUniVar};
+use salsa::tracked;
 pub use types::{TyUniVar, Type, TypeVar};
 
 use std::{collections::BTreeSet, fmt::Display, hash::Hash};
@@ -20,34 +21,34 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::{
     passes::frontend::typing::subst::SubstOut,
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr},
+        errors::{CompResult, DynamicErr},
         rep::{
             common::{Ident, NodeId, Spanned},
-            frontend::ast::{Expr, ItemId, Kind, Untyped, Variable},
+            frontend::ast::{Expr, ItemId, Kind},
         },
     },
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Typed(pub Untyped, pub Spanned<Intern<Type>>);
+// #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+// pub struct Typed(pub Untyped, pub Spanned<Type>);
 
-impl Variable for Typed {}
+// impl Variable for Typed {}
 
-impl Display for Typed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.0, self.1)
-    }
-}
+// impl Display for Typed {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{}: {}", self.0, self.1)
+//     }
+// }
 
-impl Ident for Typed {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        self.0.ident()
-    }
-}
+// impl Ident for Typed {
+//     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
+//         self.0.ident()
+//     }
+// }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Constraint {
-    TypeEqual(Provenance, Spanned<Intern<Type>>, Spanned<Intern<Type>>),
+#[derive(Debug, Clone, Copy, salsa::Update)]
+pub enum Constraint<'db> {
+    TypeEqual(Provenance, Spanned<&'db Type>, Spanned<&'db Type>),
     RowCombine(Provenance, RowCombination),
 }
 
@@ -86,15 +87,21 @@ impl Provenance {
     }
 }
 
-#[derive(Debug)]
-pub struct GenOut {
+// #[derive(Debug, salsa::Update)]
+pub struct GenOutBuilder<'db> {
     constraints: Vec<Constraint>,
-    typed_ast: Spanned<Intern<Expr<Typed>>>,
+    typed_ast: Spanned<Expr<'db>>,
     // inference_base_loc: Option<SimpleSpan<usize, u64>>,
 }
 
-impl GenOut {
-    fn new(constraints: Vec<Constraint>, typed_ast: Spanned<Intern<Expr<Typed>>>) -> Self {
+#[salsa::tracked]
+pub struct GenOut<'db> {
+    constraints: Vec<Constraint>,
+    typed_ast: Spanned<Expr<'db>>,
+}
+
+impl<'db> GenOutBuilder<'db> {
+    fn new(constraints: Vec<Constraint>, typed_ast: Spanned<Expr<'db>>) -> Self {
         Self {
             constraints,
             typed_ast,
@@ -102,10 +109,7 @@ impl GenOut {
         }
     }
 
-    fn with_typed_ast(
-        self,
-        f: impl FnOnce(Spanned<Intern<Expr<Typed>>>) -> Spanned<Intern<Expr<Typed>>>,
-    ) -> Self {
+    fn with_typed_ast(self, f: impl FnOnce(Spanned<Expr<'db>>) -> Spanned<Expr<'db>>) -> Self {
         Self {
             constraints: self.constraints,
             typed_ast: f(self.typed_ast),
@@ -133,47 +137,26 @@ impl TypeScheme {
     }
 }
 
-#[derive(Debug)]
-pub struct TypeInferOut {
-    pub ast: Spanned<Intern<Expr<Typed>>>,
+// #[derive(Debug)]
+#[salsa::tracked]
+pub struct TypesOutput<'db> {
+    pub typed_ast: Spanned<Intern<Expr<'db>>>,
     pub scheme: TypeScheme,
-    pub errors: FxHashMap<NodeId, CompilerErr>,
+    pub errors: FxHashMap<NodeId, DynamicErr>,
     pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
-    pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Type<'db>>>,
+    pub item_wrappers: FxHashMap<NodeId, ItemWrapper<'db>>,
 }
 
-impl TypeInferOut {
-    pub fn to_typesoutput(self) -> TypesOutput {
-        TypesOutput {
-            typed_ast: self.ast,
-            scheme: self.scheme,
-            errors: self.errors,
-            row_to_ev: self.row_to_ev,
-            branch_to_ret_ty: self.branch_to_ret_ty,
-            item_wrappers: self.item_wrappers,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TypesOutput {
-    pub typed_ast: Spanned<Intern<Expr<Typed>>>,
-    pub scheme: TypeScheme,
-    pub errors: FxHashMap<NodeId, CompilerErr>,
-    pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
-    pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ItemWrapper {
-    pub types: Vec<Spanned<Intern<Type>>>,
+// #[derive(Debug, Clone)]
+#[salsa::tracked]
+pub struct ItemWrapper<'db> {
+    pub types: Vec<Spanned<Intern<Type<'db>>>>,
     pub rows: Vec<Spanned<Intern<Row>>>,
     pub evidence: Vec<Evidence>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, salsa::Update)]
 pub struct ItemSource {
     pub types: FxHashMap<ItemId, TypeScheme>,
 }

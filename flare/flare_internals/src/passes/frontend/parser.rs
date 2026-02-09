@@ -13,7 +13,7 @@ use crate::{
         },
     },
 };
-use chumsky::input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput};
+use chumsky::{input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput}, };
 use chumsky::pratt::{Operator, infix, left, right};
 use chumsky::prelude::*;
 use internment::Intern;
@@ -23,17 +23,17 @@ use ordered_float::OrderedFloat;
 /// Type representing the tokens produced by the lexer. Is private, since tokens are only used in the first stage of parsing.
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[allow(dead_code)]
-enum Token {
-    Ident(&'static str),
+enum Token<'src> {
+    Ident(&'src str),
     // Ident(),
     // Ident(Spur),
     Num(f32),
 
-    Strlit(&'static str),
+    Strlit(&'src str),
     // Strlit(Intern<String>),
-    Comment(&'static str),
+    Comment(&'src str),
     // Comment(Intern<String>),
-    Parens(&'static [Spanned<Self>]),
+    Parens(&'src [Spanned<Self>]),
 
     ///Contains the erroneous token's src
     Error(char),
@@ -43,7 +43,7 @@ enum Token {
 
     Colon,
     DoubleColon,
-    Sandwich(&'static str),
+    Sandwich(&'src str),
     Eq,
     Dot,
     DoubleDot,
@@ -102,7 +102,7 @@ enum Token {
     TyInt,
 }
 
-impl std::fmt::Display for Token {
+impl std::fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Ident(x) => write!(f, "{x:?}"),
@@ -171,20 +171,19 @@ impl std::fmt::Display for Token {
 }
 
 /// The primary lexer function.
-fn lexer<I>(
+fn lexer<'src, I>(
     id: FileID,
-    // rodeo: &mut Rodeo,
-) -> impl Parser<
-    'static,
+    ) -> impl Parser<
+    'src,
     I,
-    Vec<Spanned<Token>>,
-    extra::Err<Rich<'static, char, SimpleSpan<usize, ()>>>, /*extra::Err<Rich<'static, char>>*/
+    Vec<Spanned<Token<'src>>>,
+    extra::Err<Rich<'src, char, SimpleSpan<usize, ()>>>, /*extra::Err<Rich<'static, char>>*/
 >
 //where I:  BorrowInput<'static, Token = char, Span = SimpleSpan<usize, ()>> + ValueInput<'static, Token = char, Span = SimpleSpan<usize, ()>> + StrInput<'static> + SliceInput<'static>,
 where
-    I: ValueInput<'static, Token = char, Span = SimpleSpan<usize, ()>>
-        + SliceInput<'static, Slice = &'static str, Span = SimpleSpan<usize, ()>>
-        + StrInput<'static, Span = SimpleSpan<usize, ()>>,
+    I: ValueInput<'src, Token = char, Span = SimpleSpan<usize, ()>>
+        + SliceInput<'src, Slice = &'src str, Span = SimpleSpan<usize, ()>>
+        + StrInput<'src, Span = SimpleSpan<usize, ()>>,
     //where I: str
 {
     let comment = just("#")
@@ -316,23 +315,23 @@ where
 }
 
 /// The main parser function.
-fn parser<I, M>(
+fn parser<'src, I, M>(
     make_input: &'static M,
     // id: FileID,
     // rodeo: &mut Rodeo,
 ) -> impl Parser<
-    'static,
+    'src,
     I,
     Vec<Package<Untyped>>,
-    extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
+    extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>,
     // extra::Full<Rich<'static, Token<'static>, SimpleSpan<usize, FileID>>, RodeoState, ()>,
 >
 //) -> impl Parser<'tokens, I, Package, extra::Err<Rich<'tokens, Token<'static>, SimpleSpan<usize, FileID>>>>
 where
-    I: BorrowInput<'static, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'static>,
+    I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
     // Because this function is generic over the input type, we need the caller to tell us how to create a new input,
     // `I`, from a nested token tree. This function serves that purpose.
-    M: Fn(SimpleSpan<usize, FileID>, &'static [Spanned<Token>]) -> I + 'static,
+    M: Fn(SimpleSpan<usize, FileID>, &'src [Spanned<Token>]) -> I + 'src,
 {
     // Basic tokens
     // let ident =
@@ -379,7 +378,7 @@ where
                     '_,
                     '_,
                     I,
-                    extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
+                    extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>,
                 >| {
                     Spanned(Intern::from(Expr::<Untyped>::FieldAccess(x, y)), e.span())
                 },
@@ -526,7 +525,7 @@ where
                             .at_least(1)
                             .collect::<Vec<_>>(),
                     )
-                    .map_with(|(matchee, arms), e| {
+                    .map_with(|(matchee, arms): (Spanned<Intern<Expr<Untyped>>>, Vec<MatchArm<Untyped>>), e: &mut MapExtra<'_, '_, I, extra::Full<Rich<'_, Token<'_>, SimpleSpan<usize, u64>>, (), ()>>| {
                         Spanned(
                             Intern::from(Expr::Match(matchee, arms.leak())),
                             
@@ -744,7 +743,7 @@ fn ty_parser<'src, I, M>(
     make_input: &'src M,
 ) -> impl Parser<'src, I, Spanned<Intern<Type>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
 where
-    I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
+    I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
     M: Fn(SimpleSpan<usize, FileID>, &'src [Spanned<Token>]) -> I + 'src,
 {
     let rname = select_ref! { Token::Ident(x) => *x };
@@ -908,17 +907,17 @@ fn destructure_pattern_parser<'src, I>(
         'src,
         I,
         Spanned<Intern<Expr<Untyped>>>,
-        extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
+        extra::Full<Rich<'src, Token<'src>, SimpleSpan<usize, FileID>>, (), ()>,
     >,
     _ty: Boxed<
         'src,
         'src,
         I,
         Spanned<Intern<Type>>,
-        extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
+        extra::Full<Rich<'src, Token<'src>, SimpleSpan<usize, FileID>>, (), ()>,
     >,
-) -> impl Parser<'src, I, Spanned<Intern<Pattern<Untyped>>>, extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
-> where I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize,FileID>> + ValueInput<'src> {
+) -> impl Parser<'src, I, Spanned<Intern<Pattern<Untyped>>>, extra::Full<Rich<'src, Token<'src>, SimpleSpan<usize, FileID>>, (), ()>,
+> where I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan<usize,FileID>> + ValueInput<'src> {
 
 let rname = select_ref! { Token::Ident(x) => *x };
 
@@ -1014,20 +1013,23 @@ fn parse_failure(
 }
 
 /// Compiler black magic function that transforms the token vector into a parsable item.
-fn make_input(
+fn make_input<'src>(
     eoi: SimpleSpan<usize, FileID>,
-    toks: &'_ [Spanned<Token>],
-) -> impl BorrowInput<'_, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'_> {
+    toks: &'src [Spanned<Token<'src>>],
+) -> impl BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan<usize, FileID>> + ValueInput<'src> {
     toks.map(eoi, |ts| (&ts.0, &ts.1))
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
-    let input: &'static str = ctx
-        .get(&fid)
-        .unwrap_or_else(|| unreachable!("FileID {} does not exist in context: {:?}", fid, ctx))
-        .source.clone().leak();
-    let tokens: Vec<Spanned<Token>> = match lexer(fid).parse(input).into_result() {
+pub fn parse(db: &dyn salsa::Database, filectx: FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
+    let input= filectx.cache(db).get(&fid)
+    // let src_text = input.
+    // let input: &'static str = ctx
+    //     .get(&fid)
+        .unwrap_or_else(|| unreachable!("FileID {} does not exist in context", fid)).source(db);
+    // let graphemes = Graphemes::new(input);
+    //     .source.clone().leak();
+    let tokens: Vec<Spanned<Token>> = match lexer(fid).parse(input.as_str()).into_result() {
         Ok(tokens) => tokens,
         Err(errs) => {
             return Err(ErrorCollection::new(
@@ -1053,7 +1055,7 @@ pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
             let errs = ErrorCollection::new(
                 e.iter()
                     .map(|e| parse_failure(e, fid).into())
-                    .collect::<Vec<CompilerErr>>(),
+                    .collect::<Vec<DynamicErr>>(),
             );
             Err(errs.into())
         }

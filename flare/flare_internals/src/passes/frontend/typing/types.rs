@@ -13,7 +13,7 @@ use crate::{
         errors::CompResult,
         rep::{
             common::{Ident, Spanned},
-            frontend::ast::Label,
+            frontend::ast::{Identifier, Label},
         },
     },
 };
@@ -46,7 +46,8 @@ impl UnifyKey for TyUniVar {
 // pub struct TypeVar(pub Intern<String>);
 pub struct TypeVar(pub usize);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash, salsa::Update)]
+// #[salsa::tracked]
 pub enum Type {
     // Infer,
     Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
@@ -64,30 +65,30 @@ pub enum Type {
 
     Package(Spanned<Intern<String>>),
     // Item(ItemId),
-    TypeFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    TypeApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    User(Spanned<Intern<String>>, &'static [Spanned<Intern<Self>>]),
-    Prod(Spanned<Intern<Row>>),
-    Sum(Spanned<Intern<Row>>),
-    Label(Label, Spanned<Intern<Self>>),
+    TypeFun(Spanned<&'db Self>, Spanned<&'db Self>),
+    TypeApp(Spanned<&'db Self>, Spanned<&'db Self>),
+    User(Spanned<&'db String>, &'db [Spanned<Self>]),
+    Prod(Spanned<&'db Row>),
+    Sum(Spanned<&'db Row>),
+    Label(Label, Spanned<&'db Self>),
     Hole,
 }
 // #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 // pub struct InternType(pub Intern<Type>);
 
-impl EqUnifyValue for Spanned<Intern<Type>> {}
+impl<'db> EqUnifyValue for Spanned<&'db Type<'db>> {}
 
-impl Ident for Type {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        match self {
-            Self::Package(spanned) => Ok(*spanned),
-            Self::Label(l, _) => Ok(l.0),
-            _ => unreachable!("{:?}", self),
-        }
-    }
-}
+// impl Ident for Type {
+//     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
+//         match self {
+//             Self::Package(spanned) => Ok(*spanned),
+//             Self::Label(l, _) => Ok(l.0),
+//             _ => unreachable!("{:?}", self),
+//         }
+//     }
+// }
 
-impl Type {
+impl Type<'_> {
     pub fn render(&self, scheme: &TypeScheme) -> String {
         match self {
             Self::Var(v) => format!(

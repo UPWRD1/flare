@@ -9,8 +9,11 @@ pub type FileID = u64;
 //     pub src_text: &'src str,
 // }
 
-#[derive(Debug, Clone)]
+// #[derive(Debug, Clone)]
+#[salsa::input(debug)]
 pub struct FileSource {
+    #[returns(ref)]
     pub filepath: PathBuf,
+    #[returns(ref)]
     pub source: String,
 }

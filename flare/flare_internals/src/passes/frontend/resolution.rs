@@ -28,14 +28,12 @@ use crate::{
         typing::{ClosedRow, Row, Type},
     },
     resource::{
-        errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
+        errors::{self, CompResult, DynamicErr},
         rep::{
             common::Ident,
             common::Spanned,
             frontend::{
-                ast::{
-                    Direction, Expr, ItemId, Kind, Label, LambdaInfo, MatchArm, Pattern, Untyped,
-                },
+                ast::{Direction, Expr, ItemId, Kind, Label, LambdaInfo, MatchArm, Pattern},
                 entry::{FunctionItem, Item, ItemKind, PackageEntry},
                 quantifier::QualifierFragment,
             },
@@ -57,70 +55,52 @@ use crate::{
 /// In theory, this whole process could be built into the intial graph building.
 /// However, I'd rather maintain a separation of concerns,
 /// even if it would be more efficient to use a single pass over the environment.
-pub struct Resolver<const N: usize> {
-    env: Environment,
+pub struct Resolver<'db> {
+    db: &'db dyn salsa::Database,
+    env: Environment<'db>,
     current_parent: QualifierFragment,
     current_dag_node: Option<NodeIndex>,
     pub dag: DiGraph<DagIdx, ()>,
     main_dag_idx: Option<NodeIndex>,
-    errors: Vec<CompilerErr>,
     // generic_scope: im::HashMap<String, Spanned<Intern<Type>>, FxBuildHasher>,
     // intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
 }
 
 type DagIdx = usize;
 
-impl<const N: usize> Resolver<N> {
-    pub fn new(
-        mut env: Environment,
-        intrinsics: [(
-            impl Into<String>,
-            &'static [Untyped],
-            impl Into<Intern<Type>>,
-        ); N],
-    ) -> Self {
-        fn register_intrinsic(
-            (id, args, sig): (
-                impl Into<String>,
-                &'static [Untyped],
-                impl Into<Intern<Type>>,
-            ),
-            env: &mut Environment,
-        ) -> (ItemId, Intern<Expr<Untyped>>) {
-            let name = Intern::from(id.into());
-            // env.debug();
-            //
-            let e = env.add(
-                env.root,
-                QualifierFragment::Func(name),
-                Item {
-                    kind: ItemKind::Extern {
-                        name: Spanned(name, SimpleSpan::new(0, 0..0)),
-                        args,
-                        sig: Spanned(sig.into(), SimpleSpan::new(0, 0..0)),
-                    },
-                },
-            );
-            let itemid = ItemId(e.index());
-            (
-                itemid,
-                Expr::Item(itemid, Kind::Extern(name)).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
-            )
-        }
-
-        for id in intrinsics {
-            register_intrinsic(id, &mut env);
-        }
+impl<'db> Resolver<'db> {
+    pub fn new(db: &'db dyn salsa::Database, mut env: Environment) -> Self {
+        // let intrinsics =vec![];
+        //  for id in intrinsics {
+        //      let name = Intern::from(id.into());
+        //      // env.debug();
+        //      //
+        //      let e = env.add(
+        //          env.root(db),
+        //          QualifierFragment::Func(name),
+        //          Item {
+        //              kind: ItemKind::Extern {
+        //                  name: Spanned(name, SimpleSpan::new(0, 0..0)),
+        //                  args,
+        //                  sig: Spanned(sig.into(), SimpleSpan::new(0, 0..0)),
+        //              },
+        //          },
+        //      );
+        //      let itemid = ItemId(e.index());
+        //      (
+        //          itemid,
+        //          Expr::Item(itemid, Kind::Extern(name)).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
+        //      )
+        //  }
 
         Self {
+            db,
             env,
             current_parent: QualifierFragment::Root,
             current_dag_node: None,
             dag: DiGraph::new(),
             main_dag_idx: None,
             // generic_scope: im::HashMap::with_hasher(FxBuildHasher),
-            errors: Vec::new(),
-            // intrinsics,
         }
     }
 
@@ -132,7 +112,7 @@ impl<const N: usize> Resolver<N> {
     fn analyze(&mut self) -> CompResult<Vec<NodeIndex>> {
         let filtered: Vec<(NodeIndex, PackageEntry)> = self
             .env
-            .graph
+            .graph(self.db)
             .node_indices()
             .filter_map(|idx| {
                 self.env
@@ -183,7 +163,7 @@ impl<const N: usize> Resolver<N> {
         self.current_parent = QualifierFragment::Package(p.name.0);
         let children = self
             .env
-            .graph
+            .graph(self.db)
             .neighbors_directed(idx, petgraph::Direction::Outgoing)
             .map(NodeIndex::index)
             .collect::<Vec<usize>>();
@@ -204,7 +184,7 @@ impl<const N: usize> Resolver<N> {
 
             let item_kind = self
                 .env
-                .graph
+                .graph(self.db)
                 .node_weight(node_idx)
                 .expect("Node should exist")
                 .kind;
@@ -219,7 +199,7 @@ impl<const N: usize> Resolver<N> {
 
                     let item = self
                         .env
-                        .graph
+                        .graph(self.db)
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
                     if let ItemKind::Function(ref mut func) = item.kind {
@@ -232,7 +212,7 @@ impl<const N: usize> Resolver<N> {
                     let t = self.analyze_type(t);
                     let item = self
                         .env
-                        .graph
+                        .graph(self.db)
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
 
@@ -250,7 +230,7 @@ impl<const N: usize> Resolver<N> {
 
                     let item = self
                         .env
-                        .graph
+                        .graph(self.db)
                         .node_weight_mut(node_idx)
                         .expect("Node should exist");
                     if let ItemKind::Extern { ref mut sig, .. } = item.kind {
@@ -593,7 +573,7 @@ impl<const N: usize> Resolver<N> {
         if let Expr::Item(_, _) = *l.0 {
             self.resolve_name_expr(r)
         } else if let Expr::Ident(n) = *l.0 {
-            if let Some((_variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
+            if let Some((_variable, val)) = vars.iter().find(|x| x.0 == n..0) {
                 let projection: Spanned<Intern<Expr<Untyped>>> = {
                     let combo = *val;
                     let id = r.ident().expect("Expression should be nameable");

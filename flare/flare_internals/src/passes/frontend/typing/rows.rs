@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, fmt::Display};
 use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 use itertools::Itertools;
+use salsa::{interned, tracked};
 
 use crate::{
     passes::frontend::typing::{Evidence, TyUniVar, TypeScheme, types::Type},
@@ -13,7 +14,7 @@ use crate::{
 pub struct RowUniVar(u32);
 
 impl UnifyKey for RowUniVar {
-    type Value = Option<Row>;
+    type Value = Option<Row<'db>>;
 
     fn index(&self) -> u32 {
         self.0
@@ -29,22 +30,25 @@ impl UnifyKey for RowUniVar {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RowVar(pub Intern<String>);
+// #[salsa::interned(debug)]
+pub struct RowVar {
+    name: Intern<String>,
+}
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, salsa::Update)]
 pub enum Row {
     Open(RowVar),
     Unifier(RowUniVar),
     Closed(ClosedRow),
 }
 
-impl Spanned<Intern<Row>> {
+impl Spanned<Intern<Row<'_>>> {
     pub fn render(&self, scheme: &TypeScheme) -> String {
         self.0.render(scheme)
     }
 }
 
-impl Row {
+impl Row<'_> {
     pub fn render(&self, scheme: &TypeScheme) -> String {
         match self {
             Self::Open(row_var) => format!("open{}", row_var.0),
@@ -84,7 +88,7 @@ impl Row {
     }
 }
 
-impl Display for Row {
+impl Display for Row<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Open(row_var) => write!(f, "?{}", row_var.0),
@@ -94,17 +98,17 @@ impl Display for Row {
     }
 }
 
-impl EqUnifyValue for Row {}
+impl EqUnifyValue for Row<'_> {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ClosedRow {
     pub fields: &'static [Label],
-    pub values: &'static [Spanned<Intern<Type>>],
+    pub values: &'static [Spanned<Intern<Type<'db>>>],
 }
 
-impl EqUnifyValue for ClosedRow {}
+impl EqUnifyValue for ClosedRow<'_> {}
 
-impl Display for ClosedRow {
+impl Display for ClosedRow<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -118,7 +122,7 @@ impl Display for ClosedRow {
     }
 }
 
-impl ClosedRow {
+impl ClosedRow<'_> {
     pub fn is_subtype_of(&self, other: &Self) -> Option<Self> {
         let mut accum = vec![];
         for (me_label, me_v) in self.fields.iter().zip(self.values) {
@@ -215,14 +219,14 @@ impl ClosedRow {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RowCombination {
-    pub left: Spanned<Intern<Row>>,
-    pub right: Spanned<Intern<Row>>,
-    pub goal: Spanned<Intern<Row>>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, salsa::Update)]
+pub struct RowCombination<'db> {
+    pub left: Spanned<&'db Row<'db>>,
+    pub right: Spanned<&'db Row<'db>>,
+    pub goal: Spanned<&'db Row<'db>>,
 }
 
-impl RowCombination {
+impl RowCombination<'_> {
     /// Two rows are unifiable if two of their components are equatable.
     /// A row can be uniquely determined by two of it's components (the third is calculated from
     /// the two). Because of this whenever rows agree on two components we can unify both rows and

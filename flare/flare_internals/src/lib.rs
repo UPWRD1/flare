@@ -65,6 +65,7 @@ use std::{
 
 use petgraph::graph::NodeIndex;
 use rustc_hash::{FxHashMap, FxHasher};
+use salsa::{Accumulator, tracked};
 
 use crate::{
     passes::{
@@ -73,7 +74,7 @@ use crate::{
             target::{Generator, Target},
         },
         frontend::{
-            environment::Environment,
+            environment::{self, Environment},
             parser,
             resolution::Resolver,
             typechecker::Typechecker,
@@ -83,14 +84,14 @@ use crate::{
         midend::{lowering::Lowerer, monomorph, reduce, simplify},
     },
     resource::{
-        errors::{CompResult, CompilerErr},
+        errors::CompResult,
         rep::{
             frontend::{
                 ast::{
                     ItemId,
                     Package,
                     Program,
-                    Untyped, // Untyped
+                    // Untyped, // Untyped
                 },
                 files::{FileID, FileSource},
             },
@@ -102,39 +103,42 @@ use crate::{
 // #[derive(Debug)]
 pub struct Init;
 
-pub struct Parse {
-    program: Program<Untyped>,
+#[tracked]
+pub struct Parse<'db> {
+    program: Program<'db>,
 }
-
-pub struct Build {
-    env: Environment,
+#[tracked]
+pub struct Build<'db> {
+    env: Environment<'db>,
 }
-
-pub struct Resolve {
+#[tracked]
+pub struct Resolve<'db> {
     order: Vec<NodeIndex>,
-    env: Environment,
+    env: Environment<'db>,
 }
-pub struct Typecheck {
-    items: Vec<(ItemId, TypesOutput)>,
+#[tracked]
+pub struct Typecheck<'db> {
+    items: Vec<(ItemId, TypesOutput<'db>)>,
     source: ItemSource,
 }
-pub struct Lower {
+#[tracked]
+pub struct Lower<'db> {
     ir: Vec<IR>,
 }
-
-pub struct Simplify {
+#[tracked]
+pub struct Simplify<'db> {
     ir: Vec<IR>,
 }
-
-pub struct Reduce {
+#[tracked]
+pub struct Reduce<'db> {
     ir: Vec<IR>,
 }
-
-pub struct Monomorph {
+#[tracked]
+pub struct Monomorph<'db> {
     ir: Vec<IR>,
 }
-
-pub struct Convert {
+#[tracked]
+pub struct Convert<'db> {
     converted: Vec<ClosureConvertOut>,
 }
 
@@ -142,208 +146,147 @@ pub struct Generate<T: Target> {
     output: T::Output,
 }
 
-pub trait Operation {}
-impl Operation for Init {}
-impl Operation for Parse {}
-impl Operation for Build {}
-impl Operation for Resolve {}
-impl Operation for Typecheck {}
-impl Operation for Lower {}
-impl Operation for Simplify {}
-impl Operation for Reduce {}
-impl Operation for Monomorph {}
+#[salsa::tracked]
+pub struct FileCtx<'db> {
+    cache: FxHashMap<FileID, FileSource>,
+}
 
-pub type FileCtx = FxHashMap<FileID, FileSource>;
+#[salsa::db]
+struct Db {
+    storage: salsa::Storage<Self>,
+}
+
+#[salsa::db]
+impl salsa::Database for Db {}
 
 // pub type CtxResult<const N: usize, T, O> = Result<Context<N, T, O>, CtxErr>;
 
 /// The context/state machine for compiling a Flare bundle.
-pub struct Context<const N: usize, T, O> {
-    pub filectx: FileCtx,
-    pub target: T,
-    pub intrinsics: [(&'static str, &'static [Untyped], Type); N],
-    pub op: O,
-}
+// pub struct Context<const N: usize, T, O> {
+//     pub filectx: FileCtx<'db>,
+//     pub target: T,
+//     pub intrinsics: [(&'static str, &'static [Untyped], Type); N],
+//     pub op: O,
+// }
 
-impl<const N: usize, T: Target> Context<N, T, Init> {
-    pub fn new(
-        src_paths: Vec<PathBuf>,
-        target: T,
-        intrinsics: [(&'static str, &'static [Untyped], Type); N],
-    ) -> Self {
-        let filectx = src_paths
+pub fn make_filectx<'db>(db: &'db dyn salsa::Database, src_paths: Vec<PathBuf>) -> FileCtx<'db> {
+    FileCtx::new(
+        db,
+        src_paths
             .into_iter()
             .map(|filepath| {
                 let id = convert_path_to_id(&filepath);
 
                 let src_text = std::fs::read_to_string(&filepath).unwrap();
 
-                let source = FileSource {
-                    filepath,
-                    source: src_text,
-                };
+                let source = FileSource::new(db, filepath, src_text);
                 (id, source)
             })
-            .collect();
-        Self {
-            filectx,
-            target,
-            intrinsics,
-            op: Init,
+            .collect(),
+    )
+}
+
+fn parse_file<'db>(
+    db: &'db dyn salsa::Database,
+    ctx: FileCtx<'db>,
+    id: FileID,
+) -> Vec<Package<'db>> {
+    match parser::parse(db, ctx, id) {
+        Ok(v) => v,
+        Err(de) => {
+            de.accumulate(db);
+            panic!("")
         }
     }
-
-    fn parse_file(&self, id: FileID) -> CompResult<Vec<Package<Untyped>>> {
-        parser::parse(&self.filectx, id)
-    }
-
-    pub fn parse(self) -> CompResult<Context<N, T, Parse>> {
-        let mut processed: Vec<(Vec<Package<Untyped>>, FileID)> = vec![];
-        for id in self.filectx.keys() {
-            let pack = self.parse_file(*id)?;
-            processed.push((pack, *id))
-        }
-
-        let v: Vec<_> = processed
-            .into_iter()
-            .flat_map(|(packages, id)| {
-                packages
-                    .into_iter()
-                    .map(|p| (p, id))
-                    .collect::<Vec<(Package<_>, FileID)>>()
-            })
-            .collect::<Vec<_>>();
-
-        let program = Program { packages: v };
-        Ok(Context {
-            op: Parse { program },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Parse> {
-    pub fn build(self) -> CompResult<Context<N, T, Build>> {
-        let env = Environment::build(&self.op.program)?;
-        Ok(Context {
-            op: Build { env },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
+#[tracked]
+pub fn parse<'db>(db: &'db dyn salsa::Database, filectx: FileCtx<'db>) -> Parse<'db> {
+    let mut processed: Vec<(Vec<Package>, FileID)> = vec![];
+    for id in filectx.cache(db).keys() {
+        let pack = parse_file(db, filectx, *id);
+        processed.push((pack, *id))
     }
+
+    let packages: Vec<_> = processed
+        .into_iter()
+        .flat_map(|(packages, id)| {
+            packages
+                .into_iter()
+                .map(|p| (p, id))
+                .collect::<Vec<(Package, FileID)>>()
+        })
+        .collect::<Vec<_>>();
+
+    let program = Program::new(db, packages);
+    Parse::new(db, program)
 }
 
-impl<const N: usize, T: Target> Context<N, T, Build> {
-    pub fn resolve(self) -> CompResult<Context<N, T, Resolve>> {
-        let mut resolver = Resolver::new(self.op.env, self.intrinsics);
-        let order = resolver.build()?;
-        let env = resolver.finish()?;
-        Ok(Context {
-            op: Resolve { order, env },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
+#[tracked]
+pub fn build<'db>(db: &'db dyn salsa::Database, filectx: FileCtx<'db>) -> Build<'db> {
+    let program = parse(db, filectx);
+    let env = environment::build(db, program.program(db));
+    Build::new(db, env)
 }
 
-impl<const N: usize, T: Target> Context<N, T, Resolve> {
-    pub fn typecheck(self) -> CompResult<Context<N, T, Typecheck>> {
-        let tc = Typechecker::new(self.op.order.leak(), self.op.env);
-        let (items, source) = tc.check()?;
-        Ok(Context {
-            op: Typecheck { items, source },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
+#[tracked]
+pub fn resolve<'db>(db: &'db dyn salsa::Database, filectx: FileCtx<'db>) -> Resolve<'db> {
+    let build = build(db, filectx);
+    let env = build.env(db);
+    let mut resolver = Resolver::new(db, env);
+    let order = resolver.build()?;
+    let env = resolver.finish()?;
+    Resolve::new(db, order, env)
 }
 
-impl<const N: usize, T: Target> Context<N, T, Typecheck> {
-    pub fn lower(self) -> CompResult<Context<N, T, Lower>> {
-        let lowerer = Lowerer::new();
-        let ir = lowerer.lower(self.op.source, &self.op.items);
-        Ok(Context {
-            op: Lower { ir },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
+#[tracked]
+pub fn typecheck<'db>(db: &'db dyn salsa::Database, filectx: FileCtx<'db>) -> Typecheck<'db> {
+    let resolved = resolve(db, filectx);
+    let order = resolved.order(db);
+    let env = resolved.env(db);
+    let tc = Typechecker::new(order.leak(), env);
+    let (items, source) = tc.check()?;
+    Typecheck::new(db, items, source)
 }
 
-impl<const N: usize, T: Target> Context<N, T, Lower> {
-    pub fn simplify(self) -> CompResult<Context<N, T, Simplify>> {
-        let ir = simplify::simplify(self.op.ir);
-        Ok(Context {
-            op: Simplify { ir },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
+#[tracked]
+pub fn lower<'db>(db: &'db dyn salsa::Database) -> Lower {
+    let lowerer = Lowerer::new();
+    let ir = lowerer.lower(self.op.source, &self.op.items);
+    Lower { ir }
+}
+#[tracked]
+pub fn simplify<'db>(db: &'db dyn salsa::Database) -> Simplify {
+    let ir = simplify::simplify(self.op.ir);
+    Simplify { ir }
+}
+#[tracked]
+pub fn monomorph<'db>(db: &'db dyn salsa::Database) -> Monomorph {
+    let ir = monomorph::monomorph(self.op.ir);
+    // Sanity check
+    debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
+
+    Monomorph { ir }
+}
+#[tracked]
+pub fn reduce<'db>(db: &'db dyn salsa::Database) -> Reduce {
+    let ir = reduce::reduce(self.op.ir);
+    Reduce { ir }
+}
+#[tracked]
+pub fn convert(db: &'db dyn salsa::Database) -> Convert {
+    let converted = closure_convert(self.op.ir);
+    Convert { converted }
+}
+pub fn generate(self) -> Generate<T> {
+    let g = Generator::new(self.target.clone(), self.op.converted);
+
+    let output = g.generate();
+    Generate { output }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Simplify> {
-    pub fn monomorph(self) -> CompResult<Context<N, T, Monomorph>> {
-        let ir = monomorph::monomorph(self.op.ir);
-        // Sanity check
-        debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
-
-        Ok(Context {
-            op: Monomorph { ir },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
-}
-
-impl<const N: usize, T: Target> Context<N, T, Monomorph> {
-    pub fn reduce(self) -> CompResult<Context<N, T, Reduce>> {
-        let ir = reduce::reduce(self.op.ir);
-        Ok(Context {
-            op: Reduce { ir },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
-}
-impl<const N: usize, T: Target> Context<N, T, Reduce> {
-    pub fn convert(self) -> CompResult<Context<N, T, Convert>> {
-        let converted = closure_convert(self.op.ir);
-        Ok(Context {
-            op: Convert { converted },
-            filectx: self.filectx,
-            target: self.target,
-            intrinsics: self.intrinsics,
-        })
-    }
-}
-
-impl<const N: usize, T: Target> Context<N, T, Convert> {
-    pub fn generate(self) -> CompResult<Context<N, T, Generate<T>>> {
-        let g = Generator::new(self.target.clone(), self.op.converted);
-
-        let output = g.generate();
-        Ok(Context {
-            op: Generate { output },
-            filectx: self.filectx,
-            target: self.target.clone(),
-            intrinsics: self.intrinsics,
-        })
-    }
-}
-
-impl<const N: usize, T: Target> Context<N, T, Generate<T>> {
-    pub fn finish(self) -> CompResult<Vec<u8>> {
-        Ok((self.op.output).into())
-    }
+pub fn finish(self) -> CompResult<Vec<u8>> {
+    Ok((self.op.output).into())
 }
 
 pub fn convert_path_to_id(path: &Path) -> FileID {

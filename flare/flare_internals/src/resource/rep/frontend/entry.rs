@@ -1,22 +1,24 @@
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
+use salsa::tracked;
 // use lasso::Spur;
 
 use crate::{
     passes::frontend::typing::Type,
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr},
+        errors::{CompResult, DynamicErr},
         rep::{
-            frontend::{files::FileID, ast::Variable},
-            common::{Ident, Spanned, SpanWrapped},
-            
+            common::{Ident, SpanWrapped, Spanned},
+            frontend::{
+                ast::{Identifier, Variable},
+                files::FileID,
+            },
         },
     },
 };
 
 use super::{
     // concretetypes::{EnumVariant, Ty},
-    
     ast::Expr,
 };
 
@@ -43,27 +45,29 @@ pub struct PackageEntry {
 //     pub ty: Spanned<Intern<Ty>>,
 // }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct FunctionItem<V: Variable> {
-    pub name: V,
-    pub sig: Spanned<Intern<Type>>,
-    pub body: Spanned<Intern<Expr<V>>>,
+// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[tracked]
+pub struct FunctionItem<'db> {
+    pub name: Identifier<'db>,
+    pub sig: Spanned<&'db Type<'db>>,
+    pub body: Spanned<&'db Expr<'db>>,
     // extra_vars: usize,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+// #[derive(Debug, PartialEq, Eq, Clone)]
 #[repr(transparent)]
-pub struct Item<V: Variable> {
-    pub kind: ItemKind<V>,
+#[tracked]
+pub struct Item<'db> {
+    pub kind: ItemKind<'db>,
     // pub is_checked: Cell<bool>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ItemKind<V: Variable> {
+pub enum ItemKind<'db> {
     Root,
     Filename(Intern<String>),
     Package(PackageEntry),
-    Function(FunctionItem<V>),
+    Function(FunctionItem<'db>),
     Type(
         Spanned<Intern<String>>,
         &'static [Spanned<Intern<Type>>],
@@ -144,8 +148,8 @@ impl<V: Variable> Item<V> {
 
     /// Get the type of the `Item`.
     pub fn get_ty(&self) -> CompResult<Spanned<Intern<Type>>> {
-        fn err<V: Variable>(t: &Item<V>) -> CompilerErr {
-            DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
+        fn err<V: Variable>(t: &Item<V>) -> DynamicErr {
+            DynamicErr::new(format!("Could not get the type from {:?}", t))
         }
         match &self.kind {
             // ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
@@ -160,8 +164,8 @@ impl<V: Variable> Item<V> {
     }
 
     pub fn get_type_universal(&self) -> CompResult<Spanned<Intern<Type>>> {
-        fn err<V: Variable>(t: &Item<V>) -> CompilerErr {
-            DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
+        fn err<V: Variable>(t: &Item<V>) -> DynamicErr {
+            DynamicErr::new(format!("Could not get the type from {:?}", t))
         }
         match &self.kind {
             ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),

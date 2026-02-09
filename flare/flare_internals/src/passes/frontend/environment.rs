@@ -6,6 +6,7 @@ use petgraph::{
     visit::EdgeRef as _,
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use salsa::tracked;
 
 use std::hash::RandomState;
 
@@ -25,7 +26,27 @@ use crate::{
     },
 };
 
-#[derive(Debug)]
+trait Env: Sized {
+    fn graph(&self) -> DiGraph<Item<Untyped>, QualifierFragment>;
+    fn root(&self) -> NodeIndex;
+}
+
+pub fn build<'db>(
+    db: &'db dyn salsa::Database,
+    program: &'db Program<Untyped>,
+) -> Environment<'db> {
+    // use ItemKind::*;
+    let mut graph = DiGraph::new();
+    let current_node = graph.add_node(Item::new(ItemKind::Root));
+    let me = EnvironmentBuilder {
+        db,
+        graph,
+        root: current_node,
+        current_node,
+    };
+    me.build(program)
+}
+// #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
 /// the  parser, and the index of the root.
 ///
@@ -33,12 +54,54 @@ use crate::{
 /// implement `Clone`, since it is ridiculously expensive, and there is no
 /// real reason to clone the environment.
 #[non_exhaustive]
-pub struct Environment {
+#[tracked]
+pub struct Environment<'db> {
     pub graph: DiGraph<Item<Untyped>, QualifierFragment>,
     pub root: NodeIndex,
 }
+struct EnvironmentBuilder<'db> {
+    pub db: &'db dyn salsa::Database,
+    pub graph: DiGraph<Item<Untyped>, QualifierFragment>,
+    pub root: NodeIndex,
+    current_node: NodeIndex,
+}
 
-impl Environment {
+impl<'db> EnvironmentBuilder<'db> {
+    fn get<'graph>(&'graph self, qualifier_path: &[QualifierFragment]) -> CompResult<NodeIndex> {
+        //let _ = self.graph.edges(self.root).map(|x| dbg!(x));
+        struct Rec<'s, 'graph, T> {
+            f: &'s dyn Fn(
+                &Self,
+                &'graph T,
+                NodeIndex,
+                &[QualifierFragment],
+            ) -> CompResult<NodeIndex>,
+        }
+        let rec = Rec {
+            f: &|rec: &Rec<'_, 'graph, _>,
+                 graph_self: &'graph Self,
+                 n: NodeIndex,
+                 q: &[QualifierFragment]|
+             -> CompResult<NodeIndex> {
+                //dbg!(&q);
+                match q {
+                    [] => Ok(n),
+
+                    [head, tail @ ..] => {
+                        let candidate = graph_self
+                            .graph
+                            .edges(n)
+                            .find(|e| e.weight().is(head))
+                            .ok_or_else(|| DynamicErr::new("Does not Exist"))?;
+
+                        (rec.f)(rec, graph_self, candidate.target(), tail)
+                        //self.graph.node_weight(n).cloned()
+                    }
+                }
+            },
+        };
+        (rec.f)(&rec, self, self.root, qualifier_path) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
+    }
     /// Add an `item` to the environment as a child of a `parent_node`, accessible via a `qualifier`. Returns the `NodeIndex` of the newly-created child.
     /// # Panics
     /// Panics if the internal graph is full.
@@ -60,51 +123,8 @@ impl Environment {
         self.graph.add_edge(parent_node, child_idx, qualifier);
         child_idx
     }
-
-    #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
-    #[deprecated]
-    pub fn debug(&self) {
-        let render =
-            |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
-        let dot = petgraph::dot::Dot::with_attr_getters(
-            &self.graph,
-            &[
-                Config::EdgeNoLabel,
-                Config::NodeNoLabel,
-                Config::RankDir(petgraph::dot::RankDir::LR),
-            ],
-            // &|_, _| String::new(),
-            &render,
-            &|_, _| String::new(),
-        );
-        dbg!(dot);
-    }
-    #[inline]
-    /// Get the item value of an index.
-    /// # Examples
-    /// ```rust   
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
-    /// ```
-    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<Untyped>> {
-        self.graph
-            .node_weight(idx)
-            .ok_or_else(|| unreachable!("Bad node index: {:?}", idx))
-    }
-
-    /// Build the environment from a given `Program`
-    /// # Errors
-    /// - on invalid names,
-    ///
-    pub fn build(program: &Program<Untyped>) -> CompResult<Self> {
-        // use ItemKind::*;
-        let mut graph = DiGraph::new();
-        let mut current_node = graph.add_node(Item::new(ItemKind::Root));
+    fn build(self, program: &Program<Untyped>) -> Environment<'db> {
         let num_packages = program.packages.len();
-        let mut me = Self {
-            graph,
-            root: current_node,
-        };
         let mut package_to_imports: FxHashMap<
             Spanned<QualifierFragment>,
             FxHashSet<Spanned<Intern<Expr<Untyped>>>>,
@@ -128,12 +148,12 @@ impl Environment {
             }));
             let package_quant = QualifierFragment::Package(package_name.0);
 
-            let p_id = me.add(current_node, package_quant, package_entry);
+            let p_id = self.add(self.current_node, package_quant, package_entry);
 
-            let old_current = current_node;
-            current_node = p_id;
+            let old_current = self.current_node;
+            self.current_node = p_id;
 
-            for item in &package.0.items {
+            for item in &package.0.items(self.db) {
                 let mut item_nodeindex: NodeIndex = NodeIndex::new(0);
                 let qual: Option<QualifierFragment>;
                 match item.def {
@@ -156,13 +176,13 @@ impl Environment {
                             new_t
                         };
                         let entry = Item::new(ItemKind::Type(name, generics, t));
-                        item_nodeindex = me.add(current_node, qfrag, entry);
+                        item_nodeindex = self.add(self.current_node, qfrag, entry);
                     }
                     Definition::Let(name, body, sig) => {
                         let qfrag = QualifierFragment::Func(name.0.0);
                         qual = Some(qfrag);
                         let entry = Item::new(ItemKind::Function(FunctionItem { name, sig, body }));
-                        item_nodeindex = me.add(current_node, qfrag, entry);
+                        item_nodeindex = self.add(self.current_node, qfrag, entry);
                     }
                     Definition::Extern(name, args, sig) => {
                         let qfrag = QualifierFragment::Func(name.0);
@@ -173,11 +193,11 @@ impl Environment {
                             args,
                             sig,
                         });
-                        item_nodeindex = me.add(current_node, qfrag, entry);
+                        item_nodeindex = self.add(self.current_node, qfrag, entry);
                     }
                     Definition::ImplDef(ImplDef { the_ty, methods }) => {
                         qual = None;
-                        me.build_impl_def(package_quant, the_ty, methods)?;
+                        self.build_impl_def(package_quant, the_ty, methods);
                     }
                 }
                 if let Some(qual) = qual
@@ -186,7 +206,7 @@ impl Environment {
                     exports.insert((qual, item_nodeindex));
                 }
             }
-            current_node = old_current;
+            self.current_node = old_current;
             let name = Spanned(package_quant, package_name.1);
             package_to_imports.insert(name, imports);
             package_to_exports.insert(name.0, exports);
@@ -205,29 +225,31 @@ impl Environment {
                             .expect("Could not generate qualifier fragment")
                     })
                     .collect();
-                Ok((package_name, new_package_imports))
+                (package_name, new_package_imports)
             })
-            .collect::<CompResult<_>>()?;
+            .collect();
 
         for (importing_package_qual, imports) in new_package_to_imports {
-            let importing_package = me.get(&[importing_package_qual.0][..]).map_err(|_| {
+            let importing_package = self.get(&[importing_package_qual.0][..]).map_err(|_| {
                 errors::not_defined(importing_package_qual, &importing_package_qual.1)
             })?;
 
             for import_path in imports {
-                let import = me.trace_import_path(&import_path, &package_to_exports);
+                let import = self.trace_import_path(&import_path, &package_to_exports);
 
-                me.graph.update_edge(
+                self.graph.update_edge(
                     importing_package,
                     import,
                     *import_path.last().expect("Import path should not be empty"),
                 );
             }
         }
-
-        Ok(me)
+        Environment::new(self.db, self.graph, self.root)
     }
 
+    /// Build the environment from a given `Program`
+    /// # Errors
+    /// - on invalid names,
     fn trace_import_path(
         &self,
         path: &[QualifierFragment],
@@ -273,7 +295,7 @@ impl Environment {
             Spanned<Intern<Expr<Untyped>>>,
             Spanned<Intern<Type>>,
         )],
-    ) -> CompResult<()> {
+    ) {
         todo!()
         // use ItemKind::Function;
         // let type_name = QualifierFragment::Type(the_ty.0);
@@ -294,6 +316,39 @@ impl Environment {
         //     self.add(type_node, method_qual, the_method);
         // }
         // Ok(())
+    }
+}
+
+impl<'db> Environment<'db> {
+    #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
+    #[deprecated]
+    pub fn debug(&self) {
+        let render =
+            |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
+        let dot = petgraph::dot::Dot::with_attr_getters(
+            &self.graph,
+            &[
+                Config::EdgeNoLabel,
+                Config::NodeNoLabel,
+                Config::RankDir(petgraph::dot::RankDir::LR),
+            ],
+            // &|_, _| String::new(),
+            &render,
+            &|_, _| String::new(),
+        );
+        dbg!(dot);
+    }
+    #[inline]
+    /// Get the item value of an index.
+    /// # Examples
+    /// ```rust   
+    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
+    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
+    /// ```
+    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<Untyped>> {
+        self.graph
+            .node_weight(idx)
+            .ok_or_else(|| unreachable!("Bad node index: {:?}", idx))
     }
 
     #[inline]

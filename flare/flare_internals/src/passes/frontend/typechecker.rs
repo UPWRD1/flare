@@ -14,21 +14,22 @@ use crate::{
         },
     },
     resource::{
-        errors::{CompResult, DynamicErr, ErrorCollection},
+        errors::{CompResult, DynamicErr},
         rep::{
             common::{Ident, Spanned},
             frontend::{
-                ast::{Expr, ItemId, Kind, LambdaInfo, Untyped},
+                ast::{Expr, ItemId, Kind, LambdaInfo},
                 entry::{FunctionItem, ItemKind},
             },
         },
     },
 };
 
-pub struct Typechecker {
+pub struct Typechecker<'db> {
+    db: &'db dyn salsa::Database,
     item_order: &'static [NodeIndex],
     context: ItemSource,
-    env: Environment,
+    env: Environment<'db>,
     type_var_count: usize,
     // row_var_count: usize,
 }
@@ -42,18 +43,23 @@ pub struct Typechecker {
 // }
 
 #[derive(Default, Debug)]
-struct TypeFixer {
+struct TypeFixer<'db> {
     unbound_types: BTreeSet<TypeVar>,
-    unbound_rows: BTreeSet<RowVar>,
+    unbound_rows: BTreeSet<RowVar<'db>>,
     pub types_to_name: FxHashMap<TypeVar, Intern<String>>,
     evidence: Vec<Evidence>,
     // seen_row_vars: FxHashMap<NodeId, RowVar>,
     // inside_type_fun: TyappState,
 }
 
-impl Typechecker {
-    pub fn new(item_order: &'static [NodeIndex], env: Environment) -> Self {
+impl<'db> Typechecker<'db> {
+    pub fn new(
+        db: &'db dyn salsa::Database,
+        item_order: &'static [NodeIndex],
+        env: Environment,
+    ) -> Self {
         Self {
+            db,
             item_order,
             env,
             type_var_count: 0,
@@ -62,7 +68,7 @@ impl Typechecker {
         }
     }
 
-    pub fn check(mut self) -> CompResult<(Vec<(ItemId, TypesOutput)>, ItemSource)> {
+    pub fn check(mut self) -> CompResult<(Vec<(ItemId, TypesOutput<'db>)>, ItemSource)> {
         for item_idx in self.item_order {
             let item = self.env.value(*item_idx)?;
             match item.kind {
@@ -152,14 +158,16 @@ impl Typechecker {
 
             Type::Generic(n) => {
                 // println!("Generic {}", n.0);
-                let v = if let Some((v, _)) =
-                    f.types_to_name.iter().find(|(_, name)| ***name == *n.0)
+                let v = if let Some((v, _)) = f
+                    .types_to_name
+                    .iter()
+                    .find(|(_, name)| ***name == *n.name(self.db))
                 {
                     // println!("Loaded {v:?}");
                     *v
                 } else {
                     let v = self.new_type_var();
-                    f.types_to_name.insert(v, n.0);
+                    f.types_to_name.insert(v, n.name(self.db));
                     f.unbound_types.insert(v);
                     // println!("Created {v:?}");
                     v
@@ -241,7 +249,7 @@ impl Typechecker {
         (f, t)
     }
 
-    fn register_function(&mut self, item_idx: NodeIndex, f: FunctionItem<Untyped>) {
+    fn register_function(&mut self, item_idx: NodeIndex, f: FunctionItem) {
         // let unbound_types = BTreeSet::new();
         // let evidence = vec![];
         // let unbound_rows = (*f.unbound_rows).clone();
