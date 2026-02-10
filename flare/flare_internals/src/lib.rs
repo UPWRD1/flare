@@ -46,7 +46,7 @@
 )]
 #[allow(
     // warnings,
-    // unused_variables,
+    unused_variables,
     clippy::must_use_candidate,
     clippy::return_self_not_must_use,
     clippy::type_complexity,

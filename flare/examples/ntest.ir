@@ -3,24 +3,28 @@ fn [$0:num] => $0 become num in {unit | num}
 end item #0
 
 item #1: is
-fn [$0:{unit | num}, $1:num -> num] =>
-  match $0:
-    | $8:unit then #0,
-    | $9:num then [#0](
-      [$1](
-      $9))
+unit become unit in {unit | num}
 end item #1
 
 item #2: is
+fn [$0:{unit | num}, $1:num -> num] =>
+  match $0:
+    | $8:unit then #1,
+    | $9:num then [#0](
+      [$1](
+      $9))
+end item #2
+
+item #3: is
 fn [$0:{unit | num}, $1:num] =>
   match $0:
     | $8:unit then $1,
     | $9:num then $9
-end item #2
-
-item #3: is
-[#2](
-[#1](
-[#0](
-10), fn [$2:num] => $2*2), 7)
 end item #3
+
+item #4: is
+[#3](
+[#2](
+[#3](
+10), fn [$2:num] => $2*2), 7)
+end item #4

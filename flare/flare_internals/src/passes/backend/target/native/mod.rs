@@ -6,7 +6,7 @@ use cranelift::object::{ObjectBuilder, ObjectModule};
 use cranelift::prelude::*;
 use rustc_hash::FxHashMap;
 
-use crate::passes::backend::target::native::functionbuilder::LookupTable;
+use crate::passes::backend::target::native::lookup::LookupTable;
 use crate::passes::backend::{lir::ClosureConvertOut, target::Target};
 use crate::resource::rep::backend::lir::{AppType, Item, LIR};
 use crate::resource::rep::backend::native::VirtualValue;
@@ -15,6 +15,7 @@ use crate::resource::rep::frontend::ast::BinOp;
 
 pub mod closures;
 pub mod functionbuilder;
+pub mod lookup;
 
 const ENTRYPOINT_FUNCTION_SYMBOL: &str = "main";
 
@@ -166,9 +167,28 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             }
             LIR::Field(ref obj, idx) => self.field(&lir, obj, idx),
             LIR::Case(t, lir, lirs) => todo!(),
-            LIR::Tag(t, usize, b) => self.tag(t, usize, *b),
+            LIR::Tag(t, usize, b) => self.tag(t.variants(), usize, *b),
             LIR::FuncRef(app_type) => self.convert_app_type(app_type),
             LIR::BinOp(left, op, right) => self.convert_bin_op(*left, op, *right),
+
+            LIR::Item(item_id, _) => {
+                // dbg!(item_id);
+                let func_id = *self.types.function_names.get_by_right(&item_id).unwrap();
+                // let fref = self.module.declare_func_in_func(func_id, self.builder.func);
+                VirtualValue::Func(func_id)
+            }
+            LIR::Extern(name, t) => {
+                let (fparams, fret) = t.destructure_closure();
+                let sig = self
+                    .types
+                    .make_sig(self.module.isa().default_call_conv(), fparams, fret);
+                let the_fun = self
+                    .module
+                    .declare_function(&name, Linkage::Import, &sig)
+                    .expect("could not declare extern");
+                // let fref = self.module.declare_func_in_func(the_fun, self.builder.func);
+                VirtualValue::Func(the_fun)
+            }
         }
     }
 
@@ -211,12 +231,11 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         }
     }
 
-    fn tag(&mut self, ty: LIRType, idx: usize, body: LIR) -> VirtualValue {
-        let size_t = self.types.ptr_type();
+    fn tag(&mut self, variants: Vec<LIRType>, idx: usize, body: LIR) -> VirtualValue {
         let body = self.convert_lir(body);
-        let tag = self.ins().iconst(size_t, idx as i64);
         VirtualValue::TaggedUnion {
-            tag,
+            idx,
+            variants,
             body: Box::new(body),
         }
     }

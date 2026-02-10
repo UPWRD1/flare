@@ -13,12 +13,22 @@ pub struct Closure {
 #[derive(Debug, Clone)]
 pub enum VirtualValue {
     Scalar(Value),
-    StackStruct { ty: LIRType, ptr: Value },
-    UnstableStruct { ty: LIRType, fields: Vec<Self> },
+    StackStruct {
+        ty: LIRType,
+        ptr: Value,
+    },
+    UnstableStruct {
+        ty: LIRType,
+        fields: Vec<Self>,
+    },
     Closure(Closure),
     Func(FuncId),
     Pointer(PointeeType, Value),
-    TaggedUnion { tag: Value, body: Box<Self> },
+    TaggedUnion {
+        variants: Vec<LIRType>,
+        body: Box<Self>,
+        idx: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -26,7 +36,7 @@ pub enum PointeeType {
     Func(Vec<LIRType>, LIRType),
     String,
     Struct,
-    Union(PayloadKind),
+    Union(Vec<LIRType>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

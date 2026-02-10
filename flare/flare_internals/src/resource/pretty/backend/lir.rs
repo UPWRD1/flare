@@ -86,6 +86,9 @@ impl Render for LIR {
                 .render(t)
                 .text("@")
                 .text(u),
+
+            Self::Item(id, _) => Doc::text(format!("#{}", id.0)),
+            Self::Extern(n, _) => Doc::text(format!("extern_{}", n)),
         }
     }
 }

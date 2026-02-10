@@ -386,7 +386,7 @@ enum ContextEntry {
 }
 
 #[derive(Default)]
-struct Simplifier<'p> {
+struct Simplifier {
     occs: Occurrences,
     subst: Subst,
     saturated_fun_count: usize,
@@ -394,7 +394,7 @@ struct Simplifier<'p> {
     locals_inlined: usize,
     tuples_inlined: usize,
     inline_size_threshold: usize,
-    items: &'p [IR],
+    // items: &'p [IR],
 
     // seen_items: FxHashSet<ItemId>,
 }
@@ -402,7 +402,7 @@ struct Simplifier<'p> {
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
 let ref_ir = the_ir.clone();
 let mut occ_a = OccuranceAnalyzer::new();
-let mut simplifier = Simplifier::new(&ref_ir);
+let mut simplifier = Simplifier::new();
     the_ir
                 .into_iter()
         .map(|ir| {
@@ -422,11 +422,11 @@ let mut simplifier = Simplifier::new(&ref_ir);
         .collect()
 }
 
-impl<'p> Simplifier<'p> {
-    fn new(items: &'p [IR]) -> Self {
+impl Simplifier {
+    fn new() -> Self {
         Self {
             // occs:,
-            items ,
+            // items ,
             inline_size_threshold: 60, // GHC magic number is 60
             subst: FxHashMap::default(),
             ..Default::default()        }

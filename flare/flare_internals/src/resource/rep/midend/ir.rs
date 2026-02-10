@@ -168,7 +168,7 @@ impl IR {
     pub fn type_of(&self) -> IRType {
         match self {
             Self::Var(v) => v.ty.clone(),
-            Self::Num(n) => IRType::Num,
+            Self::Num(_) => IRType::Num,
             // Self::Num(n) => IRType::Num({
             //     // dbg!(n.fract());
             //     if n.fract() == 0.0 {

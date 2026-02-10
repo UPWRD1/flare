@@ -74,4 +74,12 @@ impl LIRType {
             panic!("Not a union")
         }
     }
+
+    pub fn variants(self) -> Vec<Self> {
+        if let Self::Union(variants) = self {
+            variants.to_vec()
+        } else {
+            panic!("Not a union")
+        }
+    }
 }

@@ -267,9 +267,9 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         VirtualValue::StackStruct { ty, ptr: pointer }
     }
 
-    pub fn stack_alloc_vvalues(&mut self, captures: Vec<VirtualValue>) -> Value {
+    pub fn stack_alloc_vvalues(&mut self, values: Vec<VirtualValue>) -> Value {
         let size_t = self.module.isa().pointer_type();
-        let v_values: Vec<_> = captures
+        let v_values: Vec<_> = values
             .into_iter()
             .flat_map(|v| self.as_values(&v))
             .collect();
@@ -340,8 +340,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         self.builder.func.stencil.dfg.value_type(v)
     }
 
-    pub fn type_of_virtual_value(&mut self, v: VirtualValue) -> Vec<Type> {
-        self.as_values(&v)
+    pub fn type_of_virtual_value(&mut self, v: &VirtualValue) -> Vec<Type> {
+        self.as_values(v)
             .into_iter()
             .map(|v| self.type_of_value(v))
             .collect()
