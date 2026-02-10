@@ -8,7 +8,7 @@ use rustc_hash::FxHashMap;
 
 use crate::passes::backend::target::native::functionbuilder::LookupTable;
 use crate::passes::backend::{lir::ClosureConvertOut, target::Target};
-use crate::resource::rep::backend::lir::{Item, LIR, Var};
+use crate::resource::rep::backend::lir::{AppType, Item, LIR};
 use crate::resource::rep::backend::native::VirtualValue;
 use crate::resource::rep::backend::types::LIRType;
 use crate::resource::rep::frontend::ast::BinOp;
@@ -89,31 +89,31 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         }
     }
 
-    fn get_var(&mut self, var: Var) -> VirtualValue {
-        // dbg!(&self.scope);
-        // TODO: use stack based representation for variables??
-        if let Some(v) = self.scope.get(&LIR::Var(var)) {
-            v.clone()
-        } else {
-            let block_params = self
-                .builder
-                .block_params(self.builder.current_block().expect("Not in block"));
-            if let Some(v) = block_params.get(var.id.0) {
-                VirtualValue::Scalar(*v)
-            } else {
-                dbg!(block_params);
-                panic!("Undefined variable {var:?}")
-            }
-        }
+    // fn get_var(&mut self, var: Var) -> VirtualValue {
+    //     // dbg!(&self.scope);
+    //     // TODO: use stack based representation for variables??
+    //     if let Some(v) = self.scope.get(&LIR::Var(var)) {
+    //         v.clone()
+    //     } else {
+    //         let block_params = self
+    //             .builder
+    //             .block_params(self.builder.current_block().expect("Not in block"));
+    //         if let Some(v) = block_params.get(var.id.0) {
+    //             VirtualValue::Scalar(*v)
+    //         } else {
+    //             // dbg!(block_params);
+    //             panic!("Undefined variable {var:?}")
+    //         }
+    //     }
 
-        // let index= var.id.0;
-    }
+    //     // let index= var.id.0;
+    // }
 
     fn scope_get(&mut self, var: LIR) -> VirtualValue {
         if let Some(v) = self.scope.get(&var) {
             v.clone()
         } else {
-            dbg!(&self.scope);
+            // dbg!(&self.scope);
             panic!("Undefined variable {var:?}")
         }
     }
@@ -128,9 +128,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             LIR::Unit => self.unit(),
             LIR::Float(f) => self.float(f),
             LIR::ClosureBuild(_, closure_id, capt_vars) => {
-                // dbg!(t);
                 let func_id = self.types.function_names.get_by_right(&closure_id).unwrap();
-
                 let captures: Vec<_> = capt_vars
                     .iter()
                     .map(|v| self.scope_get(LIR::Var(*v)))
@@ -149,18 +147,13 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 self.call_func(func, args)
             }
             LIR::Local(var, defn, body) => {
-                // let var_ty = translate_ty(self.module, defn.type_of());
                 let defn = self.convert_lir(*defn);
-                // self.builder.def_var(Variable::from_u32(var.id.0 as u32), defn.clone().as_value());
-                // dbg!(var);
                 self.scope.insert(LIR::Var(var), defn);
                 self.convert_lir(*body)
             }
             LIR::Access(ref closure, idx) => {
                 let closure = LIR::Field(closure.clone(), idx);
                 self.field(&closure, &lir, idx)
-                // let vv = self.convert_lir(closure);
-                // self.destruct_field(&vv, idx)
             }
             LIR::Struct(fields) => {
                 let (types, fields): (Vec<_>, Vec<_>) = fields
@@ -174,13 +167,20 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             LIR::Field(ref obj, idx) => self.field(&lir, obj, idx),
             LIR::Case(t, lir, lirs) => todo!(),
             LIR::Tag(t, usize, b) => self.tag(t, usize, *b),
-            LIR::Item(item_id, _) => {
-                // dbg!(item_id);
+            LIR::FuncRef(app_type) => self.convert_app_type(app_type),
+            LIR::BinOp(left, op, right) => self.convert_bin_op(*left, op, *right),
+        }
+    }
+
+    fn convert_app_type(&mut self, app_type: AppType) -> VirtualValue {
+        match app_type {
+            AppType::LIR(lir) => self.convert_lir(*lir),
+            AppType::Item(item_id, lirtype) => {
+                let args = self.types.function_types.get(&item_id).unwrap().0.clone();
                 let func_id = *self.types.function_names.get_by_right(&item_id).unwrap();
-                // let fref = self.module.declare_func_in_func(func_id, self.builder.func);
                 VirtualValue::Func(func_id)
             }
-            LIR::Extern(name, t) => {
+            AppType::Extern(name, t) => {
                 let (fparams, fret) = t.destructure_closure();
                 let sig = self
                     .types
@@ -192,7 +192,6 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 // let fref = self.module.declare_func_in_func(the_fun, self.builder.func);
                 VirtualValue::Func(the_fun)
             }
-            LIR::BinOp(left, op, right) => self.convert_bin_op(*left, op, *right),
         }
     }
 
@@ -213,10 +212,11 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
     }
 
     fn tag(&mut self, ty: LIRType, idx: usize, body: LIR) -> VirtualValue {
+        let size_t = self.types.ptr_type();
         let body = self.convert_lir(body);
+        let tag = self.ins().iconst(size_t, idx as i64);
         VirtualValue::TaggedUnion {
-            ty,
-            idx,
+            tag,
             body: Box::new(body),
         }
     }
@@ -275,21 +275,6 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         // self.builder.seal_block(entry_block);
         self.builder.seal_all_blocks();
         self.builder.finalize();
-    }
-}
-
-fn translate_ty(module: &ObjectModule, ty: LIRType) -> types::Type {
-    match ty {
-        LIRType::Int => types::F32,
-        LIRType::Float => types::F32,
-        LIRType::String => module.isa().pointer_type(),
-        LIRType::Unit => types::I8,
-
-        LIRType::Union(lirtypes) => todo!(),
-        LIRType::Closure(..)|// => module.isa().pointer_type(),
-        LIRType::Struct(_) | LIRType::ClosureEnv(..) => {
-            panic!("{ty:?}")
-            }
     }
 }
 

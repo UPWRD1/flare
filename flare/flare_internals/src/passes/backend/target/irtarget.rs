@@ -12,7 +12,7 @@ impl Target for IRTarget {
     type Output = String;
     // type Input = IR;
 
-    fn generate(&mut self, ir: Vec<ClosureConvertOut>) -> Self::Output {
+    fn generate(&mut self, _ir: Vec<ClosureConvertOut>) -> Self::Output {
         unimplemented!("don't do this")
     }
 

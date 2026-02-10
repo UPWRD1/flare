@@ -29,10 +29,10 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         // let real_params = params;
         // dbg!(&real_params);
         let sigref = self.builder.import_signature(closure.sig.clone());
-        let func = self.as_value(&closure.func)[0];
+        let func = self.as_values(&closure.func)[0];
         let new_params = real_params
             .iter()
-            .flat_map(|param| self.as_value(param))
+            .flat_map(|param| self.as_values(param))
             .collect::<Vec<_>>();
 
         let call = self.builder.ins().call_indirect(sigref, func, &new_params);
@@ -58,7 +58,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         let (boxed_captures, is_captures_by_pointer) = {
             if self.types.struct_passing_mode(closure_env) == StructPassingMode::ByPointer {
                 (
-                    self.stack_alloc_values(closure_env, captures.to_vec()),
+                    self.stack_alloc_captures(closure_env, captures.to_vec()),
                     true,
                 )
             } else {
@@ -125,7 +125,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         let captys: Vec<_> = {
             let vvs = captures
                 .iter()
-                .flat_map(|vv| self.as_value(vv))
+                .flat_map(|vv| self.as_values(vv))
                 .collect::<Vec<_>>();
             vvs.into_iter().map(|v| self.type_of_value(v)).collect()
         };
@@ -258,12 +258,20 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
         offset
     }
+    pub fn stack_alloc_captures(
+        &mut self,
+        ty: LIRType,
+        captures: Vec<VirtualValue>,
+    ) -> VirtualValue {
+        let pointer = self.stack_alloc_vvalues(captures);
+        VirtualValue::StackStruct { ty, ptr: pointer }
+    }
 
-    pub fn stack_alloc_values(&mut self, ty: LIRType, captures: Vec<VirtualValue>) -> VirtualValue {
+    pub fn stack_alloc_vvalues(&mut self, captures: Vec<VirtualValue>) -> Value {
         let size_t = self.module.isa().pointer_type();
         let v_values: Vec<_> = captures
             .into_iter()
-            .flat_map(|v| self.as_value(&v))
+            .flat_map(|v| self.as_values(&v))
             .collect();
         let types = v_values
             .iter()
@@ -284,8 +292,32 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             self.builder.ins().stack_store(*v, slot, offset);
             offset += Self::offset_of_field(i, &types);
         }
-        let pointer = self.builder.ins().stack_addr(size_t, slot, 0);
-        VirtualValue::StackStruct { ty, ptr: pointer }
+        self.builder.ins().stack_addr(size_t, slot, 0)
+    }
+
+    pub fn stack_alloc_values(&mut self, values: Vec<Value>) -> Value {
+        let size_t = self.module.isa().pointer_type();
+
+        let types = values
+            .iter()
+            .map(|v| self.type_of_value(*v))
+            .collect::<Vec<_>>();
+        let size = Self::size_of_struct(&types);
+
+        // Create the stack slot for the captures
+        let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            size,
+            0,
+        ));
+
+        // Write our captures to the stack allocation
+        let mut offset = 0;
+        for (i, v) in values.iter().enumerate() {
+            self.builder.ins().stack_store(*v, slot, offset);
+            offset += Self::offset_of_field(i, &types);
+        }
+        self.builder.ins().stack_addr(size_t, slot, 0)
     }
 
     pub fn stack_alloc_types(&mut self, types: &[Type]) -> Value {
@@ -306,5 +338,12 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     pub fn type_of_value(&self, v: Value) -> Type {
         self.builder.func.stencil.dfg.value_type(v)
+    }
+
+    pub fn type_of_virtual_value(&mut self, v: VirtualValue) -> Vec<Type> {
+        self.as_values(&v)
+            .into_iter()
+            .map(|v| self.type_of_value(v))
+            .collect()
     }
 }

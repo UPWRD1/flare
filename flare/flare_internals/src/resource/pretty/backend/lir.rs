@@ -6,7 +6,7 @@ use tiny_pretty::Doc;
 
 use crate::resource::{
     pretty::{DocExt, Render},
-    rep::backend::lir::{Item, LIR, Var},
+    rep::backend::lir::{AppType, Item, LIR, Var},
 };
 
 impl Render for Var {
@@ -32,6 +32,7 @@ impl Render for LIR {
                 )
                 .brackets(),
             ),
+            Self::FuncRef(app_type) => app_type.render(),
             Self::Apply(ir, ir1) => ir.render().append(ir1.render().parens()),
             Self::BulkApply(fun, args) => fun.render().append(
                 Doc::list(
@@ -63,8 +64,6 @@ impl Render for LIR {
             )
             .braces(),
             Self::Field(ir, u) => ir.render().text(".").append(Doc::text(u.to_string())),
-            Self::Item(id, _) => Doc::text(format!("#{}", id.0)),
-            Self::Extern(n, _) => Doc::text(format!("extern_{}", n)),
             Self::BinOp(l, op, r) => l.render().space().text(format!("{op}")).space().render(*r),
             Self::Case(_, scrutinee, branches) => {
                 Doc::text("case").space().render(*scrutinee).append(
@@ -158,5 +157,15 @@ impl Display for Item {
                 }
             )
         )
+    }
+}
+
+impl Render for AppType {
+    fn render(self) -> Doc<'static> {
+        match self {
+            AppType::LIR(lir) => lir.render(),
+            AppType::Item(id, _) => Doc::text(format!("#{}", id.0)),
+            AppType::Extern(n, _) => Doc::text(format!("extern_{}", n)),
+        }
     }
 }

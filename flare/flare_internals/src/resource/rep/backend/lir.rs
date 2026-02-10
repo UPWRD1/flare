@@ -27,15 +27,32 @@ pub enum LIR {
     ClosureBuild(LIRType, ir::ItemId, Vec<Var>),
     Apply(Box<Self>, Box<Self>),
     BulkApply(Box<Self>, Vec<Self>),
+    FuncRef(AppType),
     Local(Var, Box<Self>, Box<Self>),
     Access(Box<Self>, usize),
     Struct(Vec<Self>),
     Field(Box<Self>, usize),
     Case(LIRType, Box<Self>, Vec<Self>),
     Tag(LIRType, usize, Box<Self>),
+    // Item(ir::ItemId, LIRType),
+    // Extern(Intern<String>, LIRType),
+    BinOp(Box<Self>, BinOp, Box<Self>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AppType {
+    LIR(Box<LIR>),
     Item(ir::ItemId, LIRType),
     Extern(Intern<String>, LIRType),
-    BinOp(Box<Self>, BinOp, Box<Self>),
+}
+
+impl AppType {
+    pub fn type_of(&self) -> LIRType {
+        match self {
+            AppType::LIR(lir) => lir.type_of(),
+            AppType::Item(_, ty) | AppType::Extern(_, ty) => *ty,
+        }
+    }
 }
 
 impl LIR {
@@ -43,7 +60,7 @@ impl LIR {
         Self::Local(v, Box::new(defn), Box::new(body))
     }
 
-    pub fn apply(l: Self, r: Self) -> Self {
+    pub fn apply_lir(l: Self, r: Self) -> Self {
         Self::Apply(Box::new(l), Box::new(r))
     }
 
@@ -78,6 +95,10 @@ impl LIR {
                     free.insert(*var);
                 }
             }
+            Self::FuncRef(app_type) => match app_type {
+                AppType::LIR(lir) => lir.free_vars_aux(free),
+                AppType::Item(_, _) | AppType::Extern(_, _) => {}
+            },
             Self::Apply(fun, arg) => {
                 fun.free_vars_aux(free);
                 arg.free_vars_aux(free);
@@ -93,8 +114,7 @@ impl LIR {
             }
             Self::Access(ir, _) | Self::Field(ir, _) => ir.free_vars_aux(free),
             Self::Struct(v) => v.iter().for_each(|ir| ir.free_vars_aux(free)),
-            Self::Item(..) | Self::Extern(..) => {}
-
+            // Self::Item(..) | Self::Extern(..) => {}
             Self::BinOp(l, _, r) => {
                 l.free_vars_aux(free);
                 r.free_vars_aux(free);
@@ -126,8 +146,16 @@ impl LIR {
             | Self::Float(_)
             | Self::Unit
             | Self::Str(_)
-            | Self::Item(..)
-            | Self::Extern(..) => {}
+            // | Self::Item(..)
+            // | Self::Extern(..)
+            => {}
+            Self::FuncRef(app_type) => {
+                match app_type {
+                    AppType::LIR(lir) => lir.rename(subst),
+                    AppType::Item(_, _) | 
+                    AppType::Extern(_, _) => {},
+                }
+            }
             Self::ClosureBuild(_, _, vars) => {
                 for var in vars.iter_mut() {
                     if let Some(new_var) = subst.get(var) {
@@ -136,12 +164,12 @@ impl LIR {
                 }
             }
             Self::Apply(fun, arg) => {
-                fun.rename(subst);
+                                fun.rename(subst);
                 arg.rename(subst);
             }
             Self::BulkApply(fun, args) => {
                 fun.rename(subst);
-                args.iter_mut().for_each(|arg| arg.rename(subst));
+                                args.iter_mut().for_each(|arg| arg.rename(subst));
             }
             Self::Local(_, defn, body) => {
                 defn.rename(subst);
@@ -169,6 +197,9 @@ impl LIR {
             LIR::Unit => LIRType::Unit,
             LIR::Float(_) => LIRType::Float,
             // LIR::ClosureBuild(t, _, t) => *t,
+            LIR::FuncRef(app_type) => {
+                app_type.type_of()
+            }
             LIR::ClosureBuild(f, _, env) => {
                 let env_tys: Vec<_> = env.iter().map(|v| v.ty).collect();
                 LIRType::ClosureEnv((*f).into(), env_tys.as_slice().into())
@@ -201,8 +232,7 @@ impl LIR {
             }
             LIR::Case(t, lir, lirs) => *t,
             LIR::Tag(t, _, _) => *t,
-            LIR::Item(_, t) => *t,
-            LIR::Extern(_, t) => *t,
+
             LIR::BinOp(left, ..) => left.type_of(),
         }
     }

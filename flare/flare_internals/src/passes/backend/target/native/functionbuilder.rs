@@ -11,9 +11,7 @@ use cranelift::{
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::backend::target::native::{
-        ENTRYPOINT_FUNCTION_SYMBOL, FunctionPurpose, IRConverter, translate_ty,
-    },
+    passes::backend::target::native::{ENTRYPOINT_FUNCTION_SYMBOL, FunctionPurpose, IRConverter},
     resource::rep::{
         backend::{
             lir::{Item, Var},
@@ -42,7 +40,7 @@ pub struct LookupTable {
 }
 
 impl LookupTable {
-    fn ptr_type(&self) -> Type {
+    pub fn ptr_type(&self) -> Type {
         Type::int_with_byte_size(self.ptr_size as u16).expect("Could not create pointer type")
     }
 
@@ -74,20 +72,36 @@ impl LookupTable {
         }
     }
 
-    fn generate_struct_table(&mut self, module: &mut ObjectModule, ty: LIRType) -> Type {
+    fn translate_ty(&self, ty: LIRType) -> types::Type {
+        match ty {
+            LIRType::Int => types::F32,
+            LIRType::Float => types::F32,
+            LIRType::String => self.ptr_type(),
+            LIRType::Unit => types::I8,
+
+            LIRType::Union(_)
+            | LIRType::Closure(..)
+            | LIRType::Struct(_)
+            | LIRType::ClosureEnv(..) => {
+                panic!("{ty:?}")
+            }
+        }
+    }
+
+    fn generate_struct_table(&mut self, ty: LIRType) -> Type {
         match ty {
             LIRType::Int | LIRType::Float | LIRType::String | LIRType::Unit => {
-                translate_ty(module, ty)
+                self.translate_ty(ty)
             }
             LIRType::Struct(tys) => {
                 let new_tys = tys
                     .iter()
-                    .map(|ty| self.generate_struct_table(module, *ty))
+                    .map(|ty| self.generate_struct_table(*ty))
                     .collect();
                 self.struct_fields.insert(ty, new_tys);
-                module.isa().pointer_type()
+                self.ptr_type()
             }
-            LIRType::Union(variants) => {
+            LIRType::Union(_) => {
                 // let types: Vec<Type> = variants
                 //     .iter()
                 //     .map(|v| self.generate_struct_table(module, *v))
@@ -101,12 +115,12 @@ impl LookupTable {
                 //     PayloadKind::StackPointer => todo!(),
                 // }
                 // todo!()
-                module.isa().pointer_type()
+                self.ptr_type()
             }
-            LIRType::Closure(intern, intern1) => module.isa().pointer_type(),
+            LIRType::Closure(..) => self.ptr_type(),
             LIRType::ClosureEnv(..) => {
                 let closure_struct = ty.closure_to_struct_rep();
-                self.generate_struct_table(module, closure_struct)
+                self.generate_struct_table(closure_struct)
             }
         }
     }
@@ -132,9 +146,9 @@ impl LookupTable {
 
             let params: Vec<LIRType> = item.params.iter().map(|v| v.ty).collect();
             for ty in params.iter() {
-                me.generate_struct_table(module, *ty);
+                me.generate_struct_table(*ty);
             }
-            me.generate_struct_table(module, item.ret_ty);
+            me.generate_struct_table(item.ret_ty);
 
             me.function_types.insert(item.id, (params, item.ret_ty));
 
@@ -360,7 +374,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         self.builder.ins()
     }
 
-    pub fn as_value(&mut self, value: &VirtualValue) -> Vec<Value> {
+    pub fn as_values(&mut self, value: &VirtualValue) -> Vec<Value> {
         match value {
             VirtualValue::Scalar(value) => vec![*value],
             VirtualValue::Pointer(_, ptr) => vec![*ptr],
@@ -368,7 +382,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 vec![*ptr]
             }
             VirtualValue::UnstableStruct { ty, fields } => {
-                fields.iter().flat_map(|vv| self.as_value(vv)).collect()
+                fields.iter().flat_map(|vv| self.as_values(vv)).collect()
             }
             VirtualValue::Func(func_id) => {
                 let ptr = self.types.ptr_type();
@@ -378,20 +392,36 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 vec![self.ins().func_addr(ptr, fref)]
             }
             VirtualValue::Closure(c) => {
-                let mut vec = self.as_value(&c.captures);
-                vec.extend(self.as_value(&c.func));
+                let mut vec = self.as_values(&c.captures);
+                vec.extend(self.as_values(&c.func));
                 vec
             }
-            VirtualValue::TaggedUnion { ty, idx, body } => {
-                self.as_value(body)
-                // let mut payload = vec![ptr]
-                // let tag = self
-                //     .builder
-                //     .ins()
-                //     .iconst(self.types.ptr_type(), *idx as i64);
-                // payload.insert(0, tag);
-                // payload
+            VirtualValue::TaggedUnion { tag, body } => {
+                let payload = self.make_payload(body);
+                vec![*tag, payload]
             }
+        }
+    }
+
+    fn make_payload(&mut self, body: &VirtualValue) -> Value {
+        let size_t = self.module.isa().pointer_type();
+        let param_types = self.type_of_virtual_value(body.clone());
+        let body = self.as_values(body);
+
+        match self.types.payload_kind(&param_types) {
+            PayloadKind::InlineCasted(t) => {
+                let val = if t.is_float() {
+                    self.builder.ins().fcvt_to_sint_sat(types::I32, body[0])
+                } else {
+                    body[0]
+                };
+
+                // let val = params[0];
+                self.builder.ins().sextend(size_t, val)
+            }
+            PayloadKind::Inline => body[0],
+            PayloadKind::Zero => self.builder.ins().iconst(size_t, 0),
+            PayloadKind::StackPointer => self.stack_alloc_values(body.to_vec()),
         }
     }
 
@@ -498,8 +528,15 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             }
             LIRType::Union(variants) => {
                 let size_t = self.module.isa().pointer_type();
+                let values: Vec<_> = variants
+                    .iter()
+                    .map(|v| self.type_to_virtual_value(f, is_root, *v))
+                    .collect();
                 let ptr = f(self, size_t);
-                VirtualValue::Scalar(ptr)
+                VirtualValue::TaggedUnion {
+                    tag: ptr,
+                    body: Box::new(VirtualValue::Scalar(ptr)),
+                }
             }
             _ => todo!("{p:?}"),
         }
@@ -537,13 +574,13 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             }
             VirtualValue::Closure(..) => {
                 // dbg!(captures_value);
-                let vals = self.as_value(&v);
+                let vals = self.as_values(&v);
                 buf.extend(vals);
 
                 // todo!()
             }
             VirtualValue::Func(f) => {
-                let val = self.as_value(&v);
+                let val = self.as_values(&v);
                 buf.extend(val);
             }
             _ => todo!("{v:?}"),
@@ -597,24 +634,14 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                         VirtualValue::Scalar(v)
                     }
                     LIRType::Closure(l, r) => {
-                        let ret: Type = self
-                            .types
-                            .make_sig(isa::CallConv::Fast, vec![*l], *r)
-                            .returns[0]
-                            .value_type;
-                        // let ret: Vec<Type> = self
+                        // let ret: Type = self
                         //     .types
                         //     .make_sig(isa::CallConv::Fast, vec![*l], *r)
-                        //     .returns
-                        //     .iter()
-                        //     .map(|p| p.value_type)
-                        //     .collect();
-                        // if ret.len() == 1 {
-                        //     ret[0]
-                        // } else {
-                        // }
-                        // let pointer = self.types.ptr_type();
-                        let v = self.ins().load(ret, MemFlags::new(), *ptr, offset);
+                        //     .returns[0]
+                        //     .value_type;
+                        let pointer = self.types.ptr_type();
+                        // let v = self.ins().load(ret, MemFlags::new(), *ptr, offset);
+                        let v = self.ins().load(pointer, MemFlags::new(), *ptr, offset);
                         dbg!(v);
                         VirtualValue::Pointer(PointeeType::Func(vec![*l], *r), v)
                     }
@@ -661,7 +688,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     StructPassingMode::ByScalars => {
                         let fields = fields
                             .iter()
-                            .flat_map(|v| self.as_value(v))
+                            .flat_map(|v| self.as_values(v))
                             .collect::<Vec<_>>();
 
                         self.builder.ins().return_(&fields);
@@ -678,46 +705,12 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     }
                 }
             }
-            VirtualValue::TaggedUnion { ty, idx, body } => {
-                let size_t = self.module.isa().pointer_type();
-
-                let mut params: Vec<Value> = vec![];
-                self.virtual_value_to_func_params(&mut params, *body.clone());
-
-                let param_types = params
-                    .iter()
-                    .map(|param| self.type_of_value(*param))
-                    .collect::<Vec<_>>();
-
-                let variant_ty = ty.variant(idx);
-
-                let payload = match self.types.payload_kind(&param_types) {
-                    PayloadKind::InlineCasted(t) => {
-                        let val = if t.is_float() {
-                            self.builder.ins().fcvt_to_sint_sat(types::I32, params[0])
-                        } else {
-                            params[0]
-                        };
-
-                        // let val = params[0];
-                        VirtualValue::Scalar(self.builder.ins().sextend(size_t, val))
-                    }
-                    PayloadKind::Inline => VirtualValue::Scalar(params[0]),
-                    PayloadKind::Zero => VirtualValue::Scalar(self.builder.ins().iconst(size_t, 0)),
-                    PayloadKind::StackPointer => self.stack_alloc_values(variant_ty, vec![*body]),
-                };
-
-                let tag = VirtualValue::Scalar(
-                    self.builder.ins().iconst(self.types.ptr_type(), idx as i64),
-                );
-                let new_vv = VirtualValue::UnstableStruct {
-                    ty: LIRType::Struct(vec![LIRType::Int, variant_ty].as_slice().into()),
-                    fields: vec![tag, payload],
-                };
-                self.return_(new_vv);
+            VirtualValue::TaggedUnion { .. } => {
+                let vals = self.as_values(&vv);
+                self.ins().return_(&vals);
             }
             VirtualValue::Func(f) => {
-                let val = self.as_value(&vv);
+                let val = self.as_values(&vv);
                 self.ins().return_(&val);
             }
             _ => todo!("{vv:?}"),

@@ -532,12 +532,14 @@ impl<'p> Simplifier<'p> {
                     break self.rebuild(ir, in_scope, ctx);
                 }
                 IR::Item(ref t, itemid) => {
-                    dbg!(t);
-                    // dbg!(self.items.len());
                     break self.rebuild(ir, in_scope, ctx);
+
+// dbg!(t);
                     // if t.is_scalar() {
-                    //   self.items[itemid.0 as  usize].clone()}
-                    // else {break self.rebuild(ir, in_scope, ctx)}
+                    //   self.items[itemid.0 as  usize].clone()
+                    // } else {
+                        // break self.rebuild(ir, in_scope, ctx)
+                    // }
                 }                           
             }
         }
