@@ -13,11 +13,22 @@ pub struct Closure {
 #[derive(Debug, Clone)]
 pub enum VirtualValue {
     Scalar(Value),
-    StackStruct { ty: LIRType, ptr: Value },
-    UnstableStruct { ty: LIRType, fields: Vec<Self> },
+    StackStruct {
+        ty: LIRType,
+        ptr: Value,
+    },
+    UnstableStruct {
+        ty: LIRType,
+        fields: Vec<Self>,
+    },
     Closure(Closure),
     Func(FuncId),
     Pointer(PointeeType, Value),
+    TaggedUnion {
+        ty: LIRType,
+        idx: usize,
+        body: Box<VirtualValue>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +36,21 @@ pub enum PointeeType {
     Func(Vec<LIRType>, LIRType),
     String,
     Struct,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PayloadKind {
+    InlineCasted(Type),
+    Inline,
+    Zero,
+    StackPointer,
+}
+
+// Whether a struct will be passed as a pointer or as a set of independent values directly
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum StructPassingMode {
+    ByScalars,
+    ByPointer,
 }
 
 impl VirtualValue {

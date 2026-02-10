@@ -386,7 +386,7 @@ enum ContextEntry {
 }
 
 #[derive(Default)]
-struct Simplifier {
+struct Simplifier<'p> {
     occs: Occurrences,
     subst: Subst,
     saturated_fun_count: usize,
@@ -394,7 +394,7 @@ struct Simplifier {
     locals_inlined: usize,
     tuples_inlined: usize,
     inline_size_threshold: usize,
-    // items: &'p [IR],
+    items: &'p [IR],
 
     // seen_items: FxHashSet<ItemId>,
 }
@@ -402,7 +402,7 @@ struct Simplifier {
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
 let ref_ir = the_ir.clone();
 let mut occ_a = OccuranceAnalyzer::new();
-let mut simplifier = Simplifier::new();
+let mut simplifier = Simplifier::new(&ref_ir);
     the_ir
                 .into_iter()
         .map(|ir| {
@@ -422,11 +422,11 @@ let mut simplifier = Simplifier::new();
         .collect()
 }
 
-impl Simplifier {
-    fn new() -> Self {
+impl<'p> Simplifier<'p> {
+    fn new(items: &'p [IR]) -> Self {
         Self {
             // occs:,
-            // items: prev,
+            items ,
             inline_size_threshold: 60, // GHC magic number is 60
             subst: FxHashMap::default(),
             ..Default::default()        }
@@ -531,16 +531,14 @@ impl Simplifier {
                 IR::Extern(_, _) => {
                     break self.rebuild(ir, in_scope, ctx);
                 }
-                IR::Item(_, itemid) => {
+                IR::Item(ref t, itemid) => {
+                    dbg!(t);
                     // dbg!(self.items.len());
                     break self.rebuild(ir, in_scope, ctx);
-                    // match self.item_inline(itemid, &in_scope, &ctx) {
-                        // ControlFlow::Continue(c) => c,
-                        // ControlFlow::Break(_) => {
-                            // break self.rebuild(ir, in_scope, ctx);
-                        // }
-                    // }
-                }
+                    // if t.is_scalar() {
+                    //   self.items[itemid.0 as  usize].clone()}
+                    // else {break self.rebuild(ir, in_scope, ctx)}
+                }                           
             }
         }
     }

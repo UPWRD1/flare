@@ -26,7 +26,7 @@ impl LIRType {
             LIRType::Struct(intern) => intern.to_vec(),
             LIRType::ClosureEnv(..) => self.closure_to_struct_rep().into_struct_fields(),
             // LIRType::ClosureEnv(_, env) => env.to_vec(),
-            _ => unimplemented!("NOt a struct: {self:?}"),
+            _ => unimplemented!("Not a struct: {self:?}"),
         }
     }
 
@@ -65,5 +65,13 @@ impl LIRType {
         worker(&self, &mut v);
         let (ret, args) = v.split_last().expect("Could not destructure arrow");
         (args.to_vec(), *ret)
+    }
+
+    pub fn variant(self, idx: usize) -> Self {
+        if let Self::Union(variants) = self {
+            variants[idx]
+        } else {
+            panic!("Not a union")
+        }
     }
 }

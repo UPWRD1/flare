@@ -55,6 +55,16 @@ impl IRType {
             _ => self,
         }
     }
+
+    pub fn is_scalar(&self) -> bool {
+        match self {
+            IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => true,
+            IRType::Prod(row) | IRType::Sum(row) => true,
+            IRType::Var(type_var) => false,
+            IRType::Fun(irtype, irtype1) => false,
+            IRType::TyFun(_, t) => t.is_scalar(),
+        }
+    }
 }
 
 impl IRType {

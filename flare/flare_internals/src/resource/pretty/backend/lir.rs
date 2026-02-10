@@ -66,17 +66,27 @@ impl Render for LIR {
             Self::Item(id, _) => Doc::text(format!("#{}", id.0)),
             Self::Extern(n, _) => Doc::text(format!("extern_{}", n)),
             Self::BinOp(l, op, r) => l.render().space().text(format!("{op}")).space().render(*r),
-            Self::Case(scrutinee, branches) => Doc::text("case").space().render(*scrutinee).append(
-                Doc::list(
-                    branches
-                        .into_iter()
-                        .map(Render::render)
-                        .intersperse(Doc::text(","))
-                        .collect(),
+            Self::Case(_, scrutinee, branches) => {
+                Doc::text("case").space().render(*scrutinee).append(
+                    Doc::list(
+                        branches
+                            .into_iter()
+                            .map(Render::render)
+                            .intersperse(Doc::text(","))
+                            .collect(),
+                    )
+                    .nest(2)
+                    .braces(),
                 )
-                .nest(2)
-                .braces(),
-            ),
+            }
+            Self::Tag(t, u, body) => body
+                .render()
+                .space()
+                .text("as")
+                .space()
+                .render(t)
+                .text("@")
+                .text(u),
         }
     }
 }

@@ -94,14 +94,15 @@ impl ClosureConvert {
                     .collect(),
             ),
 
-            ir::IR::Tag(_, _, ir) => self.convert(*ir, env), //TODO: special tag for unions
+            ir::IR::Tag(t, idx, ir) => LIR::tag(lower_ty(&t), idx, self.convert(*ir, env)), //TODO: special tag for unions
             ir::IR::Item(t, d) => LIR::Item(self.item_supply.supply_for(d), lower_ty(&t)),
             // ir::IR::Item(t, d) => LIR::Item(d, lower_ty(&t)),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             ir::IR::Bin(l, op, r) => {
                 LIR::binop(self.convert(*l, env.clone()), op, self.convert(*r, env))
             }
-            ir::IR::Case(_, scrutinee, branches) => LIR::case(
+            ir::IR::Case(ty, scrutinee, branches) => LIR::case(
+                lower_ty(&ty),
                 self.convert(*scrutinee, env.clone()),
                 branches
                     .into_iter()

@@ -172,7 +172,8 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 self.construct_struct(struct_ty, &fields)
             }
             LIR::Field(ref obj, idx) => self.field(&lir, obj, idx),
-            LIR::Case(lir, lirs) => todo!(),
+            LIR::Case(t, lir, lirs) => todo!(),
+            LIR::Tag(t, usize, b) => self.tag(t, usize, *b),
             LIR::Item(item_id, _) => {
                 // dbg!(item_id);
                 let func_id = *self.types.function_names.get_by_right(&item_id).unwrap();
@@ -211,6 +212,15 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         }
     }
 
+    fn tag(&mut self, ty: LIRType, idx: usize, body: LIR) -> VirtualValue {
+        let body = self.convert_lir(body);
+        VirtualValue::TaggedUnion {
+            ty,
+            idx,
+            body: Box::new(body),
+        }
+    }
+
     pub fn create_entry_block(&mut self, params: &[LIRType]) -> (Block, Vec<VirtualValue>) {
         let block = self.builder.create_block();
         self.builder.seal_block(block);
@@ -238,7 +248,9 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         self.builder.switch_to_block(entry_block);
         for (var, vparam) in item.params.into_iter().zip(vparams) {
             match vparam {
-                VirtualValue::Scalar(_) | VirtualValue::StackStruct { .. } => {
+                VirtualValue::Scalar(_)
+                | VirtualValue::StackStruct { .. }
+                | VirtualValue::TaggedUnion { .. } => {
                     self.scope.insert(LIR::Var(var), vparam);
                 }
                 VirtualValue::UnstableStruct { ty, fields } => {

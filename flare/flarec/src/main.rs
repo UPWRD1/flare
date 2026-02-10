@@ -25,7 +25,8 @@ use flare_internals::{
 fn enable_loggin() {
     if cfg!(debug_assertions) {
         pretty_env_logger::formatted_builder()
-            .filter_level(log::LevelFilter::Error)
+            // .filter_level(log::LevelFilter::Error)
+            .filter_level(log::LevelFilter::Info)
             .target(pretty_env_logger::env_logger::Target::Stdout)
             //.format_module_path(false)
             .format(|f, r| writeln!(f, "{}", r.args(),))

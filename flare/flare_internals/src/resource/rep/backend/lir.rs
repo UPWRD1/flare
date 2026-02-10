@@ -31,7 +31,8 @@ pub enum LIR {
     Access(Box<Self>, usize),
     Struct(Vec<Self>),
     Field(Box<Self>, usize),
-    Case(Box<Self>, Vec<Self>),
+    Case(LIRType, Box<Self>, Vec<Self>),
+    Tag(LIRType, usize, Box<Self>),
     Item(ir::ItemId, LIRType),
     Extern(Intern<String>, LIRType),
     BinOp(Box<Self>, BinOp, Box<Self>),
@@ -58,8 +59,12 @@ impl LIR {
         Self::BinOp(Box::new(l), op, Box::new(r))
     }
 
-    pub fn case(scrutinee: Self, branches: impl IntoIterator<Item = Self>) -> Self {
-        Self::Case(Box::new(scrutinee), branches.into_iter().collect())
+    pub fn case(ty: LIRType, scrutinee: Self, branches: impl IntoIterator<Item = Self>) -> Self {
+        Self::Case(ty, Box::new(scrutinee), branches.into_iter().collect())
+    }
+
+    pub fn tag(ty: LIRType, idx: usize, body: Self) -> Self {
+        Self::Tag(ty, idx, Box::new(body))
     }
 
     fn free_vars_aux(&self, free: &mut BTreeSet<Var>) {
@@ -94,12 +99,13 @@ impl LIR {
                 l.free_vars_aux(free);
                 r.free_vars_aux(free);
             }
-            Self::Case(scrutinee, branches) => {
+            Self::Case(ty, scrutinee, branches) => {
                 scrutinee.free_vars_aux(free);
                 branches
                     .iter()
                     .for_each(|branch| branch.free_vars_aux(free));
             }
+            Self::Tag(_, _, body) => body.free_vars_aux(free),
         }
     }
 
@@ -147,10 +153,11 @@ impl LIR {
                 l.rename(subst);
                 r.rename(subst);
             }
-            Self::Case(scrutinee, branches) => {
+            Self::Case(_, scrutinee, branches) => {
                 scrutinee.rename(subst);
                 branches.iter_mut().for_each(|branch| branch.rename(subst));
             }
+            Self::Tag(_, _, body) => body.rename(subst),
         }
     }
 
@@ -192,7 +199,8 @@ impl LIR {
                     panic!("Field expression is on non-struct element: {lir}")
                 }
             }
-            LIR::Case(lir, lirs) => todo!(),
+            LIR::Case(t, lir, lirs) => *t,
+            LIR::Tag(t, _, _) => *t,
             LIR::Item(_, t) => *t,
             LIR::Extern(_, t) => *t,
             LIR::BinOp(left, ..) => left.type_of(),

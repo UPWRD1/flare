@@ -1,6 +1,8 @@
+use std::cmp::Ordering;
+
 use bimap::BiMap;
 use cranelift::{
-    codegen::ir::ArgumentPurpose,
+    codegen::ir::{ArgumentPurpose, BlockCall},
     frontend::FuncInstBuilder,
     module::{FuncId, Linkage, Module},
     object::ObjectModule,
@@ -15,7 +17,7 @@ use crate::{
     resource::rep::{
         backend::{
             lir::{Item, Var},
-            native::{PointeeType, VirtualValue},
+            native::{PayloadKind, PointeeType, StructPassingMode, VirtualValue},
             types::LIRType,
         },
         midend::ir::ItemId,
@@ -31,6 +33,7 @@ pub enum Param {
 #[derive(Debug)]
 pub struct LookupTable {
     struct_fields: FxHashMap<LIRType, Vec<Type>>,
+    union_variants: FxHashMap<LIRType, PayloadKind>,
     pub function_types: FxHashMap<ItemId, (Vec<LIRType>, LIRType)>,
     pub function_sigs: FxHashMap<ItemId, Signature>,
     pub function_names: BiMap<FuncId, ItemId>,
@@ -38,15 +41,37 @@ pub struct LookupTable {
     ptr_size: u32,
 }
 
-// Whether a struct will be passed as a pointer or as a set of independent values directly
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum StructPassingMode {
-    ByScalars,
-    ByPointer,
-}
 impl LookupTable {
     fn ptr_type(&self) -> Type {
         Type::int_with_byte_size(self.ptr_size as u16).expect("Could not create pointer type")
+    }
+
+    pub fn payload_kind(&self, params: &[Type]) -> PayloadKind {
+        let size_t = self.ptr_type();
+
+        match params {
+            // We want to inline the payload if it fits in the bytes of size_t
+            [param] => {
+                match param.bytes().cmp(&size_t.bytes()) {
+                    // Should be cast to size_t
+                    Ordering::Less => PayloadKind::InlineCasted(*param),
+                    // The scalar will already have the same memory layout as a payload
+                    Ordering::Equal => PayloadKind::Inline,
+                    // It doesn't fit in the bytes of size_t, so the payload will be stack allocated
+                    Ordering::Greater => PayloadKind::StackPointer,
+                }
+            }
+
+            // It still needs to be the same size of other enums of the same type, so we generate a
+            // zeroed payload.
+            [] => PayloadKind::Zero,
+
+            // Stack allocate larger payloads to store them behind a pointer.
+            //
+            // One possible optimization is to still inline the payload if it's multiple scalars that
+            // fit within size_t by using `iconcat` and `isplit`.
+            _ => PayloadKind::StackPointer,
+        }
     }
 
     fn generate_struct_table(&mut self, module: &mut ObjectModule, ty: LIRType) -> Type {
@@ -62,7 +87,22 @@ impl LookupTable {
                 self.struct_fields.insert(ty, new_tys);
                 module.isa().pointer_type()
             }
-            LIRType::Union(intern) => todo!(),
+            LIRType::Union(variants) => {
+                // let types: Vec<Type> = variants
+                //     .iter()
+                //     .map(|v| self.generate_struct_table(module, *v))
+                //     .collect();
+                // let payload_kind = self.payload_kind(types);
+                // self.union_variants.insert(ty, payload_kind);
+                // match payload_kind {
+                //     PayloadKind::InlineCasted(t) => t,
+                //     PayloadKind::Inline => todo!(),
+                //     PayloadKind::Zero => todo!(),
+                //     PayloadKind::StackPointer => todo!(),
+                // }
+                // todo!()
+                module.isa().pointer_type()
+            }
             LIRType::Closure(intern, intern1) => module.isa().pointer_type(),
             LIRType::ClosureEnv(..) => {
                 let closure_struct = ty.closure_to_struct_rep();
@@ -73,6 +113,7 @@ impl LookupTable {
 
     pub fn new(module: &mut ObjectModule, items: &[(Item, FunctionPurpose)]) -> Self {
         let struct_fields = FxHashMap::default();
+        let union_variants = FxHashMap::default();
         let function_types = FxHashMap::default();
         let function_sigs = FxHashMap::default();
         let function_names = BiMap::default();
@@ -80,6 +121,7 @@ impl LookupTable {
 
         let mut me = Self {
             struct_fields,
+            union_variants,
             function_types,
             function_sigs,
             function_names,
@@ -166,37 +208,20 @@ impl LookupTable {
     ) -> Signature {
         // Get the type signatures from our source language
         // Buffers for the Cranelift type signature.
-        let mut params = vec![];
-        let mut returns = vec![];
         let size_t = self.ptr_type();
         // If the return value is a large struct that's passed as pointer, instead of returning its
         // values directly, we use an out pointer as the first parameter. The callee will write
         // the result to that pointer, instead of returning directly through the return registers.
-        match fret {
-            LIRType::Int => returns.push(AbiParam::new(types::I32)),
-            LIRType::Float => returns.push(AbiParam::new(types::F32)),
-            LIRType::String | LIRType::Closure(..) => params.push(AbiParam::new(size_t)),
-            LIRType::Struct(name) => match self.struct_passing_mode(fret) {
-                StructPassingMode::ByScalars => {
-                    self.for_scalars_of_struct(&mut |ty| returns.push(AbiParam::new(ty)), fret)
-                }
-                StructPassingMode::ByPointer => {
-                    // The `ArgumentPurpose` is needed in-case our target architecture expects the
-                    // out pointer to use a specific register.
-                    let param = AbiParam::special(size_t, ArgumentPurpose::StructReturn);
-                    params.push(param);
-                }
-            },
-
-            LIRType::ClosureEnv(f, env) => {
-                let env_struct = fret.closure_to_struct_rep();
-                match self.struct_passing_mode(env_struct) {
+        let mut params = vec![];
+        let returns = {
+            let mut returns = vec![];
+            match fret {
+                LIRType::Int => returns.push(AbiParam::new(types::I32)),
+                LIRType::Float => returns.push(AbiParam::new(types::F32)),
+                LIRType::String | LIRType::Closure(..) => returns.push(AbiParam::new(size_t)),
+                LIRType::Struct(name) => match self.struct_passing_mode(fret) {
                     StructPassingMode::ByScalars => {
-                        self.for_scalars_of_struct(
-                            &mut |clty| returns.push(AbiParam::new(clty)),
-                            // fret,
-                            env_struct,
-                        );
+                        self.for_scalars_of_struct(&mut |ty| returns.push(AbiParam::new(ty)), fret)
                     }
                     StructPassingMode::ByPointer => {
                         // The `ArgumentPurpose` is needed in-case our target architecture expects the
@@ -204,45 +229,80 @@ impl LookupTable {
                         let param = AbiParam::special(size_t, ArgumentPurpose::StructReturn);
                         params.push(param);
                     }
-                }
-            }
-            _ => todo!("{fret:?}"),
-        };
-        for p in fparams {
-            match p {
-                LIRType::Int => params.push(AbiParam::new(types::I32)),
-                LIRType::Unit => params.push(AbiParam::new(types::I8)),
-                LIRType::Float => params.push(AbiParam::new(types::F32)),
-
-                LIRType::String | LIRType::Closure(..) => params.push(AbiParam::new(size_t)),
-
-                LIRType::Struct(fields) => match self.struct_passing_mode(p) {
-                    StructPassingMode::ByScalars => {
-                        self.for_scalars_of_struct(&mut |clty| params.push(AbiParam::new(clty)), p);
-                    }
-                    StructPassingMode::ByPointer => {
-                        params.push(AbiParam::new(size_t));
-                    }
                 },
 
                 LIRType::ClosureEnv(f, env) => {
-                    let env_struct = p.closure_to_struct_rep();
+                    let env_struct = fret.closure_to_struct_rep();
                     match self.struct_passing_mode(env_struct) {
                         StructPassingMode::ByScalars => {
                             self.for_scalars_of_struct(
-                                &mut |clty| params.push(AbiParam::new(clty)),
+                                &mut |clty| returns.push(AbiParam::new(clty)),
+                                // fret,
                                 env_struct,
-                                // p,
+                            );
+                        }
+                        StructPassingMode::ByPointer => {
+                            // The `ArgumentPurpose` is needed in-case our target architecture expects the
+                            // out pointer to use a specific register.
+                            let param = AbiParam::special(size_t, ArgumentPurpose::StructReturn);
+                            params.push(param);
+                        }
+                    }
+                }
+                LIRType::Union(v) => {
+                    returns.push(AbiParam::new(size_t));
+                    returns.push(AbiParam::new(size_t))
+                }
+
+                _ => todo!("{fret:?}"),
+            };
+            returns
+        };
+        let params = {
+            for p in fparams {
+                match p {
+                    LIRType::Int => params.push(AbiParam::new(types::I32)),
+                    LIRType::Unit => params.push(AbiParam::new(types::I8)),
+                    LIRType::Float => params.push(AbiParam::new(types::F32)),
+
+                    LIRType::String | LIRType::Closure(..) => params.push(AbiParam::new(size_t)),
+
+                    LIRType::Struct(fields) => match self.struct_passing_mode(p) {
+                        StructPassingMode::ByScalars => {
+                            self.for_scalars_of_struct(
+                                &mut |clty| params.push(AbiParam::new(clty)),
+                                p,
                             );
                         }
                         StructPassingMode::ByPointer => {
                             params.push(AbiParam::new(size_t));
                         }
+                    },
+
+                    LIRType::ClosureEnv(f, env) => {
+                        let env_struct = p.closure_to_struct_rep();
+                        match self.struct_passing_mode(env_struct) {
+                            StructPassingMode::ByScalars => {
+                                self.for_scalars_of_struct(
+                                    &mut |clty| params.push(AbiParam::new(clty)),
+                                    env_struct,
+                                    // p,
+                                );
+                            }
+                            StructPassingMode::ByPointer => {
+                                params.push(AbiParam::new(size_t));
+                            }
+                        }
                     }
+                    LIRType::Union(_) => {
+                        params.push(AbiParam::new(size_t));
+                        params.push(AbiParam::new(size_t))
+                    }
+                    _ => todo!("{p:?}"),
                 }
-                _ => todo!("{p:?}"),
             }
-        }
+            params
+        };
         Signature {
             params,
             returns,
@@ -321,6 +381,16 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 let mut vec = self.as_value(&c.captures);
                 vec.extend(self.as_value(&c.func));
                 vec
+            }
+            VirtualValue::TaggedUnion { ty, idx, body } => {
+                self.as_value(body)
+                // let mut payload = vec![ptr]
+                // let tag = self
+                //     .builder
+                //     .ins()
+                //     .iconst(self.types.ptr_type(), *idx as i64);
+                // payload.insert(0, tag);
+                // payload
             }
         }
     }
@@ -425,6 +495,11 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             LIRType::Unit => {
                 let v = f(self, types::I8);
                 VirtualValue::Scalar(v)
+            }
+            LIRType::Union(variants) => {
+                let size_t = self.module.isa().pointer_type();
+                let ptr = f(self, size_t);
+                VirtualValue::Scalar(ptr)
             }
             _ => todo!("{p:?}"),
         }
@@ -603,7 +678,49 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     }
                 }
             }
-            _ => todo!(),
+            VirtualValue::TaggedUnion { ty, idx, body } => {
+                let size_t = self.module.isa().pointer_type();
+
+                let mut params: Vec<Value> = vec![];
+                self.virtual_value_to_func_params(&mut params, *body.clone());
+
+                let param_types = params
+                    .iter()
+                    .map(|param| self.type_of_value(*param))
+                    .collect::<Vec<_>>();
+
+                let variant_ty = ty.variant(idx);
+
+                let payload = match self.types.payload_kind(&param_types) {
+                    PayloadKind::InlineCasted(t) => {
+                        let val = if t.is_float() {
+                            self.builder.ins().fcvt_to_sint_sat(types::I32, params[0])
+                        } else {
+                            params[0]
+                        };
+
+                        // let val = params[0];
+                        VirtualValue::Scalar(self.builder.ins().sextend(size_t, val))
+                    }
+                    PayloadKind::Inline => VirtualValue::Scalar(params[0]),
+                    PayloadKind::Zero => VirtualValue::Scalar(self.builder.ins().iconst(size_t, 0)),
+                    PayloadKind::StackPointer => self.stack_alloc_values(variant_ty, vec![*body]),
+                };
+
+                let tag = VirtualValue::Scalar(
+                    self.builder.ins().iconst(self.types.ptr_type(), idx as i64),
+                );
+                let new_vv = VirtualValue::UnstableStruct {
+                    ty: LIRType::Struct(vec![LIRType::Int, variant_ty].as_slice().into()),
+                    fields: vec![tag, payload],
+                };
+                self.return_(new_vv);
+            }
+            VirtualValue::Func(f) => {
+                let val = self.as_value(&vv);
+                self.ins().return_(&val);
+            }
+            _ => todo!("{vv:?}"),
         }
     }
 
@@ -788,5 +905,44 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         out_ptr_return.unwrap_or_else(|| {
             self.type_to_virtual_value(&mut |_, _| register_returns.next().unwrap(), false, ret)
         })
+    }
+
+    fn switch_to_branch_block(&mut self, call: BlockCall) {
+        let block = call.block(&self.builder.func.dfg.value_lists);
+        self.builder.seal_block(block);
+        self.builder.switch_to_block(block);
+    }
+
+    fn read_payload<const N: usize>(
+        &mut self,
+        payload: Value,
+        param_types: [Type; N],
+    ) -> [Value; N] {
+        let size_t = self.types.ptr_type();
+        match self.types.payload_kind(&param_types) {
+            // Reduce the size of the payload to the inlined data size
+            PayloadKind::InlineCasted(target) => {
+                param_types.map(|_| self.builder.ins().ireduce(target, payload))
+            }
+
+            // Use the payload as-is
+            PayloadKind::Inline => param_types.map(|_| payload),
+
+            // Use zero as the payload so that this payload-less variant still has the same size
+            PayloadKind::Zero => param_types.map(|_| self.builder.ins().iconst(size_t, 0)),
+
+            // Dereference the fields from the payload stack pointer
+            PayloadKind::StackPointer => {
+                let mut offset = 0;
+                param_types.map(|ty| {
+                    let v = self
+                        .builder
+                        .ins()
+                        .load(ty, MemFlags::new(), payload, offset);
+                    offset += ty.bytes() as i32;
+                    v
+                })
+            }
+        }
     }
 }

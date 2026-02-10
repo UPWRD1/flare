@@ -5,9 +5,9 @@ use cranelift::{
 };
 
 use crate::{
-    passes::backend::target::native::{IRConverter, functionbuilder::StructPassingMode},
+    passes::backend::target::native::IRConverter,
     resource::rep::backend::{
-        native::{Closure, VirtualValue},
+        native::{Closure, StructPassingMode, VirtualValue},
         types::LIRType,
     },
 };
@@ -147,17 +147,13 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             let mut ctx = codegen::Context::new();
             let mut fctx = FunctionBuilderContext::new();
 
-            let mut closure_builder = FunctionBuilder::new(&mut ctx.func, &mut fctx);
-            closure_builder.func.signature = sig.clone();
+            let mut converter = IRConverter::new(&mut ctx.func, &mut fctx, self.module, self.types);
+            converter.builder.func.signature = sig.clone();
 
             let real_call_params =
-                Self::build_closure_args(is_captures_by_pointer, captys, &mut closure_builder);
-
-            let f_ref = self.module.declare_func_in_func(f, closure_builder.func);
-
-            let call = closure_builder.ins().call(f_ref, &real_call_params);
-            let returned = closure_builder.inst_results(call).to_vec();
-            closure_builder.ins().return_(&returned);
+                Self::build_closure_args(is_captures_by_pointer, captys, &mut converter.builder);
+            let val = converter.call_func(VirtualValue::Func(f), real_call_params);
+            converter.return_(val);
 
             self.module
                 .define_function(func_id, &mut ctx)
@@ -171,7 +167,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         is_captures_by_pointer: bool,
         captys: Vec<Type>,
         closure_builder: &mut FunctionBuilder<'_>,
-    ) -> Vec<Value> {
+    ) -> Vec<VirtualValue> {
         let block = closure_builder.create_block();
         closure_builder.append_block_params_for_function_params(block);
         closure_builder.switch_to_block(block);
@@ -181,7 +177,12 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             let mut offset = 0;
             for (idx, &ty) in captys.iter().enumerate() {
                 let ptr = closure_builder.block_params(block)[0];
-                let v = closure_builder.ins().load(ty, MemFlags::new(), ptr, offset);
+                let v = VirtualValue::Scalar(closure_builder.ins().load(
+                    ty,
+                    MemFlags::new(),
+                    ptr,
+                    offset,
+                ));
                 real_call_params.push(v);
                 offset = Self::offset_of_field(idx, &captys);
             }
@@ -191,7 +192,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 .iter()
                 .skip(captys.len())
             {
-                real_call_params.push(v);
+                real_call_params.push(VirtualValue::Scalar(v));
             }
             real_call_params
         } else {
@@ -199,7 +200,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 Vec::with_capacity(closure_builder.func.signature.params.len());
             // Add all  parameters from the forwarding function AT ONCE
             for &v in closure_builder.block_params(block) {
-                real_call_params.push(v);
+                real_call_params.push(VirtualValue::Scalar(v));
             }
             real_call_params
         }
