@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cranelift::codegen::ir::Function;
+use cranelift::codegen::ir::{BlockCall, Function};
 use cranelift::module::{FuncId, Linkage, Module};
 use cranelift::object::{ObjectBuilder, ObjectModule};
 use cranelift::prelude::*;
@@ -114,7 +114,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         if let Some(v) = self.scope.get(&var) {
             v.clone()
         } else {
-            // dbg!(&self.scope);
+            dbg!(&self.scope);
             panic!("Undefined variable {var:?}")
         }
     }
@@ -166,7 +166,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 self.construct_struct(struct_ty, &fields)
             }
             LIR::Field(ref obj, idx) => self.field(&lir, obj, idx),
-            LIR::Case(t, lir, lirs) => todo!(),
+            LIR::Case(t, scrutinee, branches) => self.case(t, *scrutinee, branches),
             LIR::Tag(t, usize, b) => self.tag(t.variants(), usize, *b),
             LIR::FuncRef(app_type) => self.convert_app_type(app_type),
             LIR::BinOp(left, op, right) => self.convert_bin_op(*left, op, *right),
@@ -240,6 +240,96 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         }
     }
 
+    fn case(&mut self, t: LIRType, scrutinee: LIR, branches: Vec<LIR>) -> VirtualValue {
+        let symbol = format!("case_forward_{}_{}", scrutinee, branches.len());
+
+        let sig = self.types.make_sig(
+            isa::CallConv::Fast,
+            vec![scrutinee.type_of()],
+            branches[0].type_of(),
+        );
+
+        let scrutinee_vv = self.convert_lir(scrutinee.clone());
+        let VirtualValue::TaggedUnion {
+            ref variants,
+            ref body,
+            idx,
+        } = scrutinee_vv
+        else {
+            panic!("Can't case on non-union")
+        };
+
+        let func_id = self
+            .module
+            .declare_function(&symbol, Linkage::Local, &sig)
+            .unwrap();
+        {
+            let mut ctx = codegen::Context::new();
+            let mut fctx = FunctionBuilderContext::new();
+
+            let mut converter = IRConverter::new(&mut ctx.func, &mut fctx, self.module, self.types);
+            converter.builder.func.signature = sig.clone();
+            converter.scope = self.scope.clone();
+
+            let block = converter.builder.create_block();
+            converter
+                .builder
+                .append_block_params_for_function_params(block);
+            converter.builder.switch_to_block(block);
+
+            let tag_ty = converter.types.union_tag_type(variants.len());
+            let tag = converter.ins().iconst(tag_ty, idx as i64);
+            let branch_calls: Vec<_> = branches
+                .iter()
+                .map(|_| {
+                    let block = converter.builder.create_block();
+                    BlockCall::new(block, vec![], &mut converter.builder.func.dfg.value_lists)
+                })
+                .collect();
+
+            // Declare the block for the default branch
+            let trap = {
+                let block = converter.builder.create_block();
+                BlockCall::new(block, vec![], &mut converter.builder.func.dfg.value_lists)
+            };
+
+            // Create the table
+            let table = {
+                let table_data = JumpTableData::new(trap, &branch_calls);
+                converter.builder.func.create_jump_table(table_data)
+            };
+
+            converter.builder.ins().br_table(tag, table);
+            for (branch_lir, branch_block) in branches.into_iter().zip(branch_calls.iter()) {
+                converter.switch_to_branch_block(*branch_block);
+                // converter.read_payload(scrutinee_vv);
+                // let new_lir = LIR::apply_lir(branch_lir, scrutinee.clone());
+
+                let branch_vv = converter.convert_lir(branch_lir);
+                converter.return_(branch_vv);
+            }
+
+            // Trap the default block
+            //
+            // _ => unreachable!(),
+            {
+                converter.switch_to_branch_block(trap);
+
+                const TRAP_UNREACHABLE: u8 = 100;
+
+                converter
+                    .builder
+                    .ins()
+                    .trap(TrapCode::user(TRAP_UNREACHABLE).unwrap());
+            }
+            self.module
+                .define_function(func_id, &mut ctx)
+                .expect("Could not define forwarding function");
+        }
+        let func = VirtualValue::Func(func_id);
+        self.call_func(func, vec![scrutinee_vv])
+    }
+
     pub fn create_entry_block(&mut self, params: &[LIRType]) -> (Block, Vec<VirtualValue>) {
         let block = self.builder.create_block();
         self.builder.seal_block(block);
@@ -270,6 +360,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 VirtualValue::Scalar(_)
                 | VirtualValue::StackStruct { .. }
                 | VirtualValue::TaggedUnion { .. } => {
+                    // dbg!(var);
                     self.scope.insert(LIR::Var(var), vparam);
                 }
                 VirtualValue::UnstableStruct { ty, fields } => {

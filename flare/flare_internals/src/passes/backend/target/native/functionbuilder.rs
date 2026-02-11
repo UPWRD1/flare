@@ -379,6 +379,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             VirtualValue::Pointer(_, v) => {
                 self.ins().return_(&[v]);
             }
+            VirtualValue::Closure(c) => {}
             _ => todo!("{vv:?}"),
         }
     }
@@ -568,13 +569,13 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         })
     }
 
-    fn switch_to_branch_block(&mut self, call: BlockCall) {
+    pub fn switch_to_branch_block(&mut self, call: BlockCall) {
         let block = call.block(&self.builder.func.dfg.value_lists);
         self.builder.seal_block(block);
         self.builder.switch_to_block(block);
     }
 
-    fn read_payload<const N: usize>(
+    pub fn read_payload<const N: usize>(
         &mut self,
         payload: Value,
         param_types: [Type; N],

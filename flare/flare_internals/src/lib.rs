@@ -305,8 +305,8 @@ impl<const N: usize, T: Target> Context<N, T, Simplify> {
 
 impl<const N: usize, T: Target> Context<N, T, Monomorph> {
     pub fn reduce(self) -> CompResult<Context<N, T, Reduce>> {
-        // let ir = reduce::reduce(self.op.ir);
-        let ir = self.op.ir;
+        let ir = reduce::reduce(self.op.ir);
+        // let ir = self.op.ir;
         Ok(Context {
             op: Reduce { ir },
             filectx: self.filectx,
