@@ -115,22 +115,25 @@ impl ClosureConvert {
 
             ir::IR::Item(t, d) => {
                 // LIR::Item(self.item_supply.supply_for(d), lower_ty(&t))
-                // let item_ref =
-                LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)))
-                // if self.is_in_app {
-                // item_ref
-                // } else {
-                // LIR::BulkApply(Box::new(item_ref), vec![])
-                // }
+                // LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)))
+
+                let item_ref =
+                    LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)));
+                if self.is_in_app {
+                    item_ref
+                } else {
+                    LIR::BulkApply(Box::new(item_ref), vec![])
+                }
             }
             ir::IR::Extern(n, t) => {
                 // LIR::Extern(n, lower_ty(&t))
-                LIR::FuncRef(AppType::Extern(n, lower_ty(&t)))
-                // if self.is_in_app {
-                // extern_ref
-                // } else {
-                //     LIR::BulkApply(Box::new(extern_ref), vec![])
-                // }
+                // LIR::FuncRef(AppType::Extern(n, lower_ty(&t)))
+                let extern_ref = LIR::FuncRef(AppType::Extern(n, lower_ty(&t)));
+                if self.is_in_app {
+                    extern_ref
+                } else {
+                    LIR::BulkApply(Box::new(extern_ref), vec![])
+                }
             }
             _ => todo!("{ir:?}"),
         }

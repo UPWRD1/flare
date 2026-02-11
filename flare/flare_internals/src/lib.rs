@@ -119,11 +119,11 @@ pub struct Typecheck {
     source: ItemSource,
 }
 pub struct Lower {
-    ir: Vec<IR>,
+    pub ir: Vec<IR>,
 }
 
 pub struct Simplify {
-    ir: Vec<IR>,
+    pub ir: Vec<IR>,
 }
 
 pub struct Reduce {
@@ -131,7 +131,7 @@ pub struct Reduce {
 }
 
 pub struct Monomorph {
-    ir: Vec<IR>,
+    pub ir: Vec<IR>,
 }
 
 pub struct Convert {
@@ -292,8 +292,8 @@ impl<const N: usize, T: Target> Context<N, T, Simplify> {
     pub fn monomorph(self) -> CompResult<Context<N, T, Monomorph>> {
         let ir = monomorph::monomorph(self.op.ir);
         // Sanity check
-        debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
-
+        // debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
+        // let ir = self.op.ir;
         Ok(Context {
             op: Monomorph { ir },
             filectx: self.filectx,
@@ -305,7 +305,8 @@ impl<const N: usize, T: Target> Context<N, T, Simplify> {
 
 impl<const N: usize, T: Target> Context<N, T, Monomorph> {
     pub fn reduce(self) -> CompResult<Context<N, T, Reduce>> {
-        let ir = reduce::reduce(self.op.ir);
+        // let ir = reduce::reduce(self.op.ir);
+        let ir = self.op.ir;
         Ok(Context {
             op: Reduce { ir },
             filectx: self.filectx,
