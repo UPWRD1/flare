@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use cranelift::{
     codegen::ir::{ArgumentPurpose, BlockCall},
     frontend::FuncInstBuilder,
@@ -47,35 +49,12 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 vec
             }
             VirtualValue::TaggedUnion {
-                variants,
+                // variants,
                 body,
-                idx,
+                tag,
             } => {
-                let tag_size = self.types.union_tag_type(variants.len());
-                let tag = self.ins().iconst(tag_size, *idx as i64);
-                let payload = self.make_payload(*body.clone(), variants.to_vec(), *idx);
-                vec![tag, payload]
-                // vec![self.make_payload(*body.clone(), variants.to_vec(), *idx)]
+                vec![*tag, *body]
             }
-        }
-    }
-
-    fn make_payload(&mut self, body: VirtualValue, variants: Vec<LIRType>, idx: usize) -> Value {
-        let size_t = self.module.isa().pointer_type();
-        let payload_type = self.type_of_virtual_value(&body);
-        match self.types.payload_kind(&payload_type) {
-            PayloadKind::InlineCasted(t) => {
-                let body = self.as_values(&body)[0];
-                if t.is_float() {
-                    let float64 = self.builder.ins().fpromote(types::F64, body);
-                    self.builder.ins().bitcast(size_t, MemFlags::new(), float64)
-                } else {
-                    self.builder.ins().sextend(size_t, body)
-                }
-            }
-            PayloadKind::Inline => self.as_values(&body)[0],
-            PayloadKind::Zero => self.builder.ins().iconst(size_t, 0),
-            PayloadKind::StackPointer => self.stack_alloc_vvalues(vec![body]),
         }
     }
 
@@ -140,7 +119,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 VirtualValue::Pointer(PointeeType::Func(args, ret), ptr)
             }
             LIRType::Struct(ty) => {
-                if is_root && self.types.struct_passing_mode(p) == StructPassingMode::ByPointer {
+                if is_root && self.types.struct_passing_mode(&p) == StructPassingMode::ByPointer {
                     let size_t = self.module.isa().pointer_type();
                     let ptr = f(self, size_t);
                     VirtualValue::StackStruct { ty: p, ptr }
@@ -157,41 +136,20 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 let closureenv = p.closure_to_struct_rep();
                 self.type_to_virtual_value(f, is_root, closureenv)
             }
-
-            // LIRType::ClosureEnv(fun, env) => {
-            //     // let new_type = p.closure_to_struct_rep();
-            //     // self.type_to_virtual_value(f, is_root, new_type)
-            //     // let env_struct = LIRType::Struct(env);
-            //     if is_root && self.types.struct_passing_mode(p) == StructPassingMode::ByPointer {
-            //         let size_t = self.module.isa().pointer_type();
-            //         let ptr = f(self, size_t);
-            //         VirtualValue::StackStruct { ty: p, ptr }
-            //     } else {
-            //         let fields = p
-            //             .closure_to_struct_rep()
-            //             .into_struct_fields()
-            //             .iter()
-            //             .map(|ty| self.type_to_virtual_value(f, false, *ty))
-            //             .collect::<Vec<_>>();
-            //         VirtualValue::UnstableStruct { ty: p, fields }
-            //     }
-            // }
             LIRType::Unit => {
                 let v = f(self, types::I8);
                 VirtualValue::Scalar(v)
             }
             LIRType::Union(variants) => {
                 let size_t = self.module.isa().pointer_type();
-                let tag = f(self, self.types.union_tag_type(variants.len()));
-                let ptr = f(self, size_t);
-                let idx = tag.as_u32() as usize;
-                VirtualValue::TaggedUnion {
-                    variants: variants.to_vec(),
-                    body: Box::new(VirtualValue::Scalar(ptr)),
-                    idx,
-                }
+                let tag = f(self, types::I32);
+                // let t = self.builder.func.dfg.value_def(tag).unwrap_inst();
+                // dbg!(t);
+                // let body_vv = self.type_to_virtual_value(f, false, variants[idx]);
+                // let body = self.as_values(&body_vv);
+                let body = f(self, size_t);
+                VirtualValue::TaggedUnion { body, tag }
             }
-            _ => todo!("{p:?}"),
         }
     }
 
@@ -203,7 +161,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         match v {
             VirtualValue::Scalar(value) => buf.push(value),
             VirtualValue::StackStruct { ty, ptr: src } => {
-                match self.types.struct_passing_mode(ty) {
+                match self.types.struct_passing_mode(&ty) {
                     StructPassingMode::ByScalars => {
                         self.deref_fields(buf, ty, src, 0);
                     }
@@ -211,7 +169,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 }
             }
             VirtualValue::UnstableStruct { ty, fields } => {
-                match self.types.struct_passing_mode(ty) {
+                match self.types.struct_passing_mode(&ty) {
                     StructPassingMode::ByScalars => self.virtual_values_to_func_params(buf, fields),
                     StructPassingMode::ByPointer => {
                         todo!();
@@ -236,6 +194,11 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 let val = self.as_values(&v);
                 buf.extend(val);
             }
+            VirtualValue::TaggedUnion { body, tag } => {
+                buf.push(tag);
+                buf.push(body);
+            }
+            VirtualValue::Pointer(_, v) => buf.push(v),
             _ => todo!("{v:?}"),
         }
     }
@@ -295,7 +258,6 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                         let pointer = self.types.ptr_type();
                         // let v = self.ins().load(ret, MemFlags::new(), *ptr, offset);
                         let v = self.ins().load(pointer, MemFlags::new(), *ptr, offset);
-                        dbg!(v);
                         VirtualValue::Pointer(PointeeType::Func(vec![*l], *r), v)
                     }
                     _ => todo!("{field_ty:?}"),
@@ -321,7 +283,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 self.builder.ins().return_(&[value]);
             }
             VirtualValue::StackStruct { ty, ptr: src } => {
-                match self.types.struct_passing_mode(ty) {
+                match self.types.struct_passing_mode(&ty) {
                     // We have a stack pointer but want to return in return registers
                     StructPassingMode::ByScalars => {
                         let mut buf = vec![];
@@ -337,7 +299,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 }
             }
             VirtualValue::UnstableStruct { ty, fields } => {
-                match self.types.struct_passing_mode(ty) {
+                match self.types.struct_passing_mode(&ty) {
                     StructPassingMode::ByScalars => {
                         let fields = fields
                             .iter()
@@ -363,30 +325,30 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             //     self.ins().return_(&vals);
             // }
             VirtualValue::Func(f) => {
-                let val = self.as_values(&vv);
-                self.ins().return_(&val);
+                let vals = self.as_values(&vv);
+                self.ins().return_(&vals);
             }
-            VirtualValue::TaggedUnion {
-                variants,
-                body,
-                idx,
-            } => {
-                let tag_size = self.types.union_tag_type(variants.len());
-                let tag = self.ins().iconst(tag_size, idx as i64);
-                let values = vec![tag, self.make_payload(*body, variants, idx)];
-                self.ins().return_(&values);
+            VirtualValue::TaggedUnion { .. } => {
+                let vals = self.as_values(&vv);
+                self.ins().return_(&vals);
             }
             VirtualValue::Pointer(_, v) => {
                 self.ins().return_(&[v]);
             }
-            VirtualValue::Closure(c) => {}
-            _ => todo!("{vv:?}"),
+            VirtualValue::Closure(_) => {
+                let vals = self.as_values(&vv);
+                self.ins().return_(&vals);
+            }
         }
     }
 
     fn deref_fields(&mut self, buf: &mut Vec<Value>, types: LIRType, src: Value, src_offset: i32) {
         let the_types = types.into_struct_fields();
-        let fields = self.types.struct_fields.get(&types).unwrap();
+        let fields = self
+            .types
+            .struct_fields
+            .get(&types)
+            .expect("Could not get struct field");
         for (field, ty) in fields.iter().enumerate() {
             let offset = Self::offset_of_field(field, fields) + src_offset;
             let fty = the_types[field];
@@ -457,7 +419,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     // Get the pointer parameter declared by the `LookupTable::create_signature` method
     //
     // This will for most targets be the first parameter.
-    fn struct_return_pointer(&mut self) -> Value {
+    fn struct_return_pointer(&self) -> Value {
         self.builder
             .func
             .special_param(ArgumentPurpose::StructReturn)
@@ -470,13 +432,23 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     }
 
     pub fn call_func(&mut self, func: VirtualValue, params: Vec<VirtualValue>) -> VirtualValue {
+        let mut call_params = vec![];
+        self.virtual_values_to_func_params(&mut call_params, params);
+        self.call_func_with_values(func, call_params)
+    }
+
+    pub fn call_func_with_values(
+        &mut self,
+        func: VirtualValue,
+        params: Vec<Value>,
+    ) -> VirtualValue {
         match func {
             VirtualValue::Func(func_id) => self.call_direct_func(params, func_id),
             VirtualValue::Pointer(t, ptr) => match t {
                 PointeeType::Func(from, to) => {
                     let sig = self
                         .types
-                        .make_sig(self.module.isa().default_call_conv(), from, to);
+                        .make_sig(self.module.isa().default_call_conv(), &from, to);
 
                     self.call_indirect_func(params, to, sig, ptr)
                 }
@@ -487,9 +459,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         }
     }
 
-    fn call_direct_func(&mut self, params: Vec<VirtualValue>, func: FuncId) -> VirtualValue {
-        let mut call_params = vec![];
-
+    fn call_direct_func(&mut self, mut call_params: Vec<Value>, func: FuncId) -> VirtualValue {
         let ret = self.types.return_type_of(func);
         // dbg!(ret);
 
@@ -498,15 +468,13 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         // write its return values to.
         let mut out_ptr_return = None;
         if let LIRType::Struct(_) = ret
-            && self.types.struct_passing_mode(ret) == StructPassingMode::ByPointer
+            && self.types.struct_passing_mode(&ret) == StructPassingMode::ByPointer
         {
             let fields = self.types.struct_fields.get(&ret).unwrap();
             let ptr = self.stack_alloc_types(fields);
-            call_params.push(ptr);
+            call_params.insert(0, ptr);
             out_ptr_return = Some(VirtualValue::StackStruct { ty: ret, ptr });
         }
-
-        self.virtual_values_to_func_params(&mut call_params, params);
 
         let mut register_returns = {
             // In order to call a function, we need to first map a global FuncId into a local FuncRef
@@ -528,13 +496,11 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     fn call_indirect_func(
         &mut self,
-        params: Vec<VirtualValue>,
+        mut call_params: Vec<Value>,
         ret: LIRType,
         sig: Signature,
         ptr: Value,
     ) -> VirtualValue {
-        let mut call_params = vec![];
-
         // let ret = sig.returns;
 
         // If the return type is too large to fit in return registers, we allocate space for it in
@@ -542,15 +508,13 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         // write its return values to.
         let mut out_ptr_return = None;
         if let LIRType::Struct(name) = ret
-            && self.types.struct_passing_mode(ret) == StructPassingMode::ByPointer
+            && self.types.struct_passing_mode(&ret) == StructPassingMode::ByPointer
         {
             let fields = self.types.struct_fields.get(&ret).unwrap();
             let ptr = self.stack_alloc_types(fields);
-            call_params.push(ptr);
+            call_params.insert(0, ptr);
             out_ptr_return = Some(VirtualValue::StackStruct { ty: ret, ptr });
         }
-
-        self.virtual_values_to_func_params(&mut call_params, params);
 
         let mut register_returns = {
             // In order to call a function, we need to first map a global FuncId into a local FuncRef
@@ -575,36 +539,107 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         self.builder.switch_to_block(block);
     }
 
-    pub fn read_payload<const N: usize>(
-        &mut self,
-        payload: Value,
-        param_types: [Type; N],
-    ) -> [Value; N] {
+    pub fn get_func(&self, vv: &VirtualValue) -> FuncId {
+        match vv {
+            VirtualValue::Closure(closure) => self.get_func(&closure.func),
+            VirtualValue::Func(func_id) => *func_id,
+            VirtualValue::Pointer(PointeeType::Func(..), value) => {
+                panic!("Should have been an indirect call")
+            }
+            _ => panic!("Not a function {vv:?}"),
+        }
+    }
+
+    pub fn make_payload(&mut self, vv: &VirtualValue, tag: Value) -> Value {
+        let size_t = self.module.isa().pointer_type();
+        let payload_type = self.type_of_virtual_value(vv);
+        let body = self.as_values(vv);
+        match self.payload_kind(&payload_type) {
+            PayloadKind::InlineCasted(t) => {
+                if t.is_float() {
+                    let float64 = self.builder.ins().fpromote(types::F64, body[0]);
+                    self.builder.ins().bitcast(size_t, MemFlags::new(), float64)
+                } else {
+                    self.builder.ins().sextend(size_t, body[0])
+                }
+            }
+            PayloadKind::Inline => body[0],
+            PayloadKind::Zero => self.builder.ins().iconst(size_t, 0),
+            PayloadKind::StackPointer => self.stack_alloc_values(&body),
+        }
+    }
+
+    pub fn read_payload(&mut self, body: Value, types: &[Type]) -> Vec<Value> {
         let size_t = self.types.ptr_type();
-        match self.types.payload_kind(&param_types) {
+        match self.payload_kind(types) {
             // Reduce the size of the payload to the inlined data size
             PayloadKind::InlineCasted(target) => {
-                param_types.map(|_| self.builder.ins().ireduce(target, payload))
+                if target.is_float() {
+                    types
+                        .iter()
+                        .map(|_| {
+                            let float64 =
+                                self.builder
+                                    .ins()
+                                    .bitcast(types::F64, MemFlags::new(), body);
+                            self.builder.ins().fdemote(types::F32, float64)
+                        })
+                        .collect()
+                } else {
+                    types
+                        .iter()
+                        .map(|_| self.builder.ins().ireduce(target, body))
+                        .collect()
+                }
             }
 
             // Use the payload as-is
-            PayloadKind::Inline => param_types.map(|_| payload),
+            PayloadKind::Inline => types.iter().map(|_| body).collect(), //.iter().map(|v| self.ins().),
 
             // Use zero as the payload so that this payload-less variant still has the same size
-            PayloadKind::Zero => param_types.map(|_| self.builder.ins().iconst(size_t, 0)),
+            PayloadKind::Zero => vec![self.builder.ins().iconst(size_t, 0)],
 
             // Dereference the fields from the payload stack pointer
             PayloadKind::StackPointer => {
-                let mut offset = 0;
-                param_types.map(|ty| {
-                    let v = self
-                        .builder
-                        .ins()
-                        .load(ty, MemFlags::new(), payload, offset);
-                    offset += ty.bytes() as i32;
-                    v
-                })
+                // let v = self
+                //     .builder
+                //     .ins()
+                //     .load(, cl::MemFlags::new(), payload[0], offset);
+                types
+                    .iter()
+                    .map(|ty| self.builder.ins().load(*ty, MemFlags::new(), body, 0))
+                    .collect()
             }
+        }
+    }
+
+    pub fn payload_kind(&mut self, params: &[Type]) -> PayloadKind {
+        // dbg!(union_vv);
+        // todo!();
+        let size_t = self.types.ptr_type();
+        // dbg!(&params);
+        match params[..] {
+            // We want to inline the payload if it fits in the bytes of size_t
+            [param] => {
+                match param.bytes().cmp(&size_t.bytes()) {
+                    // Should be cast to size_t
+                    Ordering::Less => PayloadKind::InlineCasted(param),
+                    // The scalar will already have the same memory layout as a payload
+                    Ordering::Equal => PayloadKind::Inline,
+                    // It doesn't fit in the bytes of size_t, so the payload will be stack allocated
+                    Ordering::Greater => PayloadKind::StackPointer,
+                }
+            }
+
+            // It still needs to be the same size of other enums of the same type, so we generate a
+            // zeroed payload.
+            [] => PayloadKind::Zero,
+
+            // Stack allocate larger payloads to store them behind a pointer.
+            //
+            // One possible optimization is to still inline the payload if it's multiple scalars that
+            // fit within size_t by using `iconcat` and `isplit`.
+            _ => PayloadKind::StackPointer,
         }
     }
 }

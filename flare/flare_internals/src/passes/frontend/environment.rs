@@ -265,7 +265,7 @@ impl Environment {
     /// On invalid names.
     #[allow(dead_code, unused_variables)]
     fn build_impl_def(
-        &mut self,
+        &self,
         package_quant: QualifierFragment,
         the_ty: Spanned<Intern<String>>,
         methods: &[(

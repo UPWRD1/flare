@@ -1,12 +1,7 @@
 use core::fmt;
-use std::collections::BTreeSet;
 
 use itertools::Itertools;
-use petgraph::{
-    dot::Config,
-    prelude::*,
-    visit::{Topo, Walker},
-};
+use petgraph::{dot::Config, prelude::*};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 use crate::{

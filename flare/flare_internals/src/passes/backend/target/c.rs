@@ -36,7 +36,7 @@ impl C {
         Self
     }
 
-    fn convert_type(&mut self, ty: Type) -> String {
+    fn convert_type(&self, ty: Type) -> String {
         match ty {
             Type::Num => "double".to_string(),
             Type::String => "char*".to_string(),
@@ -45,7 +45,7 @@ impl C {
         }
     }
 
-    fn generate_func<V: Variable>(&mut self, f: &FunctionItem<V>) -> String {
+    fn generate_func<V: Variable>(&self, f: &FunctionItem<V>) -> String {
         let out_ty = f.sig;
         // let mut arg_types = vec![];
         let (args, ret) = Type::destructure_arrow(out_ty);
@@ -56,7 +56,7 @@ impl C {
         //let output = format!("{} {}()", converted_ret, f.name.ident().unwrap().0);
         // dbg!(output);
     }
-    fn generate_expr(&mut self, expr: Spanned<Intern<Expr<Typed>>>) {
+    fn generate_expr(&self, expr: Spanned<Intern<Expr<Typed>>>) {
         todo!()
     }
 }

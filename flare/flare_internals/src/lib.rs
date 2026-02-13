@@ -35,6 +35,9 @@
     clippy::used_underscore_binding,
     clippy::unwrap_in_result,
     unused_allocation,
+    clippy::ptr_arg,
+    clippy::needless_pass_by_ref_mut,
+    clippy::needless_pass_by_value,
     // clippy::min_ident_chars,
     )]
 #[warn(

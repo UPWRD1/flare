@@ -82,6 +82,7 @@ impl ClosureConvert {
                 } else {
                     let closure = self.convert(*fun, env.clone());
                     // dbg!(&closure);
+
                     let arg = self.convert(*arg, env);
                     LIR::apply_lir(closure, arg)
                 };
@@ -149,6 +150,7 @@ impl ClosureConvert {
         let mut body = self.convert(body, env);
         let mut free_vars = body.free_vars();
         free_vars.remove(&var);
+        // dbg!(&free_vars);
 
         let vars: Vec<Var> = free_vars.iter().copied().collect();
         let closure_ty = LIRType::closure(var.ty, ret);

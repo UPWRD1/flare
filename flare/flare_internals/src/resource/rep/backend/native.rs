@@ -25,9 +25,11 @@ pub enum VirtualValue {
     Func(FuncId),
     Pointer(PointeeType, Value),
     TaggedUnion {
-        variants: Vec<LIRType>,
-        body: Box<Self>,
-        idx: usize,
+        // variants: Vec<LIRType>,
+        // body: Vec<Value>,
+        body: Value,
+        // idx: usize,
+        tag: Value,
     },
 }
 
@@ -36,7 +38,7 @@ pub enum PointeeType {
     Func(Vec<LIRType>, LIRType),
     String,
     Struct,
-    Union(Vec<LIRType>),
+    Union(Vec<LIRType>, usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
