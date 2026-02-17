@@ -1,6 +1,6 @@
 // A lot of this code was ripped from the cranelift examples page.
 use cranelift::{
-    module::{FuncId, Linkage, Module},
+    module::{FuncId, Module},
     prelude::*,
 };
 
@@ -35,7 +35,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         let func = self.as_values(&closure.func)[0];
 
         let call = self.builder.ins().call_indirect(sigref, func, &real_params);
-        let ty = closure.ty.destructure_closure().1;
+        let ty = closure.func.ty().destructure_closure().1;
         let mut register_returns = self.builder.inst_results(call).to_vec().into_iter();
         self.type_to_virtual_value(
             &mut |_, _| {
@@ -76,19 +76,20 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 (capture_struct, false)
             }
         };
-        // dbg!(&boxed_captures);
-        let (forwarding_func_id, sig) =
-            self.create_forwarding_func(closure_id, captures, is_captures_by_pointer);
+
         let ty = {
             let (args, ret) = self.types.function_types.get(&closure_id).unwrap();
-            args.iter().fold(*ret, |prev, c| LIRType::closure(*c, prev))
+            LIRType::closure(args, *ret)
         };
+        // dbg!(&boxed_captures);
+        let (forwarding_func_id, sig) =
+            self.create_forwarding_func(closure_id, ty, captures, is_captures_by_pointer);
 
         Closure {
-            ty,
+            // ty,
             captures: Box::new(boxed_captures),
 
-            func: Box::new(VirtualValue::Func(forwarding_func_id)),
+            func: Box::new(VirtualValue::Func(forwarding_func_id, ty)),
             sig,
         }
     }
@@ -125,15 +126,27 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     fn create_forwarding_func(
         &mut self,
         f: FuncId,
+        ty: LIRType,
         captures: &[VirtualValue],
         is_captures_by_pointer: bool,
     ) -> (FuncId, Signature) {
-        let captys: Vec<_> = {
-            let vvs = captures
-                .iter()
-                .flat_map(|vv| self.as_values(vv))
-                .collect::<Vec<_>>();
-            vvs.into_iter().map(|v| self.type_of_value(v)).collect()
+        // let captys: Vec<_> = {
+        //     let vvs = captures
+        //         .iter()
+        //         .flat_map(|vv| self.as_values(vv))
+        //         .collect::<Vec<_>>();
+        //     vvs.into_iter().map(|v| self.type_of_value(v)).collect()
+        // };
+        let capt_struct = VirtualValue::UnstableStruct {
+            ty: LIRType::Struct(
+                captures
+                    .iter()
+                    .map(|c| c.ty())
+                    .collect::<Vec<_>>()
+                    .as_slice()
+                    .into(),
+            ),
+            fields: captures.to_vec(),
         };
         // dbg!(&captys);
         // In a real compiler, this symbol needs to be generated in a way that's guaranteed to be
@@ -159,8 +172,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             converter.builder.func.signature = sig.clone();
 
             let real_call_params =
-                Self::build_closure_args(is_captures_by_pointer, &captys, &mut converter.builder);
-            let val = converter.call_func(VirtualValue::Func(f), real_call_params);
+                converter.build_closure_args(is_captures_by_pointer, ty, &capt_struct);
+            let val = converter.call_func(VirtualValue::Func(f, ty), real_call_params);
             converter.return_(val);
 
             self.module
@@ -172,43 +185,62 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     }
 
     fn build_closure_args(
+        &mut self,
         is_captures_by_pointer: bool,
-        captys: &[Type],
-        closure_builder: &mut FunctionBuilder<'_>,
+        ty: LIRType,
+        // captys: &[LIRType]
+        capt_struct: &VirtualValue,
     ) -> Vec<VirtualValue> {
-        let block = closure_builder.create_block();
-        closure_builder.append_block_params_for_function_params(block);
-        closure_builder.switch_to_block(block);
+        // dbg!(capt_struct);
+        let block = self.builder.create_block();
+        self.builder.append_block_params_for_function_params(block);
+        self.builder.switch_to_block(block);
+        let captys = capt_struct.ty().into_struct_fields();
+        let (args, ret) = ty.destructure_closure();
         if is_captures_by_pointer {
             let mut real_call_params =
-                Vec::with_capacity(captys.len() + closure_builder.func.signature.params.len() - 1); // Dereference the captures and add them as implicit parameters
-            let mut offset = 0;
+                Vec::with_capacity(captys.len() + self.builder.func.signature.params.len() - 1); // Dereference the captures and add them as implicit parameters
+            // let mut offset = 0;
+            // for (idx, &ty) in captys.iter().enumerate() {
+            //     let ptr = closure_builder.block_params(block)[0];
+            //     let v = VirtualValue::Scalar(closure_builder.ins().load(
+            //         ty,
+            //         MemFlags::new(),
+            //         ptr,
+            //         offset,
+            //     ));
+            //     real_call_params.push(v);
+            //     offset = Self::offset_of_field(idx, captys);
+            // }
+
             for (idx, &ty) in captys.iter().enumerate() {
-                let ptr = closure_builder.block_params(block)[0];
-                let v = VirtualValue::Scalar(closure_builder.ins().load(
-                    ty,
-                    MemFlags::new(),
-                    ptr,
-                    offset,
-                ));
+                // let ptr = self.builder.block_params(block)[0];
+                // let offset = Self::offset_of_field(idx, captys);
+                // let offset = self.offset_of_lir_field(&ty, idx);
+                // let v = VirtualValue::Scalar(closure_builder.ins().load(
+                //     ty,
+                //     MemFlags::new(),
+                //     ptr,
+                //     offset,
+                // ));
+                let v = self.destruct_field(capt_struct, idx);
                 real_call_params.push(v);
-                offset = Self::offset_of_field(idx, captys);
-            }
-            // Add all other parameters from the forwarding function
-            for &v in closure_builder
+            } // Add all other parameters from the forwarding function
+            for (i, &v) in self
+                .builder
                 .block_params(block)
                 .iter()
                 .skip(captys.len())
+                .enumerate()
             {
-                real_call_params.push(VirtualValue::Scalar(v));
+                real_call_params.push(VirtualValue::Scalar(v, args[i]));
             }
             real_call_params
         } else {
-            let mut real_call_params =
-                Vec::with_capacity(closure_builder.func.signature.params.len());
+            let mut real_call_params = Vec::with_capacity(self.builder.func.signature.params.len());
             // Add all  parameters from the forwarding function AT ONCE
-            for &v in closure_builder.block_params(block) {
-                real_call_params.push(VirtualValue::Scalar(v));
+            for (i, &v) in self.builder.block_params(block).iter().enumerate() {
+                real_call_params.push(VirtualValue::Scalar(v, args[i]));
             }
             real_call_params
         }
@@ -218,99 +250,130 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         of.bytes()
     }
 
-    pub fn alignment_of_struct(fields: &[Type]) -> u32 {
-        let mut alignment = 0;
+    // pub fn alignment_of_struct(fields: &[Type]) -> u32 {
+    //     todo!()
+    // }
 
-        // Since we don't have nested structs, the alignment of a struct is simply its largest field.
-        for field in fields {
-            let field_alignment = Self::alignment_of_scalar_type(field);
-            alignment = alignment.max(field_alignment);
+    pub fn alignment_of_lir_type(&self, ty: &LIRType) -> u32 {
+        let ptr_bytes = self.module.isa().pointer_bytes() as u32;
+        match ty {
+            LIRType::Int => 4,
+            LIRType::Float => 4,
+            LIRType::Unit => 1,
+            LIRType::String | LIRType::Closure(..) => ptr_bytes,
+            LIRType::Struct(fields) => fields
+                .iter()
+                .map(|f| self.alignment_of_lir_type(f))
+                .max()
+                .unwrap_or(1), // empty struct → 1-byte aligned (no divide-by-zero)
+            LIRType::Union(variants) => {
+                // tag is i32 (4 bytes); payload alignment drives the overall alignment.
+                let payload_align = variants
+                    .iter()
+                    .map(|v| self.alignment_of_lir_type(v))
+                    .max()
+                    .unwrap_or(1);
+                4_u32.max(payload_align)
+            }
+            LIRType::ClosureEnv(..) => {
+                let s = ty.closure_to_struct_rep();
+                self.alignment_of_lir_type(&s)
+            }
         }
-
-        alignment
     }
-    pub fn size_of_struct(fields: &[Type]) -> u32 {
-        // let fields = fields.collect();
-        let mut size = 0;
 
-        // Go through all fields and increment size by each fields size and padding
-        for field in fields {
-            size += field.bytes();
-
-            // Add padding to ensure the field is aligned
-            let align = Self::alignment_of_scalar_type(field);
-            let padding = (align - size % align) % align;
-            size += padding;
+    pub fn size_of_lir_type(&self, ty: &LIRType) -> u32 {
+        let ptr_bytes = self.module.isa().pointer_bytes() as u32;
+        match ty {
+            LIRType::Int => 4,
+            LIRType::Float => 4,
+            LIRType::Unit => 1,
+            LIRType::String | LIRType::Closure(..) => ptr_bytes,
+            LIRType::Struct(fields) => {
+                let mut size: u32 = 0;
+                for f in fields.iter() {
+                    let align = self.alignment_of_lir_type(f);
+                    // Pad so this field starts at its required alignment.
+                    size = align_up(size, align);
+                    size += self.size_of_lir_type(f);
+                }
+                // Trailing padding so the struct size is a multiple of its alignment.
+                let struct_align = self.alignment_of_lir_type(ty);
+                align_up(size, struct_align)
+            }
+            LIRType::Union(variants) => {
+                // Layout: [i32 tag][padding][payload]
+                // The whole thing is sized to hold any variant.
+                let tag_size: u32 = 4;
+                let payload_align = variants
+                    .iter()
+                    .map(|v| self.alignment_of_lir_type(v))
+                    .max()
+                    .unwrap_or(1);
+                let payload_size = variants
+                    .iter()
+                    .map(|v| self.size_of_lir_type(v))
+                    .max()
+                    .unwrap_or(0);
+                // Pad after tag so payload starts at its alignment.
+                let payload_offset = align_up(tag_size, payload_align);
+                let total = payload_offset + payload_size;
+                // Trailing padding.
+                let union_align = self.alignment_of_lir_type(ty);
+                align_up(total, union_align)
+            }
+            LIRType::ClosureEnv(..) => {
+                let s = ty.closure_to_struct_rep();
+                self.size_of_lir_type(&s)
+            }
         }
-
-        // Add padding to the end of the struct to make the struct itself aligned
-        let self_align = Self::alignment_of_struct(fields);
-        let end_padding = (self_align - size % self_align) % self_align;
-        size += end_padding;
-
-        size
     }
 
-    pub fn offset_of_field(field: usize, fields: &[Type]) -> i32 {
-        let mut offset = 0;
+    // Byte offset of field `field_idx` within a struct `LIRType`.
+    // Panics if `ty` is not a `Struct` or `ClosureEnv`.
+    pub fn offset_of_lir_field(&self, ty: &LIRType, field_idx: usize) -> u32 {
+        let fields: Vec<LIRType> = match ty {
+            LIRType::Struct(f) => f.to_vec(),
+            LIRType::ClosureEnv(..) => {
+                let s = ty.closure_to_struct_rep();
+                return self.offset_of_lir_field(&s, field_idx);
+            }
+            _ => panic!("offset_of_lir_field called on non-struct type: {ty:?}"),
+        };
 
-        // Go through all fields prior to this one and increment offset by their size and padding
-        for prior in fields.iter().take(field) {
-            offset += prior.bytes() as i32;
-
-            // Add padding to ensure the field is aligned
-            let align = Self::alignment_of_scalar_type(prior) as i32;
-            let padding = (align - offset % align) % align;
-            offset += padding;
+        let mut offset: u32 = 0;
+        for (i, f) in fields.iter().enumerate() {
+            let align = self.alignment_of_lir_type(f);
+            offset = align_up(offset, align);
+            if i == field_idx {
+                return offset;
+            }
+            offset += self.size_of_lir_type(f);
         }
-
-        offset
+        panic!("field_idx {field_idx} out of bounds for {ty:?}");
     }
+
     pub fn stack_alloc_captures(
         &mut self,
         ty: LIRType,
         captures: Vec<VirtualValue>,
     ) -> VirtualValue {
-        let pointer = self.stack_alloc_vvalues(captures);
+        let pointer = self.stack_alloc_vvalues(captures, ty);
         VirtualValue::StackStruct { ty, ptr: pointer }
     }
 
-    pub fn stack_alloc_vvalues(&mut self, values: Vec<VirtualValue>) -> Value {
+    pub fn stack_alloc_vvalues(&mut self, vvalues: Vec<VirtualValue>, ty: LIRType) -> Value {
         let size_t = self.module.isa().pointer_type();
-        let v_values: Vec<_> = values
+        let values: Vec<_> = vvalues
             .into_iter()
             .flat_map(|v| self.as_values(&v))
             .collect();
-        let types = v_values
-            .iter()
-            .map(|v| self.type_of_value(*v))
-            .collect::<Vec<_>>();
-        let size = Self::size_of_struct(&types);
-
-        // Create the stack slot for the captures
-        let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            size,
-            0,
-        ));
-
-        // Write our captures to the stack allocation
-        let mut offset = 0;
-        for (i, v) in v_values.iter().enumerate() {
-            self.builder.ins().stack_store(*v, slot, offset);
-            offset += Self::offset_of_field(i, &types);
-        }
-        self.builder.ins().stack_addr(size_t, slot, 0)
+        self.stack_alloc_values(&values, ty)
     }
 
-    pub fn stack_alloc_values(&mut self, values: &[Value]) -> Value {
+    pub fn stack_alloc_values(&mut self, values: &[Value], ty: LIRType) -> Value {
         let size_t = self.module.isa().pointer_type();
-
-        let types = values
-            .iter()
-            .map(|v| self.type_of_value(*v))
-            .collect::<Vec<_>>();
-        let size = Self::size_of_struct(&types);
+        let size = self.size_of_lir_type(&ty);
 
         // Create the stack slot for the captures
         let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
@@ -320,18 +383,23 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         ));
 
         // Write our captures to the stack allocation
-        let mut offset = 0;
+        // let mut offset = 0;
+        // for (i, v) in values.iter().enumerate() {
+        //     self.builder.ins().stack_store(*v, slot, offset);
+        //     offset += Self::offset_of_field(i, &types);
+        // }
+
         for (i, v) in values.iter().enumerate() {
-            self.builder.ins().stack_store(*v, slot, offset);
-            offset += Self::offset_of_field(i, &types);
+            let offset = self.offset_of_lir_field(&ty, i);
+            self.builder.ins().stack_store(*v, slot, offset as i32);
         }
         self.builder.ins().stack_addr(size_t, slot, 0)
     }
 
-    pub fn stack_alloc_types(&mut self, types: &[Type]) -> Value {
+    pub fn stack_alloc_lir_type(&mut self, ty: &LIRType) -> Value {
         let size_t = self.module.isa().pointer_type();
 
-        let size = Self::size_of_struct(types);
+        let size = self.size_of_lir_type(ty);
 
         // Create the stack slot for the captures
         let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
@@ -354,4 +422,10 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             .map(|v| self.type_of_value(v))
             .collect()
     }
+}
+
+#[inline]
+pub fn align_up(offset: u32, align: u32) -> u32 {
+    debug_assert!(align.is_power_of_two(), "alignment must be a power of two");
+    (offset + align - 1) & !(align - 1)
 }

@@ -28,7 +28,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     pub fn as_values(&mut self, value: &VirtualValue) -> Vec<Value> {
         match value {
-            VirtualValue::Scalar(value) => vec![*value],
+            VirtualValue::Scalar(value, _) => vec![*value],
             VirtualValue::Pointer(_, ptr) => vec![*ptr],
             VirtualValue::StackStruct { ty, ptr } => {
                 vec![*ptr]
@@ -36,7 +36,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             VirtualValue::UnstableStruct { ty, fields } => {
                 fields.iter().flat_map(|vv| self.as_values(vv)).collect()
             }
-            VirtualValue::Func(func_id) => {
+            VirtualValue::Func(func_id, _) => {
                 let ptr = self.types.ptr_type();
                 let fref = self
                     .module
@@ -60,17 +60,17 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
     pub fn int(&mut self, n: impl Into<i64>) -> VirtualValue {
         let v = self.ins().iconst(types::I32, n.into());
-        VirtualValue::Scalar(v)
+        VirtualValue::Scalar(v, LIRType::Int)
     }
 
     pub fn float(&mut self, n: impl Into<f32>) -> VirtualValue {
         let v = self.ins().f32const(n.into());
-        VirtualValue::Scalar(v)
+        VirtualValue::Scalar(v, LIRType::Float)
     }
 
     pub fn unit(&mut self) -> VirtualValue {
         let v = self.ins().iconst(types::I8, 0i64);
-        VirtualValue::Scalar(v)
+        VirtualValue::Scalar(v, LIRType::Unit)
     }
 
     // Turns a parameter from our source language into Cranelift block parameters.
@@ -98,25 +98,25 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         match p {
             LIRType::Int => {
                 let v = f(self, types::I32);
-                VirtualValue::Scalar(v)
+                VirtualValue::Scalar(v, p)
             }
             LIRType::Float => {
                 let v = f(self, types::F32);
-                VirtualValue::Scalar(v)
+                VirtualValue::Scalar(v, p)
             }
             LIRType::String => {
                 let size_t = self.module.isa().pointer_type();
                 let ptr = f(self, size_t);
                 VirtualValue::Pointer(PointeeType::String, ptr)
             }
-            LIRType::Closure(..) => {
+            LIRType::Closure(args, ret) => {
                 // dbg!(r);
                 // let vv= self.type_to_virtual_value(f, is_root, *r);
                 // let res= self.as_value(vv);
                 let size_t = self.module.isa().pointer_type();
                 let ptr = f(self, size_t);
-                let (args, ret) = p.destructure_closure();
-                VirtualValue::Pointer(PointeeType::Func(args, ret), ptr)
+                // let (args, ret) = p.destructure_closure();
+                VirtualValue::Pointer(PointeeType::Func(args.to_vec(), *ret), ptr)
             }
             LIRType::Struct(ty) => {
                 if is_root && self.types.struct_passing_mode(&p) == StructPassingMode::ByPointer {
@@ -138,7 +138,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             }
             LIRType::Unit => {
                 let v = f(self, types::I8);
-                VirtualValue::Scalar(v)
+                VirtualValue::Scalar(v, p)
             }
             LIRType::Union(variants) => {
                 let size_t = self.module.isa().pointer_type();
@@ -159,7 +159,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     // become a single Cranelift pointer value or multiple Cranelift values.
     fn virtual_value_to_func_params(&mut self, buf: &mut Vec<Value>, v: VirtualValue) {
         match v {
-            VirtualValue::Scalar(value) => buf.push(value),
+            VirtualValue::Scalar(value, _) => buf.push(value),
             VirtualValue::StackStruct { ty, ptr: src } => {
                 match self.types.struct_passing_mode(&ty) {
                     StructPassingMode::ByScalars => {
@@ -190,7 +190,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
 
                 // todo!()
             }
-            VirtualValue::Func(f) => {
+            VirtualValue::Func(f, _) => {
                 let val = self.as_values(&v);
                 buf.extend(val);
             }
@@ -199,7 +199,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 buf.push(body);
             }
             VirtualValue::Pointer(_, v) => buf.push(v),
-            _ => todo!("{v:?}"),
+            // _ => todo!("{v:?}"),
         }
     }
 
@@ -213,7 +213,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     pub fn destruct_field(&mut self, of: &VirtualValue, field: usize) -> VirtualValue {
         // dbg!(&of, field);
         match of {
-            VirtualValue::Scalar(s) => panic!("cannot destruct field from non-struct: {s:?}"),
+            VirtualValue::Scalar(s, _) => panic!("cannot destruct field from non-struct: {s:?}"),
 
             VirtualValue::StackStruct { ty, ptr } => {
                 let fields = self.types.struct_fields.get(ty).unwrap_or_else(|| {
@@ -222,7 +222,9 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                         self.types.struct_fields
                     )
                 });
-                let offset = Self::offset_of_field(field, fields);
+                // let offset = Self::offset_of_field(field, fields);
+                let offset = self.offset_of_lir_field(ty, field) as i32;
+
                 let field_ty = ty.into_struct_fields()[field];
                 // dbg!(field_ty);
                 match field_ty {
@@ -239,15 +241,15 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                     }
                     LIRType::Int => {
                         let v = self.ins().load(types::I32, MemFlags::new(), *ptr, offset);
-                        VirtualValue::Scalar(v)
+                        VirtualValue::Scalar(v, field_ty)
                     }
                     LIRType::Float => {
                         let v = self.ins().load(types::F32, MemFlags::new(), *ptr, offset);
-                        VirtualValue::Scalar(v)
+                        VirtualValue::Scalar(v, field_ty)
                     }
                     LIRType::Unit => {
                         let v = self.ins().load(types::I8, MemFlags::new(), *ptr, offset);
-                        VirtualValue::Scalar(v)
+                        VirtualValue::Scalar(v, field_ty)
                     }
                     LIRType::Closure(l, r) => {
                         // let ret: Type = self
@@ -258,7 +260,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                         let pointer = self.types.ptr_type();
                         // let v = self.ins().load(ret, MemFlags::new(), *ptr, offset);
                         let v = self.ins().load(pointer, MemFlags::new(), *ptr, offset);
-                        VirtualValue::Pointer(PointeeType::Func(vec![*l], *r), v)
+                        VirtualValue::Pointer(PointeeType::Func(l.to_vec(), *r), v)
                     }
                     _ => todo!("{field_ty:?}"),
                 }
@@ -279,7 +281,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     /// Return a value, either by writing to the return struct out pointer or by returning values directly.
     pub fn return_(&mut self, vv: VirtualValue) {
         match vv {
-            VirtualValue::Scalar(value) => {
+            VirtualValue::Scalar(value, _) => {
                 self.builder.ins().return_(&[value]);
             }
             VirtualValue::StackStruct { ty, ptr: src } => {
@@ -324,11 +326,16 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             //     let vals = self.as_values(&vv);
             //     self.ins().return_(&vals);
             // }
-            VirtualValue::Func(f) => {
-                // let vals = self.as_values(&vv);
-                // self.ins().return_(&vals);
-                let call = self.call_func(vv, vec![]);
-                self.return_(call);
+            VirtualValue::Func(f, t) => {
+                if !matches!(t, LIRType::Closure(_, _))
+                    || matches!(t, LIRType::Closure(args, _) if args.is_empty())
+                {
+                    let call = self.call_func(vv, vec![]);
+                    self.return_(call);
+                } else {
+                    let vals = self.as_values(&vv);
+                    self.ins().return_(&vals);
+                }
             }
             VirtualValue::TaggedUnion { .. } => {
                 let vals = self.as_values(&vv);
@@ -352,7 +359,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             .get(&types)
             .expect("Could not get struct field");
         for (field, ty) in fields.iter().enumerate() {
-            let offset = Self::offset_of_field(field, fields) + src_offset;
+            let offset = self.offset_of_lir_field(&types, field) as i32 + src_offset;
             let fty = the_types[field];
             match fty {
                 LIRType::Int => {
@@ -367,11 +374,13 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         }
     }
 
-    fn copy_struct_fields(&mut self, type_: LIRType, src: Value, dst: Value) {
-        let the_types = type_.into_struct_fields();
-        let fields = self.types.struct_fields.get(&type_).unwrap();
+    fn copy_struct_fields(&mut self, ty: LIRType, src: Value, dst: Value) {
+        let the_types = ty.into_struct_fields();
+        let fields = self.types.struct_fields.get(&ty).unwrap();
+        assert!(the_types.len() == fields.len());
         for (field, fty) in fields.iter().enumerate() {
-            let offset = Self::offset_of_field(field, fields);
+            // for (field, _) in the_types.iter().enumerate() {
+            let offset = self.offset_of_lir_field(&ty, field) as i32;
             let fty = the_types[field];
             match fty {
                 LIRType::Int => {
@@ -391,18 +400,18 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     }
 
     fn write_struct_field(&mut self, name: LIRType, field: usize, ptr: Value, v: VirtualValue) {
-        let fields = self.types.struct_fields.get(&name).unwrap();
-        let offset = Self::offset_of_field(field, fields);
+        // let fields = self.types.struct_fields.get(&name).unwrap();
 
+        let offset = self.offset_of_lir_field(&name, field) as i32;
         match v {
-            VirtualValue::Scalar(value) => {
+            VirtualValue::Scalar(value, _) => {
                 self.ins().store(MemFlags::new(), value, ptr, offset);
             }
             VirtualValue::UnstableStruct { ty, fields } => {
                 let field_types = self.types.struct_fields.get(&ty).unwrap();
                 for (field, v) in fields.into_iter().enumerate() {
                     // let offset = offset + self.types.offset_of_field(type_, field);
-                    let offset = Self::offset_of_field(field, field_types);
+                    let offset = self.offset_of_lir_field(&ty, field);
                     let nptr = self.ins().iadd_imm(ptr, offset as i64);
                     self.write_struct_field(ty, field, nptr, v);
                 }
@@ -445,7 +454,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         params: Vec<Value>,
     ) -> VirtualValue {
         match func {
-            VirtualValue::Func(func_id) => self.call_direct_func(params, func_id),
+            VirtualValue::Func(func_id, _) => self.call_direct_func(params, func_id),
             VirtualValue::Pointer(t, ptr) => match t {
                 PointeeType::Func(from, to) => {
                     let sig = self
@@ -457,7 +466,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
                 _ => unreachable!(),
             },
             VirtualValue::Closure(c) => self.call_closure(c, &params),
-            _ => panic!("Invalid function node {func:?}"),
+            _ => panic!("Invalid function node {func:#?}"),
         }
     }
 
@@ -472,8 +481,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         if let LIRType::Struct(_) = ret
             && self.types.struct_passing_mode(&ret) == StructPassingMode::ByPointer
         {
-            let fields = self.types.struct_fields.get(&ret).unwrap();
-            let ptr = self.stack_alloc_types(fields);
+            // let fields = self.types.struct_fields.get(&ret).unwrap();
+            let ptr = self.stack_alloc_lir_type(&ret);
             call_params.insert(0, ptr);
             out_ptr_return = Some(VirtualValue::StackStruct { ty: ret, ptr });
         }
@@ -512,8 +521,8 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
         if let LIRType::Struct(name) = ret
             && self.types.struct_passing_mode(&ret) == StructPassingMode::ByPointer
         {
-            let fields = self.types.struct_fields.get(&ret).unwrap();
-            let ptr = self.stack_alloc_types(fields);
+            // let fields = self.types.struct_fields.get(&ret).unwrap();
+            let ptr = self.stack_alloc_lir_type(&ret);
             call_params.insert(0, ptr);
             out_ptr_return = Some(VirtualValue::StackStruct { ty: ret, ptr });
         }
@@ -544,7 +553,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     pub fn get_func(&self, vv: &VirtualValue) -> FuncId {
         match vv {
             VirtualValue::Closure(closure) => self.get_func(&closure.func),
-            VirtualValue::Func(func_id) => *func_id,
+            VirtualValue::Func(func_id, _) => *func_id,
             VirtualValue::Pointer(PointeeType::Func(..), value) => {
                 panic!("Should have been an indirect call")
             }
@@ -555,6 +564,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
     pub fn make_payload(&mut self, vv: &VirtualValue, tag: Value) -> Value {
         let size_t = self.module.isa().pointer_type();
         let payload_type = self.type_of_virtual_value(vv);
+        let ty = vv.ty();
         let body = self.as_values(vv);
         match self.payload_kind(&payload_type) {
             PayloadKind::InlineCasted(t) => {
@@ -567,7 +577,7 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             }
             PayloadKind::Inline => body[0],
             PayloadKind::Zero => self.builder.ins().iconst(size_t, 0),
-            PayloadKind::StackPointer => self.stack_alloc_values(&body),
+            PayloadKind::StackPointer => self.stack_alloc_values(&body, ty),
         }
     }
 

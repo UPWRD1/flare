@@ -50,16 +50,20 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             left: Value,
             op: BinOp,
             right: Value,
+            ty: LIRType,
         ) -> VirtualValue {
-            VirtualValue::Scalar(match op {
-                BinOp::Eq => builder.ins().fcmp(FloatCC::Equal, left, right),
-                BinOp::Neq => todo!(),
-                BinOp::Gt => todo!(),
-                BinOp::Lt => todo!(),
-                BinOp::Gte => todo!(),
-                BinOp::Lte => todo!(),
-                _ => unreachable!("Bad op"),
-            })
+            VirtualValue::Scalar(
+                match op {
+                    BinOp::Eq => builder.ins().fcmp(FloatCC::Equal, left, right),
+                    BinOp::Neq => todo!(),
+                    BinOp::Gt => todo!(),
+                    BinOp::Lt => todo!(),
+                    BinOp::Gte => todo!(),
+                    BinOp::Lte => todo!(),
+                    _ => unreachable!("Bad op"),
+                },
+                ty,
+            )
         }
 
         fn convert_arith(
@@ -67,23 +71,28 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             left: Value,
             op: BinOp,
             right: Value,
+            ty: LIRType,
         ) -> VirtualValue {
-            VirtualValue::Scalar(match op {
-                BinOp::Add => builder.ins().fadd(left, right),
-                BinOp::Sub => builder.ins().fsub(left, right),
-                BinOp::Mul => builder.ins().fmul(left, right),
-                BinOp::Div => builder.ins().fdiv(left, right),
-                _ => unreachable!("Bad op"),
-            })
+            VirtualValue::Scalar(
+                match op {
+                    BinOp::Add => builder.ins().fadd(left, right),
+                    BinOp::Sub => builder.ins().fsub(left, right),
+                    BinOp::Mul => builder.ins().fmul(left, right),
+                    BinOp::Div => builder.ins().fdiv(left, right),
+                    _ => unreachable!("Bad op"),
+                },
+                ty,
+            )
         }
+        let ty = left.type_of();
         let left = self.convert_lir(left).as_scalar();
         let right = self.convert_lir(right).as_scalar();
         match op {
             BinOp::Eq | BinOp::Neq | BinOp::Gt | BinOp::Lt | BinOp::Gte | BinOp::Lte => {
-                convert_cmp(&mut self.builder, left, op, right)
+                convert_cmp(&mut self.builder, left, op, right, ty)
             }
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                convert_arith(&mut self.builder, left, op, right)
+                convert_arith(&mut self.builder, left, op, right, ty)
             }
             BinOp::And => todo!(),
             BinOp::Or => todo!(),
@@ -153,11 +162,12 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 self.convert_lir(*body)
             }
             LIR::Access(ref closure, idx) => {
+                // dbg!(closure);
                 if idx == 0 {
                     self.convert_lir(*closure.clone())
                 } else {
                     let closure = LIR::Field(closure.clone(), idx - 1);
-                    self.field(&closure, &lir, idx)
+                    self.field(&closure, &lir, idx - 1)
                 }
             }
             LIR::Struct(fields) => {
@@ -175,11 +185,11 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
             LIR::FuncRef(app_type) => self.convert_app_type(app_type),
             LIR::BinOp(left, op, right) => self.convert_bin_op(*left, op, *right),
 
-            LIR::Item(item_id, _) => {
+            LIR::Item(item_id, t) => {
                 // dbg!(item_id);
                 let func_id = *self.types.function_names.get(&item_id).unwrap();
                 // let fref = self.module.declare_func_in_func(func_id, self.builder.func);
-                VirtualValue::Func(func_id)
+                VirtualValue::Func(func_id, t)
             }
             LIR::Extern(name, t) => {
                 let (fparams, fret) = t.destructure_closure();
@@ -191,7 +201,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                     .declare_function(&name, Linkage::Import, &sig)
                     .expect("could not declare extern");
                 // let fref = self.module.declare_func_in_func(the_fun, self.builder.func);
-                VirtualValue::Func(the_fun)
+                VirtualValue::Func(the_fun, t)
             }
         }
     }
@@ -199,10 +209,10 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
     fn convert_app_type(&mut self, app_type: AppType) -> VirtualValue {
         match app_type {
             AppType::LIR(lir) => self.convert_lir(*lir),
-            AppType::Item(item_id, lirtype) => {
+            AppType::Item(item_id, t) => {
                 let func_id = *self.types.function_names.get(&item_id).unwrap();
                 let args = self.types.function_types.get(&func_id).unwrap().0.clone();
-                VirtualValue::Func(func_id)
+                VirtualValue::Func(func_id, t)
             }
             AppType::Extern(name, t) => {
                 let (fparams, fret) = t.destructure_closure();
@@ -214,7 +224,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                     .declare_function(&name, Linkage::Import, &sig)
                     .expect("could not declare extern");
                 // let fref = self.module.declare_func_in_func(the_fun, self.builder.func);
-                VirtualValue::Func(the_fun)
+                VirtualValue::Func(the_fun, t)
             }
         }
     }
@@ -225,8 +235,8 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         } else {
             // dbg!(&obj);
             let obj_vv = self.convert_lir(obj.clone());
-            // dbg!(obj_vv);
-            if let VirtualValue::Scalar(_) = obj_vv {
+            dbg!(&obj_vv);
+            if let VirtualValue::Scalar(..) = obj_vv {
                 // struct was destructured in arguments
                 obj_vv
             } else {
@@ -372,9 +382,9 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                     .block_params(branch_block.block(&converter.builder.func.dfg.value_lists))
                     .to_vec();
 
-                let target_ty = t.destructure_closure().0;
+                let branch_arg_tys = t.destructure_closure().0;
                 // dbg!(&target_ty);
-                let types: Vec<_> = target_ty
+                let types: Vec<_> = branch_arg_tys
                     .iter()
                     .flat_map(|t| converter.types.convert_ty(*t))
                     .collect();
@@ -383,8 +393,9 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 let last = block_args[limit];
                 let captures: Vec<_> = block_args
                     .into_iter()
+                    .zip(branch_arg_tys)
                     .take(limit)
-                    .map(VirtualValue::Scalar)
+                    .map(|(v, t)| VirtualValue::Scalar(v, t))
                     .collect();
                 let payload = converter.read_payload(last, &types);
 
@@ -420,7 +431,10 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         let size_t = self.types.ptr_type();
         let func_ref = self.module.declare_func_in_func(func_id, self.builder.func);
         let func_pointer = self.ins().func_addr(size_t, func_ref);
-        let func = VirtualValue::Pointer(PointeeType::Func(fparams, ret_ty), func_pointer);
+        let func = VirtualValue::Pointer(
+            PointeeType::Func(fparams.as_slice().into(), ret_ty),
+            func_pointer,
+        );
         let mut params: Vec<_> = capture_params
             .into_iter()
             .map(|var| self.scope.get(&LIR::Var(var)).cloned().unwrap())
@@ -457,21 +471,22 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         self.builder.switch_to_block(entry_block);
         for (var, vparam) in item.params.into_iter().zip(vparams) {
             match vparam {
-                VirtualValue::Scalar(_)
+                VirtualValue::Scalar(..)
                 | VirtualValue::StackStruct { .. }
                 | VirtualValue::TaggedUnion { .. } => {
                     // dbg!(var);
                     self.scope.insert(LIR::Var(var), vparam);
                 }
-                VirtualValue::UnstableStruct { ty, fields } => {
+                VirtualValue::UnstableStruct { ty, ref fields } => {
                     let the_types = ty.into_struct_fields();
-                    for (i, (fp, ty)) in fields.into_iter().zip(the_types.iter()).enumerate() {
+                    self.scope.insert(LIR::Var(var), vparam.clone());
+                    for (i, (fp, ty)) in fields.iter().zip(the_types.iter()).enumerate() {
                         let new_var = LIR::index(LIR::Var(var), i);
-                        self.scope.insert(new_var, fp);
+                        self.scope.insert(new_var, fp.clone());
                     }
                 }
                 VirtualValue::Closure(closure) => todo!(),
-                VirtualValue::Func(func_id) => todo!(),
+                VirtualValue::Func(..) => todo!(),
                 VirtualValue::Pointer(..) => {
                     self.scope.insert(LIR::Var(var), vparam);
                 }

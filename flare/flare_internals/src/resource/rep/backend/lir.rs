@@ -206,6 +206,7 @@ impl LIR {
                 if let LIRType::ClosureEnv(f, env) = closure.type_of() {
                     // if the index is zero, we are accessing the function. if it is greater, we want the params.
                     if t == 0 { *f } else { env[t - 1] }
+                    // env[t]
                 } else {
                     panic!("Not a closure")
                 }

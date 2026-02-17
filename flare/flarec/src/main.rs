@@ -133,7 +133,7 @@ fn main() -> CompResult<()> {
 
     let cli = Cli::parse();
 
-    unsafe { backtrace_on_stack_overflow::enable() };
+    // unsafe { backtrace_on_stack_overflow::enable() };
     match cli.emit {
         EmitOptions::IR => {
             let files = cli.input_files;

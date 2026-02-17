@@ -14,7 +14,17 @@ impl Render for LIRType {
             Self::Float => Doc::text("f32"),
             Self::String => Doc::text("str"),
             Self::Unit => Doc::text("unit"),
-            Self::Closure(l, r) => l.render().space().text("->").space().render(*r).brackets(),
+            Self::Closure(l, r) => Doc::list(
+                l.iter()
+                    .map(|arg| arg.render())
+                    .intersperse(Doc::text(","))
+                    .collect(),
+            )
+            .parens()
+            .text("->")
+            .space()
+            .render(*r)
+            .brackets(),
             Self::ClosureEnv(c, params) => Doc::text("|")
                 .append(
                     Doc::list(
