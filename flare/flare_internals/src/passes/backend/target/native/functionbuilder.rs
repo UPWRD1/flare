@@ -325,8 +325,10 @@ impl<'bctx, 'module> IRConverter<'bctx, 'module> {
             //     self.ins().return_(&vals);
             // }
             VirtualValue::Func(f) => {
-                let vals = self.as_values(&vv);
-                self.ins().return_(&vals);
+                // let vals = self.as_values(&vv);
+                // self.ins().return_(&vals);
+                let call = self.call_func(vv, vec![]);
+                self.return_(call);
             }
             VirtualValue::TaggedUnion { .. } => {
                 let vals = self.as_values(&vv);

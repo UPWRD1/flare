@@ -153,8 +153,12 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 self.convert_lir(*body)
             }
             LIR::Access(ref closure, idx) => {
-                let closure = LIR::Field(closure.clone(), idx);
-                self.field(&closure, &lir, idx)
+                if idx == 0 {
+                    self.convert_lir(*closure.clone())
+                } else {
+                    let closure = LIR::Field(closure.clone(), idx - 1);
+                    self.field(&closure, &lir, idx)
+                }
             }
             LIR::Struct(fields) => {
                 let (types, fields): (Vec<_>, Vec<_>) = fields
@@ -410,6 +414,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
                 .define_function(func_id, &mut ctx)
                 .expect("Could not define case function");
         }
+
         // This little dance is needed to call the function indirectly...
         let scrutinee_vv = self.convert_lir(scrutinee.clone());
         let size_t = self.types.ptr_type();

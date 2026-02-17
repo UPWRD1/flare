@@ -37,7 +37,7 @@ impl LIRType {
                 // LIRType::Struct(vec![*f, env_struct].as_slice().into())
 
                 // LIRType::Struct({
-                //     let env = env.into_iter().map(|t| t.clone());
+                //     let env = env.iter().copied();
                 //     vec![*f]
                 //         .into_iter()
                 //         .chain(env)

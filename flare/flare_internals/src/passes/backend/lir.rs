@@ -66,7 +66,7 @@ impl ClosureConvert {
             }
             ir::IR::App(fun, arg) => {
                 self.is_in_app = true;
-                let ir = if let ir::IR::App(_, _) = *fun {
+                let lir = if let ir::IR::App(_, _) = *fun {
                     let mut b = fun;
                     let arg = self.convert(*arg, env.clone());
                     let mut args: Vec<_> = vec![arg];
@@ -87,7 +87,7 @@ impl ClosureConvert {
                     LIR::apply_lir(closure, arg)
                 };
                 self.is_in_app = false;
-                ir
+                lir
             }
 
             ir::IR::TyFun(..) | ir::IR::TyApp(..) => {
@@ -115,26 +115,26 @@ impl ClosureConvert {
             ),
 
             ir::IR::Item(t, d) => {
-                // LIR::Item(self.item_supply.supply_for(d), lower_ty(&t))
+                LIR::Item(self.item_supply.supply_for(d), lower_ty(&t))
                 // LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)))
 
-                let item_ref =
-                    LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)));
-                if self.is_in_app {
-                    item_ref
-                } else {
-                    LIR::BulkApply(Box::new(item_ref), vec![])
-                }
+                // let item_ref =
+                // LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)));
+                // if self.is_in_app {
+                //     item_ref
+                // } else {
+                //     LIR::BulkApply(Box::new(item_ref), vec![])
+                // }
             }
             ir::IR::Extern(n, t) => {
-                // LIR::Extern(n, lower_ty(&t))
+                LIR::Extern(n, lower_ty(&t))
                 // LIR::FuncRef(AppType::Extern(n, lower_ty(&t)))
-                let extern_ref = LIR::FuncRef(AppType::Extern(n, lower_ty(&t)));
-                if self.is_in_app {
-                    extern_ref
-                } else {
-                    LIR::BulkApply(Box::new(extern_ref), vec![])
-                }
+                // let extern_ref = LIR::FuncRef(AppType::Extern(n, lower_ty(&t)));
+                // if self.is_in_app {
+                //     extern_ref
+                // } else {
+                //     LIR::BulkApply(Box::new(extern_ref), vec![])
+                // }
             }
             _ => todo!("{ir:?}"),
         }
@@ -165,7 +165,7 @@ impl ClosureConvert {
             .map(|(i, var)| {
                 let id = self.var_supply.supply();
                 let new_var = Var { id, ty: var.ty };
-                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i), body.clone());
+                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
                 (var, new_var)
             })
             .collect::<FxHashMap<_, _>>();
