@@ -154,7 +154,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         }
 
         let ir_body = self.codegen_ir(item.body);
-        dbg!(&ir_body);
+        // dbg!(&ir_body);
 
         self.builder.build_return(Some(&ir_body));
 
@@ -209,7 +209,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 }
             }
             LIR::Int(i) => self.context.i32_type().const_int(i as u64, false).into(),
-            LIR::Str(intern) => todo!(),
+            LIR::Str(s) => self.context.const_string(s.as_bytes(), false).into(),
             LIR::Unit => self.context.i8_type().const_int(0u64, false).into(),
             LIR::Float(f) => {
                 let float_type = self.context.f32_type();
@@ -223,7 +223,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 // self.builder.insert
                 let closure_struct = self
                     .builder
-                    .build_alloca(closure_struct_ty, "closure-struct")
+                    .build_alloca(closure_struct_ty, "closure_struct")
                     .unwrap();
                 let item_fn = self
                     .module
@@ -286,14 +286,14 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                             self.context.ptr_type(AddressSpace::default()),
                             obj_ptr,
                             0,
-                            "gep-closure-func",
+                            "gep_closure_func",
                         )
                         .unwrap();
                     self.builder
                         .build_load(
                             self.context.ptr_type(AddressSpace::default()),
                             fn_gep,
-                            "load-closure-func",
+                            "load_closure_func",
                         )
                         .unwrap()
                 } else {
@@ -315,19 +315,19 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                             self.convert_struct_ty(obj.type_of()),
                             obj_ptr,
                             1u32,
-                            "gep-closure-env",
+                            "gep_closure_env",
                         )
                         .unwrap();
                     let capt_gep = self
                         .builder
-                        .build_struct_gep(env_ty, env_gep, idx as u32, "gep-closure-field")
+                        .build_struct_gep(env_ty, env_gep, idx as u32, "gep_closure_field")
                         .unwrap();
 
                     self.builder
                         .build_load(
                             self.convert_struct_ty(field_ty),
                             capt_gep,
-                            "load-closure-capt",
+                            "load_closure_capt",
                         )
                         .unwrap()
                 }
@@ -337,12 +337,12 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
                 let the_struct = self
                     .builder
-                    .build_alloca(struct_ty, "struct-alloca")
+                    .build_alloca(struct_ty, "struct_alloca")
                     .expect("Could not alloca struct");
                 for (i, field) in fields.iter().enumerate() {
                     let field_ptr = self
                         .builder
-                        .build_struct_gep(struct_ty, the_struct, i as u32, "field-gep")
+                        .build_struct_gep(struct_ty, the_struct, i as u32, "field_gep")
                         .expect("Could not gep struct field");
                     let field_val = self.codegen_ir(field.clone());
                     self.builder
@@ -360,13 +360,13 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
                     let pointer_idx = self
                         .builder
-                        .build_struct_gep(struct_ty, obj, idx as u32, "struct-gep")
+                        .build_struct_gep(struct_ty, obj, idx as u32, "struct_gep")
                         .unwrap();
                     self.builder
                         .build_load(
                             struct_ty.get_field_type_at_index(idx as u32).unwrap(),
                             pointer_idx,
-                            "load-field",
+                            "load_field",
                         )
                         .unwrap()
                 } else if obj.is_struct_value() {
@@ -457,7 +457,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 .build_load(
                     self.context.ptr_type(AddressSpace::default()),
                     fun_gep,
-                    "fun-pointer",
+                    "fun_pointer",
                 )
                 .expect("Could not get closure func pointer")
                 .into_pointer_value();
@@ -467,27 +467,30 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 .map(|arg| self.codegen_ir(arg))
                 .collect_vec();
             args.insert(0, closure_and_env_pointer.into());
-            let args = self.make_args(&args);
 
+            let args = self.make_args(&args);
+            dbg!(&args);
             self.builder
-                .build_indirect_call(the_fun_ty, fun_pointer, &args, "closure-indirect")
+                .build_indirect_call(the_fun_ty, fun_pointer, &args, "closure_indirect")
                 .expect("Could not build closure call")
                 .try_as_basic_value()
                 .unwrap_basic()
         } else {
+            dbg!(fun_ty);
             let (args, ret) = fun_ty.destructure_closure();
             let fun_ty = self.make_func_type(ret, &args);
-            // dbg!(fun_ty);
+            dbg!(fun_ty);
             let fun = self.codegen_ir(fun);
             let args = arg_lirs
                 .into_iter()
                 .map(|arg| self.codegen_ir(arg))
                 .collect_vec();
             let args = self.make_args(&args);
+            dbg!(&args);
             match fun {
                 BasicValueEnum::PointerValue(pointer) => self
                     .builder
-                    .build_indirect_call(fun_ty, pointer, &args, "call-indirect-res")
+                    .build_indirect_call(fun_ty, pointer, &args, "call_indirect_res")
                     .unwrap()
                     .try_as_basic_value()
                     .unwrap_basic(),

@@ -58,20 +58,21 @@ impl ClosureConvert {
                 LIR::local(v, defn, body)
             }
             ir::IR::Fun(ref v, ref body) => {
+                // dbg!(v);
                 let mut env = env.clone();
                 let mut rec_body = ir.clone();
                 let mut vars = vec![];
-                while let ir::IR::Fun(v, b) = rec_body {
+                while let ir::IR::Fun(fun_var, b) = rec_body {
                     let var = Var {
-                        id: self.var_supply.supply_for(v.id),
-                        ty: lower_ty(&v.ty),
+                        id: self.var_supply.supply_for(fun_var.id),
+                        ty: lower_ty(&fun_var.ty),
                     };
                     vars.push(var);
-                    env = env.update(v, var);
+                    env = env.update(fun_var, var);
                     rec_body = *b;
                 }
                 // dbg!(&vars);
-                self.make_closure(&vars, *body.clone(), &env)
+                self.make_closure(&vars, rec_body, &env)
             }
             ir::IR::App(fun, arg) => {
                 self.is_in_app = true;
@@ -118,8 +119,8 @@ impl ClosureConvert {
             ir::IR::Item(t, d) => {
                 let id = self.item_supply.supply_for(d);
                 let ty = lower_ty(&t);
-                LIR::ClosureBuild(ty, d, vec![])
-                // LIR::Item(self.item_supply.supply_for(d), lower_ty(&t))
+                // LIR::ClosureBuild(ty, d, vec![])
+                LIR::Item(id, ty)
                 // LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)))
 
                 // let item_ref =
@@ -150,9 +151,13 @@ impl ClosureConvert {
         body: ir::IR,
         env: &im::HashMap<ir::Var, Var, FxBuildHasher>,
     ) -> LIR {
+        // dbg!(&body);
         let ret = lower_ty(&body.type_of());
         let mut body = self.convert(body, env);
+        // dbg!(&body);
+        // dbg!(vars);
         let mut free_vars_set = body.free_vars();
+        // dbg!(&free_vars_set);
         for var in vars {
             free_vars_set.remove(var);
         }
@@ -253,19 +258,19 @@ fn lower_ty(ty: &IRType) -> LIRType {
         IRType::Str => LIRType::String,
         IRType::Unit => LIRType::Unit,
         IRType::Fun(arg, ret) => {
-            // dbg!(ty);
+            dbg!(ty);
             // todo!()
-            let mut args = vec![];
-            let mut marg = *arg.clone();
+            let mut args = vec![*arg.clone()];
+            let mut marg = *ret.clone();
             while let IRType::Fun(a, r) = marg {
                 args.push(*a);
                 marg = *r;
             }
-            args.push(marg);
-
+            let ret = marg;
+            dbg!(&args, &ret);
             LIRType::closure(
                 &args.iter().map(lower_ty).collect::<Vec<_>>(),
-                lower_ty(ret),
+                lower_ty(&ret),
             )
         }
         IRType::Var(_) | IRType::TyFun(..) => {

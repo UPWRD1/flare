@@ -1,30 +1,38 @@
 item #0: is
-unit become unit in {unit | num}
+fn [$0:{num * unit}] => $0.0
 end item #0
 
 item #1: is
-fn [$0:num] => $0 become num in {unit | num}
+fn [$0:{num * unit}, $1:num -> num] =>
+  [let $18:num = [$1](
+    $0.0)
+  in
+    fn [$19:unit] =>
+      {
+        $18,
+        $19}](
+  $0.1)
 end item #1
 
 item #2: is
-fn [$0:{unit | num}, $1:num -> num] =>
-  match $0:
-    | $8:unit then #0,
-    | $9:num then [#1](
-      [$1](
-      $9))
+fn [$0:num] => $0
 end item #2
 
 item #3: is
-fn [$0:{unit | num}, $1:num] =>
-  match $0:
-    | $8:unit then $1,
-    | $9:num then $9
+fn [$0:num] =>
+  [let $2:num = [#2](
+    $0)
+  in
+    fn [$3:unit] =>
+      {
+        $2,
+        $3}](
+  unit)
 end item #3
 
 item #4: is
-[#3](
-[#2](
+[#0](
 [#1](
-10), fn [$2:num] => $2*2), 7)
+[#3](
+10), fn [$2:num] => $2*2))-20
 end item #4
