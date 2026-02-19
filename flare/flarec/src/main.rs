@@ -18,7 +18,7 @@ use clap::{Parser, ValueEnum, crate_description, crate_version};
 use flare_internals::{
     Context,
     passes::backend::target::{
-        Target, c::C, irtarget::IRTarget, lirtarget::LIRTarget, native::Native,
+        Target, c::C, irtarget::IRTarget, lirtarget::LIRTarget, llvm::LLVM, native::Native,
     },
     resource::errors::CompResult,
 };
@@ -89,8 +89,9 @@ enum EmitOptions {
     LIR,
     IR,
     C,
-    #[default]
     O,
+    #[default]
+    LLVM,
 }
 
 macro_rules! make_target {
@@ -174,5 +175,6 @@ fn main() -> CompResult<()> {
         EmitOptions::LIR => make_target!(LIRTarget, cli),
         EmitOptions::C => make_target!(C, cli),
         EmitOptions::O => make_target!(Native, cli),
+        EmitOptions::LLVM => make_target!(LLVM, cli),
     }
 }

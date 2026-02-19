@@ -5,6 +5,7 @@ use crate::passes::backend::lir::ClosureConvertOut;
 pub mod c;
 pub mod irtarget;
 pub mod lirtarget;
+pub mod llvm;
 pub mod native;
 
 pub trait Target: Clone {

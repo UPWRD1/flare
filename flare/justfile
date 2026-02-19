@@ -6,10 +6,10 @@ build:
 release: 
     cargo build --release -p flarec
 
-run emit='o':
+run emit='llvm':
     cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.ir --emit {{emit}}
 
-show emit='o':
+show emit='llvm':
     just run {{emit}}
     bat examples/ntest.{{emit}}   
     

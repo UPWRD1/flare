@@ -36,12 +36,12 @@ impl ClosureConvert {
     fn convert(&mut self, ir: ir::IR, env: &im::HashMap<ir::Var, Var, FxBuildHasher>) -> LIR {
         match ir {
             ir::IR::Num(n) => {
-                if n.fract() == 0.0 {
-                    let n = n.0 as i32;
-                    LIR::Int(n)
-                } else {
-                    LIR::Float(n)
-                }
+                // if n.fract() == 0.0 {
+                //     let n = n.0 as i32;
+                //     LIR::Int(n)
+                // } else {
+                LIR::Float(n)
+                // }
             }
             ir::IR::Str(s) => LIR::Str(s),
             ir::IR::Unit => LIR::Unit,
