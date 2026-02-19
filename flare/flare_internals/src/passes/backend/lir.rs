@@ -116,7 +116,10 @@ impl ClosureConvert {
             ),
 
             ir::IR::Item(t, d) => {
-                LIR::Item(self.item_supply.supply_for(d), lower_ty(&t))
+                let id = self.item_supply.supply_for(d);
+                let ty = lower_ty(&t);
+                LIR::ClosureBuild(ty, d, vec![])
+                // LIR::Item(self.item_supply.supply_for(d), lower_ty(&t))
                 // LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)))
 
                 // let item_ref =
