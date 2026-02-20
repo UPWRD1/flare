@@ -258,7 +258,7 @@ fn lower_ty(ty: &IRType) -> LIRType {
         IRType::Str => LIRType::String,
         IRType::Unit => LIRType::Unit,
         IRType::Fun(arg, ret) => {
-            dbg!(ty);
+            // dbg!(ty);
             // todo!()
             let mut args = vec![*arg.clone()];
             let mut marg = *ret.clone();
@@ -267,7 +267,7 @@ fn lower_ty(ty: &IRType) -> LIRType {
                 marg = *r;
             }
             let ret = marg;
-            dbg!(&args, &ret);
+            // dbg!(&args, &ret);
             LIRType::closure(
                 &args.iter().map(lower_ty).collect::<Vec<_>>(),
                 lower_ty(&ret),

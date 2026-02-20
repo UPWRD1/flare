@@ -5,14 +5,14 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine},
-    types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
-    values::{
-        AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
-        PointerValue,
+    targets::{
+        CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetMachineOptions,
     },
+    types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
+    values::{AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum},
 };
 use itertools::Itertools;
+use log::Metadata;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -20,16 +20,13 @@ use crate::{
         lir::ClosureConvertOut,
         target::{Target as FlareTarget, native::FunctionPurpose},
     },
-    resource::{
-        errors::CompilerErr,
-        rep::{
-            backend::{
-                lir::{Item, LIR, Var},
-                types::LIRType,
-            },
-            frontend::ast::BinOp,
-            midend::ir::ItemId,
+    resource::rep::{
+        backend::{
+            lir::{Item, LIR, Var},
+            types::LIRType,
         },
+        frontend::ast::BinOp,
+        midend::ir::ItemId,
     },
 };
 
@@ -38,8 +35,7 @@ pub struct LLVMContext<'ctx> {
     context: &'ctx Context,
     builder: Builder<'ctx>,
     module: Module<'ctx>,
-    target: Target,
-    machine: TargetMachine,
+    // machine: TargetMachine,
     sym_table: RefCell<FxHashMap<Var, BasicValueEnum<'ctx>>>,
 }
 
@@ -56,33 +52,33 @@ impl<'ctx> LLVMContext<'ctx> {
         //     Some(target_str) => TargetTriple::create(target_str.as_str()),
         // };
         //
-        let mut config = InitializationConfig::default();
-        Target::initialize_all(&config);
-        let triple = TargetMachine::get_default_triple();
-
-        let target = Target::from_triple(&triple)
-            .expect("Unknown target: please specify a valid LLVM target");
-
-        let machine = target
-            .create_target_machine(
-                &triple,
-                "generic",
-                "",
-                inkwell::OptimizationLevel::None,
-                // cli_args.opt_level.into(),
-                RelocMode::Default,
-                CodeModel::Default,
-            )
-            .unwrap();
         Self {
             context,
             builder,
             module,
-            machine,
-            target,
             sym_table: RefCell::new(FxHashMap::default()),
         }
     }
+}
+
+fn make_target_machine() -> TargetMachine {
+    let config = InitializationConfig::default();
+    Target::initialize_all(&config);
+    let triple = TargetMachine::get_default_triple();
+
+    let target =
+        Target::from_triple(&triple).expect("Unknown target: please specify a valid LLVM target");
+    target
+        .create_target_machine_from_options(
+            &triple,
+            TargetMachineOptions::new()
+                .set_cpu("generic")
+                .set_features("")
+                .set_reloc_mode(RelocMode::Default)
+                .set_code_model(CodeModel::Default)
+                .set_level(inkwell::OptimizationLevel::None),
+        )
+        .unwrap()
 }
 
 pub trait LLVMTypeConvert {
@@ -124,7 +120,24 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         }
     }
     fn make_func_type(&self, ret: LIRType, args: &[LIRType]) -> FunctionType<'ir> {
+        // if let LIRType::Struct(_) | LIRType::ClosureEnv(_, _) = ret {
+        //     let sret_ty = ret.convert(self);
+        //     let void_ty = self.context.void_type();
+        //     let mut args = args
+        //         .iter()
+        //         .map(|arg| {
+        //             let bty = arg.convert(self);
+        //             BasicMetadataTypeEnum::from(bty)
+        //         })
+        //         .collect_vec();
+        //     args.insert(
+        //         0,
+        //         BasicMetadataTypeEnum::PointerType(sret_ty.into_pointer_type()),
+        //     );
+        //     void_ty.fn_type(&args, false)
+        // } else {
         let ret_ty = ret.convert(self);
+
         ret_ty.fn_type(
             &args
                 .iter()
@@ -135,6 +148,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 .collect_vec(),
             false,
         )
+        // }
     }
 
     fn codegen_item(&self, item: Item) -> AnyValueEnum<'ir> {
@@ -155,6 +169,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
         let ir_body = self.codegen_ir(item.body);
         // dbg!(&ir_body);
+        // if item.ret_ty.
 
         self.builder.build_return(Some(&ir_body));
 
@@ -444,7 +459,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             let (mut arg_tys, ret_ty) = fpointer_ty.destructure_closure();
             arg_tys.insert(0, LIRType::Struct(capt_tys));
             let the_fun_ty = self.make_func_type(ret_ty, &arg_tys);
-            dbg!(the_fun_ty);
+            // dbg!(the_fun_ty);
             let closure_and_env_pointer = self.codegen_ir(fun).into_pointer_value();
             let closure_struct_ty = self.convert_struct_ty(fun_ty.closure_to_struct_rep());
 
@@ -469,24 +484,24 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             args.insert(0, closure_and_env_pointer.into());
 
             let args = self.make_args(&args);
-            dbg!(&args);
+            // dbg!(&args);
             self.builder
                 .build_indirect_call(the_fun_ty, fun_pointer, &args, "closure_indirect")
                 .expect("Could not build closure call")
                 .try_as_basic_value()
                 .unwrap_basic()
         } else {
-            dbg!(fun_ty);
+            // dbg!(fun_ty);
             let (args, ret) = fun_ty.destructure_closure();
             let fun_ty = self.make_func_type(ret, &args);
-            dbg!(fun_ty);
+            // dbg!(fun_ty);
             let fun = self.codegen_ir(fun);
             let args = arg_lirs
                 .into_iter()
                 .map(|arg| self.codegen_ir(arg))
                 .collect_vec();
             let args = self.make_args(&args);
-            dbg!(&args);
+            // dbg!(&args);
             match fun {
                 BasicValueEnum::PointerValue(pointer) => self
                     .builder
@@ -563,36 +578,44 @@ impl FlareTarget for LLVM {
             .collect();
 
         let ctx = Context::create();
+        let machine = make_target_machine();
         let llvm_ctx = LLVMContext::new(&ctx);
 
         for (item, purpose) in funcs.into_iter() {
             match purpose {
                 FunctionPurpose::Normal | FunctionPurpose::Closure => {
-                    log::info!("{}", item);
+                    // log::info!("{}", item);
                     llvm_ctx.codegen_item(item);
-                    log::info!("---------------------------------")
+                    // log::info!("---------------------------------")
                 }
 
                 FunctionPurpose::Main => {
                     let id = item.id;
-                    log::info!("{}", item);
+                    // log::info!("{}", item);
                     let main_id = llvm_ctx.codegen_item(item);
-                    log::info!("------------main---------");
+                    // log::info!("------------main---------");
                     llvm_ctx.generate_main_func(&id);
 
-                    log::info!("---------------------------------")
+                    // log::info!("---------------------------------")
                 }
             }
         }
+
+        // let bit = machine
+        //     .write_to_memory_buffer(&llvm_ctx.module, inkwell::targets::FileType::Object)
+        //     .unwrap();
+
         let bit = llvm_ctx.module.write_bitcode_to_memory();
-        bit.as_slice().to_vec()
+        // let o = bit.create_object_file().unwrap();
+        // o.get_symbols()
         // todo!()
+        bit.as_slice().to_vec()
         // llvm_ctx.compile(&cli.output.as_path(), FileType::Object);
         // Generate the object file.
         // product.emit().expect("Could not emit bytes")
     }
 
     fn ext(&self) -> &str {
-        "ll"
+        "bc"
     }
 }

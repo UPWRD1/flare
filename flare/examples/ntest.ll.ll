@@ -1,4 +1,4 @@
-; ModuleID = 'examples/ntest.bc'
+; ModuleID = 'examples/ntest.ll'
 source_filename = "flare_module"
 
 define float @flare_f_0(ptr %0) {
