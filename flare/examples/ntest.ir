@@ -4,14 +4,10 @@ end item #0
 
 item #1: is
 fn [$0:{num * unit}, $1:num -> num] =>
-  [let $18:num = [$1](
-    $0.0)
-  in
-    fn [$19:unit] =>
-      {
-        $18,
-        $19}](
-  $0.1)
+  {
+    [$1](
+    $0.0),
+    $0.1}
 end item #1
 
 item #2: is
@@ -20,14 +16,10 @@ end item #2
 
 item #3: is
 fn [$0:num] =>
-  [let $2:num = [#2](
-    $0)
-  in
-    fn [$3:unit] =>
-      {
-        $2,
-        $3}](
-  unit)
+  {
+    [#2](
+    $0),
+    unit}
 end item #3
 
 item #4: is

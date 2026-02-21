@@ -389,30 +389,39 @@ impl IR {
     }
 
     pub fn is_trivial(&self) -> bool {
-        matches!(
-            self,
-            // Self::Var(_)
-            |Self::Num(_)| Self::Str(_) | Self::Unit | Self::Bool(_) | Self::Particle(_)
-        )
+        match self {
+            Self::Var(_)
+            | Self::Num(_)
+            | Self::Str(_)
+            | Self::Unit
+            | Self::Bool(_)
+            | Self::Particle(_) => true,
+            Self::Field(x, _) if x.is_trivial() => true,
+            _ => false,
+        }
     }
     pub fn is_value(&self) -> bool {
         match self {
             Self::Bin(l, _, r) => l.is_value() && r.is_value(),
 
             Self::TyFun(_, ir) => ir.is_value(),
+            Self::TyApp(ir, _) => ir.is_value(),
             Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
             Self::Tuple(s) => s.iter().all(Self::is_value),
-            Self::Var(_) | Self::App(_, _) | Self::TyApp(_, _) => false,
-            Self::Num(_)
+            Self::App(f, a) if f.is_value() && a.is_value() => true,
+            Self::App(_, _) | Self::Case(..) => false,
+            Self::Field(ir, _) => ir.is_value(),
+            Self::Fun(..) => true,
+            Self::Var(_)
+            | Self::Num(_)
             | Self::Str(_)
             | Self::Unit
             | Self::Bool(_)
             | Self::Particle(_)
-            | Self::Fun(_, _)
-            | Self::Tag(_, _, _)
-            | Self::Case(_, _, _) => true,
-            Self::Item(_, _) | Self::Extern(_, _) => false,
-            _ => todo!("{self:?}"),
+            | Self::Tag(_, _, _) => true,
+            Self::Item(_, _) | Self::Extern(_, _) => true,
+            Self::If(..) => false,
+            // _ => todo!("{self:?}"),
         }
     }
 

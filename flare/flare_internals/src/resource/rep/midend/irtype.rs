@@ -45,7 +45,10 @@ impl IRType {
     #[must_use]
     pub fn is_cheap_alloc(&self) -> bool {
         // Technically, unit is zero-sized, so it doesn't alloc
-        matches!(self, Self::Num | Self::Bool | Self::Str | Self::Unit)
+        matches!(
+            self,
+            Self::Num | Self::Bool | Self::Str | Self::Unit | Self::Particle(_)
+        )
     }
 
     pub fn into_ret_ty(self) -> Self {

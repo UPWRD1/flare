@@ -49,9 +49,11 @@ impl ClosureConvert {
             ir::IR::Particle(p) => LIR::Str(p),
 
             ir::IR::Local(var, defn, body) => {
+                dbg!(&var, env);
                 let defn = self.convert(*defn, env);
                 let v = Var {
                     id: self.var_supply.supply_for(var.id),
+                    // id: self.var_supply.supply(),
                     ty: lower_ty(&var.ty),
                 };
                 let body = self.convert(*body, &env.update(var, v));
@@ -104,7 +106,6 @@ impl ClosureConvert {
             }
             ir::IR::Tuple(v) => LIR::Struct(v.into_iter().map(|v| self.convert(v, env)).collect()),
             ir::IR::Tag(t, idx, ir) => LIR::tag(lower_ty(&t), idx, self.convert(*ir, env)), //TODO: special tag for unions
-            // ir::IR::Item(t, d) => LIR::Item(d, lower_ty(&t)),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             ir::IR::Bin(l, op, r) => LIR::binop(self.convert(*l, env), op, self.convert(*r, env)),
             ir::IR::Case(ty, scrutinee, branches) => LIR::case(
@@ -112,7 +113,7 @@ impl ClosureConvert {
                 self.convert(*scrutinee, env),
                 branches
                     .into_iter()
-                    .map(|b| ir::IR::fun(b.param, b.body))
+                    .map(|b| b.as_fun())
                     .map(|ir| self.convert(ir, env)),
             ),
 
@@ -157,11 +158,10 @@ impl ClosureConvert {
         // dbg!(&body);
         // dbg!(vars);
         let mut free_vars_set = body.free_vars();
-        // dbg!(&free_vars_set);
         for var in vars {
             free_vars_set.remove(var);
         }
-        // dbg!(&free_vars);
+        // dbg!(&free_vars_set);
 
         let free_vars: Vec<Var> = free_vars_set.iter().copied().collect();
         let var_tys: Vec<_> = vars.iter().map(|v| v.ty).collect();
@@ -218,7 +218,7 @@ pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
 
 fn convert(ir: ir::IR, id: ItemId, conversion: &mut ClosureConvert) -> ClosureConvertOut {
     let (params, ir) = ir.split_funs();
-    let mut var_supply = VarSupply::default();
+    let mut var_supply: VarSupply<ir::VarId> = VarSupply::default();
     let mut env = im::HashMap::with_hasher(FxBuildHasher);
 
     let id = conversion.item_supply.supply_for(id);
@@ -228,6 +228,7 @@ fn convert(ir: ir::IR, id: ItemId, conversion: &mut ClosureConvert) -> ClosureCo
             Param::Ty(_) => unreachable!("Type function encountered after monomorphization"),
             Param::Val(lower_var) => {
                 let id = var_supply.supply_for(lower_var.id);
+                // let id = var_supply.supply();
                 let var = Var {
                     id,
                     ty: lower_ty(&lower_var.ty),

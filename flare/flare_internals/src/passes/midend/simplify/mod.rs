@@ -329,7 +329,7 @@ impl OccuranceAnalyzer {
 
                     branch_occs
                         .vars
-                        .entry(branch.param.id)
+                        .entry(branch.param.id).and_modify(|v| *v = Occurrence::OnceInBranch)
                         .or_insert(Occurrence::Dead);
 
                     branch_occs = branch_occs.in_fun(&branch_free);
@@ -400,16 +400,17 @@ struct Simplifier {
 }
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
-let ref_ir = the_ir.clone();
+    let ref_ir = the_ir.clone();
 let mut occ_a = OccuranceAnalyzer::new();
 let mut simplifier = Simplifier::new();
     the_ir
                 .into_iter()
         .map(|ir| {
             let mut ir = ir;
-            for _ in 0..2 {
+            for _ in 0..4 {
             let (_, occs) =
                 occ_a.occurrence_analysis(&ir);
+            // dbg!(&occs);
                 simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
@@ -427,7 +428,7 @@ impl Simplifier {
         Self {
             // occs:,
             // items ,
-            inline_size_threshold: 60, // GHC magic number is 60
+            inline_size_threshold: 60,//60, // GHC magic number is 60
             subst: FxHashMap::default(),
             ..Default::default()        }
     }
@@ -514,11 +515,12 @@ impl Simplifier {
                 }
                 IR::Case(ty, scrutinee, branches) => {
                     if branches.is_empty() {
-                        break self.rebuild(*scrutinee, in_scope, ctx);
+                        panic!("Empty branches");
+                        // break self.rebuild(*scrutinee, in_scope, ctx);
                     }
                     let branches: Vec<Branch> = branches
                         .into_iter()
-                        .map(|b| self.simplify_branch(b, &in_scope))
+                        .map(|b| self.simplify_branch(b, *scrutinee.clone(), &in_scope))
                         .collect();
 
                     ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
@@ -538,11 +540,14 @@ impl Simplifier {
         }
     }
 
-    fn simplify_branch(&mut self, b: Branch, in_scope: &InScope) -> Branch {
+    fn simplify_branch(&mut self, b: Branch, scrutinee: IR, in_scope: &InScope) -> Branch {
+        let in_scope = in_scope.update(b.param.id, Definition::BoundTo(scrutinee, Occurrence::OnceInBranch));
         Branch {
             body: self.simplify(
                 b.body,
-                in_scope.update(b.param.id, Definition::Unknown),
+                in_scope.clone(),
+                // in_scope.update(b.param.id, Definition::Unknown),
+                // in_scope.update(b.param.id, Definition::BoundTo(, Occurrence::OnceInBranch)),
                 Vec::new(),
             ),
             ..b
@@ -550,10 +555,9 @@ impl Simplifier {
     }
 
     fn simplify_local(&mut self, var: Var, defn: IR, body: IR, ctx: &mut SimplifierContext) -> IR {
-        if let IR::Var(ref v) = defn && *v == var {
-            return body
-            
-        }
+        // if let IR::Var(ref v) = defn && *v == var {
+        //     return body
+        // }
         match self.occs.lookup_var(&var) {
             Occurrence::Dead => {
                 self.locals_inlined += 1;
@@ -683,9 +687,9 @@ impl Simplifier {
                     } else if let IR::Item(_, ref id) = ir {
                         let arg = self.simplify(arg, in_scope.clone(), Vec::new());
                             ir = IR::app(ir, arg);
-                                                                    } else {
+                    } else {
                         // dbg!(&ir, &arg);
-                        let arg = self.simplify(arg, in_scope.clone(), Vec::new());
+                        let arg = self.simplify(arg, in_scope.clone(),Vec::new());
                         ir = IR::app(ir, arg);
                     }
                 }
