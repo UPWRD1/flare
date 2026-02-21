@@ -88,4 +88,8 @@ impl LIRType {
             panic!("Not a union")
         }
     }
+
+    pub fn is_alloca(&self) -> bool {
+        matches!(self, Self::Struct(_) | Self::ClosureEnv(..))
+    }
 }

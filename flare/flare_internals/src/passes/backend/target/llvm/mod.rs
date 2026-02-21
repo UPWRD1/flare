@@ -1,7 +1,8 @@
-use std::{any::Any, cell::RefCell};
+use std::cell::RefCell;
 
 use inkwell::{
     AddressSpace,
+    attributes::{Attribute, AttributeLoc},
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
@@ -9,10 +10,11 @@ use inkwell::{
         CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetMachineOptions,
     },
     types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
-    values::{AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum},
+    values::{
+        AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue,
+    },
 };
 use itertools::Itertools;
-use log::Metadata;
 use rustc_hash::FxHashMap;
 
 use crate::{
@@ -101,6 +103,11 @@ impl LLVMTypeConvert for LIRType {
     }
 }
 
+enum PassMode<'ir> {
+    Normal,
+    Sret(BasicTypeEnum<'ir>),
+}
+
 impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
     fn convert_struct_ty(&self, ty: LIRType) -> BasicTypeEnum<'ir> {
         match ty {
@@ -119,65 +126,96 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             _ => ty.convert(self),
         }
     }
-    fn make_func_type(&self, ret: LIRType, args: &[LIRType]) -> FunctionType<'ir> {
-        // if let LIRType::Struct(_) | LIRType::ClosureEnv(_, _) = ret {
-        //     let sret_ty = ret.convert(self);
-        //     let void_ty = self.context.void_type();
-        //     let mut args = args
-        //         .iter()
-        //         .map(|arg| {
-        //             let bty = arg.convert(self);
-        //             BasicMetadataTypeEnum::from(bty)
-        //         })
-        //         .collect_vec();
-        //     args.insert(
-        //         0,
-        //         BasicMetadataTypeEnum::PointerType(sret_ty.into_pointer_type()),
-        //     );
-        //     void_ty.fn_type(&args, false)
-        // } else {
-        let ret_ty = ret.convert(self);
-
-        ret_ty.fn_type(
-            &args
+    fn make_func_type(&self, ret: LIRType, args: &[LIRType]) -> (FunctionType<'ir>, PassMode<'ir>) {
+        if ret.is_alloca() {
+            let sret_pointer = ret.convert(self);
+            let sret_ty = self.convert_struct_ty(ret);
+            let void_ty = self.context.void_type();
+            let mut args = args
                 .iter()
                 .map(|arg| {
                     let bty = arg.convert(self);
                     BasicMetadataTypeEnum::from(bty)
                 })
-                .collect_vec(),
-            false,
-        )
-        // }
+                .collect_vec();
+            args.insert(
+                0,
+                BasicMetadataTypeEnum::PointerType(sret_pointer.into_pointer_type()),
+            );
+            // dbg!(ret);
+            (void_ty.fn_type(&args, false), PassMode::Sret(sret_ty))
+        } else {
+            let ret_ty = ret.convert(self);
+
+            (
+                ret_ty.fn_type(
+                    &args
+                        .iter()
+                        .map(|arg| {
+                            let bty = arg.convert(self);
+                            BasicMetadataTypeEnum::from(bty)
+                        })
+                        .collect_vec(),
+                    false,
+                ),
+                PassMode::Normal,
+            )
+        }
     }
 
     fn codegen_item(&self, item: Item) -> AnyValueEnum<'ir> {
         let name = Self::make_func_name(&item.id);
-        let ty = self.make_func_type(item.ret_ty, &item.params.iter().map(|p| p.ty).collect_vec());
+        let (ty, pass_mode) =
+            self.make_func_type(item.ret_ty, &item.params.iter().map(|p| p.ty).collect_vec());
         let fn_val = self.module.add_function(&name, ty, Some(Linkage::External));
-
         let bb_entry = self.context.append_basic_block(fn_val, "entry");
         self.builder.position_at_end(bb_entry);
+        match pass_mode {
+            PassMode::Normal => {
+                // Update the symbol table with the args names and references
+                // to their LLVM values, need to resolve them in current function
+                // scope
+                self.sym_table.borrow_mut().clear();
+                for (arg, var) in fn_val.get_params().into_iter().zip(item.params) {
+                    self.sym_table.borrow_mut().insert(var, arg);
+                }
 
-        // Update the symbol table with the args names and references
-        // to their LLVM values, need to resolve them in current function
-        // scope
-        self.sym_table.borrow_mut().clear();
-        for (arg, var) in fn_val.get_params().into_iter().zip(item.params) {
-            self.sym_table.borrow_mut().insert(var, arg);
+                let ir_body = self.codegen_ir(item.body, None);
+                // dbg!(&ir_body);
+                // if item.ret_ty.
+
+                self.builder.build_return(Some(&ir_body));
+
+                if !fn_val.verify(true) {
+                    panic!("Failed to verify func")
+                }
+
+                fn_val.as_any_value_enum()
+            }
+            PassMode::Sret(sret_ty) => {
+                // Same as above, but now skip the sret pointer at the start.
+                self.sym_table.borrow_mut().clear();
+                for (arg, var) in fn_val.get_params().into_iter().skip(1).zip(item.params) {
+                    self.sym_table.borrow_mut().insert(var, arg);
+                }
+
+                let sret_attr = self.context.create_type_attribute(
+                    Attribute::get_named_enum_kind_id("sret"),
+                    sret_ty.as_any_type_enum(), // the type being returned
+                );
+                let out_slot = fn_val.get_nth_param(0).unwrap().into_pointer_value();
+                fn_val.add_attribute(AttributeLoc::Param(0), sret_attr); // Inkwell uses 0-based for params
+
+                let ir_body = self.codegen_ir(item.body, Some(out_slot));
+                self.builder.build_return(None);
+
+                if !fn_val.verify(true) {
+                    panic!("Failed to verify func")
+                }
+
+                fn_val.as_any_value_enum()
+            }
         }
-
-        let ir_body = self.codegen_ir(item.body);
-        // dbg!(&ir_body);
-        // if item.ret_ty.
-
-        self.builder.build_return(Some(&ir_body));
-
-        if !fn_val.verify(true) {
-            panic!("Failed to verify func")
-        }
-
-        fn_val.as_any_value_enum()
     }
     fn make_func_name(id: &ItemId) -> String {
         format!("flare_f_{}", id.0)
@@ -214,7 +252,22 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             .collect()
     }
 
-    fn codegen_ir(&self, ir: LIR) -> BasicValueEnum<'ir> {
+    fn build_alloca(
+        &self,
+        ty: impl BasicType<'ctx>,
+        out_slot: Option<PointerValue<'ctx>>,
+    ) -> PointerValue<'ctx> {
+        match out_slot {
+            Some(s) => s,
+            None => self.builder.build_alloca(ty, "alloca").unwrap(),
+        }
+    }
+
+    fn codegen_ir(
+        &self,
+        ir: LIR,
+        out_slot: Option<PointerValue<'ctx>>, // pre-allocated slot from caller, if needed
+    ) -> BasicValueEnum<'ir> {
         match ir {
             LIR::Var(var) => {
                 if let Some(llvm_val) = self.sym_table.borrow().get(&var) {
@@ -233,13 +286,11 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             LIR::ClosureBuild(fun_ty, id, ref vars) => {
                 let name = Self::make_func_name(&id);
                 let closure_ty = ir.type_of();
-                let closure_struct_ty = self.convert_struct_ty(closure_ty.closure_to_struct_rep());
+                let closure_struct_ty = self.convert_struct_ty(closure_ty);
                 // dbg!(closure_struct_ty);
                 // self.builder.insert
-                let closure_struct = self
-                    .builder
-                    .build_alloca(closure_struct_ty, "closure_struct")
-                    .unwrap();
+
+                let closure_struct = self.build_alloca(closure_struct_ty, out_slot);
                 let item_fn = self
                     .module
                     .get_function(&name)
@@ -288,12 +339,20 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             LIR::BulkApply(fun, arg_lirs) => self.handle_app(*fun, arg_lirs),
             LIR::FuncRef(app_type) => todo!(),
             LIR::Local(var, def, body) => {
-                let v = self.codegen_ir(*def);
+                let v = if var.ty.is_alloca() {
+                    let local_slot = self
+                        .builder
+                        .build_alloca(self.convert_struct_ty(var.ty), "local_alloca")
+                        .expect("Could not alloca for local");
+                    self.codegen_ir(*def, Some(local_slot))
+                } else {
+                    self.codegen_ir(*def, None)
+                };
                 self.sym_table.borrow_mut().insert(var, v);
-                self.codegen_ir(*body)
+                self.codegen_ir(*body, out_slot)
             }
             LIR::Access(obj, idx) => {
-                let obj_ptr = self.codegen_ir(*obj.clone()).into_pointer_value();
+                let obj_ptr = self.codegen_ir(*obj.clone(), None).into_pointer_value();
                 if idx == 0 {
                     let fn_gep = self
                         .builder
@@ -349,17 +408,15 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             }
             LIR::Struct(ref fields) => {
                 let struct_ty = self.convert_struct_ty(ir.type_of());
-
-                let the_struct = self
-                    .builder
-                    .build_alloca(struct_ty, "struct_alloca")
-                    .expect("Could not alloca struct");
+                // TODO: Maybe incorrect. Review later.
+                // Use the provided slot, or alloca a local one if none provided
+                let the_struct = self.build_alloca(struct_ty, out_slot);
                 for (i, field) in fields.iter().enumerate() {
                     let field_ptr = self
                         .builder
                         .build_struct_gep(struct_ty, the_struct, i as u32, "field_gep")
                         .expect("Could not gep struct field");
-                    let field_val = self.codegen_ir(field.clone());
+                    let field_val = self.codegen_ir(field.clone(), None);
                     self.builder
                         .build_store(field_ptr, field_val)
                         .expect("Could not store struct field");
@@ -369,7 +426,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             LIR::Field(obj, idx) => {
                 // dbg!(&obj);
                 let struct_ty = self.convert_struct_ty(obj.type_of()).into_struct_type();
-                let obj = self.codegen_ir(*obj);
+                let obj = self.codegen_ir(*obj, None);
                 if obj.is_pointer_value() {
                     let obj = obj.into_pointer_value();
 
@@ -413,8 +470,8 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
             LIR::Extern(intern, lirtype) => todo!(),
             LIR::BinOp(left, bin_op, right) => {
-                let lhs = self.codegen_ir(*left);
-                let rhs = self.codegen_ir(*right);
+                let lhs = self.codegen_ir(*left, None);
+                let rhs = self.codegen_ir(*right, None);
                 BasicValueEnum::from(
                     match bin_op {
                         BinOp::Eq => todo!(),
@@ -455,68 +512,94 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
     fn handle_app(&self, fun: LIR, arg_lirs: Vec<LIR>) -> BasicValueEnum<'ir> {
         let fun_ty = fun.type_of();
 
-        if let LIRType::ClosureEnv(fpointer_ty, capt_tys) = fun_ty {
-            let (mut arg_tys, ret_ty) = fpointer_ty.destructure_closure();
-            arg_tys.insert(0, LIRType::Struct(capt_tys));
-            let the_fun_ty = self.make_func_type(ret_ty, &arg_tys);
-            // dbg!(the_fun_ty);
-            let closure_and_env_pointer = self.codegen_ir(fun).into_pointer_value();
-            let closure_struct_ty = self.convert_struct_ty(fun_ty.closure_to_struct_rep());
+        let (fun_ptr, the_fun_ty, mut args, passmode) =
+            if let LIRType::ClosureEnv(fpointer_ty, _) = fun_ty {
+                let (mut arg_tys, ret_ty) = fpointer_ty.destructure_closure();
+                let closure_ty = fun_ty.closure_to_struct_rep();
+                arg_tys.insert(0, closure_ty);
+                let (the_fun_ty, passmode) = self.make_func_type(ret_ty, &arg_tys);
+                // dbg!(the_fun_ty);
+                let closure_and_env_pointer = self.codegen_ir(fun, None).into_pointer_value();
+                let closure_struct_ty = self.convert_struct_ty(fun_ty.closure_to_struct_rep());
 
-            let fun_gep = self
-                .builder
-                .build_struct_gep(closure_struct_ty, closure_and_env_pointer, 0, "fun-gep")
-                .expect("Could not gep closure struct");
-            let fun_pointer = self
-                .builder
-                .build_load(
-                    self.context.ptr_type(AddressSpace::default()),
-                    fun_gep,
-                    "fun_pointer",
-                )
-                .expect("Could not get closure func pointer")
-                .into_pointer_value();
-
-            let mut args = arg_lirs
-                .into_iter()
-                .map(|arg| self.codegen_ir(arg))
-                .collect_vec();
-            args.insert(0, closure_and_env_pointer.into());
-
-            let args = self.make_args(&args);
-            // dbg!(&args);
-            self.builder
-                .build_indirect_call(the_fun_ty, fun_pointer, &args, "closure_indirect")
-                .expect("Could not build closure call")
-                .try_as_basic_value()
-                .unwrap_basic()
-        } else {
-            // dbg!(fun_ty);
-            let (args, ret) = fun_ty.destructure_closure();
-            let fun_ty = self.make_func_type(ret, &args);
-            // dbg!(fun_ty);
-            let fun = self.codegen_ir(fun);
-            let args = arg_lirs
-                .into_iter()
-                .map(|arg| self.codegen_ir(arg))
-                .collect_vec();
-            let args = self.make_args(&args);
-            // dbg!(&args);
-            match fun {
-                BasicValueEnum::PointerValue(pointer) => self
+                let fun_gep = self
                     .builder
-                    .build_indirect_call(fun_ty, pointer, &args, "call_indirect_res")
-                    .unwrap()
+                    .build_struct_gep(closure_struct_ty, closure_and_env_pointer, 0, "fun-gep")
+                    .expect("Could not gep closure struct");
+                let fun_pointer = self
+                    .builder
+                    .build_load(
+                        self.context.ptr_type(AddressSpace::default()),
+                        fun_gep,
+                        "fun_pointer",
+                    )
+                    .expect("Could not get closure func pointer")
+                    .into_pointer_value();
+
+                let mut args = arg_lirs
+                    .into_iter()
+                    .map(|arg| self.codegen_ir(arg, None))
+                    .collect_vec();
+
+                args.insert(0, closure_and_env_pointer.into());
+                (fun_pointer, the_fun_ty, args, passmode)
+            } else {
+                // dbg!(fun_ty);
+                let (args, ret) = fun_ty.destructure_closure();
+                let (fun_ty, passmode) = self.make_func_type(ret, &args);
+                // dbg!(fun_ty);
+                let fun = self.codegen_ir(fun, None);
+                let args = arg_lirs
+                    .into_iter()
+                    .map(|arg| self.codegen_ir(arg, None))
+                    .collect_vec();
+
+                // dbg!(&args);
+                match fun {
+                    BasicValueEnum::PointerValue(pointer) => (pointer, fun_ty, args, passmode),
+                    _ => panic!("Invalid function: {fun:?}"),
+                }
+            };
+
+        match passmode {
+            PassMode::Normal => {
+                let args = self.make_args(&args);
+                // dbg!(&args);
+                self.builder
+                    .build_indirect_call(the_fun_ty, fun_ptr, &args, "closure_indirect")
+                    .expect("Could not build closure call")
                     .try_as_basic_value()
-                    .unwrap_basic(),
-                _ => panic!("Invalid function: {fun:?}"),
+                    .unwrap_basic()
+            }
+            PassMode::Sret(sret_ty) => {
+                // Alloca in the caller
+                let result_slot = self.builder.build_alloca(sret_ty, "sret_slot").unwrap();
+                args.insert(0, result_slot.as_basic_value_enum());
+                let args = self.make_args(&args);
+                // dbg!(&args);
+
+                let sret_attr = self.context.create_type_attribute(
+                    Attribute::get_named_enum_kind_id("sret"),
+                    sret_ty.as_any_type_enum(), // the type being returned
+                );
+                let call = self
+                    .builder
+                    .build_indirect_call(the_fun_ty, fun_ptr, &args, "call_indirect")
+                    .expect("Could not build closure call");
+                call.add_attribute(AttributeLoc::Param(0), sret_attr);
+                match call.try_as_basic_value() {
+                    inkwell::values::ValueKind::Basic(bv) => bv,
+                    inkwell::values::ValueKind::Instruction(instruction_value) => {
+                        result_slot.as_basic_value_enum()
+                    }
+                }
             }
         }
     }
 
     fn generate_main_func(&self, flare_entry_id: &ItemId) -> AnyValueEnum<'ir> {
         let name = "main";
-        let ty = self.make_func_type(LIRType::Int, &[]);
+        let (ty, passmode) = self.make_func_type(LIRType::Int, &[]);
         let fn_val = self.module.add_function(name, ty, Some(Linkage::External));
         let flare_entry_fn = self
             .module
