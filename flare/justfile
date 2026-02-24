@@ -15,6 +15,7 @@ show emit='llvm':
     
 full:
     just run
+    llc -filetype=obj examples/ntest.ll -o examples/ntest.o
     objdump -DS examples/ntest.o
     clang examples/ntest.o -o examples/ntest 
     ./examples/ntest

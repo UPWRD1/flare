@@ -72,6 +72,13 @@ impl LIRType {
             panic!("Not a closure: {self:?}")
         }
     }
+    pub fn get_closure_func(self) -> Intern<Self> {
+        if let Self::ClosureEnv(c, _) = self {
+            c
+        } else {
+            panic!("Not a closureenv")
+        }
+    }
 
     pub fn variant(self, idx: usize) -> Self {
         if let Self::Union(variants) = self {
@@ -90,6 +97,17 @@ impl LIRType {
     }
 
     pub fn is_alloca(&self) -> bool {
-        matches!(self, Self::Struct(_) | Self::ClosureEnv(..))
+        matches!(
+            self,
+            Self::Struct(_) | Self::Union(_) | Self::ClosureEnv(..)
+        )
+    }
+
+    pub fn ret_ty(&self) -> Self {
+        match self {
+            LIRType::Closure(_, r) => **r,
+            LIRType::ClosureEnv(f, _) => f.ret_ty(),
+            _ => panic!("Not a closure or env"),
+        }
     }
 }

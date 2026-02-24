@@ -49,7 +49,7 @@ impl ClosureConvert {
             ir::IR::Particle(p) => LIR::Str(p),
 
             ir::IR::Local(var, defn, body) => {
-                dbg!(&var, env);
+                // dbg!(&var, env);
                 let defn = self.convert(*defn, env);
                 let v = Var {
                     id: self.var_supply.supply_for(var.id),
@@ -161,40 +161,58 @@ impl ClosureConvert {
         for var in vars {
             free_vars_set.remove(var);
         }
-        // dbg!(&free_vars_set);
 
-        let free_vars: Vec<Var> = free_vars_set.iter().copied().collect();
-        let var_tys: Vec<_> = vars.iter().map(|v| v.ty).collect();
-        let closure_ty = LIRType::closure(&var_tys, ret);
-        let env_var = Var {
-            id: self.var_supply.supply(),
-            ty: LIRType::closure_env(closure_ty, free_vars.iter().map(|var| var.ty).collect()),
-        };
+        if free_vars_set.is_empty() {
+            let var_tys: Vec<_> = vars.iter().map(|v| v.ty).collect();
+            let fn_ty = LIRType::closure(&var_tys, ret);
+            let params = vars.to_vec();
+            let item = self.item_supply.supply();
+            self.items.insert(
+                item,
+                Item {
+                    id: item,
+                    params,
+                    ret_ty: ret,
+                    body,
+                },
+            );
+            LIR::Item(item, fn_ty)
+        } else {
+            // dbg!(&free_vars_set);
 
-        let subst = free_vars_set
-            .into_iter()
-            .enumerate()
-            .map(|(i, var)| {
-                let id = self.var_supply.supply();
-                let new_var = Var { id, ty: var.ty };
-                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
-                (var, new_var)
-            })
-            .collect::<FxHashMap<_, _>>();
-        body.rename(&subst);
+            let free_vars: Vec<Var> = free_vars_set.iter().copied().collect();
+            let var_tys: Vec<_> = vars.iter().map(|v| v.ty).collect();
+            let closure_ty = LIRType::closure(&var_tys, ret);
+            let env_var = Var {
+                id: self.var_supply.supply(),
+                ty: LIRType::closure_env(closure_ty, free_vars.iter().map(|var| var.ty).collect()),
+            };
 
-        let params = [&[env_var], vars].concat();
-        let item = self.item_supply.supply();
-        self.items.insert(
-            item,
-            Item {
-                id: item,
-                params,
-                ret_ty: ret,
-                body,
-            },
-        );
-        LIR::ClosureBuild(closure_ty, item, free_vars)
+            let subst = free_vars_set
+                .into_iter()
+                .enumerate()
+                .map(|(i, var)| {
+                    let id = self.var_supply.supply();
+                    let new_var = Var { id, ty: var.ty };
+                    body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
+                    (var, new_var)
+                })
+                .collect::<FxHashMap<_, _>>();
+            body.rename(&subst);
+
+            let params = [&[env_var], vars].concat();
+            let item = self.item_supply.supply();
+            self.items.insert(
+                item,
+                Item {
+                    id: item,
+                    params,
+                    ret_ty: ret,
+                    body,
+                },
+            );
+            LIR::ClosureBuild(closure_ty, item, free_vars)
+        }
     }
 }
 

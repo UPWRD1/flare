@@ -199,6 +199,14 @@ impl LIR {
                 LIRType::ClosureEnv((*f).into(), env_tys.as_slice().into())
             }
             LIR::Apply(func, _) => func.type_of(),
+            // LIR::Apply(func, _) => match func.type_of() {
+            //     LIRType::Closure(_, ret) => *ret,
+            //     LIRType::ClosureEnv(f, _) => match *f {
+            //         LIRType::Closure(_, ret) => *ret,
+            //         _ => panic!("Not a closure"),
+            //     },
+            //     other => panic!("Apply on non-closure: {other:?}"),
+            // },
             LIR::BulkApply(func, _) => func.type_of(),
             LIR::Local(.., body) => body.type_of(),
             LIR::Access(closure, ty) => {
@@ -225,7 +233,7 @@ impl LIR {
                     panic!("Field expression is on non-struct element: {lir}")
                 }
             }
-            LIR::Case(ty, _, _) => *ty,
+            LIR::Case(_, _, t) => t.first().unwrap().type_of(),
             LIR::Tag(ty, _, _) => *ty,
 
             LIR::BinOp(left, ..) => left.type_of(),

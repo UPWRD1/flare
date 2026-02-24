@@ -520,7 +520,7 @@ impl Simplifier {
                     }
                     let branches: Vec<Branch> = branches
                         .into_iter()
-                        .map(|b| self.simplify_branch(b, *scrutinee.clone(), &in_scope))
+                        .map(|b| self.simplify_branch(b,  &in_scope))
                         .collect();
 
                     ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
@@ -540,13 +540,13 @@ impl Simplifier {
         }
     }
 
-    fn simplify_branch(&mut self, b: Branch, scrutinee: IR, in_scope: &InScope) -> Branch {
-        let in_scope = in_scope.update(b.param.id, Definition::BoundTo(scrutinee, Occurrence::OnceInBranch));
+    fn simplify_branch(&mut self, b: Branch, in_scope: &InScope) -> Branch {
+        // let in_scope = in_scope.update(b.param.id, Definition::BoundTo(scrutinee, Occurrence::OnceInBranch));
         Branch {
             body: self.simplify(
                 b.body,
-                in_scope.clone(),
-                // in_scope.update(b.param.id, Definition::Unknown),
+                
+                in_scope.update(b.param.id, Definition::Unknown),
                 // in_scope.update(b.param.id, Definition::BoundTo(, Occurrence::OnceInBranch)),
                 Vec::new(),
             ),
