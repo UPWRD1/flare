@@ -7,13 +7,14 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
+    passes::PassBuilderOptions,
     targets::{
         CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetMachineOptions,
     },
     types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::{
-        AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue,
-        PointerValue,
+        AggregateValueEnum, AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue,
+        BasicValueEnum, FunctionValue, PointerValue,
     },
 };
 use itertools::Itertools;
@@ -194,7 +195,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             let mut args = args
                 .iter()
                 .map(|arg| {
-                    let bty = arg.convert(self);
+                    let bty = self.convert_aggregate_ty(*arg);
                     BasicMetadataTypeEnum::from(bty)
                 })
                 .collect_vec();
@@ -205,14 +206,14 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             // dbg!(ret);
             (void_ty.fn_type(&args, false), PassMode::Sret(sret_ty))
         } else {
-            let ret_ty = ret.convert(self);
+            let ret_ty = self.convert_aggregate_ty(ret);
 
             (
                 ret_ty.fn_type(
                     &args
                         .iter()
                         .map(|arg| {
-                            let bty = arg.convert(self);
+                            let bty = self.convert_aggregate_ty(*arg);
                             BasicMetadataTypeEnum::from(bty)
                         })
                         .collect_vec(),
@@ -334,57 +335,116 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             LIR::ClosureBuild(fun_ty, id, ref vars) => {
                 let name = Self::make_func_name(&id);
                 let closure_ty = ir.type_of();
-                // dbg!(closure_ty);
+
                 let closure_struct_ty = self.convert_aggregate_ty(closure_ty);
-                // dbg!(closure_struct_ty);
-                // self.builder.insert
+                if closure_ty.is_alloca() {
+                    // dbg!(closure_ty);
+                    // dbg!(closure_struct_ty);
+                    // self.builder.insert
 
-                let closure_struct = self.build_alloca(closure_struct_ty, out_slot);
-                let item_fn = self
-                    .module
-                    .get_function(&name)
-                    .unwrap()
-                    .as_global_value()
-                    .as_pointer_value()
-                    .as_basic_value_enum();
-                let function_field = self
-                    .builder
-                    .build_struct_gep(closure_struct_ty, closure_struct, 0, "closure_func_gep")
-                    .unwrap();
-                self.builder
-                    .build_store(function_field, item_fn)
-                    .expect("Could not store closure func");
-
-                let env_struct_ty = self.convert_aggregate_ty(
-                    closure_ty.closure_to_struct_rep().into_struct_fields()[1],
-                );
-
-                for (idx, var) in vars.iter().enumerate() {
-                    let val = self
-                        .sym_table
-                        .borrow()
-                        .get(var)
-                        .copied()
-                        .expect("Undefined variable");
-                    let env_struct = self
+                    let closure_struct = self.build_alloca(closure_struct_ty, out_slot);
+                    let item_fn = self
+                        .module
+                        .get_function(&name)
+                        .unwrap()
+                        .as_global_value()
+                        .as_pointer_value()
+                        .as_basic_value_enum();
+                    let function_field = self
                         .builder
-                        .build_struct_gep(closure_struct_ty, closure_struct, 1, "closure_env_gep")
-                        .unwrap();
-                    let capt_field = self
-                        .builder
-                        .build_struct_gep(
-                            env_struct_ty,
-                            env_struct,
-                            idx as u32,
-                            "closure_field_gep",
-                        )
+                        .build_struct_gep(closure_struct_ty, closure_struct, 0, "closure_func_gep")
                         .unwrap();
                     self.builder
-                        .build_store(capt_field, val)
-                        .expect("Could not store closure env field");
-                }
+                        .build_store(function_field, item_fn)
+                        .expect("Could not store closure func");
 
-                closure_struct.into()
+                    let env_struct_ty = self.convert_aggregate_ty(
+                        closure_ty.closure_to_struct_rep().into_struct_fields()[1],
+                    );
+
+                    for (idx, var) in vars.iter().enumerate() {
+                        let val = self
+                            .sym_table
+                            .borrow()
+                            .get(var)
+                            .copied()
+                            .expect("Undefined variable");
+                        let env_struct = self
+                            .builder
+                            .build_struct_gep(
+                                closure_struct_ty,
+                                closure_struct,
+                                1,
+                                "closure_env_gep",
+                            )
+                            .unwrap();
+                        let capt_field = self
+                            .builder
+                            .build_struct_gep(
+                                env_struct_ty,
+                                env_struct,
+                                idx as u32,
+                                "closure_field_gep",
+                            )
+                            .unwrap();
+                        self.builder
+                            .build_store(capt_field, val)
+                            .expect("Could not store closure env field");
+                    }
+
+                    closure_struct.into()
+                } else {
+                    // dbg!(closure_struct_ty);
+                    // self.builder.insert
+
+                    // let closure_struct = self.build_alloca(closure_struct_ty, out_slot);
+                    let item_fn = self
+                        .module
+                        .get_function(&name)
+                        .unwrap()
+                        .as_global_value()
+                        .as_pointer_value()
+                        .as_basic_value_enum();
+                    let env_struct_ty = self.convert_aggregate_ty(
+                        closure_ty.closure_to_struct_rep().into_struct_fields()[1],
+                    );
+                    let env_vals = vars
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, var)| {
+                            self.sym_table
+                                .borrow()
+                                .get(var)
+                                .copied()
+                                .expect("Undefined variable")
+                        })
+                        .collect_vec();
+                    let env_struct = {
+                        let undef = env_struct_ty.into_struct_type().get_undef();
+                        let mut s: AggregateValueEnum = undef.into();
+                        for (idx, val) in env_vals.into_iter().enumerate() {
+                            s = self
+                                .builder
+                                .build_insert_value(s, val, idx as u32, "env_insert")
+                                .unwrap();
+                        }
+                        s.into_struct_value().into()
+                    };
+
+                    let closure_struct = {
+                        let undef = closure_struct_ty.into_struct_type().get_undef();
+                        let mut s: AggregateValueEnum = undef.into();
+                        for (idx, val) in [item_fn, env_struct].into_iter().enumerate() {
+                            dbg!(undef, s);
+                            s = self
+                                .builder
+                                .build_insert_value(s, val, idx as u32, "env_insert")
+                                .unwrap();
+                        }
+                        s.into_struct_value()
+                    };
+                    closure_struct.into()
+                }
             }
             LIR::Apply(fun, arg) => {
                 self.handle_app(*fun, vec![*arg], |arg| self.codegen_ir(arg, None))
@@ -466,7 +526,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             let scrutinee_bv = self.codegen_ir(*scrutinee.clone(), None);
 
             let merge_block = self.context.append_basic_block(the_func, "case_merge");
-            dbg!(scrutinee_bv);
+            // dbg!(scrutinee_bv);
             let result = self.build_alloca(ret_ty, out_slot);
             // dbg!(scrutinee);
             let tag_ptr = self
@@ -540,75 +600,110 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
     fn codegen_access(&self, obj: LIR, idx: usize) -> BasicValueEnum<'ir> {
         let obj_ty = obj.type_of();
-        let obj_ptr = self.codegen_ir(obj, None).into_pointer_value();
-        if idx == 0 {
-            let fn_gep = self
-                .builder
-                .build_struct_gep(
-                    // self.context.ptr_type(AddressSpace::default()),
-                    self.convert_aggregate_ty(obj_ty), // actual struct type
-                    obj_ptr,
-                    0,
-                    "gep_closure_func",
-                )
-                .unwrap();
-            self.builder
-                .build_load(
-                    self.context.ptr_type(AddressSpace::default()),
-                    fn_gep,
-                    "load_closure_func",
-                )
-                .unwrap()
+        if obj_ty.is_alloca() {
+            let obj_ptr = self.codegen_ir(obj, None).into_pointer_value();
+            if idx == 0 {
+                let fn_gep = self
+                    .builder
+                    .build_struct_gep(
+                        // self.context.ptr_type(AddressSpace::default()),
+                        self.convert_aggregate_ty(obj_ty), // actual struct type
+                        obj_ptr,
+                        0,
+                        "gep_closure_func",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_load(
+                        self.context.ptr_type(AddressSpace::default()),
+                        fn_gep,
+                        "load_closure_func",
+                    )
+                    .unwrap()
+            } else {
+                let idx = idx - 1;
+                let env_ty = obj_ty.into_struct_fields().into_iter().nth(1).unwrap();
+
+                let field_ty = env_ty.into_struct_fields().into_iter().nth(idx).unwrap();
+                let env_ty = self.convert_aggregate_ty(env_ty);
+                // dbg!(field_ty);
+                let env_gep = self
+                    .builder
+                    .build_struct_gep(
+                        self.convert_aggregate_ty(obj_ty),
+                        obj_ptr,
+                        1u32,
+                        "gep_closure_env",
+                    )
+                    .unwrap();
+                let capt_gep = self
+                    .builder
+                    .build_struct_gep(env_ty, env_gep, idx as u32, "gep_closure_field")
+                    .unwrap();
+
+                self.builder
+                    .build_load(
+                        self.convert_aggregate_ty(field_ty),
+                        capt_gep,
+                        "load_closure_capt",
+                    )
+                    .unwrap()
+            }
         } else {
-            let idx = idx - 1;
-            let env_ty = obj_ty.into_struct_fields().into_iter().nth(1).unwrap();
-
-            let field_ty = env_ty.into_struct_fields().into_iter().nth(idx).unwrap();
-            let env_ty = self.convert_aggregate_ty(env_ty);
-            // dbg!(field_ty);
-            let env_gep = self
-                .builder
-                .build_struct_gep(
-                    self.convert_aggregate_ty(obj_ty),
-                    obj_ptr,
-                    1u32,
-                    "gep_closure_env",
-                )
-                .unwrap();
-            let capt_gep = self
-                .builder
-                .build_struct_gep(env_ty, env_gep, idx as u32, "gep_closure_field")
-                .unwrap();
-
-            self.builder
-                .build_load(
-                    self.convert_aggregate_ty(field_ty),
-                    capt_gep,
-                    "load_closure_capt",
-                )
-                .unwrap()
+            let obj_struct = self.codegen_ir(obj, None).into_struct_value();
+            if idx == 0 {
+                self.builder
+                    .build_extract_value(obj_struct, 0, "closure_fn")
+                    .unwrap()
+            } else {
+                let idx: u32 = idx as u32 - 1;
+                let env = self
+                    .builder
+                    .build_extract_value(obj_struct, 1, "closure_env")
+                    .unwrap()
+                    .into_struct_value();
+                self.builder
+                    .build_extract_value(env, idx, "closure_field")
+                    .unwrap()
+            }
         }
     }
 
     fn codegen_struct(&self, ir: LIR, out_slot: Option<PointerValue<'ctx>>) -> BasicValueEnum<'ir> {
-        let struct_ty = self.convert_aggregate_ty(ir.type_of());
+        let struct_lirty = ir.type_of();
+        let struct_ty = self.convert_aggregate_ty(struct_lirty);
         if let LIR::Struct(fields) = ir {
-            // dbg!(&ir.type_of());
-            // dbg!(struct_ty, out_slot);
-            // TODO: Maybe incorrect. Review later.
-            // Use the provided slot, or alloca a local one if none provided
-            let the_struct = self.build_alloca(struct_ty, out_slot);
-            for (i, field) in fields.iter().enumerate() {
-                let field_ptr = self
-                    .builder
-                    .build_struct_gep(struct_ty, the_struct, i as u32, "field_gep")
-                    .expect("Could not gep struct field");
-                let field_val = self.codegen_ir(field.clone(), None);
-                self.builder
-                    .build_store(field_ptr, field_val)
-                    .expect("Could not store struct field");
+            if struct_lirty.is_alloca() {
+                // dbg!(&ir.type_of());
+                // dbg!(struct_ty, out_slot);
+                // TODO: Maybe incorrect. Review later.
+                // Use the provided slot, or alloca a local one if none provided
+                let the_struct = self.build_alloca(struct_ty, out_slot);
+                for (i, field) in fields.iter().enumerate() {
+                    let field_ptr = self
+                        .builder
+                        .build_struct_gep(struct_ty, the_struct, i as u32, "field_gep")
+                        .expect("Could not gep struct field");
+                    let field_val = self.codegen_ir(field.clone(), None);
+                    self.builder
+                        .build_store(field_ptr, field_val)
+                        .expect("Could not store struct field");
+                }
+                the_struct.into()
+            } else {
+                let undef = struct_ty.into_struct_type().get_undef();
+                let mut s: AggregateValueEnum = undef.into();
+                for (idx, field) in fields.into_iter().enumerate() {
+                    let val = self.codegen_ir(field, None);
+                    s = self
+                        .builder
+                        .build_insert_value(s, val, idx as u32, "field_store")
+                        .unwrap();
+
+                    dbg!(undef, s);
+                }
+                s.into_struct_value().into()
             }
-            the_struct.into()
         } else {
             panic!("Not a struct")
         }
@@ -634,11 +729,10 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 .unwrap()
         } else if obj.is_struct_value() {
             let obj = obj.into_struct_value();
-            // dbg!(obj);
 
-            let v = obj;
-            dbg!(v);
-            todo!()
+            self.builder
+                .build_extract_value(obj, idx as u32, "get_field")
+                .unwrap()
         } else {
             panic!("Not a struct")
         }
@@ -719,27 +813,43 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         arg_tys.insert(0, closure_ty);
         let (the_fun_ty, passmode) = self.make_func_type(ret_ty, &arg_tys);
         // dbg!(the_fun_ty);
-        let closure_and_env_pointer = self.codegen_ir(closure, None).into_pointer_value();
-        let closure_struct_ty = self.convert_aggregate_ty(closure_ty);
+        //
+        if closure_ty.is_alloca() {
+            let closure_and_env_pointer = self.codegen_ir(closure, None).into_pointer_value();
 
-        let fun_gep = self
-            .builder
-            .build_struct_gep(closure_struct_ty, closure_and_env_pointer, 0, "fun-gep")
-            .expect("Could not gep closure struct");
-        let fun_pointer = self
-            .builder
-            .build_load(
-                self.context.ptr_type(AddressSpace::default()),
-                fun_gep,
-                "fun_pointer",
-            )
-            .expect("Could not get closure func pointer")
-            .into_pointer_value();
+            let closure_struct_ty = self.convert_aggregate_ty(closure_ty);
 
-        let mut args = args.into_iter().map(arg_f).collect_vec();
+            let fun_gep = self
+                .builder
+                .build_struct_gep(closure_struct_ty, closure_and_env_pointer, 0, "fun-gep")
+                .expect("Could not gep closure struct");
+            let fun_pointer = self
+                .builder
+                .build_load(
+                    self.context.ptr_type(AddressSpace::default()),
+                    fun_gep,
+                    "fun_pointer",
+                )
+                .expect("Could not get closure func pointer")
+                .into_pointer_value();
 
-        args.insert(0, closure_and_env_pointer.into());
-        (fun_pointer, the_fun_ty, args, passmode)
+            let mut args = args.into_iter().map(arg_f).collect_vec();
+
+            args.insert(0, closure_and_env_pointer.into());
+            (fun_pointer, the_fun_ty, args, passmode)
+        } else {
+            let closure_and_env_struct = self.codegen_ir(closure, None).into_struct_value();
+            let func = self
+                .builder
+                .build_extract_value(closure_and_env_struct, 0, "closure_fn")
+                .unwrap()
+                .into_pointer_value();
+
+            let mut args = args.into_iter().map(arg_f).collect_vec();
+
+            args.insert(0, closure_and_env_struct.into());
+            (func, the_fun_ty, args, passmode)
+        }
     }
 
     fn handle_normal_app<T>(
@@ -901,6 +1011,12 @@ impl FlareTarget for LLVM {
         // let bit = machine
         //     .write_to_memory_buffer(&llvm_ctx.module, inkwell::targets::FileType::Object)
         //     .unwrap();
+        // Then run a pipeline using Clang-style pass pipeline strings
+        let options = PassBuilderOptions::create();
+        llvm_ctx
+            .module
+            .run_passes("default<O2>", &machine, options)
+            .unwrap();
 
         let bit = llvm_ctx.module.write_bitcode_to_memory();
         // let o = bit.create_object_file().unwrap();

@@ -1,25 +1,20 @@
 ; ModuleID = 'examples/ntest.bc'
 source_filename = "flare_module"
 
-define float @flare_f_0(ptr %0) {
+define float @flare_f_0({ float, i8 } %0) {
 entry:
-  %struct_gep = getelementptr inbounds nuw { float, i8 }, ptr %0, i32 0, i32 0
-  %load_field = load float, ptr %struct_gep, align 4
-  ret float %load_field
+  %get_field = extractvalue { float, i8 } %0, 0
+  ret float %get_field
 }
 
-define void @flare_f_1(ptr sret({ float, i8 }) %0, ptr %1, ptr %2) {
+define { float, i8 } @flare_f_1({ float, i8 } %0, ptr %1) {
 entry:
-  %field_gep = getelementptr inbounds nuw { float, i8 }, ptr %0, i32 0, i32 0
-  %struct_gep = getelementptr inbounds nuw { float, i8 }, ptr %1, i32 0, i32 0
-  %load_field = load float, ptr %struct_gep, align 4
-  %closure_indirect = call float %2(float %load_field)
-  store float %closure_indirect, ptr %field_gep, align 4
-  %field_gep1 = getelementptr inbounds nuw { float, i8 }, ptr %0, i32 0, i32 1
-  %struct_gep2 = getelementptr inbounds nuw { float, i8 }, ptr %1, i32 0, i32 1
-  %load_field3 = load i8, ptr %struct_gep2, align 1
-  store i8 %load_field3, ptr %field_gep1, align 1
-  ret void
+  %get_field = extractvalue { float, i8 } %0, 0
+  %closure_indirect = call float %1(float %get_field)
+  %field_store = insertvalue { float, i8 } undef, float %closure_indirect, 0
+  %get_field1 = extractvalue { float, i8 } %0, 1
+  %field_store2 = insertvalue { float, i8 } %field_store, i8 %get_field1, 1
+  ret { float, i8 } %field_store2
 }
 
 define float @flare_f_2(float %0) {
@@ -27,14 +22,12 @@ entry:
   ret float %0
 }
 
-define void @flare_f_3(ptr sret({ float, i8 }) %0, float %1) {
+define { float, i8 } @flare_f_3(float %0) {
 entry:
-  %field_gep = getelementptr inbounds nuw { float, i8 }, ptr %0, i32 0, i32 0
-  %closure_indirect = call float @flare_f_2(float %1)
-  store float %closure_indirect, ptr %field_gep, align 4
-  %field_gep1 = getelementptr inbounds nuw { float, i8 }, ptr %0, i32 0, i32 1
-  store i8 0, ptr %field_gep1, align 1
-  ret void
+  %closure_indirect = call float @flare_f_2(float %0)
+  %field_store = insertvalue { float, i8 } undef, float %closure_indirect, 0
+  %field_store1 = insertvalue { float, i8 } %field_store, i8 0, 1
+  ret { float, i8 } %field_store1
 }
 
 define float @flare_f_5(float %0) {
@@ -45,12 +38,10 @@ entry:
 
 define float @flare_f_4() {
 entry:
-  %sret_slot = alloca { float, i8 }, align 8
-  call void @flare_f_3(ptr sret({ float, i8 }) %sret_slot, float 1.000000e+01)
-  %sret_slot1 = alloca { float, i8 }, align 8
-  call void @flare_f_1(ptr sret({ float, i8 }) %sret_slot1, ptr %sret_slot, ptr @flare_f_5)
-  %closure_indirect = call float @flare_f_0(ptr %sret_slot1)
-  %sub = fsub float %closure_indirect, 2.000000e+01
+  %closure_indirect = call { float, i8 } @flare_f_3(float 1.000000e+01)
+  %closure_indirect1 = call { float, i8 } @flare_f_1({ float, i8 } %closure_indirect, ptr @flare_f_5)
+  %closure_indirect2 = call float @flare_f_0({ float, i8 } %closure_indirect1)
+  %sub = fsub float %closure_indirect2, 2.000000e+01
   ret float %sub
 }
 

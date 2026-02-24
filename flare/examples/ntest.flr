@@ -72,16 +72,16 @@ package Main =
         # extract unwrapped
         
         
-        # let v = new_Wrapper 10 in
-        # let mapped = map_wrapper v (fn data => data * 2) in
-        # (extract mapped) - 20
+        let v = new_Wrapper 10 in
+        let mapped = map_wrapper v (fn data => data * 2) in
+        (extract mapped) - 20
         # (combine (id (extract v)) (id @ok )).0
         
          
-        let val = Some (10) in
+        # let val = Some (10) in
         # let mul = fn x y => x * y in
-        let mapped = map val (fn x => x * 2) in
-        unwrap_or mapped 7
+        # let mapped = map val (fn x => x * 2) in
+        # unwrap_or mapped 7
         # puts "hello world\0"
         # m 3 4
 

@@ -198,15 +198,15 @@ impl LIR {
                 let env_tys: Vec<_> = env.iter().map(|v| v.ty).collect();
                 LIRType::ClosureEnv((*f).into(), env_tys.as_slice().into())
             }
-            LIR::Apply(func, _) => func.type_of(),
-            // LIR::Apply(func, _) => match func.type_of() {
-            //     LIRType::Closure(_, ret) => *ret,
-            //     LIRType::ClosureEnv(f, _) => match *f {
-            //         LIRType::Closure(_, ret) => *ret,
-            //         _ => panic!("Not a closure"),
-            //     },
-            //     other => panic!("Apply on non-closure: {other:?}"),
-            // },
+            // LIR::Apply(func, _) => func.type_of(),
+            LIR::Apply(func, _) => match func.type_of() {
+                LIRType::Closure(_, ret) => *ret,
+                LIRType::ClosureEnv(f, _) => match *f {
+                    LIRType::Closure(_, ret) => *ret,
+                    _ => panic!("Not a closure"),
+                },
+                other => panic!("Apply on non-closure: {other:?}"),
+            },
             LIR::BulkApply(func, _) => func.type_of(),
             LIR::Local(.., body) => body.type_of(),
             LIR::Access(closure, ty) => {

@@ -97,10 +97,11 @@ impl LIRType {
     }
 
     pub fn is_alloca(&self) -> bool {
-        matches!(
-            self,
-            Self::Struct(_) | Self::Union(_) | Self::ClosureEnv(..)
-        )
+        false
+        // matches!(
+        //     self,
+        //     Self::Struct(_) | Self::Union(_) | Self::ClosureEnv(..)
+        // )
     }
 
     pub fn ret_ty(&self) -> Self {
