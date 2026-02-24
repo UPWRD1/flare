@@ -185,6 +185,20 @@ impl LIR {
         }
     }
 
+    pub fn get_fn_ty(&self) -> LIRType {
+        match self {
+            LIR::Apply(func, _) | LIR::BulkApply(func, _) => match func.get_fn_ty() {
+                LIRType::Closure(_, ret) => *ret,
+                LIRType::ClosureEnv(f, _) => match *f {
+                    LIRType::Closure(_, ret) => *ret,
+                    _ => panic!("Not a closure"),
+                },
+                other => panic!("Apply on non-closure: {other:?}"),
+            },
+            _ => self.type_of(),
+        }
+    }
+
     pub fn type_of(&self) -> LIRType {
         match self {
             LIR::Var(var) => var.ty,
@@ -199,7 +213,7 @@ impl LIR {
                 LIRType::ClosureEnv((*f).into(), env_tys.as_slice().into())
             }
             // LIR::Apply(func, _) => func.type_of(),
-            LIR::Apply(func, _) => match func.type_of() {
+            LIR::Apply(func, _) | LIR::BulkApply(func, _) => match func.type_of() {
                 LIRType::Closure(_, ret) => *ret,
                 LIRType::ClosureEnv(f, _) => match *f {
                     LIRType::Closure(_, ret) => *ret,
@@ -207,7 +221,7 @@ impl LIR {
                 },
                 other => panic!("Apply on non-closure: {other:?}"),
             },
-            LIR::BulkApply(func, _) => func.type_of(),
+            // LIR::BulkApply(func, _) => func.type_of(),
             LIR::Local(.., body) => body.type_of(),
             LIR::Access(closure, ty) => {
                 let t = *ty;

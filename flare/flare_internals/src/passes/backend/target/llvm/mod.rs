@@ -99,10 +99,10 @@ impl LLVMTypeConvert for LIRType {
             Self::Float => &context.context.f32_type(),
             Self::String => todo!(),
             Self::Unit => &context.context.i8_type(),
-            Self::Struct(_) | Self::Union(_) => &context.context.ptr_type(AddressSpace::default()),
+            Self::Struct(_) | Self::Union(_) => panic!(), //&context.context.ptr_type(AddressSpace::default()),
             Self::Closure(intern, intern1) => &context.context.ptr_type(AddressSpace::default()),
 
-            Self::ClosureEnv(intern, intern1) => &context.context.ptr_type(AddressSpace::default()),
+            Self::ClosureEnv(intern, intern1) => panic!(), // &context.context.ptr_type(AddressSpace::default()),
         };
         BasicTypeEnum::try_from(ty.as_any_type_enum()).unwrap()
     }
@@ -144,7 +144,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 .struct_type(&[self.context.i8_type().into(), variant_ty], true)
                 .into()
         } else {
-            panic!("Not a union")
+            panic!("Not a union: {ty:?}")
         }
     }
 
@@ -208,6 +208,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         } else {
             let ret_ty = self.convert_aggregate_ty(ret);
 
+            // dbg!(ret, ret_ty);
             (
                 ret_ty.fn_type(
                     &args
@@ -334,7 +335,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             }
             LIR::ClosureBuild(fun_ty, id, ref vars) => {
                 let name = Self::make_func_name(&id);
-                let closure_ty = ir.type_of();
+                let closure_ty = ir.get_fn_ty();
 
                 let closure_struct_ty = self.convert_aggregate_ty(closure_ty);
                 if closure_ty.is_alloca() {
@@ -435,7 +436,6 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                         let undef = closure_struct_ty.into_struct_type().get_undef();
                         let mut s: AggregateValueEnum = undef.into();
                         for (idx, val) in [item_fn, env_struct].into_iter().enumerate() {
-                            dbg!(undef, s);
                             s = self
                                 .builder
                                 .build_insert_value(s, val, idx as u32, "env_insert")
@@ -498,100 +498,199 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         body: &LIR,
     ) -> BasicValueEnum<'ir> {
         let union_ty = self.convert_aggregate_ty(ty);
-        let union_ptr = self.build_alloca(union_ty, out_slot);
-        let variant_instance_ty = self.create_variant_instance(ty, idx);
-        let variant_ptr = self.build_alloca(variant_instance_ty, None);
-        let tag_ptr = self
-            .builder
-            .build_struct_gep(variant_instance_ty, variant_ptr, 0, "tag_gep")
-            .expect("Could not gep tag");
-        self.builder
-            .build_store(tag_ptr, self.context.i8_type().const_int(idx as u64, false));
-        let body = self.codegen_ir(body.clone(), None);
-        let body_ptr = self
-            .builder
-            .build_struct_gep(variant_instance_ty, variant_ptr, 1, "body_gep")
-            .expect("Could not gep body");
-        self.builder.build_store(body_ptr, body);
-        self.builder
-            .build_bit_cast(variant_ptr, union_ptr.get_type(), "cast_variant")
-            .unwrap()
+        if ty.is_alloca() {
+            let union_ptr = self.build_alloca(union_ty, out_slot);
+            let variant_instance_ty = self.create_variant_instance(ty, idx);
+            let variant_ptr = self.build_alloca(variant_instance_ty, None);
+            let tag_ptr = self
+                .builder
+                .build_struct_gep(variant_instance_ty, variant_ptr, 0, "tag_gep")
+                .expect("Could not gep tag");
+            self.builder
+                .build_store(tag_ptr, self.context.i8_type().const_int(idx as u64, false));
+            let body = self.codegen_ir(body.clone(), None);
+            let body_ptr = self
+                .builder
+                .build_struct_gep(variant_instance_ty, variant_ptr, 1, "body_gep")
+                .expect("Could not gep body");
+            self.builder.build_store(body_ptr, body);
+            self.builder
+                .build_bit_cast(variant_ptr, union_ptr.get_type(), "cast_variant")
+                .unwrap()
+        } else {
+            let union_ty = union_ty.into_struct_type();
+            let agg = union_ty.get_undef();
+
+            let agg = self
+                .builder
+                .build_insert_value(
+                    agg,
+                    self.context.i8_type().const_int(idx as u64, false),
+                    0,
+                    "tag_store",
+                )
+                .unwrap();
+            let body = self.codegen_ir(body.clone(), None);
+
+            let slot = self
+                .builder
+                .build_alloca(body.get_type(), "cast_slot")
+                .unwrap();
+            self.builder.build_store(slot, body).unwrap();
+            let bytes = self
+                .builder
+                .build_load(union_ty.get_field_type_at_index(1).unwrap(), slot, "bytes")
+                .unwrap();
+
+            let agg = self
+                .builder
+                .build_insert_value(agg, bytes, 1, "body_store")
+                .unwrap();
+
+            agg.into_struct_value().into()
+        }
     }
 
     fn codegen_case(&self, ir: LIR, out_slot: Option<PointerValue<'ctx>>) -> BasicValueEnum<'ir> {
-        let ret_ty = self.convert_aggregate_ty(ir.type_of());
+        // let ret_ty = self.convert_aggregate_ty(ir.type_of());
         if let LIR::Case(ty, scrutinee, branches) = ir {
             let the_func = self.current_func.borrow().unwrap();
-            let union_ty = self.convert_aggregate_ty(ty);
+            let scrutinee_ty = scrutinee.type_of();
+            let union_ty = self.convert_aggregate_ty(scrutinee_ty);
             let scrutinee_bv = self.codegen_ir(*scrutinee.clone(), None);
+            let ret_ty = self.convert_aggregate_ty(ty);
 
             let merge_block = self.context.append_basic_block(the_func, "case_merge");
             // dbg!(scrutinee_bv);
-            let result = self.build_alloca(ret_ty, out_slot);
-            // dbg!(scrutinee);
-            let tag_ptr = self
-                .builder
-                .build_struct_gep(union_ty, scrutinee_bv.into_pointer_value(), 0, "tag_gep")
-                .expect("Could not gep tag");
-            let tag_value = self
-                .builder
-                .build_load(self.context.i8_type(), tag_ptr, "load-tag")
-                .unwrap()
-                .into_int_value();
-            // Create one basic block per branch.
-            let branch_blocks = (0..branches.len())
-                .map(|i| {
-                    (
-                        self.context.i8_type().const_int(i as u64, false),
-                        self.context
-                            .append_basic_block(the_func, &format!("case_arm_{i}")),
-                    )
-                })
-                .collect_vec();
-            let trap_block = self.context.append_basic_block(the_func, "trap_block");
-            let switch = self
-                .builder
-                .build_switch(tag_value, trap_block, &branch_blocks)
-                .unwrap();
-            let mut phi_incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock)> = Vec::new();
-            for (branch_idx, branch_lir) in branches.iter().enumerate() {
-                self.builder.position_at_end(branch_blocks[branch_idx].1);
-
-                let variant = self
-                    .create_variant_instance(ty, branch_idx)
-                    .into_struct_type();
-                let variant_body_ty = variant.get_field_type_at_index(1).unwrap();
-                let scrutinee_as_tag = self
+            if scrutinee.type_of().is_alloca() {
+                // let result = self.build_alloca(ret_ty, out_slot);
+                // dbg!(scrutinee);
+                let tag_ptr = self
                     .builder
-                    .build_struct_gep(
-                        variant,
-                        scrutinee_bv.into_pointer_value(),
-                        1,
-                        "scrutinee_as_variant_gep",
-                    )
-                    .expect("Could not cast scrutinee into variant");
-                // let arg = dbg!(branch_lir.type_of());
-                let v = self.handle_app(branch_lir.clone(), vec![scrutinee_as_tag], |arg| {
-                    self.builder
-                        .build_load(variant_body_ty, arg, "variant_cast")
-                        .unwrap()
-                });
-                self.builder
-                    .build_unconditional_branch(merge_block)
+                    .build_struct_gep(union_ty, scrutinee_bv.into_pointer_value(), 0, "tag_gep")
+                    .expect("Could not gep tag");
+                let tag_value = self
+                    .builder
+                    .build_load(self.context.i8_type(), tag_ptr, "load-tag")
+                    .unwrap()
+                    .into_int_value();
+                // Create one basic block per branch.
+                let branch_blocks = (0..branches.len())
+                    .map(|i| {
+                        (
+                            self.context.i8_type().const_int(i as u64, false),
+                            self.context
+                                .append_basic_block(the_func, &format!("case_arm_{i}")),
+                        )
+                    })
+                    .collect_vec();
+                let trap_block = self.context.append_basic_block(the_func, "trap_block");
+                let switch = self
+                    .builder
+                    .build_switch(tag_value, trap_block, &branch_blocks)
                     .unwrap();
-                dbg!(v);
-                phi_incoming.push((v, branch_blocks[branch_idx].1));
-            }
-            // Trap block.
-            self.builder.position_at_end(trap_block);
-            self.builder.build_unreachable().unwrap();
-            {
-                self.builder.position_at_end(merge_block);
-                let phi = self.builder.build_phi(ret_ty, "case_phi").unwrap();
-                for (val, from_block) in phi_incoming.iter() {
-                    phi.add_incoming(&[(val, *from_block)]);
+                let mut phi_incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock)> = Vec::new();
+                for (branch_idx, branch_lir) in branches.iter().enumerate() {
+                    self.builder.position_at_end(branch_blocks[branch_idx].1);
+
+                    let variant = self
+                        .create_variant_instance(scrutinee_ty, branch_idx)
+                        .into_struct_type();
+                    let variant_body_ty = variant.get_field_type_at_index(1).unwrap();
+                    let scrutinee_as_tag = self
+                        .builder
+                        .build_struct_gep(
+                            variant,
+                            scrutinee_bv.into_pointer_value(),
+                            1,
+                            "scrutinee_as_variant_gep",
+                        )
+                        .expect("Could not cast scrutinee into variant");
+                    // let arg = dbg!(branch_lir.type_of());
+                    let v = self.handle_app(branch_lir.clone(), vec![scrutinee_as_tag], |arg| {
+                        self.builder
+                            .build_load(variant_body_ty, arg, "variant_cast")
+                            .unwrap()
+                    });
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    dbg!(v);
+                    phi_incoming.push((v, branch_blocks[branch_idx].1));
                 }
-                phi.as_basic_value()
+                // Trap block.
+                self.builder.position_at_end(trap_block);
+                self.builder.build_unreachable().unwrap();
+                {
+                    // let ty = phi_incoming.first().unwrap().0.get_type();
+                    self.builder.position_at_end(merge_block);
+                    let phi = self.builder.build_phi(ret_ty, "case_phi").unwrap();
+                    for (val, from_block) in phi_incoming.iter() {
+                        phi.add_incoming(&[(val, *from_block)]);
+                    }
+                    phi.as_basic_value()
+                }
+            } else {
+                let scrutinee_bv = scrutinee_bv.into_struct_value();
+                // let result = self.build_alloca(ret_ty, out_slot);
+                // dbg!(scrutinee);
+                let tag_value = self
+                    .builder
+                    .build_extract_value(scrutinee_bv, 0, "extract_tag")
+                    .unwrap()
+                    .into_int_value(); // Create one basic block per branch.
+                let branch_blocks = (0..branches.len())
+                    .map(|i| {
+                        (
+                            self.context.i8_type().const_int(i as u64, false),
+                            self.context
+                                .append_basic_block(the_func, &format!("case_arm_{i}")),
+                        )
+                    })
+                    .collect_vec();
+                let trap_block = self.context.append_basic_block(the_func, "trap_block");
+                let switch = self
+                    .builder
+                    .build_switch(tag_value, trap_block, &branch_blocks)
+                    .unwrap();
+                let mut phi_incoming: Vec<(BasicValueEnum<'ctx>, BasicBlock)> = Vec::new();
+                for (branch_idx, branch_lir) in branches.iter().enumerate() {
+                    self.builder.position_at_end(branch_blocks[branch_idx].1);
+
+                    let variant = self
+                        .create_variant_instance(scrutinee.type_of(), branch_idx)
+                        .into_struct_type();
+                    let variant_body_ty = variant.get_field_type_at_index(1).unwrap();
+                    let slot = self
+                        .builder
+                        .build_alloca(scrutinee_bv.get_type(), "cast_slot")
+                        .unwrap();
+                    self.builder.build_store(slot, scrutinee_bv).unwrap();
+                    let scrutinee_as_tag = self
+                        .builder
+                        .build_load(variant_body_ty, slot, "bytes")
+                        .unwrap();
+                    // let arg = dbg!(branch_lir.type_of());
+                    let v = self.handle_app(branch_lir.clone(), vec![scrutinee_as_tag], |arg| arg);
+
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    // dbg!(v);
+                    phi_incoming.push((v, branch_blocks[branch_idx].1));
+                }
+                // Trap block.
+                self.builder.position_at_end(trap_block);
+                self.builder.build_unreachable().unwrap();
+                {
+                    self.builder.position_at_end(merge_block);
+                    let phi = self.builder.build_phi(ret_ty, "case_phi").unwrap();
+                    // dbg!(phi);
+                    for (val, from_block) in phi_incoming.iter() {
+                        phi.add_incoming(&[(val, *from_block)]);
+                    }
+                    phi.as_basic_value()
+                }
             }
         } else {
             panic!("Not a case")
@@ -782,7 +881,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         arg_lirs: Vec<T>,
         arg_f: impl Fn(T) -> BasicValueEnum<'ir>,
     ) -> BasicValueEnum<'ir> {
-        let fun_ty = fun.type_of();
+        let fun_ty = fun.get_fn_ty();
         let (fun_ptr, the_fun_ty, args, passmode) =
             if let LIRType::ClosureEnv(fpointer_ty, _) = fun_ty {
                 self.handle_closure_app(fun, arg_lirs, arg_f, fun_ty, fpointer_ty)
@@ -1008,15 +1107,13 @@ impl FlareTarget for LLVM {
             }
         }
 
-        // let bit = machine
-        //     .write_to_memory_buffer(&llvm_ctx.module, inkwell::targets::FileType::Object)
-        //     .unwrap();
         // Then run a pipeline using Clang-style pass pipeline strings
-        let options = PassBuilderOptions::create();
-        llvm_ctx
-            .module
-            .run_passes("default<O2>", &machine, options)
-            .unwrap();
+        // let options = PassBuilderOptions::create();
+
+        // llvm_ctx
+        //     .module
+        //     .run_passes("default<O2>", &machine, options)
+        //     .unwrap();
 
         let bit = llvm_ctx.module.write_bitcode_to_memory();
         // let o = bit.create_object_file().unwrap();
