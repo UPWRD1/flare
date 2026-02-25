@@ -15,6 +15,8 @@
 #[forbid(
     unused_unsafe,
     clippy::fallible_impl_from,
+    clippy::used_underscore_binding,
+    clippy::used_underscore_items,
     // clippy::undocumented_unsafe_blocks
 )]
 #[deny(
@@ -32,7 +34,6 @@
     clippy::redundant_allocation,
     clippy::deref_by_slicing,
     clippy::cloned_instead_of_copied,
-    clippy::used_underscore_binding,
     clippy::unwrap_in_result,
     unused_allocation,
     clippy::ptr_arg,

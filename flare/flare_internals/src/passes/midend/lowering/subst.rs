@@ -76,6 +76,7 @@ impl Subst {
             }
             IRType::Prod(row) => IRType::prod(self.subst_row(row, needle)),
             IRType::Sum(row) => IRType::sum(self.subst_row(row, needle)),
+            IRType::Volatile(v) => IRType::volatile(self.subst_ty(*v, needle)),
         }
         // dbg!(res)
     }
@@ -97,6 +98,7 @@ impl Subst {
             IRType::TyFun(kind, body) => self.shifted().subst_ty_final(*body, needle),
             IRType::Prod(row) => IRType::prod(self.subst_row(row, needle)),
             IRType::Sum(row) => IRType::sum(self.subst_row(row, needle)),
+            IRType::Volatile(v) => IRType::volatile(self.subst_ty_final(*v, needle)),
         }
         // dbg!(res)
     }
@@ -168,6 +170,7 @@ impl IRType {
                 body.adjust(cutoff + 1);
             }
             Self::Prod(row) | Self::Sum(row) => row.adjust(cutoff),
+            Self::Volatile(v) => v.adjust(cutoff),
         }
     }
 

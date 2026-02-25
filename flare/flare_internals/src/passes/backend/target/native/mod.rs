@@ -123,7 +123,6 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         if let Some(v) = self.scope.get(var) {
             v.clone()
         } else {
-            dbg!(&self.scope);
             panic!("Undefined variable {var:?}")
         }
     }

@@ -39,6 +39,8 @@ pub enum IRType {
 
     Prod(Row),
     Sum(Row),
+
+    Volatile(Box<Self>),
 }
 
 impl IRType {
@@ -66,6 +68,7 @@ impl IRType {
             IRType::Var(_) => false,
             IRType::Fun(..) => false,
             IRType::TyFun(_, t) => t.is_scalar(),
+            IRType::Volatile(t) => t.is_scalar(),
         }
     }
 }
@@ -105,6 +108,11 @@ impl IRType {
             },
             row => Self::Sum(row),
         }
+    }
+
+    #[must_use]
+    pub fn volatile(t: Self) -> Self {
+        Self::Volatile(Box::new(t))
     }
 }
 

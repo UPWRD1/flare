@@ -58,7 +58,7 @@ package Main =
         x * y
 
     let seven :num = 7
-                 
+
     let main: num =
         # 3
         # let mul = fn x y => x * y in
@@ -66,10 +66,10 @@ package Main =
         # the_num * 2
         # let seven = seven in
         # let ten = to_num "10" in f ((m rand  4) ten) in
-        # let val =  Some (new_Wrapper 10) in
-        # let mapped = map val (fn x => map_wrapper x (fn data => data * 2)) in    
-        # let unwrapped = unwrap_or mapped (new_Wrapper 0) in
-        # extract unwrapped
+        let val =  Some (new_Wrapper 10) in
+        let mapped = map val (fn x => map_wrapper x (fn data => data * 2)) in    
+        let unwrapped = unwrap_or mapped (new_Wrapper 0) in
+        extract unwrapped                
         
         
         # let v = new_Wrapper 10 in
@@ -78,16 +78,16 @@ package Main =
         # (combine (id (extract v)) (id @ok )).0
         
          
-        let val = Some (10) in
+        # let val = Some (10) in
         # let mul = fn x y => x * y in
-        let mapped = map val (fn x => x * 2) in
-        unwrap_or mapped 7
+        # let mapped = map val (fn x => x * 2) in
+        # unwrap_or mapped 7
         # puts "hello world\0"
         # m 3 4
 
         
-    # let choose l r choice: ?T -> ?U -> bool -> |Left ?T, Right ?U| =
-    #     if choice then |Left l| else |Right r|
+    let choose l r choice: ?T -> ?U -> bool -> |Left ?T, Right ?U| =
+        if choice then |Left l| else |Right r|
         
     
     # let id x : ?T -> ?T = x

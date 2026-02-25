@@ -62,7 +62,7 @@ pub enum Type {
     String,
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
-    Package(Spanned<Intern<String>>),
+    // Package(Spanned<Intern<String>>),
     // Item(ItemId),
     TypeFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     TypeApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -80,7 +80,7 @@ impl EqUnifyValue for Spanned<Intern<Type>> {}
 impl Ident for Type {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self {
-            Self::Package(spanned) => Ok(*spanned),
+            // Self::Package(spanned) => Ok(*spanned),
             Self::Label(l, _) => Ok(l.0),
             _ => unreachable!("{:?}", self),
         }
@@ -157,7 +157,7 @@ impl Type {
                 l.0.occurs_check(var).map_err(|_| *self)?;
                 r.0.occurs_check(var).map_err(|_| *self)
             }
-            Self::Package(_) => Ok(()),
+            // Self::Package(_) => Ok(()),
             Self::User(..) | Self::Hole => unreachable!("Shouldn't happen"),
             Self::Subtable(_, _) => todo!(), // _ => todo!("{self:?}"),
         }

@@ -5,43 +5,21 @@ use internment::Intern;
 use crate::{
     passes::frontend::typing::Type,
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr},
+        errors::CompResult,
         rep::{
-            frontend::{files::FileID, ast::Variable},
-            common::{Ident, Spanned, SpanWrapped},
-            
+            common::{Ident, SpanWrapped, Spanned},
+            frontend::{ast::Variable, files::FileID},
         },
     },
 };
 
-use super::{
-    // concretetypes::{EnumVariant, Ty},
-    
-    ast::Expr,
-};
+use super::ast::Expr;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct PackageEntry {
     pub name: Spanned<Intern<String>>,
     pub id: FileID,
-    // pub file: &'static Path,
-    //    pub deps: Vec<Spanned<Expr>>,
-
-    //contains: Vec<Index>, // Consider using pure index-based referencing instead of the Trie
-    // pub src: &'static str,
 }
-
-// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-// /// Wrapper type denoting a type as a Struct
-// pub struct StructEntry {
-//     pub ty: Spanned<Intern<Type>>,
-// }
-
-// #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-// /// Wrapper type denoting a type as an Enum
-// pub struct EnumEntry {
-//     pub ty: Spanned<Intern<Ty>>,
-// }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct FunctionItem<V: Variable> {
@@ -142,39 +120,39 @@ impl<V: Variable> Item<V> {
         }
     }
 
-    /// Get the type of the `Item`.
-    pub fn get_ty(&self) -> CompResult<Spanned<Intern<Type>>> {
-        fn err<V: Variable>(t: &Item<V>) -> CompilerErr {
-            DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
-        }
-        match &self.kind {
-            // ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
-            // ItemKind::Struct(StructEntry { ty, .. }) => Ok(*ty),
-            // ItemKind::Enum(EnumEntry { ty, .. }) => Ok(*ty),
-            // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
-            // ItemKind::Field((_, ty)) => Ok(*ty),
-            ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
-            ItemKind::Type(_, _, t) => Ok(*t),
-            _ => Err(err(self)),
-        }
-    }
+    // Get the type of the `Item`.
+    // pub fn get_ty(&self) -> CompResult<Spanned<Intern<Type>>> {
+    //     fn err<V: Variable>(t: &Item<V>) -> CompilerErr {
+    //         DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
+    //     }
+    //     match &self.kind {
+    //         // ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
+    //         // ItemKind::Struct(StructEntry { ty, .. }) => Ok(*ty),
+    //         // ItemKind::Enum(EnumEntry { ty, .. }) => Ok(*ty),
+    //         // ItemKind::Variant(Spanned(v, s)) => Ok(Spanned(Intern::from(Ty::Variant(*v)), *s)),
+    //         // ItemKind::Field((_, ty)) => Ok(*ty),
+    //         // ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
+    //         ItemKind::Type(_, _, t) => Ok(*t),
+    //         _ => Err(err(self)),
+    //     }
+    // }
 
-    pub fn get_type_universal(&self) -> CompResult<Spanned<Intern<Type>>> {
-        fn err<V: Variable>(t: &Item<V>) -> CompilerErr {
-            DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
-        }
-        match &self.kind {
-            ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
-            ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
-            ItemKind::Type(_, _, t) => Ok(*t),
-            ItemKind::Extern {
-                name: _,
-                args: _,
-                sig,
-            } => Ok(*sig),
-            _ => Err(err(self)),
-        }
-    }
+    // pub fn get_type_universal(&self) -> CompResult<Spanned<Intern<Type>>> {
+    //     fn err<V: Variable>(t: &Item<V>) -> CompilerErr {
+    //         DynamicErr::new(format!("Could not get the type from {:?}", t)).into()
+    //     }
+    //     match &self.kind {
+    //         ItemKind::Function(FunctionItem { sig, .. }) => Ok(*sig),
+    //         ItemKind::Package(p) => Ok(Spanned(Intern::from(Type::Package(p.name)), p.name.1)),
+    //         ItemKind::Type(_, _, t) => Ok(*t),
+    //         ItemKind::Extern {
+    //             name: _,
+    //             args: _,
+    //             sig,
+    //         } => Ok(*sig),
+    //         _ => Err(err(self)),
+    //     }
+    // }
 }
 
 impl<V: Variable> Default for Item<V> {

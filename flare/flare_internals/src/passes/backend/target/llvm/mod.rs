@@ -25,13 +25,16 @@ use crate::{
         lir::ClosureConvertOut,
         target::{Target as FlareTarget, native::FunctionPurpose},
     },
-    resource::rep::{
-        backend::{
-            lir::{Item, LIR, Var},
-            types::LIRType,
+    resource::{
+        errors::CompResult,
+        rep::{
+            backend::{
+                lir::{Item, LIR, Var},
+                types::LIRType,
+            },
+            frontend::ast::BinOp,
+            midend::ir::ItemId,
         },
-        frontend::ast::BinOp,
-        midend::ir::ItemId,
     },
 };
 
@@ -41,12 +44,12 @@ pub struct LLVMContext<'ctx> {
     builder: Builder<'ctx>,
     module: Module<'ctx>,
     current_func: RefCell<Option<FunctionValue<'ctx>>>,
-    // machine: TargetMachine,
+    machine: TargetMachine,
     sym_table: RefCell<FxHashMap<Var, BasicValueEnum<'ctx>>>,
 }
 
 impl<'ctx> LLVMContext<'ctx> {
-    pub fn new(context: &'ctx Context) -> Self {
+    pub fn new(context: &'ctx Context, machine: TargetMachine) -> Self {
         let builder = context.create_builder();
         let module = context.create_module("flare_module");
 
@@ -63,6 +66,7 @@ impl<'ctx> LLVMContext<'ctx> {
             context,
             builder,
             module,
+            machine,
             sym_table: RefCell::new(FxHashMap::default()),
         }
     }
@@ -114,16 +118,8 @@ enum PassMode<'ir> {
 }
 
 impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
-    fn get_ty_size(&self, t: BasicTypeEnum) -> u32 {
-        match t {
-            BasicTypeEnum::ArrayType(t) => t.len() * self.get_ty_size(t.get_element_type()),
-            BasicTypeEnum::FloatType(f) => f.get_bit_width(),
-            BasicTypeEnum::IntType(i) => i.get_bit_width(),
-            BasicTypeEnum::PointerType(pointer_type) => todo!(),
-            BasicTypeEnum::StructType(struct_type) => todo!(),
-            BasicTypeEnum::VectorType(vector_type) => todo!(),
-            BasicTypeEnum::ScalableVectorType(scalable_vector_type) => todo!(),
-        }
+    fn get_ty_size(&self, t: BasicTypeEnum) -> u64 {
+        self.machine.get_target_data().get_bit_size(&t)
     }
     fn create_union_variants(&self, ty: LIRType) -> Vec<BasicTypeEnum<'ir>> {
         match ty {
@@ -166,7 +162,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 let max_variant_size_bytes = self
                     .create_union_variants(ty)
                     .iter()
-                    .map(|t| self.get_ty_size(*t) / 8)
+                    .map(|t| (self.get_ty_size(*t) / 8) as u32)
                     .max()
                     .unwrap();
 
@@ -225,8 +221,8 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         }
     }
 
-    fn codegen_item(&self, item: Item) -> AnyValueEnum<'ir> {
-        dbg!(&item);
+    fn codegen_item(&self, item: Item) -> CompResult<AnyValueEnum<'ir>> {
+        // dbg!(&item);
         let name = Self::make_func_name(&item.id);
         let (ty, pass_mode) =
             self.make_func_type(item.ret_ty, &item.params.iter().map(|p| p.ty).collect_vec());
@@ -254,7 +250,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                     panic!("Failed to verify func")
                 }
 
-                fn_val.as_any_value_enum()
+                Ok(fn_val.as_any_value_enum())
             }
             PassMode::Sret(sret_ty) => {
                 // Same as above, but now skip the sret pointer at the start.
@@ -277,7 +273,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                     panic!("Failed to verify func")
                 }
 
-                fn_val.as_any_value_enum()
+                Ok(fn_val.as_any_value_enum())
             }
         }
     }
@@ -309,7 +305,10 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
     ) -> PointerValue<'ctx> {
         match out_slot {
             Some(s) => s,
-            None => self.builder.build_alloca(ty, "alloca").unwrap(),
+            None => self
+                .builder
+                .build_alloca(ty, "alloca")
+                .expect("Could not build alloca"),
         }
     }
 
@@ -615,7 +614,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
-                    dbg!(v);
+                    // dbg!(v);
                     phi_incoming.push((v, branch_blocks[branch_idx].1));
                 }
                 // Trap block.
@@ -799,7 +798,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                         .build_insert_value(s, val, idx as u32, "field_store")
                         .unwrap();
 
-                    dbg!(undef, s);
+                    // dbg!(undef, s);
                 }
                 s.into_struct_value().into()
             }
@@ -1085,7 +1084,7 @@ impl FlareTarget for LLVM {
 
         let ctx = Context::create();
         let machine = make_target_machine();
-        let llvm_ctx = LLVMContext::new(&ctx);
+        let llvm_ctx = LLVMContext::new(&ctx, machine);
 
         for (item, purpose) in funcs.into_iter() {
             match purpose {
