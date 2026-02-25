@@ -52,6 +52,7 @@ pub enum Type {
     Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
     Unifier(TyUniVar),
     Generic(Spanned<Intern<String>>),
+
     // Template(Spanned<Intern<String>>),
     Var(TypeVar),
     Particle(Spanned<Intern<String>>),
@@ -157,7 +158,7 @@ impl Type {
                 l.0.occurs_check(var).map_err(|_| *self)?;
                 r.0.occurs_check(var).map_err(|_| *self)
             }
-            // Self::Package(_) => Ok(()),
+
             Self::User(..) | Self::Hole => unreachable!("Shouldn't happen"),
             Self::Subtable(_, _) => todo!(), // _ => todo!("{self:?}"),
         }
@@ -218,63 +219,6 @@ impl Type {
             _ => unreachable!("expected row, found {self:?}"),
         }
     }
-
-    // pub fn collapse_apps(self) -> Self {
-    //     match self {
-    //         Self::Func(l, r) => Self::Func(
-    //             l.map(|l| l.collapse_apps().into()),
-    //             r.map(|r| r.collapse_apps().into()),
-    //         ),
-    //         Self::TypeFun(_, _) => panic!("Isolated typefun"),
-    //         Self::TypeApp(tyfun, arg) => {
-    //             if let Self::TypeFun(g, t) = *tyfun.0 {
-    //                 *subst_generic_type(t, g.0, arg.0).0
-    //             } else {
-    //                 tyfun.0.collapse_apps()
-    //             }
-    //         }
-    //         Self::Prod(r) => {
-    //             let r = r.map(|r| match *r {
-    //                 Row::Closed(closed_row) => {
-    //                     let values: Vec<_> = closed_row
-    //                         .values
-    //                         .iter()
-    //                         .map(|x| x.map(|x| x.collapse_apps().into()))
-    //                         .collect();
-
-    //                     Row::Closed(ClosedRow {
-    //                         values: values.leak(),
-    //                         ..closed_row
-    //                     })
-    //                     .into()
-    //                 }
-    //                 _ => r,
-    //             });
-    //             Self::Prod(r)
-    //         }
-    //         Self::Sum(r) => {
-    //             let r = r.map(|r| match *r {
-    //                 Row::Closed(closed_row) => {
-    //                     let values: Vec<_> = closed_row
-    //                         .values
-    //                         .iter()
-    //                         .map(|x| x.map(|x| x.collapse_apps().into()))
-    //                         .collect();
-
-    //                     Row::Closed(ClosedRow {
-    //                         values: values.leak(),
-    //                         ..closed_row
-    //                     })
-    //                     .into()
-    //                 }
-    //                 _ => r,
-    //             });
-    //             Self::Sum(r)
-    //         }
-    //         Self::Label(label, t) => Self::Label(label, t.map(|t| t.collapse_apps().into())),
-    //         _ => self,
-    //     }
-    // }
 }
 
 impl fmt::Display for Type {

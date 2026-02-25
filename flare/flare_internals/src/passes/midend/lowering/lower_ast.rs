@@ -431,7 +431,7 @@ impl<'source> LowerAst<'source> {
             Expr::Unit => IR::Unit,
 
             Expr::Particle(p) => IR::Particle(p.0),
-            Expr::Lambda(Typed(var, ty), body, _) => {
+            Expr::Lambda(Typed(var, ty), body) => {
                 let ir_ty = self.types.lower_ty(*ty.0);
                 let ir_var = self.var_supply.supply_for(var.0.0);
                 let ir_body = self.lower_ast(body);

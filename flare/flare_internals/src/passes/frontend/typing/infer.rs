@@ -57,7 +57,7 @@ impl Solver<'_> {
                     *ty,
                 )
             }
-            Expr::Lambda(arg, body, is_anon) => {
+            Expr::Lambda(arg, body) => {
                 let arg_tyvar = self.fresh_ty_var();
                 let arg_ty = arg.0.convert(Type::Unifier(arg_tyvar));
                 let env = env.update(arg.0.0, arg_ty);
@@ -65,11 +65,8 @@ impl Solver<'_> {
                 let (body_out, body_ty) = self.infer(env, body);
                 (
                     GenOut {
-                        typed_ast: ast.convert(Expr::Lambda(
-                            Typed(arg, arg_ty),
-                            body_out.typed_ast,
-                            is_anon,
-                        )),
+                        typed_ast: ast
+                            .convert(Expr::Lambda(Typed(arg, arg_ty), body_out.typed_ast)),
                         ..body_out
                     },
                     ast.convert(Type::Func(arg_ty, body_ty)),

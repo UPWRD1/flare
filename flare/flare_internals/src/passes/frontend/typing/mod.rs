@@ -22,7 +22,7 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
-            common::{Ident, NodeId, Spanned},
+            common::{HasSpan, Ident, NodeId, Spanned},
             frontend::ast::{Expr, ItemId, Kind, Untyped, Variable},
         },
     },
@@ -32,6 +32,12 @@ use crate::{
 pub struct Typed(pub Untyped, pub Spanned<Intern<Type>>);
 
 impl Variable for Typed {}
+
+impl HasSpan for Typed {
+    fn span(&self) -> chumsky::prelude::SimpleSpan<usize, u64> {
+        self.0.span()
+    }
+}
 
 impl Display for Typed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

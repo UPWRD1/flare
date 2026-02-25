@@ -38,7 +38,7 @@ impl Solver<'_> {
             (Expr::Unit, Type::Unit) => GenOut::new(vec![], Spanned(Expr::Unit.into(), id)),
 
             // Lambdas
-            (Expr::Lambda(arg, body, is_anon), ty) => {
+            (Expr::Lambda(arg, body), ty) => {
                 let mut constraints = vec![];
                 let (arg_ty, ret_ty) = if let Type::Func(arg, ret) = ty {
                     (arg, ret)
@@ -61,11 +61,7 @@ impl Solver<'_> {
                 constraints.extend(body_out.constraints);
                 GenOut::new(
                     constraints,
-                    the_ast.convert(Expr::Lambda(
-                        Typed(arg, arg_ty),
-                        body_out.typed_ast,
-                        is_anon,
-                    )),
+                    the_ast.convert(Expr::Lambda(Typed(arg, arg_ty), body_out.typed_ast)),
                 )
             }
             (Expr::If(cond, then, other), _) => {

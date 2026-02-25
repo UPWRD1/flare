@@ -1,4 +1,7 @@
-use crate::resource::errors::CompResult;
+use crate::resource::{
+    errors::CompResult,
+    rep::frontend::{ast::Syntax, cst::CstExpr},
+};
 
 // use chumsky::input::ValueInput;
 use internment::Intern;
@@ -23,11 +26,10 @@ pub enum QualifierFragment {
     Dummy(&'static str),
 }
 
-
 use crate::resource::rep::{
+    common::Ident,
     common::Spanned,
     frontend::ast::{Expr, Variable},
-    common::Ident,
 };
 
 impl QualifierFragment {
@@ -51,12 +53,12 @@ impl QualifierFragment {
 
     #[allow(clippy::type_complexity)]
     pub fn from_expr<V: Variable>(
-        expr: &Spanned<Intern<Expr<V>>>,
+        expr: &Spanned<Intern<CstExpr<V>>>,
     ) -> CompResult<FxHashSet<Vec<QualifierFragment>>> {
         struct CheckFieldAccess<'rec, V: Variable> {
             f: &'rec dyn Fn(
                 &'rec Self,
-                &'rec Spanned<Intern<Expr<V>>>,
+                &'rec Spanned<Intern<CstExpr<V>>>,
                 &[QualifierFragment],
                 &mut FxHashSet<Vec<QualifierFragment>>,
             ) -> CompResult<Vec<QualifierFragment>>,
@@ -64,12 +66,12 @@ impl QualifierFragment {
         let mut paths = FxHashSet::default();
         let cfa = CheckFieldAccess {
             f: &|cfa: &CheckFieldAccess<'_, V>,
-                 e: &Spanned<Intern<Expr<V>>>,
+                 e: &Spanned<Intern<CstExpr<V>>>,
                  accum: &[QualifierFragment],
                  paths: &mut FxHashSet<Vec<QualifierFragment>>|
              -> CompResult<Vec<QualifierFragment>> {
                 match &*e.0 {
-                    Expr::FieldAccess(l, r) => {
+                    CstExpr::FieldAccess(l, r) => {
                         let accum = if accum.is_empty() {
                             [(Self::Package(l.ident()?.0))].to_vec()
                         } else {
@@ -79,7 +81,7 @@ impl QualifierFragment {
                         (cfa.f)(cfa, r, &accum, paths)
                         //self.graph.node_weight(n).cloned()
                     }
-                    Expr::Concat(l, r) => {
+                    CstExpr::Concat(l, r) => {
                         (cfa.f)(cfa, l, accum, paths)?;
                         (cfa.f)(cfa, r, accum, paths)?;
                         // paths.insert(l_path);
@@ -87,7 +89,7 @@ impl QualifierFragment {
                         Ok(accum.to_vec())
                     }
 
-                    Expr::Label(_, v) => {
+                    CstExpr::Label(_, v) => {
                         let accum = [accum, &[(Self::Wildcard(v.ident()?.0))]].concat();
                         paths.insert(accum.clone());
                         Ok(accum.to_vec())

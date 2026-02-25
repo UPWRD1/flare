@@ -191,11 +191,11 @@ impl Solver<'_> {
             Expr::Hole(v) => self
                 .substitute_ty(v.1)
                 .map(|ty| unsub_ast.convert(Expr::Hole(Typed(v.0, ty)))),
-            Expr::Lambda(arg, body, is_anon) => self
+            Expr::Lambda(arg, body) => self
                 .substitute_ty(arg.1)
                 .map(|ty| Typed(arg.0, ty))
                 .merge(self.substitute_ast(body), |arg, body| {
-                    unsub_ast.convert(Expr::Lambda(arg, body, is_anon))
+                    unsub_ast.convert(Expr::Lambda(arg, body))
                 }),
             Expr::Call(fun, arg) => self
                 .substitute_ast(fun)

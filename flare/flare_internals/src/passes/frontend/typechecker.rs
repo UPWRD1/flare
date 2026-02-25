@@ -18,7 +18,7 @@ use crate::{
         rep::{
             common::{Ident, Spanned},
             frontend::{
-                ast::{Expr, ItemId, Kind, LambdaInfo, Untyped},
+                ast::{Expr, ItemId, Kind, Untyped, UntypedAst},
                 entry::{FunctionItem, ItemKind},
             },
         },
@@ -28,7 +28,7 @@ use crate::{
 pub struct Typechecker {
     item_order: &'static [NodeIndex],
     context: ItemSource,
-    env: Environment,
+    env: Environment<UntypedAst>,
     type_var_count: usize,
     // row_var_count: usize,
 }
@@ -52,7 +52,7 @@ struct TypeFixer {
 }
 
 impl Typechecker {
-    pub fn new(item_order: &'static [NodeIndex], env: Environment) -> Self {
+    pub fn new(item_order: &'static [NodeIndex], env: Environment<UntypedAst>) -> Self {
         Self {
             item_order,
             env,
@@ -241,7 +241,7 @@ impl Typechecker {
         (f, t)
     }
 
-    fn register_function(&mut self, item_idx: NodeIndex, f: FunctionItem<Untyped>) {
+    fn register_function(&mut self, item_idx: NodeIndex, f: FunctionItem<UntypedAst>) {
         // let unbound_types = BTreeSet::new();
         // let evidence = vec![];
         // let unbound_rows = (*f.unbound_rows).clone();
@@ -327,7 +327,6 @@ impl Typechecker {
                             prev.convert(Expr::Lambda(
                                 *arg,
                                 prev.convert(Expr::Call(prev, arg.0.convert(Expr::Ident(*arg)))),
-                                LambdaInfo::Curried,
                             ))
                         });
 
@@ -348,7 +347,7 @@ impl Typechecker {
             .collect()
     }
 
-    pub fn finish(self) -> Environment {
+    pub fn finish(self) -> Environment<UntypedAst> {
         self.env
     }
 }

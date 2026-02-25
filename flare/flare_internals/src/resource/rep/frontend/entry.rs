@@ -7,56 +7,59 @@ use crate::{
     resource::{
         errors::CompResult,
         rep::{
-            common::{Ident, SpanWrapped, Spanned},
-            frontend::{ast::Variable, files::FileID},
+            common::{HasSpan, Ident, SpanWrapped, Spanned},
+            frontend::{
+                ast::{Syntax, Variable},
+                cst::CstExpr,
+                csttypes::CstType,
+                files::FileID,
+            },
         },
     },
 };
 
-use super::ast::Expr;
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-pub struct PackageEntry {
-    pub name: Spanned<Intern<String>>,
+pub struct PackageEntry<S: Syntax> {
+    pub name: S::Name,
     pub id: FileID,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct FunctionItem<V: Variable> {
-    pub name: V,
-    pub sig: Spanned<Intern<Type>>,
-    pub body: Spanned<Intern<Expr<V>>>,
+pub struct FunctionItem<S: Syntax> {
+    pub name: S::Name,
+    pub sig: S::Type,
+    pub body: S::Expr,
     // extra_vars: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[repr(transparent)]
-pub struct Item<V: Variable> {
-    pub kind: ItemKind<V>,
+pub struct Item<S: Syntax> {
+    pub kind: ItemKind<S>,
     // pub is_checked: Cell<bool>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum ItemKind<V: Variable> {
+pub enum ItemKind<S: Syntax> {
     Root,
     Filename(Intern<String>),
-    Package(PackageEntry),
-    Function(FunctionItem<V>),
+    Package(PackageEntry<S>),
+    Function(FunctionItem<S>),
     Type(
-        Spanned<Intern<String>>,
-        &'static [Spanned<Intern<Type>>],
-        Spanned<Intern<Type>>,
+        S::Name,
+        &'static [S::Type],
+        S::Type,
         // SimpleSpan<usize, u64>,
     ),
     Extern {
-        name: Spanned<Intern<String>>,
-        args: &'static [V],
-        sig: Spanned<Intern<Type>>,
+        name: S::Name,
+        args: &'static [S::Variable],
+        sig: S::Type,
     },
     Dummy(&'static str),
 }
 
-impl<V: Variable> SpanWrapped for Item<V> {
+impl<S: Syntax> SpanWrapped for Item<S> {
     // TODO: Remove panicking code
     fn get_span(&self) -> chumsky::prelude::SimpleSpan<usize, u64>
     where
@@ -65,54 +68,56 @@ impl<V: Variable> SpanWrapped for Item<V> {
         match &self.kind {
             ItemKind::Root => SimpleSpan::new(0, 0..0),
             ItemKind::Filename(_intern) => panic!(),
-            ItemKind::Package(package_entry) => package_entry.name.1,
+            ItemKind::Package(package_entry) => package_entry.name.ident().unwrap().1,
             ItemKind::Function(function_item) => {
                 function_item.name.ident().unwrap().1.union(
                     function_item
                         .sig
                         // .get()
                         // .unwrap()
-                        .1
-                        .union(function_item.body.1),
+                        .span()
+                        .union(function_item.body.span()),
                 )
             }
-            ItemKind::Type(_, _, t) => t.1,
-            ItemKind::Extern { name, args: _, sig } => name.1.union(sig.1),
+            ItemKind::Type(_, _, t) => t.span(),
+            ItemKind::Extern { name, args: _, sig } => name.ident().unwrap().1.union(sig.span()),
 
             ItemKind::Dummy(_) => panic!(),
         }
     }
 }
 
-impl<V: Variable> Ident for Item<V> {
+impl<S: Syntax> Ident for Item<S> {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self.kind {
             ItemKind::Root => {
-                let s = SimpleSpan::new(0, 0..0);
-                Ok(Spanned(Intern::from_ref("ROOT"), s))
+                panic!()
+                // let s = SimpleSpan::new(0, 0..0);
+                // Spanned(Intern::from_ref("ROOT"), s)
             }
             // Item::Filename(s) => s,
-            ItemKind::Package(PackageEntry { name, .. }) => Ok(name),
+            ItemKind::Package(PackageEntry { name, .. }) => name,
             // ItemKind::Struct(StructEntry { ty, .. }) => ty.ident(),
             // ItemKind::Enum(EnumEntry { ty, .. }) => ty.ident(),
             // Item::Variant((EnumVariant { name, .. }, _)) => &name.0,
             // ItemKind::Field((name, ..)) => Ok(name),
-            ItemKind::Function(FunctionItem { name, .. }) => Ok(name.ident()?),
-            ItemKind::Extern { name, .. } => Ok(name),
-            ItemKind::Type(name, _, _) => Ok(name),
+            ItemKind::Function(FunctionItem { name, .. }) => name,
+            ItemKind::Extern { name, .. } => name,
+            ItemKind::Type(name, _, _) => name,
             _ => panic!(),
         }
+        .ident()
     }
 }
 
-impl<V: Variable> Item<V> {
-    pub fn new(kind: ItemKind<V>) -> Self {
+impl<S: Syntax> Item<S> {
+    pub fn new(kind: ItemKind<S>) -> Self {
         Self { kind }
     }
 
     #[must_use]
     /// Get the signature of functions
-    pub fn get_sig(&self) -> Option<Spanned<Intern<Type>>> {
+    pub fn get_sig(&self) -> Option<S::Type> {
         match &self.kind {
             ItemKind::Function(FunctionItem { sig, .. }) => Some(*sig),
             ItemKind::Extern { sig, .. } => Some(*sig),
@@ -155,7 +160,7 @@ impl<V: Variable> Item<V> {
     // }
 }
 
-impl<V: Variable> Default for Item<V> {
+impl<S: Syntax> Default for Item<S> {
     fn default() -> Self {
         Self {
             kind: ItemKind::Dummy(""),

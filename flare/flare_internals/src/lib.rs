@@ -81,7 +81,7 @@ use crate::{
             parser,
             resolution::Resolver,
             typechecker::Typechecker,
-            typing::{ItemSource, Type, TypesOutput},
+            typing::{ItemSource, TypesOutput},
         },
         //backend::{flatten::Flattener, gen::Generator},
         midend::{lowering::Lowerer, monomorph, reduce, simplify},
@@ -92,10 +92,9 @@ use crate::{
             frontend::{
                 ast::{
                     ItemId,
-                    Package,
-                    Program,
-                    Untyped, // Untyped
+                    UntypedAst, // Untyped
                 },
+                cst::{Package, Program, UntypedCst},
                 files::{FileID, FileSource},
             },
             midend::ir::IR,
@@ -107,16 +106,16 @@ use crate::{
 pub struct Init;
 
 pub struct Parse {
-    program: Program<Untyped>,
+    program: Program<UntypedCst>,
 }
 
 pub struct Build {
-    env: Environment,
+    env: Environment<UntypedCst>,
 }
 
 pub struct Resolve {
     order: Vec<NodeIndex>,
-    env: Environment,
+    env: Environment<UntypedAst>,
 }
 pub struct Typecheck {
     items: Vec<(ItemId, TypesOutput)>,
@@ -162,19 +161,14 @@ pub type FileCtx = FxHashMap<FileID, FileSource>;
 // pub type CtxResult<const N: usize, T, O> = Result<Context<N, T, O>, CtxErr>;
 
 /// The context/state machine for compiling a Flare bundle.
-pub struct Context<const N: usize, T, O> {
+pub struct Context<T, O> {
     pub filectx: FileCtx,
     pub target: T,
-    pub intrinsics: [(&'static str, &'static [Untyped], Type); N],
     pub op: O,
 }
 
-impl<const N: usize, T: Target> Context<N, T, Init> {
-    pub fn new(
-        src_paths: Vec<PathBuf>,
-        target: T,
-        intrinsics: [(&'static str, &'static [Untyped], Type); N],
-    ) -> Self {
+impl<T: Target> Context<T, Init> {
+    pub fn new(src_paths: Vec<PathBuf>, target: T) -> Self {
         let filectx = src_paths
             .into_iter()
             .map(|filepath| {
@@ -192,17 +186,16 @@ impl<const N: usize, T: Target> Context<N, T, Init> {
         Self {
             filectx,
             target,
-            intrinsics,
             op: Init,
         }
     }
 
-    fn parse_file(&self, id: FileID) -> CompResult<Vec<Package<Untyped>>> {
+    fn parse_file(&self, id: FileID) -> CompResult<Vec<Package<UntypedCst>>> {
         parser::parse(&self.filectx, id)
     }
 
-    pub fn parse(self) -> CompResult<Context<N, T, Parse>> {
-        let mut processed: Vec<(Vec<Package<Untyped>>, FileID)> = vec![];
+    pub fn parse(self) -> CompResult<Context<T, Parse>> {
+        let mut processed: Vec<(Vec<Package<UntypedCst>>, FileID)> = vec![];
         for id in self.filectx.keys() {
             let pack = self.parse_file(*id)?;
             processed.push((pack, *id))
@@ -223,77 +216,71 @@ impl<const N: usize, T: Target> Context<N, T, Init> {
             op: Parse { program },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Parse> {
-    pub fn build(self) -> CompResult<Context<N, T, Build>> {
-        let env = Environment::build(&self.op.program)?;
+impl<T: Target> Context<T, Parse> {
+    pub fn build(self) -> CompResult<Context<T, Build>> {
+        let env = Environment::<UntypedCst>::build(&self.op.program)?;
         Ok(Context {
             op: Build { env },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Build> {
-    pub fn resolve(self) -> CompResult<Context<N, T, Resolve>> {
-        let mut resolver = Resolver::new(self.op.env, self.intrinsics);
-        let order = resolver.build()?;
-        let env = resolver.finish()?;
+impl<T: Target> Context<T, Build> {
+    pub fn resolve(self) -> CompResult<Context<T, Resolve>> {
+        let mut resolver = Resolver::new(self.op.env);
+        let (env, order) = resolver.analyze()?;
+
         Ok(Context {
             op: Resolve { order, env },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Resolve> {
-    pub fn typecheck(self) -> CompResult<Context<N, T, Typecheck>> {
+impl<T: Target> Context<T, Resolve> {
+    pub fn typecheck(self) -> CompResult<Context<T, Typecheck>> {
         let tc = Typechecker::new(self.op.order.leak(), self.op.env);
         let (items, source) = tc.check()?;
         Ok(Context {
             op: Typecheck { items, source },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Typecheck> {
-    pub fn lower(self) -> CompResult<Context<N, T, Lower>> {
+impl<T: Target> Context<T, Typecheck> {
+    pub fn lower(self) -> CompResult<Context<T, Lower>> {
         let lowerer = Lowerer::new();
         let ir = lowerer.lower(self.op.source, &self.op.items);
         Ok(Context {
             op: Lower { ir },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Lower> {
-    pub fn simplify(self) -> CompResult<Context<N, T, Simplify>> {
+impl<T: Target> Context<T, Lower> {
+    pub fn simplify(self) -> CompResult<Context<T, Simplify>> {
         let ir = simplify::simplify(self.op.ir);
         Ok(Context {
             op: Simplify { ir },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Simplify> {
-    pub fn monomorph(self) -> CompResult<Context<N, T, Monomorph>> {
+impl<T: Target> Context<T, Simplify> {
+    pub fn monomorph(self) -> CompResult<Context<T, Monomorph>> {
         let ir = monomorph::monomorph(self.op.ir);
         // Sanity check
         // debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
@@ -302,37 +289,34 @@ impl<const N: usize, T: Target> Context<N, T, Simplify> {
             op: Monomorph { ir },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Monomorph> {
-    pub fn reduce(self) -> CompResult<Context<N, T, Reduce>> {
+impl<T: Target> Context<T, Monomorph> {
+    pub fn reduce(self) -> CompResult<Context<T, Reduce>> {
         let ir = reduce::reduce(self.op.ir);
         // let ir = self.op.ir;
         Ok(Context {
             op: Reduce { ir },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
-impl<const N: usize, T: Target> Context<N, T, Reduce> {
-    pub fn convert(self) -> CompResult<Context<N, T, Convert>> {
+impl<T: Target> Context<T, Reduce> {
+    pub fn convert(self) -> CompResult<Context<T, Convert>> {
         let converted = closure_convert(self.op.ir);
         Ok(Context {
             op: Convert { converted },
             filectx: self.filectx,
             target: self.target,
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Convert> {
-    pub fn generate(self) -> CompResult<Context<N, T, Generate<T>>> {
+impl<T: Target> Context<T, Convert> {
+    pub fn generate(self) -> CompResult<Context<T, Generate<T>>> {
         let g = Generator::new(self.target.clone(), self.op.converted);
 
         let output = g.generate();
@@ -340,12 +324,11 @@ impl<const N: usize, T: Target> Context<N, T, Convert> {
             op: Generate { output },
             filectx: self.filectx,
             target: self.target.clone(),
-            intrinsics: self.intrinsics,
         })
     }
 }
 
-impl<const N: usize, T: Target> Context<N, T, Generate<T>> {
+impl<T: Target> Context<T, Generate<T>> {
     pub fn finish(self) -> CompResult<Vec<u8>> {
         Ok((self.op.output).into())
     }

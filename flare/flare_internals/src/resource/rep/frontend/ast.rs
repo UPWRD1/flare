@@ -7,10 +7,7 @@ use crate::{
     passes::frontend::typing::Type,
     resource::{
         errors::{CompResult, DynamicErr},
-        rep::{
-            common::{Ident, Spanned},
-            frontend::files::FileID,
-        },
+        rep::common::{HasSpan, Ident, Spanned},
     },
 };
 
@@ -19,8 +16,24 @@ use internment::Intern;
 use ordered_float::OrderedFloat;
 
 pub trait Variable:
-    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display
+    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display + HasSpan
 {
+}
+
+pub trait Syntax: Debug + Copy + 'static {
+    type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + HasSpan;
+    type Type: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + HasSpan;
+    type Variable: Variable + Copy;
+    type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Ident;
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UntypedAst;
+
+impl Syntax for UntypedAst {
+    type Expr = Spanned<Intern<Expr<Self::Variable>>>;
+    type Type = Spanned<Intern<Type>>;
+    type Variable = Untyped;
+    type Name = Spanned<Intern<String>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
@@ -28,6 +41,12 @@ pub trait Variable:
 pub struct Untyped(pub Spanned<Intern<String>>);
 
 impl Variable for Untyped {}
+
+impl HasSpan for Untyped {
+    fn span(&self) -> SimpleSpan<usize, u64> {
+        self.0.1
+    }
+}
 
 impl Ident for Untyped {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
@@ -42,52 +61,6 @@ impl Display for Untyped {
 }
 
 //GENERATED: Claude
-
-/// Type representing a Pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum Pattern<V: Variable> {
-    Wildcard,
-
-    // Variable pattern: matches anything, binds to variable
-    Var(V),
-
-    // Literal patterns: match exact values
-    Number(ordered_float::OrderedFloat<f64>),
-    String(Spanned<Intern<String>>),
-    Particle(Spanned<Intern<String>>),
-    Bool(bool),
-    Unit,
-
-    // Constructor pattern: matches labeled variant
-    // Pattern::Ctor(label, inner_pattern)
-    // Examples: Some(x), None, Ok(y), Err(msg)
-    Ctor(Label, Spanned<Intern<Self>>),
-
-    // Record pattern: matches record fields
-    // Pattern::Record(fields, is_open)
-    // Closed: {x, y} matches exactly x and y fields
-    // Open: {x, y, ..} matches at least x and y fields
-    Record {
-        fields: &'static [(Label, Spanned<Intern<Self>>)],
-        open: bool, // true for {x, ..}, false for {x}
-    },
-
-    // Tuple pattern: matches fixed-size products
-    Tuple(&'static [Spanned<Intern<Self>>]),
-
-    // As pattern: matches and binds to variable
-    // x as Some(y) matches Some variant, binds whole to x, inner to y
-    As(V, Spanned<Intern<Self>>),
-
-    // Or pattern: matches if any sub-pattern matches
-    // Some(0) | None matches either
-    Or(&'static [Pattern<V>]),
-
-    // Guard pattern: pattern with boolean condition
-    // x when x > 0
-    Guard(Spanned<Intern<Self>>, Spanned<Intern<Expr<V>>>),
-}
-/// End Claude
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum BinOp {
@@ -174,8 +147,6 @@ where
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
 
-    Pat(Spanned<Pattern<V>>),
-
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -184,35 +155,15 @@ where
 
     // Access(Spanned<Intern<Self>>),
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    FieldAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    MethodAccess {
-        obj: Spanned<Intern<Self>>,
-        prop: Option<Spanned<Intern<String>>>,
-        method: Spanned<Intern<Self>>,
-    },
-    Myself,
-
     If(
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
     ),
-    Match(Spanned<Intern<Self>>, &'static [MatchArm<V>]),
-    Lambda(V, Spanned<Intern<Self>>, LambdaInfo),
+    Lambda(V, Spanned<Intern<Self>>),
     Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MatchArm<V: Variable> {
-    pub pat: Spanned<Intern<Pattern<V>>>,
-    pub body: Spanned<Intern<Expr<V>>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum LambdaInfo {
-    Anon,
-    Curried,
-}
 /// Trait for entities that have Names. Implementing this trait is preferred
 /// over a custom name implementation. Currently the only major type that
 /// implements its own name getter is `QualifierFragment`, since it doesn't
@@ -239,37 +190,9 @@ impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
     fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>> {
         match *self.0 {
             Expr::Ident(_) => Some(*self),
-            Expr::FieldAccess(base, _field) => {
-                base.name().ok()
-                //todo!()
-                //Some(base.0.get_ident()?.append(field.0.get_ident()?))
-            }
-
             // Expr::Access(expr) => expr.name().ok(),
             Expr::Call(func, _) => func.name().ok(),
             _ => None,
-        }
-    }
-}
-
-impl<V: Variable> Ident for Spanned<Intern<Expr<V>>> {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        match *self.0 {
-            Expr::Ident(s) => s.ident(),
-            Expr::Number(n) => {
-                let n: usize = if n.fract() > 0.0 {
-                    Err(DynamicErr::new(
-                        "Cannot use a floating point value as an index",
-                    ))
-                } else {
-                    Ok(n.trunc() as usize)
-                }?;
-
-                Ok(self.convert(n.to_string()))
-            }
-            _ => self.name()?.ident(), // _ => Err(DynamicErr::new("cannot get ident")
-                                       //     .label(format!("{self:?}"), self.get_span())
-                                       //     .into()),
         }
     }
 }
@@ -316,7 +239,7 @@ impl<V: Variable> fmt::Display for Expr<V> {
             Expr::Bool(v) => write!(f, "{v}"),
             Expr::Hole(_) => todo!(),
 
-            Expr::Lambda(v, b, _) => write!(f, "|{v}| {b}"),
+            Expr::Lambda(v, b) => write!(f, "|{v}| {b}"),
             Expr::Call(l, r) => write!(f, "{l}({r})"),
 
             Expr::Add(l, r) => write!(f, "{l} + {r}"),
@@ -333,53 +256,3 @@ impl<V: Variable> fmt::Display for Expr<V> {
 //     // pub the_ty: Row,
 //     //pub generics: Vec<Spanned<Expr<V>>>,
 // }
-
-#[derive(Debug, PartialEq)]
-pub struct TypeDecl {
-    pub name: Spanned<Intern<String>>,
-    pub ty: Type,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct ImportItem<V: Variable> {
-    pub items: Vec<Spanned<Intern<Expr<V>>>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ImplDef<V: Variable> {
-    pub the_ty: Spanned<Intern<String>>,
-    pub methods: &'static [(
-        Spanned<Intern<String>>,
-        Spanned<Intern<Expr<V>>>,
-        Spanned<Intern<Type>>,
-    )],
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Definition<V: Variable> {
-    Import(Spanned<Intern<Expr<V>>>),
-    Type(
-        Spanned<Intern<String>>,
-        &'static [Spanned<Intern<Type>>],
-        Spanned<Intern<Type>>,
-    ),
-    Let(V, Spanned<Intern<Expr<V>>>, Spanned<Intern<Type>>),
-    Extern(Spanned<Intern<String>>, &'static [V], Spanned<Intern<Type>>),
-    ImplDef(ImplDef<V>),
-}
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ItemDefinition<V: Variable> {
-    pub def: Definition<V>,
-    pub is_pub: bool,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Package<V: Variable> {
-    pub name: Spanned<Intern<String>>,
-    pub items: Vec<ItemDefinition<V>>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Program<V: Variable> {
-    pub packages: Vec<(Package<V>, FileID)>,
-}

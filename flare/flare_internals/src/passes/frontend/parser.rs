@@ -1,15 +1,13 @@
 use crate::{
     FileCtx,
-    passes::frontend::typing::{ClosedRow, Row, RowVar, Type},
+    
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
             common::Spanned,
             frontend::{ast::{
-                self, BinOp, Definition, Direction, Expr, ItemDefinition, Label, LambdaInfo, MatchArm, Package, Pattern, Untyped // Untyped,
-            },
-            
-            files::FileID,}
+                self, BinOp,  Direction, Expr, Label,   Untyped, UntypedAst // Untyped,
+            }, cst::{CstExpr, Definition, ItemDefinition, MatchArm, Package, Pattern, UntypedCst}, csttypes::{CstClosedRow, CstType}, files::FileID}
         },
     },
 };
@@ -323,7 +321,7 @@ fn parser<I, M>(
 ) -> impl Parser<
     'static,
     I,
-    Vec<Package<Untyped>>,
+    Vec<Package<UntypedCst>>,
     extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
     // extra::Full<Rich<'static, Token<'static>, SimpleSpan<usize, FileID>>, RodeoState, ()>,
 >
@@ -346,7 +344,7 @@ where
     let rname = select_ref! { Token::Ident(x) => *x };
     let ident = rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| {
         Spanned(
-            Intern::from(Expr::Ident(Untyped(Spanned(Intern::from_ref(x), e.span())))),
+            Intern::from(CstExpr::Ident(Untyped(Spanned(Intern::from_ref(x), e.span())))),
             e.span(),
         )
     });
@@ -381,7 +379,7 @@ where
                     I,
                     extra::Err<Rich<'static, Token, SimpleSpan<usize, FileID>>>,
                 >| {
-                    Spanned(Intern::from(Expr::<Untyped>::FieldAccess(x, y)), e.span())
+                    Spanned(Intern::from(CstExpr::<Untyped>::FieldAccess(x, y)), e.span())
                 },
             )
             .boxed(),
@@ -397,13 +395,13 @@ where
             .map_with(|args, _| unsafe {
                 args.into_iter()
                     .enumerate()
-                    .map(|(i, arg): (_, Spanned<Intern<Expr<Untyped>>>)| {
+                    .map(|(i, arg): (_, Spanned<Intern<CstExpr<Untyped>>>)| {
                         Spanned(
-                            Expr::Label(Label(Spanned(i.to_string().into(), arg.1)), arg).into(),
+                            CstExpr::Label(Label(Spanned(i.to_string().into(), arg.1)), arg).into(),
                             arg.1,
                         )
                     })
-                    .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1)))
+                    .reduce(|l, r| Spanned(CstExpr::Concat(l, r).into(), l.1.union(r.1)))
                     .unwrap_unchecked()
             })
             .labelled("tuple")
@@ -423,13 +421,13 @@ where
                 } else {
                     unsafe {
                         args.into_iter()
-                            .map(|(field_name, arg)| -> Spanned<Intern<Expr<Untyped>>> {
+                            .map(|(field_name, arg)| -> Spanned<Intern<CstExpr<Untyped>>> {
                                 Spanned(
-                                    Expr::Label(Label(Spanned(field_name.0, arg.1)), arg).into(),
+                                    CstExpr::Label(Label(Spanned(field_name.0, arg.1)), arg).into(),
                                     field_name.1.union(arg.1),
                                 )
                             })
-                            .reduce(|l, r| Spanned(Expr::Concat(l, r).into(), l.1.union(r.1)))
+                            .reduce(|l, r| Spanned(CstExpr::Concat(l, r).into(), l.1.union(r.1)))
                             .unwrap_unchecked()
                     }
                 }
@@ -443,12 +441,12 @@ where
             .map_with(|(name, val), e| {
                 // dbg!(e.span());
                 Spanned(
-                    Expr::Inject(
+                    CstExpr::Inject(
                         Direction::Right,
                         name.convert(
-                            Expr::Label(
+                            CstExpr::Label(
                                 Label(name),
-                                val.unwrap_or_else(||Spanned(Expr::Unit.into(), e.span()))
+                                val.unwrap_or_else(||Spanned(CstExpr::Unit.into(), e.span()))
                             )
                         )
                     ).into(),
@@ -459,27 +457,27 @@ where
         let atom = recursive(|_atom| {
             choice((
                 // Numbers
-                select_ref! { Token::Num(x) => Expr::Number(OrderedFloat(*x)) }
+                select_ref! { Token::Num(x) => CstExpr::Number(OrderedFloat(*x)) }
                     .map_with(|x, e| Spanned(Intern::from(x), e.span())),
                 // Strings
                 select_ref! { Token::Strlit(x) => *x }.map_with(
                     |x, e: &mut MapExtra<'_, '_, _, _>| {
                         Spanned(
-                            Intern::from(Expr::String(Spanned(Intern::from_ref(x), e.span()))),
+                            Intern::from(CstExpr::String(Spanned(Intern::from_ref(x), e.span()))),
                             e.span(),
                         )
                     },
                 ),
                 // True
                 just(Token::True)
-                    .map_with(|_, e| Spanned(Intern::from(Expr::Bool(true)), e.span())),
+                    .map_with(|_, e| Spanned(Intern::from(CstExpr::Bool(true)), e.span())),
                 // False
                 just(Token::False)
-                    .map_with(|_, e| Spanned(Intern::from(Expr::Bool(false)), e.span())),
+                    .map_with(|_, e| Spanned(Intern::from(CstExpr::Bool(false)), e.span())),
 
 // Unit
                 just(Token::TyUnit)
-                    .map_with(|_, e| Spanned(Intern::from(Expr::Unit), e.span())),
+                    .map_with(|_, e| Spanned(Intern::from(CstExpr::Unit), e.span())),
                 // Tuple Constructors
                 tuple,
                 table,
@@ -488,7 +486,7 @@ where
                 ident,
                 just(Token::At)
                     .ignore_then(raw_ident)
-                    .map_with(|id, e| Spanned(Intern::from(Expr::Particle(id)), e.span())),
+                    .map_with(|id, e| Spanned(Intern::from(CstExpr::Particle(id)), e.span())),
                 // let x = y in z
                 just(Token::Let)
                     //.ignore_then(ident)
@@ -498,7 +496,7 @@ where
                     .then_ignore(just(Token::In))
                     .then(expr.clone())
                     .map_with(|((lhs, rhs), then), e| {
-                        Spanned(Intern::from(Expr::Let(Untyped(lhs), rhs, then)), e.span())
+                        Spanned(Intern::from(CstExpr::Let(Untyped(lhs), rhs, then)), e.span())
                     }),
                 // If expression
                 just(Token::If)
@@ -508,7 +506,7 @@ where
                     .then_ignore(just(Token::Else))
                     .then(expr.clone())
                     .map_with(|((test, then), otherwise), e| {
-                        Spanned(Intern::from(Expr::If(test, then, otherwise)), e.span())
+                        Spanned(Intern::from(CstExpr::If(test, then, otherwise)), e.span())
                     })
                     .labelled("if expression")
                     .as_context(),
@@ -528,7 +526,7 @@ where
                     )
                     .map_with(|(matchee, arms), e| {
                         Spanned(
-                            Intern::from(Expr::Match(matchee, arms.leak())),
+                            Intern::from(CstExpr::Match(matchee, arms.leak())),
                             
                             e.span(),
                         )
@@ -545,7 +543,7 @@ where
                 just(Token::FatArrow).ignore_then(expr.clone()),
                 |arg, body, e| {
                     Spanned(
-                        Intern::from(Expr::Lambda(Untyped(arg), body, LambdaInfo::Anon)),
+                        Intern::from(CstExpr::Lambda(Untyped(arg), body)),
                         e.span(),
                     )
                 },
@@ -561,29 +559,29 @@ where
         .pratt(vec![
             // Multiply
             infix(left(8), just(Token::Asterisk), |x, _, y, e| {
-                Spanned(Intern::from(Expr::Mul(x, y)), e.span())
+                Spanned(Intern::from(CstExpr::Mul(x, y)), e.span())
             })
             .boxed(),
             // Divide
             infix(left(8), just(Token::Slash), |x, _, y, e| {
-                Spanned(Intern::from(Expr::Div(x, y)), e.span())
+                Spanned(Intern::from(CstExpr::Div(x, y)), e.span())
             })
             .boxed(),
             // Add
             infix(left(7), just(Token::Plus), |x, _, y, e| {
-                Spanned(Intern::from(Expr::Add(x, y)), e.span())
+                Spanned(Intern::from(CstExpr::Add(x, y)), e.span())
             })
             .boxed(),
             // Subtract
             infix(left(7), just(Token::Minus), |x, _, y, e| {
-                Spanned(Intern::from(Expr::Sub(x, y)), e.span())
+                Spanned(Intern::from(CstExpr::Sub(x, y)), e.span())
             })
             .boxed(),
             infix(
                 left(5),
                 select_ref! { Token::ComparisonOp(c) => *c },
                 |left, op, right, e| {
-                    Spanned(Intern::from(Expr::Comparison(left, op, right)), e.span())
+                    Spanned(Intern::from(CstExpr::Comparison(left, op, right)), e.span())
                 },
             )
             .boxed(),
@@ -592,7 +590,7 @@ where
                 left(5),
                 just(Token::And),
                 |left, _, right, e| {
-                    Spanned(Intern::from(Expr::Comparison(left, BinOp::And, right)), e.span())
+                    Spanned(Intern::from(CstExpr::Comparison(left, BinOp::And, right)), e.span())
                     
                 },
             )
@@ -602,7 +600,7 @@ where
                 left(5),
                 just(Token::Or),
                 |left, _, right, e| {
-                    Spanned(Intern::from(Expr::Comparison(left, BinOp::Or, right)), e.span())
+                    Spanned(Intern::from(CstExpr::Comparison(left, BinOp::Or, right)), e.span())
                     
                 },
             )
@@ -610,19 +608,19 @@ where
             
             // Calls
             infix(left(9), empty(), |func, (), arg, e| {
-                Spanned(Intern::from(Expr::Call(func, arg)), e.span())
+                Spanned(Intern::from(CstExpr::Call(func, arg)), e.span())
             })
             .boxed(),
             infix(left(8), just(Token::DoubleColon), |obj, _, method, e| {
-                Spanned(Intern::from(Expr::MethodAccess{obj, prop: None, method}), e.span())
+                Spanned(Intern::from(CstExpr::MethodAccess{obj, prop: None, method}), e.span())
             })
             .boxed(),
             infix(left(8), select! {Token::Sandwich(p) = e => Some(Spanned(String::from(p).into(), e.span()))}, |obj, prop, method, e| {
-                Spanned(Intern::from(Expr::MethodAccess{obj, prop, method}), e.span())
+                Spanned(Intern::from(CstExpr::MethodAccess{obj, prop, method}), e.span())
             })
             .boxed(),            // Field Access
             infix(left(10), just(Token::Dot), |x, _, y, e| {
-                Spanned(Intern::from(Expr::FieldAccess(x, y)), e.span())
+                Spanned(Intern::from(CstExpr::FieldAccess(x, y)), e.span())
             })
             .boxed(),
         ])
@@ -655,11 +653,11 @@ where
                     // .zip(arg_types)
                     .fold(body, |acc, arg| {
                         Spanned(
-                            Expr::Lambda(Untyped(*arg), acc, LambdaInfo::Curried).into(),
+                            CstExpr::Lambda(Untyped(*arg), acc).into(),
                             e.span(),
                         )
                     });
-                Ok(Definition::Let(Untyped(name), value, ty))
+                Ok(Definition::Let(name, value, ty))
              
             })
             .labelled("let-definition")
@@ -671,7 +669,7 @@ where
                 .ignore_then(raw_ident)
                 .separated_by(just(Token::Comma))
                 .at_least(1).collect::<Vec<_>>().delimited_by(just(Token::LBracket), just(Token::RBracket)).or_not()).then_ignore(just(Token::Eq)).then(ty.clone()).map(|((name, generics), ty)| {
-            let generics = generics.unwrap_or_default().into_iter().map(|x| x.convert(Type::Generic(x))).collect::<Vec<_>>().leak();
+            let generics = generics.unwrap_or_default().into_iter().map(|x| x.convert(CstType::Generic(x))).collect::<Vec<_>>().leak();
             Definition::Type(name, generics, ty)
         });
         
@@ -742,7 +740,7 @@ where
 
 fn ty_parser<'src, I, M>(
     make_input: &'src M,
-) -> impl Parser<'src, I, Spanned<Intern<Type>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
+) -> impl Parser<'src, I, Spanned<Intern<CstType>>, extra::Err<Rich<'src, Token, SimpleSpan<usize, FileID>>>>
 where
     I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize, FileID>> + ValueInput<'src>,
     M: Fn(SimpleSpan<usize, FileID>, &'src [Spanned<Token>]) -> I + 'src,
@@ -753,7 +751,7 @@ where
         rname.map_with(|x, e: &mut MapExtra<'_, '_, _, _>| Spanned(Intern::from_ref(x), e.span()));
 
     recursive(
-        |ty: Recursive<dyn Parser<'_, I, Spanned<Intern<Type>>, _>>| {
+        |ty: Recursive<dyn Parser<'_, I, Spanned<Intern<CstType>>, _>>| {
             let type_list = ty
                 .clone()
                 .separated_by(just(Token::Comma))
@@ -764,7 +762,7 @@ where
                 .clone()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
                 .map_with(|types, e| {
-                    let ty = Type::Prod(Spanned(Row::Closed(ClosedRow {
+                    let ty = CstType::Prod(CstClosedRow {
                         fields: types
                             .iter()
                             .enumerate()
@@ -772,7 +770,7 @@ where
                             .collect::<Vec<_>>()
                             .leak(),
                         values: types.leak(),
-                    }).into(), e.span()));
+                    });
                     Spanned(Intern::from(ty), e.span())
                 });
 
@@ -788,29 +786,31 @@ where
                 .map_with(|(types, is_open), e| {
                     let (fields, values): (
                         Vec<Spanned<Intern<String>>>,
-                        Vec<Spanned<Intern<Type>>>,
+                        Vec<Spanned<Intern<CstType>>>,
                     ) = types.into_iter().unzip();
                     if let Some(id) = is_open {
-                        let l_ty = Type::Prod(Spanned(Row::Closed(ClosedRow {
+                        let l_ty = CstType::Prod(CstClosedRow {
                             fields: fields
                                 .iter()
                                 .map(|name| Label(*name))
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: values.leak(),
-                        }.sort()).into(), e.span()));
-                        let l_ty = Spanned(Intern::from(l_ty), e.span());
-                        let ty = Type::Subtable(l_ty, id);
-                        Spanned(Intern::from(ty), e.span())
+                        });
+
+                        todo!()
+                        // let l_ty = Spanned(Intern::from(l_ty), e.span());
+                        // let ty = CstType::Subtable(l_ty, id);
+                        // Spanned(Intern::from(ty), e.span())
                     } else {
-                        let ty = Type::Prod(Spanned(Row::Closed(ClosedRow {
+                        let ty = CstType::Prod(CstClosedRow {
                             fields: fields
                                 .iter()
                                 .map(|name| Label(*name))
                                 .collect::<Vec<_>>()
                                 .leak(),
                             values: values.leak(),
-                        }.sort()).into(), e.span()));
+                        });
                         Spanned(Intern::from(ty), e.span())
                     }
                 });
@@ -825,16 +825,16 @@ where
                     
                     let (fields, values): (
                         Vec<Spanned<Intern<String>>>,
-                        Vec<Option<Spanned<Intern<Type>>>>,
+                        Vec<Option<Spanned<Intern<CstType>>>>,
                     ) = types.into_iter().unzip();
-                        let ty = Type::Sum(Spanned(Row::Closed(ClosedRow {
+                        let ty = CstType::Sum(CstClosedRow {
                             fields: fields
                                 .iter()
                                 .map(|name| Label(*name))
                                 .collect::<Vec<_>>()
                                 .leak(),
-                            values: values.iter().enumerate().map(|(i, x)| x.unwrap_or(fields[i].convert(Type::Unit))).collect::<Vec<_>>().leak(),
-                        }.sort()).into(), e.span()));
+                            values: values.iter().enumerate().map(|(i, x)| x.unwrap_or(fields[i].convert(CstType::Unit))).collect::<Vec<_>>().leak(),
+                        });
                         // dbg!(ty);
                         Spanned(Intern::from(ty), e.span())
                     
@@ -850,10 +850,10 @@ where
             // Atomic types (no arrows at this level)
             let atom = choice((
                 // Primitive Types
-                just(Token::TyNum).map_with(|_, e| Spanned(Intern::from(Type::Num), e.span())),
-                just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(Type::String), e.span())),
-                just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(Type::Bool), e.span())),
-                just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(Type::Unit), e.span())),
+                just(Token::TyNum).map_with(|_, e| Spanned(Intern::from(CstType::Num), e.span())),
+                just(Token::TyStr).map_with(|_, e| Spanned(Intern::from(CstType::String), e.span())),
+                just(Token::TyBool).map_with(|_, e| Spanned(Intern::from(CstType::Bool), e.span())),
+                just(Token::TyUnit).map_with(|_, e| Spanned(Intern::from(CstType::Unit), e.span())),
                 // just(Token::TyInt).map_with(|_, e| Spanned(Intern::from(Type::Int), e.span())),
 
 
@@ -867,23 +867,23 @@ where
                     )
                     .clone()
                     .map_with(|(name, generics), e| {
-                        Spanned(Intern::from(Type::User(name, generics.unwrap_or_default().leak())), e.span())
+                        Spanned(Intern::from(CstType::User(name, generics.unwrap_or_default().leak())), e.span())
                     }),
                 just(Token::At)
                     .ignore_then(raw_ident)
-                    .map_with(|name, e| Spanned(Intern::from(Type::Particle(name)), e.span())),
+                    .map_with(|name, e| Spanned(Intern::from(CstType::Particle(name)), e.span())),
                 just(Token::Question)
                     .ignore_then(raw_ident)
-                    .map_with(|name, e| Spanned(Intern::from(Type::Generic(name)), e.span())),
-                just(Token::Question)
-                    .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
-                    .map_with(|name, e| {
-                        Spanned(
-                            Intern::from(Type::Prod(Spanned(Row::Open(RowVar(name.0)).into(), e.span()))),
+                    .map_with(|name, e| Spanned(Intern::from(CstType::Generic(name)), e.span())),
+                // just(Token::Question)
+                //     .ignore_then(raw_ident.delimited_by(just(Token::LBrace), just(Token::RBrace)))
+                //     .map_with(|name, e| {
+                //         Spanned(
+                //             Intern::from(CstType::Prod(Row::Open(RowVar(name.0)).into()))),
                             
-                            e.span(),
-                        )
-                    }),
+                //             e.span(),
+                //         )
+                //     }),
                 
                 tuple,
                 table,
@@ -895,7 +895,7 @@ where
             atom.pratt(vec![infix(
                 right(9),
                 just(Token::Arrow),
-                |x: Spanned<Intern<Type>>, _, y, e| Spanned(Intern::from(Type::Func(x, y)), e.span()),
+                |x: Spanned<Intern<CstType>>, _, y, e| Spanned(Intern::from(CstType::Func(x, y)), e.span()),
             )])
         },
     )
@@ -907,14 +907,14 @@ fn destructure_pattern_parser<'src, I>(
         'src,
         'src,
         I,
-        Spanned<Intern<Expr<Untyped>>>,
+        Spanned<Intern<CstExpr<Untyped>>>,
         extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
     _ty: Boxed<
         'src,
         'src,
         I,
-        Spanned<Intern<Type>>,
+        Spanned<Intern<CstType>>,
         extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
     >,
 ) -> impl Parser<'src, I, Spanned<Intern<Pattern<Untyped>>>, extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
@@ -1022,7 +1022,7 @@ fn make_input(
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
+pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<UntypedCst>>> {
     let input: &'static str = ctx
         .get(&fid)
         .unwrap_or_else(|| unreachable!("FileID {} does not exist in context: {:?}", fid, ctx))
@@ -1041,7 +1041,7 @@ pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<Untyped>>> {
 
     // dbg!(&tokens);
 
-    let packg: Result<Vec<Package<Untyped>>, CompilerErr> = match parser(&make_input)
+    let packg: Result<Vec<Package<UntypedCst>>, CompilerErr> = match parser(&make_input)
         .parse(make_input(
             SimpleSpan::new(fid, 0..input.len()),
             tokens.leak(),
@@ -1080,7 +1080,7 @@ mod tests {
         }
     }
     /// Given a source str parse a type from it
-    fn type_test(src: &'static str) -> Type {
+    fn type_test(src: &'static str) -> CstType {
         let tokens = make_tokens(src);
 
         ty_parser(&make_input)
@@ -1107,22 +1107,22 @@ mod tests {
     #[rustfmt::skip::macros(parser_test)]
     fn test_ty_parser() {
         parser_test!(type_test, [
-            ("num", Type::Num),
+            ("num", CstType::Num),
             // ("?T", Type::Var(TypeVar(_))),
             ("num -> num",
-                Type::Func(
+                CstType::Func(
                     a,
                     b
-                ) if a == b && matches!(*a.0, Type::Num)
+                ) if a == b && matches!(*a.0, CstType::Num)
             ),
             ("num -> num -> num",
-                Type::Func(
+               CstType::Func(
                     a,
                     b,
                     
-                ) if matches!(*a.0, Type::Num)
-                    && matches!(*b.0, Type::Func(c, d)
-                        if c == d && matches!(*c.0, Type::Num))
+                ) if matches!(*a.0, CstType::Num)
+                    && matches!(*b.0, CstType::Func(c, d)
+                        if c == d && matches!(*c.0, CstType::Num))
            ),          
         ]);
     }

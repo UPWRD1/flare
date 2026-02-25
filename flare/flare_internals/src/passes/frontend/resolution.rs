@@ -30,12 +30,11 @@ use crate::{
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
-            common::Ident,
-            common::Spanned,
+            common::{Ident, Spanned},
             frontend::{
-                ast::{
-                    Direction, Expr, ItemId, Kind, Label, LambdaInfo, MatchArm, Pattern, Untyped,
-                },
+                ast::{Direction, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
+                cst::{CstExpr, MatchArm, Pattern, UntypedCst},
+                csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind, PackageEntry},
                 quantifier::QualifierFragment,
             },
@@ -57,61 +56,20 @@ use crate::{
 /// In theory, this whole process could be built into the intial graph building.
 /// However, I'd rather maintain a separation of concerns,
 /// even if it would be more efficient to use a single pass over the environment.
-pub struct Resolver<const N: usize> {
-    env: Environment,
+pub struct Resolver {
+    env: Environment<UntypedCst>,
+    // new_env: Environment<UntypedAst>
     current_parent: QualifierFragment,
     current_dag_node: Option<NodeIndex>,
     pub dag: DiGraph<DagIdx, ()>,
     main_dag_idx: Option<NodeIndex>,
     errors: Vec<CompilerErr>,
-    // generic_scope: im::HashMap<String, Spanned<Intern<Type>>, FxBuildHasher>,
-    // intrinsics: [(ItemId, Intern<Expr<Untyped>>); N],
 }
 
 type DagIdx = usize;
 
-impl<const N: usize> Resolver<N> {
-    pub fn new(
-        mut env: Environment,
-        intrinsics: [(
-            impl Into<String>,
-            &'static [Untyped],
-            impl Into<Intern<Type>>,
-        ); N],
-    ) -> Self {
-        fn register_intrinsic(
-            (id, args, sig): (
-                impl Into<String>,
-                &'static [Untyped],
-                impl Into<Intern<Type>>,
-            ),
-            env: &mut Environment,
-        ) -> (ItemId, Intern<Expr<Untyped>>) {
-            let name = Intern::from(id.into());
-            // env.debug();
-            //
-            let e = env.add(
-                env.root,
-                QualifierFragment::Func(name),
-                Item {
-                    kind: ItemKind::Extern {
-                        name: Spanned(name, SimpleSpan::new(0, 0..0)),
-                        args,
-                        sig: Spanned(sig.into(), SimpleSpan::new(0, 0..0)),
-                    },
-                },
-            );
-            let itemid = ItemId(e.index());
-            (
-                itemid,
-                Expr::Item(itemid, Kind::Extern(name)).into(), // Expr::ExternFunc(itemid, (*name).clone().leak(), ty).into(),
-            )
-        }
-
-        for id in intrinsics {
-            register_intrinsic(id, &mut env);
-        }
-
+impl Resolver {
+    pub fn new(env: Environment<UntypedCst>) -> Self {
         Self {
             env,
             current_parent: QualifierFragment::Root,
@@ -124,13 +82,8 @@ impl<const N: usize> Resolver<N> {
         }
     }
 
-    pub fn build(&mut self) -> CompResult<Vec<NodeIndex>> {
-        self.analyze()
-        // let out = self.modify()
-    }
-
-    fn analyze(&mut self) -> CompResult<Vec<NodeIndex>> {
-        let filtered: Vec<(NodeIndex, PackageEntry)> = self
+    pub fn analyze(mut self) -> CompResult<(Environment<UntypedAst>, Vec<NodeIndex>)> {
+        let filtered: Vec<(NodeIndex, PackageEntry<UntypedCst>)> = self
             .env
             .graph
             .node_indices()
@@ -156,7 +109,6 @@ impl<const N: usize> Resolver<N> {
         for (idx, p) in filtered {
             self.analyze_package(idx, p)
         }
-        // self.debug();
 
         let reachable: FxHashSet<NodeIndex> =
             Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
@@ -173,13 +125,13 @@ impl<const N: usize> Resolver<N> {
             .filter(|x| reachable.contains(x))
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
-        // sorted.reverse();
-        // dbg!(&sorted);
-        // self.debug();
-        Ok(sorted)
+
+        let g = self.env.graph.map_owned(|idx, n| todo!(), |idx, e| e);
+        let env = Environment::from_graph_and_root(g, self.env.root);
+        Ok((env, sorted))
     }
 
-    fn analyze_package(&mut self, idx: NodeIndex, p: PackageEntry) {
+    fn analyze_package(&mut self, idx: NodeIndex, p: PackageEntry<UntypedCst>) {
         self.current_parent = QualifierFragment::Package(p.name.0);
         let children = self
             .env
@@ -202,63 +154,49 @@ impl<const N: usize> Resolver<N> {
                     .unwrap_or_else(|_| unreachable!("Graph overflow in resolution"))
             };
 
-            let item_kind = self
-                .env
-                .graph
-                .node_weight(node_idx)
-                .expect("Node should exist")
-                .kind;
+            self.analyze_item(child, node_idx, dag_idx);
+        }
+    }
 
-            match item_kind {
-                ItemKind::Package(_) => { /* do nothing */ }
-                ItemKind::Function(mut f) => {
-                    if *f.name.0.0 == "main" {
-                        self.main_dag_idx = Some(dag_idx);
-                    }
-                    f = self.analyze_func(f, dag_idx);
+    fn analyze_item(
+        &mut self,
+        child: usize,
+        node_idx: NodeIndex,
+        dag_idx: NodeIndex,
+    ) -> Item<UntypedAst> {
+        let item = self
+            .env
+            .graph
+            .node_weight(node_idx)
+            .expect("Node should exist");
 
-                    let item = self
-                        .env
-                        .graph
-                        .node_weight_mut(node_idx)
-                        .expect("Node should exist");
-                    if let ItemKind::Function(ref mut func) = item.kind {
-                        // println!("Analyzed {} : {}", f.name, f.sig);
-                        *func = f;
-                    };
-                }
-                ItemKind::Type(.., t) => {
-                    // self.generic_scope.clear();
-                    let t = self.analyze_type(t);
-                    let item = self
-                        .env
-                        .graph
-                        .node_weight_mut(node_idx)
-                        .expect("Node should exist");
-
-                    if let ItemKind::Type(_, _, ref mut ty) = item.kind {
-                        *ty = t;
-                    };
-                    // self.generic_scope.clear();
-
-                    // dbg!(t); /* do nothing */
-                }
-
-                ItemKind::Extern { sig, .. } => {
-                    let old_sig = sig;
-                    let t = self.in_context(|me| me.analyze_type(sig), dag_idx);
-
-                    let item = self
-                        .env
-                        .graph
-                        .node_weight_mut(node_idx)
-                        .expect("Node should exist");
-                    if let ItemKind::Extern { ref mut sig, .. } = item.kind {
-                        *sig = old_sig.convert(t.0);
-                    };
-                }
-                _ => unreachable!("{child:?}, {item_kind:?}"),
+        match item.kind {
+            ItemKind::Package(PackageEntry { name, id }) => {
+                Item::new(ItemKind::Package(PackageEntry { name, id }))
             }
+            ItemKind::Function(f) => {
+                if *f.name.0 == "main" {
+                    self.main_dag_idx = Some(dag_idx);
+                }
+
+                let f = self.analyze_func(f, dag_idx);
+                Item::new(ItemKind::Function(f))
+            }
+            ItemKind::Type(n, g, t) => {
+                // self.generic_scope.clear();
+                let t = self.analyze_type(t);
+                Item::new(ItemKind::Type(n, vec![].leak(), t))
+                // self.generic_scope.clear();
+
+                // dbg!(t); /* do nothing */
+            }
+
+            ItemKind::Extern { name, args, sig } => {
+                let sig = self.in_context(|me| me.analyze_type(sig), dag_idx);
+
+                Item::new(ItemKind::Extern { name, args, sig })
+            }
+            _ => unreachable!("{child:?}, {:?}", item.kind),
         }
     }
 
@@ -278,9 +216,9 @@ impl<const N: usize> Resolver<N> {
 
     fn analyze_func(
         &mut self,
-        the_func: FunctionItem<Untyped>,
+        the_func: FunctionItem<UntypedCst>,
         idx: NodeIndex,
-    ) -> FunctionItem<Untyped> {
+    ) -> FunctionItem<UntypedAst> {
         self.in_context(
             |me| {
                 // me.generic_scope.clear();
@@ -290,38 +228,30 @@ impl<const N: usize> Resolver<N> {
                 FunctionItem {
                     sig,
                     body,
-                    ..the_func
+                    name: the_func.name,
                 }
             },
             idx,
         )
     }
 
-    fn analyze_type(&mut self, t: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
+    fn analyze_type(&mut self, t: Spanned<Intern<CstType>>) -> Spanned<Intern<Type>> {
         // dbg!(self.current_node);
         // dbg!(&self.generic_scope);
         // dbg!(t);
         match *t.0 {
-            // Type::Generic(name) => {
-            //     if let Some(existing) = self.generic_scope.get(&*name.0) {
-            //         *existing
-            //     } else {
-            //         self.generic_scope.insert(name.0.to_string(), t);
-            //         t
-            //     }
-            // }
-            Type::Func(l, r) => {
+            CstType::Func(l, r) => {
                 let l = self.analyze_type(l);
                 let r = self.analyze_type(r);
 
-                t.modify(Type::Func(l, r))
+                t.convert(Type::Func(l, r))
             }
-            Type::Label(l, the_r) => {
+            CstType::Label(l, the_r) => {
                 let new_t = self.analyze_type(the_r);
                 // dbg!(new_t);
-                t.modify(Type::Label(l, new_t))
+                t.convert(Type::Label(l, new_t))
             }
-            Type::User(name, instanced_generics) => {
+            CstType::User(name, instanced_generics) => {
                 let the_item = self.resolve_name_type(&name);
                 // dbg!(the_item.get_type_universal());
                 if let Ok(item_id) = the_item {
@@ -337,12 +267,14 @@ impl<const N: usize> Resolver<N> {
                             .iter()
                             .map(|ty| self.analyze_type(*ty))
                             .collect();
+                        let new_t = self.analyze_type(new_t);
 
                         let mut final_t = analyzed_instances
                             .into_iter()
                             .fold(new_t, |x, y| Spanned(Type::TypeApp(x, y).into(), x.1));
                         final_t.1 = t.1;
-                        self.analyze_type(final_t)
+                        final_t
+                        // self.analyze_type(final_t)
                     } else {
                         panic!("not a type")
                     }
@@ -352,159 +284,149 @@ impl<const N: usize> Resolver<N> {
                     name.convert(Type::Hole)
                 }
             }
-            Type::Prod(r) => {
-                let new_r = r.map(|r| match *r {
-                    Row::Closed(closed_row) => {
-                        Row::Closed(
-                            ClosedRow {
-                                values: closed_row
-                                    .values
-                                    .iter()
-                                    .map(|t| -> Spanned<Intern<Type>> {
-                                        // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
-                                        self.analyze_type(*t)
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .leak(),
-                                ..closed_row
-                            }
-                            .sort(),
-                        )
-                        .into()
+            CstType::Prod(r) => {
+                let new_r = Row::Closed(
+                    ClosedRow {
+                        values: r
+                            .values
+                            .iter()
+                            .map(|t| -> Spanned<Intern<Type>> {
+                                // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                                self.analyze_type(*t)
+                            })
+                            .collect::<Vec<_>>()
+                            .leak(),
+                        fields: r.fields,
                     }
-                    _ => unreachable!("All rows should be closed"),
-                });
+                    .sort(),
+                );
 
-                t.modify(Type::Prod(new_r))
+                t.convert(Type::Prod(t.convert(new_r)))
             }
-
-            Type::Sum(r) => {
-                let new_r = r.map(|r| match *r {
-                    Row::Closed(closed_row) => {
-                        Row::Closed(
-                            ClosedRow {
-                                values: closed_row
-                                    .values
-                                    .iter()
-                                    .map(|t| -> Spanned<Intern<Type>> {
-                                        // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
-                                        self.analyze_type(*t)
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .leak(),
-                                ..closed_row
-                            }
-                            .sort(),
-                        )
-                        .into()
+            CstType::Sum(r) => {
+                let new_r = Row::Closed(
+                    ClosedRow {
+                        values: r
+                            .values
+                            .iter()
+                            .map(|t| -> Spanned<Intern<Type>> {
+                                // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                                self.analyze_type(*t)
+                            })
+                            .collect::<Vec<_>>()
+                            .leak(),
+                        fields: r.fields,
                     }
-                    _ => unreachable!("All rows should be closed"),
-                });
-                t.modify(Type::Sum(new_r))
+                    .sort(),
+                );
+                t.convert(Type::Sum(t.convert(new_r)))
             }
-            Type::Subtable(fields, s) => {
-                let new_fields = self.analyze_type(fields);
-                t.modify(Type::Subtable(new_fields, s))
-            }
-            // Type::TypeFun(g, l)
-            Type::TypeApp(l, r) => {
-                let l = self.analyze_type(l);
-                let r = self.analyze_type(r);
+            CstType::GenericApp(l, r) => {
+                // let l = self.analyze_type(l);
+                // let r = self.analyze_type(r);
 
-                if let Type::TypeFun(param, body) = *l.0 {
+                if let CstType::GenericFun(param, body) = *l.0 {
                     self.analyze_type(subst_generic_type(body, param.0, r.0))
                 } else {
-                    t.modify(Type::TypeApp(l, r))
+                    panic!("Not a generic function")
+                    // t.modify(Type::TypeApp(l, r))
                 }
                 // t.modify(Type::TypeApp(l, r))
             }
-            Type::TypeFun(l, r) => {
+            CstType::GenericFun(l, r) => {
                 let l = self.analyze_type(l);
                 let r = self.analyze_type(r);
 
-                t.modify(Type::TypeFun(l, r))
+                t.convert(Type::TypeFun(l, r))
             }
-            _ => t,
+            CstType::Generic(spanned) => panic!("Escaped Generic {spanned:?}"),
+            CstType::Particle(p) => t.convert(Type::Particle(p)),
+            CstType::Unit => t.convert(Type::Unit),
+            CstType::Num => t.convert(Type::Num),
+            CstType::Bool => t.convert(Type::Bool),
+            CstType::String => t.convert(Type::String),
+            CstType::Hole => t.convert(Type::Hole),
         }
     }
 
     #[allow(unused_variables)]
     fn analyze_expr(
         &mut self,
-        expr: Spanned<Intern<Expr<Untyped>>>,
+        expr: Spanned<Intern<CstExpr<Untyped>>>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
         // dbg!(&expr);
 
         match *expr.0 {
-            Expr::Ident(u) => {
-                if vars
+            CstExpr::Ident(u) => {
+                if let Some(expr) = vars
                     .iter()
                     .rev()
-                    .any(|n| u.ident().is_ok_and(|name| n.0 == name.0))
+                    .find(|n| u.ident().is_ok_and(|name| n.0 == name.0))
                 {
-                    expr
+                    expr.1
                 } else {
                     // dbg!(expr);
                     self.resolve_name_expr(expr)
                 }
             }
-            Expr::Concat(l, r) => {
+            CstExpr::Concat(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
                 // let t = Type::Prod(crate::passes::midend::typing::Row::Closed(());
                 expr.convert(Expr::Concat(l, r))
             }
-            Expr::Project(direction, ex) => {
+            CstExpr::Project(direction, ex) => {
                 let ex = self.analyze_expr(ex, vars);
                 expr.convert(Expr::Project(direction, ex))
             }
-
-            Expr::Inject(direction, ex) => {
+            CstExpr::Inject(direction, ex) => {
                 let ex = self.analyze_expr(ex, vars);
                 expr.convert(Expr::Inject(direction, ex))
             }
-            Expr::Branch(l, r) => {
+            CstExpr::Branch(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
 
                 expr.convert(Expr::Branch(l, r))
             }
-            Expr::Label(l, v) => {
-                let new_vars = [vars, &[(l.0.0, v)]].concat();
+            CstExpr::Label(l, v) => {
+                let v = self.analyze_expr(v, vars);
+                // let new_vars = [vars, &[(l.0.0, v)]].concat();
 
-                let v = self.analyze_expr(v, &new_vars);
                 expr.convert(Expr::Label(l, v))
             }
-            Expr::Unlabel(v, l) => expr.convert(Expr::Unlabel(v, l)),
-            Expr::Pat(spanned) => todo!(),
-            Expr::Mul(l, r) => {
+            CstExpr::Unlabel(v, l) => {
+                let v = self.analyze_expr(v, vars);
+                expr.convert(Expr::Unlabel(v, l))
+            }
+            CstExpr::Pat(spanned) => todo!(),
+            CstExpr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.modify(Expr::Mul(l, r))
+                expr.convert(Expr::Mul(l, r))
             }
-            Expr::Div(l, r) => {
+            CstExpr::Div(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.modify(Expr::Div(l, r))
+                expr.convert(Expr::Div(l, r))
             }
-            Expr::Add(l, r) => {
+            CstExpr::Add(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.modify(Expr::Add(l, r))
+                expr.convert(Expr::Add(l, r))
             }
-            Expr::Sub(l, r) => {
+            CstExpr::Sub(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.modify(Expr::Sub(l, r))
+                expr.convert(Expr::Sub(l, r))
             }
-            Expr::Comparison(l, comparison_op, r) => {
+            CstExpr::Comparison(l, comparison_op, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.modify(Expr::Comparison(l, comparison_op, r))
+                expr.convert(Expr::Comparison(l, comparison_op, r))
             }
-
-            Expr::Call(func, arg) => {
+            CstExpr::Call(func, arg) => {
                 let func = self.analyze_expr(func, vars);
 
                 let arg = self.analyze_expr(arg, vars);
@@ -515,8 +437,8 @@ impl<const N: usize> Resolver<N> {
                 };
                 expr.convert(Expr::Call(func, arg))
             }
-            Expr::FieldAccess(l, r) => self.resolve_field_access(expr, l, r, vars),
-            Expr::If(cond, then, otherwise) => {
+            CstExpr::FieldAccess(l, r) => self.resolve_field_access(expr, l, r, vars),
+            CstExpr::If(cond, then, otherwise) => {
                 let cond = self.analyze_expr(cond, vars);
                 let then_vars = vars;
                 let then = self.analyze_expr(then, then_vars);
@@ -524,10 +446,13 @@ impl<const N: usize> Resolver<N> {
                 let otherwise = self.analyze_expr(otherwise, otherwise_vars);
                 expr.convert(Expr::If(cond, then, otherwise))
             }
-            Expr::Match(matchee, branches) => {
+            CstExpr::Match(matchee, branches) => {
                 let matchee = self.analyze_expr(matchee, vars);
 
-                let branches: Vec<_> = branches.iter().map(|b| self.resolve_branch(*b)).collect();
+                let branches: Vec<_> = branches
+                    .iter()
+                    .map(|b| self.resolve_branch(*b, vars))
+                    .collect();
                 assert!(!branches.is_empty());
                 let branches = branches
                     .into_iter()
@@ -536,19 +461,26 @@ impl<const N: usize> Resolver<N> {
 
                 expr.convert(Expr::Call(branches, matchee))
             }
-            Expr::Lambda(arg, body, is_anon) => self.resolve_lambda(expr, arg, body, is_anon, vars),
-            Expr::Let(id, body, and_in) => self.resolve_let(expr, id, body, and_in, vars),
-
-            _ => expr,
+            CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
+            CstExpr::Let(id, body, and_in) => self.resolve_let(expr, id, body, and_in, vars),
+            CstExpr::Number(n) => expr.convert(Expr::Number(n)),
+            CstExpr::String(s) => expr.convert(Expr::String(s)),
+            CstExpr::Bool(b) => expr.convert(Expr::Bool(b)),
+            CstExpr::Unit => expr.convert(Expr::Unit),
+            CstExpr::Particle(p) => expr.convert(Expr::Particle(p)),
+            CstExpr::Hole(v) => expr.convert(Expr::Hole(v)),
+            CstExpr::Item(item_id, kind) => expr.convert(Expr::Item(item_id, kind)),
+            CstExpr::Myself => todo!(),
+            CstExpr::MethodAccess { obj, prop, method } => todo!(),
         }
     }
 
     fn resolve_let(
         &mut self,
-        expr: Spanned<Intern<Expr<Untyped>>>,
+        expr: Spanned<Intern<CstExpr<Untyped>>>,
         id: Untyped,
-        body: Spanned<Intern<Expr<Untyped>>>,
-        and_in: Spanned<Intern<Expr<Untyped>>>,
+        body: Spanned<Intern<CstExpr<Untyped>>>,
+        and_in: Spanned<Intern<CstExpr<Untyped>>>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
         let body = self.analyze_expr(body, vars);
@@ -556,15 +488,14 @@ impl<const N: usize> Resolver<N> {
         let new_vars = [vars, &[(id.0.0, body)]].concat();
         let and_in = self.analyze_expr(and_in, &new_vars);
         // let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
-        expr.modify(Expr::Let(id, body, and_in))
+        expr.convert(Expr::Let(id, body, and_in))
     }
 
     fn resolve_lambda(
         &mut self,
-        expr: Spanned<Intern<Expr<Untyped>>>,
+        expr: Spanned<Intern<CstExpr<Untyped>>>,
         arg: Untyped,
-        body: Spanned<Intern<Expr<Untyped>>>,
-        is_anon: LambdaInfo,
+        body: Spanned<Intern<CstExpr<Untyped>>>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
         let new_vars = &[
@@ -579,14 +510,14 @@ impl<const N: usize> Resolver<N> {
         .concat();
         let body = self.analyze_expr(body, new_vars);
         // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
-        expr.convert(Expr::Lambda(arg, body, is_anon))
+        expr.convert(Expr::Lambda(arg, body))
     }
 
     fn resolve_field_access(
         &mut self,
-        expr: Spanned<Intern<Expr<Untyped>>>,
-        l: Spanned<Intern<Expr<Untyped>>>,
-        r: Spanned<Intern<Expr<Untyped>>>,
+        expr: Spanned<Intern<CstExpr<Untyped>>>,
+        l: Spanned<Intern<CstExpr<Untyped>>>,
+        r: Spanned<Intern<CstExpr<Untyped>>>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
         let l = self.analyze_expr(l, vars);
@@ -657,16 +588,17 @@ impl<const N: usize> Resolver<N> {
     fn resolve_branch(
         &mut self,
         b: MatchArm<Untyped>,
-        // vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
+        let body = self.analyze_expr(b.body, vars);
         let (pat_expr, bindings) = self.resolve_pattern(b.pat, vec![]);
 
-        bindings.into_iter().fold(b.body, |prev, v| {
+        bindings.into_iter().fold(body, |prev, v| {
             if *v.0.0 == INACCESSIBLE_IDENTIFIER {
-                prev.modify(Expr::Lambda(v, prev, LambdaInfo::Anon))
+                prev.modify(Expr::Lambda(v, prev))
             } else {
                 let unwrapped = prev.modify(Expr::Let(v, pat_expr, prev));
-                prev.modify(Expr::Lambda(v, unwrapped, LambdaInfo::Anon))
+                prev.modify(Expr::Lambda(v, unwrapped))
             }
         })
     }
@@ -735,7 +667,7 @@ impl<const N: usize> Resolver<N> {
 
     fn resolve_name_expr(
         &mut self,
-        expr: Spanned<Intern<Expr<Untyped>>>,
+        expr: Spanned<Intern<CstExpr<Untyped>>>,
     ) -> Spanned<Intern<Expr<Untyped>>> {
         let name = expr.ident().expect("Expression should be nameable");
         // self.env.debug();
@@ -767,80 +699,63 @@ impl<const N: usize> Resolver<N> {
                 Ok,
             )
     }
-
-    pub fn finish(self) -> CompResult<Environment> {
-        if self.errors.is_empty() {
-            Ok(self.env)
-        } else {
-            Err(ErrorCollection::new(self.errors).into())
-        }
-    }
 }
 
 pub fn subst_generic_type(
-    subject: Spanned<Intern<Type>>,
-    target: Intern<Type>,
-    replacement: Intern<Type>,
-) -> Spanned<Intern<Type>> {
-    let mut accum: Spanned<Intern<Type>> = subject;
+    subject: Spanned<Intern<CstType>>,
+    target: Intern<CstType>,
+    replacement: Intern<CstType>,
+) -> Spanned<Intern<CstType>> {
+    let mut accum: Spanned<Intern<CstType>> = subject;
     // dbg!(t);
     match (*subject.0, *target) {
         // t if t == *target => accum = accum.modify(replacement),
-        (Type::Generic(subj_name), Type::Generic(target_name)) if subj_name == target_name => {
+        (CstType::Generic(subj_name), CstType::Generic(target_name))
+            if subj_name == target_name =>
+        {
             accum = subject.modify(replacement);
         }
 
-        (Type::Var(subj_var), Type::Var(target_var)) if subj_var == target_var => {
-            accum = subject.modify(replacement);
-        }
-        (Type::Func(l, r), _) => {
-            accum = accum.modify(Type::Func(
+        (CstType::Func(l, r), _) => {
+            accum = accum.modify(CstType::Func(
                 subst_generic_type(l, target, replacement),
                 subst_generic_type(r, target, replacement),
             ));
         }
-        (Type::Prod(r), _) => {
-            let r = r.map(|r| match *r {
-                Row::Closed(closed_row) => {
-                    let values: Vec<_> = closed_row
-                        .values
-                        .iter()
-                        .map(|x| subst_generic_type(*x, target, replacement))
-                        .collect();
+        (CstType::Prod(r), _) => {
+            let r = {
+                let values: Vec<_> = r
+                    .values
+                    .iter()
+                    .map(|x| subst_generic_type(*x, target, replacement))
+                    .collect();
 
-                    Row::Closed(ClosedRow {
-                        values: values.leak(),
-                        ..closed_row
-                    })
-                    .into()
+                CstClosedRow {
+                    values: values.leak(),
+                    ..r
                 }
-                _ => r,
-            });
-            accum = accum.modify(Type::Prod(r))
+            };
+            accum = accum.modify(CstType::Prod(r))
         }
 
-        (Type::Sum(r), _) => {
-            let r = r.map(|r| match *r {
-                Row::Closed(closed_row) => {
-                    let values: Vec<_> = closed_row
-                        .values
-                        .iter()
-                        .map(|x| subst_generic_type(*x, target, replacement))
-                        .collect();
+        (CstType::Sum(r), _) => {
+            let r = {
+                let values: Vec<_> = r
+                    .values
+                    .iter()
+                    .map(|x| subst_generic_type(*x, target, replacement))
+                    .collect();
 
-                    Row::Closed(ClosedRow {
-                        values: values.leak(),
-                        ..closed_row
-                    })
-                    .into()
+                CstClosedRow {
+                    values: values.leak(),
+                    ..r
                 }
-                _ => r,
-            });
-            accum = accum.modify(Type::Sum(r))
+            };
+            accum = accum.modify(CstType::Sum(r))
         }
 
-        (Type::Label(label, value), _) => {
-            accum = accum.modify(Type::Label(
+        (CstType::Label(label, value), _) => {
+            accum = accum.modify(CstType::Label(
                 label,
                 subst_generic_type(value, target, replacement),
             ))
@@ -851,14 +766,14 @@ pub fn subst_generic_type(
         //     accum = accum.modify(Type::TypeApp(l, r))
         // }
         // GENERATED: Claude
-        (Type::TypeFun(param, body), _) => {
+        (CstType::GenericFun(param, body), _) => {
             if *param.0 == *target {
                 // The parameter shadows the target, don't substitute in body
                 accum = subject
             } else {
                 // Safe to substitute in body
                 let new_body = subst_generic_type(body, target, replacement);
-                accum = accum.modify(Type::TypeFun(param, new_body))
+                accum = accum.modify(CstType::GenericFun(param, new_body))
             }
             // let r = subst_generic_type(r, target, replacement);
             // accum = accum.modify(Type::TypeFun(l, r))

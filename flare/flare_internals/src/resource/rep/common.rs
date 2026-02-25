@@ -1,22 +1,30 @@
+use crate::resource::{
+    errors::CompResult,
+    rep::frontend::{
+        ast::{Expr, Variable},
+        files::FileID,
+    },
+};
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use std::{fmt, hash};
-use crate::resource::{
-    
-    errors::CompResult,
-    rep::{
-        
-        frontend::{ast::{Expr, Variable}, files::FileID},
-    },
-};
 
 pub trait SpanWrapped {
     fn get_span(&self) -> SimpleSpan<usize, u64>;
-    
 }
 
 pub trait Ident {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>>;
+}
+
+pub trait HasSpan {
+    fn span(&self) -> SimpleSpan<usize, u64>;
+}
+
+impl<T> HasSpan for Spanned<Intern<T>> {
+    fn span(&self) -> SimpleSpan<usize, u64> {
+        self.1
+    }
 }
 
 impl Ident for Spanned<Intern<String>> {
@@ -116,4 +124,3 @@ pub trait Named<V: Variable>: std::fmt::Debug {
         }
     }
 }
-

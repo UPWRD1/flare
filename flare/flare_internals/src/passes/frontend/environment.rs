@@ -9,18 +9,17 @@ use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 use std::hash::RandomState;
 
-use crate::{
-    passes::frontend::typing::Type,
-    resource::{
-        errors::{self, CompResult, DynamicErr},
-        rep::{
-            // concretetypes::{EnumVariant, Ty},
-            common::Spanned,
-            frontend::{
-                ast::{Definition, Expr, ImplDef, Program, Untyped},
-                entry::{FunctionItem, Item, ItemKind, PackageEntry},
-                quantifier::QualifierFragment,
-            },
+use crate::resource::{
+    errors::{self, CompResult, DynamicErr},
+    rep::{
+        // concretetypes::{EnumVariant, Ty},
+        common::{HasSpan, Ident, Spanned},
+        frontend::{
+            ast::{Syntax, Untyped},
+            cst::{CstExpr, Definition, ImplDef, Program, UntypedCst},
+            csttypes::CstType,
+            entry::{FunctionItem, Item, ItemKind, PackageEntry},
+            quantifier::QualifierFragment,
         },
     },
 };
@@ -33,70 +32,17 @@ use crate::{
 /// implement `Clone`, since it is ridiculously expensive, and there is no
 /// real reason to clone the environment.
 #[non_exhaustive]
-pub struct Environment {
-    pub graph: DiGraph<Item<Untyped>, QualifierFragment>,
+pub struct Environment<S: Syntax> {
+    pub graph: DiGraph<Item<S>, QualifierFragment>,
     pub root: NodeIndex,
 }
 
-impl Environment {
-    /// Add an `item` to the environment as a child of a `parent_node`, accessible via a `qualifier`. Returns the `NodeIndex` of the newly-created child.
-    /// # Panics
-    /// Panics if the internal graph is full.
-    /// Panics if the root node doesn't exist.
-    ///
-    /// # Examples
-    /// ```rust
-    /// let env: Environment::new();
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert!(env.graph.contains_edge(env.root, foo))
-    /// ```
-    pub fn add(
-        &mut self,
-        parent_node: NodeIndex,
-        qualifier: QualifierFragment,
-        item: Item<Untyped>,
-    ) -> NodeIndex {
-        let child_idx = self.graph.add_node(item);
-        self.graph.add_edge(parent_node, child_idx, qualifier);
-        child_idx
-    }
-
-    #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
-    #[deprecated]
-    pub fn debug(&self) {
-        let render =
-            |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
-        let dot = petgraph::dot::Dot::with_attr_getters(
-            &self.graph,
-            &[
-                Config::EdgeNoLabel,
-                Config::NodeNoLabel,
-                Config::RankDir(petgraph::dot::RankDir::LR),
-            ],
-            // &|_, _| String::new(),
-            &render,
-            &|_, _| String::new(),
-        );
-        dbg!(dot);
-    }
-    #[inline]
-    /// Get the item value of an index.
-    /// # Examples
-    /// ```rust   
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
-    /// ```
-    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<Untyped>> {
-        self.graph
-            .node_weight(idx)
-            .ok_or_else(|| unreachable!("Bad node index: {:?}", idx))
-    }
-
+impl Environment<UntypedCst> {
     /// Build the environment from a given `Program`
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(program: &Program<Untyped>) -> CompResult<Self> {
+    pub fn build(program: &Program<UntypedCst>) -> CompResult<Self> {
         // use ItemKind::*;
         let mut graph = DiGraph::new();
         let mut current_node = graph.add_node(Item::new(ItemKind::Root));
@@ -107,7 +53,7 @@ impl Environment {
         };
         let mut package_to_imports: FxHashMap<
             Spanned<QualifierFragment>,
-            FxHashSet<Spanned<Intern<Expr<Untyped>>>>,
+            FxHashSet<Spanned<Intern<CstExpr<Untyped>>>>,
         > = FxHashMap::with_capacity_and_hasher(num_packages, FxBuildHasher);
 
         let mut package_to_exports: FxHashMap<
@@ -125,7 +71,8 @@ impl Environment {
             let package_entry = Item::new(ItemKind::Package(PackageEntry {
                 name: package.0.name,
                 id: package.1,
-            }));
+            }
+                as PackageEntry<UntypedCst>));
             let package_quant = QualifierFragment::Package(package_name.0);
 
             let p_id = me.add(current_node, package_quant, package_entry);
@@ -143,15 +90,15 @@ impl Environment {
                         imports.insert(import_item);
                     }
                     Definition::Type(name, generics, t) => {
-                        let qfrag = QualifierFragment::Type(name.0);
+                        let qfrag = QualifierFragment::Type(name.ident()?.0);
 
                         qual = Some(qfrag);
                         let t = if generics.is_empty() {
                             t
                         } else {
-                            let mut new_t = generics
-                                .iter()
-                                .fold(t, |g, t| Spanned(Type::TypeFun(*t, g).into(), g.1));
+                            let mut new_t = generics.iter().fold(t, |g, t| {
+                                Spanned(CstType::GenericFun(*t, g).into(), g.span())
+                            });
                             new_t.1 = t.1;
                             new_t
                         };
@@ -159,7 +106,7 @@ impl Environment {
                         item_nodeindex = me.add(current_node, qfrag, entry);
                     }
                     Definition::Let(name, body, sig) => {
-                        let qfrag = QualifierFragment::Func(name.0.0);
+                        let qfrag = QualifierFragment::Func(name.0);
                         qual = Some(qfrag);
                         let entry = Item::new(ItemKind::Function(FunctionItem { name, sig, body }));
                         item_nodeindex = me.add(current_node, qfrag, entry);
@@ -228,6 +175,104 @@ impl Environment {
         Ok(me)
     }
 
+    /// Builds an impl definition
+    /// # Errors
+    /// On invalid names.
+    #[allow(dead_code, unused_variables)]
+    fn build_impl_def(
+        &self,
+        package_quant: QualifierFragment,
+        the_ty: <UntypedCst as Syntax>::Name,
+        methods: &[(
+            <UntypedCst as Syntax>::Name,
+            <UntypedCst as Syntax>::Expr,
+            <UntypedCst as Syntax>::Type,
+        )],
+    ) -> CompResult<()> {
+        todo!()
+        // use ItemKind::Function;
+        // let type_name = QualifierFragment::Type(the_ty.0);
+
+        // let type_node = self
+        //     .get(&[package_quant, type_name])
+        //     .map_err(|_| errors::not_defined(type_name, &the_ty.1))?;
+        // for &(method_name, method_body, method_ty) in methods {
+        //     let method_qual = QualifierFragment::Method(method_name.0);
+        //     let the_method = Item::new(
+        //         Function(FunctionItem {
+        //             name: Untyped(method_name),
+        //             sig: method_ty,
+        //             body: method_body,
+        //         }),
+        //         false,
+        //     );
+        //     self.add(type_node, method_qual, the_method);
+        // }
+        // Ok(())
+    }
+}
+
+impl<S: Syntax> Environment<S> {
+    pub fn from_graph_and_root(
+        graph: DiGraph<Item<S>, QualifierFragment>,
+        root: NodeIndex,
+    ) -> Self {
+        Self { graph, root }
+    }
+
+    /// Add an `item` to the environment as a child of a `parent_node`, accessible via a `qualifier`. Returns the `NodeIndex` of the newly-created child.
+    /// # Panics
+    /// Panics if the internal graph is full.
+    /// Panics if the root node doesn't exist.
+    ///
+    /// # Examples
+    /// ```rust
+    /// let env: Environment::new();
+    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
+    /// assert!(env.graph.contains_edge(env.root, foo))
+    /// ```
+    pub fn add(
+        &mut self,
+        parent_node: NodeIndex,
+        qualifier: QualifierFragment,
+        item: Item<S>,
+    ) -> NodeIndex {
+        let child_idx = self.graph.add_node(item);
+        self.graph.add_edge(parent_node, child_idx, qualifier);
+        child_idx
+    }
+
+    #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
+    #[deprecated]
+    pub fn debug(&self) {
+        let render =
+            |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
+        let dot = petgraph::dot::Dot::with_attr_getters(
+            &self.graph,
+            &[
+                Config::EdgeNoLabel,
+                Config::NodeNoLabel,
+                Config::RankDir(petgraph::dot::RankDir::LR),
+            ],
+            // &|_, _| String::new(),
+            &render,
+            &|_, _| String::new(),
+        );
+        dbg!(dot);
+    }
+    #[inline]
+    /// Get the item value of an index.
+    /// # Examples
+    /// ```rust   
+    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
+    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
+    /// ```
+    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<S>> {
+        self.graph
+            .node_weight(idx)
+            .ok_or_else(|| unreachable!("Bad node index: {:?}", idx))
+    }
+
     fn trace_import_path(
         &self,
         path: &[QualifierFragment],
@@ -258,42 +303,6 @@ impl Environment {
             })
             .next_back()
             .expect("Path was empty")
-    }
-
-    /// Builds an impl definition
-    /// # Errors
-    /// On invalid names.
-    #[allow(dead_code, unused_variables)]
-    fn build_impl_def(
-        &self,
-        package_quant: QualifierFragment,
-        the_ty: Spanned<Intern<String>>,
-        methods: &[(
-            Spanned<Intern<String>>,
-            Spanned<Intern<Expr<Untyped>>>,
-            Spanned<Intern<Type>>,
-        )],
-    ) -> CompResult<()> {
-        todo!()
-        // use ItemKind::Function;
-        // let type_name = QualifierFragment::Type(the_ty.0);
-
-        // let type_node = self
-        //     .get(&[package_quant, type_name])
-        //     .map_err(|_| errors::not_defined(type_name, &the_ty.1))?;
-        // for &(method_name, method_body, method_ty) in methods {
-        //     let method_qual = QualifierFragment::Method(method_name.0);
-        //     let the_method = Item::new(
-        //         Function(FunctionItem {
-        //             name: Untyped(method_name),
-        //             sig: method_ty,
-        //             body: method_body,
-        //         }),
-        //         false,
-        //     );
-        //     self.add(type_node, method_qual, the_method);
-        // }
-        // Ok(())
     }
 
     #[inline]
@@ -347,7 +356,7 @@ impl Environment {
         &self,
         frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> CompResult<(&Item<Untyped>, Vec<(&QualifierFragment, &Item<Untyped>)>)> {
+    ) -> CompResult<(&Item<S>, Vec<(&QualifierFragment, &Item<S>)>)> {
         let (node, children) = self.raw_get_node_and_children(frag, packctx)?;
         let node_w = self.value(node)?;
 
@@ -388,7 +397,7 @@ impl Environment {
         &self,
         frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> CompResult<Vec<(&QualifierFragment, &Item<Untyped>)>> {
+    ) -> CompResult<Vec<(&QualifierFragment, &Item<S>)>> {
         let children = self.raw_get_children(frag, packctx)?;
 
         // children
@@ -414,7 +423,7 @@ impl Environment {
         &self,
         target: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> CompResult<&Item<Untyped>> {
+    ) -> CompResult<&Item<S>> {
         let node = self.get_from_context(target, packctx)?;
         let node_w = self.value(node)?;
 
@@ -425,7 +434,7 @@ impl Environment {
     fn get_all_targets_edge<'envi, 'fragment>(
         &'envi self,
         frag: &'fragment QualifierFragment,
-    ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'fragment> {
+    ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'fragment, S> {
         let edges = self
             .graph
             .edge_references()
