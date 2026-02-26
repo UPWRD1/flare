@@ -488,7 +488,7 @@ impl<'source> LowerAst<'source> {
                 let param = self
                     .row_to_ev
                     .get(&id)
-                    .cloned()
+                    .copied()
                     .map(|ev| self.lookup_ev(ev))
                     .unwrap_or_else(|| {
                         unreachable!(
@@ -503,7 +503,7 @@ impl<'source> LowerAst<'source> {
                 IR::app(IR::app(concat, left), right)
             }
             Expr::Branch(left, right) => {
-                let param = self.row_to_ev.get(&id).cloned().map_or_else(
+                let param = self.row_to_ev.get(&id).copied().map_or_else(
                     || unreachable!(" Branch AST node lacks an expected evidence"),
                     |ev| self.lookup_ev(ev),
                 );
@@ -528,7 +528,7 @@ impl<'source> LowerAst<'source> {
                     let param = self
                         .row_to_ev
                         .get(&id)
-                        .cloned()
+                        .copied()
                         .map(|ev| self.lookup_ev(ev))
                         .expect("Project AST node lacks an expected evidence");
                     let direction_field = match direction {
@@ -547,7 +547,7 @@ impl<'source> LowerAst<'source> {
                 let param = self
                     .row_to_ev
                     .get(&id)
-                    .cloned()
+                    .copied()
                     .map(|ev| self.lookup_ev(ev))
                     .unwrap_or_else(|| {
                         panic!(

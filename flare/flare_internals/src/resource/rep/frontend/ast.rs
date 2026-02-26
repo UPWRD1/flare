@@ -4,10 +4,10 @@ use std::{
 };
 
 use crate::{
-    passes::frontend::typing::Type,
+    passes::frontend::typing::TypeScheme,
     resource::{
         errors::{CompResult, DynamicErr},
-        rep::common::{HasSpan, Ident, Spanned},
+        rep::common::{HasSpan, Ident, Spanned, Syntax, Variable},
     },
 };
 
@@ -15,23 +15,13 @@ use chumsky::span::SimpleSpan;
 use internment::Intern;
 use ordered_float::OrderedFloat;
 
-pub trait Variable:
-    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display + HasSpan
-{
-}
-
-pub trait Syntax: Debug + Copy + 'static {
-    type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + HasSpan;
-    type Type: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + HasSpan;
-    type Variable: Variable + Copy;
-    type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Ident;
-}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UntypedAst;
 
 impl Syntax for UntypedAst {
     type Expr = Spanned<Intern<Expr<Self::Variable>>>;
-    type Type = Spanned<Intern<Type>>;
+    // type Type = Spanned<Intern<Type>>;
+    type Type = TypeScheme;
     type Variable = Untyped;
     type Name = Spanned<Intern<String>>;
 }
@@ -250,9 +240,3 @@ impl<V: Variable> fmt::Display for Expr<V> {
         }
     }
 }
-
-// #[derive(Debug, PartialEq)]
-// pub struct StructDef {
-//     // pub the_ty: Row,
-//     //pub generics: Vec<Spanned<Expr<V>>>,
-// }

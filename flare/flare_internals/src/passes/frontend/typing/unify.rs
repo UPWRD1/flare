@@ -26,11 +26,10 @@ impl Solver<'_> {
     pub fn normalize_ty(&mut self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
         match *ty.0 {
             Type::Num
-                       | Type::String
+            | Type::String
             | Type::Bool
             | Type::Unit
             | Type::Particle(_)
-            // | Type::Template(_)
             | Type::Var(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.normalize_ty(arg);
@@ -50,6 +49,7 @@ impl Solver<'_> {
             }
             Type::Prod(row) => ty.modify(Type::Prod(self.normalize_row(row))),
             Type::Sum(row) => ty.modify(Type::Sum(self.normalize_row(row))),
+            Type::TypeFun(v, r) => self.normalize_ty(r),
             _ => todo!("{ty:?}"),
         }
     }

@@ -1,20 +1,12 @@
-use chumsky::span::{SimpleSpan, Span};
+use chumsky::span::SimpleSpan;
 use internment::Intern;
 // use lasso::Spur;
 
-use crate::{
-    passes::frontend::typing::Type,
-    resource::{
-        errors::CompResult,
-        rep::{
-            common::{HasSpan, Ident, SpanWrapped, Spanned},
-            frontend::{
-                ast::{Syntax, Variable},
-                cst::CstExpr,
-                csttypes::CstType,
-                files::FileID,
-            },
-        },
+use crate::resource::{
+    errors::CompResult,
+    rep::{
+        common::{Ident, Spanned, Syntax},
+        frontend::files::FileID,
     },
 };
 
@@ -59,41 +51,41 @@ pub enum ItemKind<S: Syntax> {
     Dummy(&'static str),
 }
 
-impl<S: Syntax> SpanWrapped for Item<S> {
-    // TODO: Remove panicking code
-    fn get_span(&self) -> chumsky::prelude::SimpleSpan<usize, u64>
-    where
-        Self: SpanWrapped,
-    {
-        match &self.kind {
-            ItemKind::Root => SimpleSpan::new(0, 0..0),
-            ItemKind::Filename(_intern) => panic!(),
-            ItemKind::Package(package_entry) => package_entry.name.ident().unwrap().1,
-            ItemKind::Function(function_item) => {
-                function_item.name.ident().unwrap().1.union(
-                    function_item
-                        .sig
-                        // .get()
-                        // .unwrap()
-                        .span()
-                        .union(function_item.body.span()),
-                )
-            }
-            ItemKind::Type(_, _, t) => t.span(),
-            ItemKind::Extern { name, args: _, sig } => name.ident().unwrap().1.union(sig.span()),
+// impl<S: Syntax> SpanWrapped for Item<S> {
+//     // TODO: Remove panicking code
+//     fn get_span(&self) -> chumsky::prelude::SimpleSpan<usize, u64>
+//     where
+//         Self: SpanWrapped,
+//     {
+//         match &self.kind {
+//             ItemKind::Root => SimpleSpan::new(0, 0..0),
+//             ItemKind::Filename(_intern) => panic!(),
+//             ItemKind::Package(package_entry) => package_entry.name.ident().unwrap().1,
+//             ItemKind::Function(function_item) => {
+//                 function_item.name.ident().unwrap().1.union(
+//                     function_item
+//                         .sig
+//                         // .get()
+//                         // .unwrap()
+//                         .span()
+//                         .union(function_item.body.span()),
+//                 )
+//             }
+//             ItemKind::Type(_, _, t) => t.span(),
+//             ItemKind::Extern { name, args: _, sig } => name.ident().unwrap().1.union(sig.span()),
 
-            ItemKind::Dummy(_) => panic!(),
-        }
-    }
-}
+//             ItemKind::Dummy(_) => panic!(),
+//         }
+//     }
+// }
 
-impl<S: Syntax> Ident for Item<S> {
+impl<S: Syntax<Name = Spanned<Intern<String>>>> Ident for Item<S> {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self.kind {
             ItemKind::Root => {
-                panic!()
-                // let s = SimpleSpan::new(0, 0..0);
-                // Spanned(Intern::from_ref("ROOT"), s)
+                // panic!()
+                let s = SimpleSpan::default();
+                Spanned(Intern::from_ref("ROOT"), s)
             }
             // Item::Filename(s) => s,
             ItemKind::Package(PackageEntry { name, .. }) => name,
@@ -115,15 +107,15 @@ impl<S: Syntax> Item<S> {
         Self { kind }
     }
 
-    #[must_use]
-    /// Get the signature of functions
-    pub fn get_sig(&self) -> Option<S::Type> {
-        match &self.kind {
-            ItemKind::Function(FunctionItem { sig, .. }) => Some(*sig),
-            ItemKind::Extern { sig, .. } => Some(*sig),
-            _ => None,
-        }
-    }
+    // #[must_use]
+    // /// Get the signature of functions
+    // pub fn get_sig(&self) -> Option<S::Type> {
+    //     match &self.kind {
+    //         ItemKind::Function(FunctionItem { sig, .. }) => Some(sig),
+    //         ItemKind::Extern { sig, .. } => Some(*sig),
+    //         _ => None,
+    //     }
+    // }
 
     // Get the type of the `Item`.
     // pub fn get_ty(&self) -> CompResult<Spanned<Intern<Type>>> {

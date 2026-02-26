@@ -1,16 +1,23 @@
 use crate::resource::{
     errors::CompResult,
-    rep::frontend::{
-        ast::{Expr, Variable},
-        files::FileID,
-    },
+    rep::frontend::{ast::Expr, files::FileID},
 };
 use chumsky::span::SimpleSpan;
 use internment::Intern;
-use std::{fmt, hash};
+use std::{
+    fmt::{self, Debug, Display},
+    hash::{self, Hash},
+};
 
-pub trait SpanWrapped {
-    fn get_span(&self) -> SimpleSpan<usize, u64>;
+pub trait Variable:
+    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display + HasSpan
+{
+}
+pub trait Syntax: Debug + Copy + 'static {
+    type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + HasSpan;
+    type Type: Clone + Debug + PartialEq + Eq + Hash + 'static + HasSpan;
+    type Variable: Variable + Copy;
+    type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Ident;
 }
 
 pub trait Ident {
@@ -83,16 +90,6 @@ impl<T> Spanned<T> {
 impl<T> From<(T, SimpleSpan<usize, u64>)> for Spanned<T> {
     fn from(value: (T, SimpleSpan<usize, u64>)) -> Self {
         Self(value.0, value.1)
-    }
-}
-
-// pub type Spanned<T> = (T, SimpleSpan<usize, FileID>);
-impl<T> SpanWrapped for Spanned<T> {
-    fn get_span(&self) -> SimpleSpan<usize, u64>
-    where
-        Self: SpanWrapped,
-    {
-        self.1
     }
 }
 

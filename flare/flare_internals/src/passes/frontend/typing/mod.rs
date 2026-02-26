@@ -22,8 +22,8 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
-            common::{HasSpan, Ident, NodeId, Spanned},
-            frontend::ast::{Expr, ItemId, Kind, Untyped, Variable},
+            common::{HasSpan, Ident, NodeId, Spanned, Variable},
+            frontend::ast::{Expr, ItemId, Kind, Untyped},
         },
     },
 };
@@ -57,7 +57,7 @@ pub enum Constraint {
     RowCombine(Provenance, RowCombination),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Evidence {
     RowEquation {
         left: Spanned<Intern<Row>>,
@@ -120,14 +120,30 @@ impl GenOut {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Default)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, Hash)]
 pub struct TypeScheme {
     pub unbound_types: BTreeSet<TypeVar>,
     pub unbound_rows: BTreeSet<RowVar>,
     pub evidence: Vec<Evidence>,
     pub ty: Spanned<Intern<Type>>,
-    pub types_to_name: FxHashMap<TypeVar, Intern<String>>,
+    pub types_to_name: Vec<(TypeVar, Intern<String>)>,
     pub kind: Kind,
+}
+
+impl TypeScheme {
+    pub fn merge(mut self, mut rhs: Self) -> Self {
+        self.unbound_types.append(&mut rhs.unbound_types);
+        self.unbound_rows.append(&mut rhs.unbound_rows);
+        self.evidence.append(&mut rhs.evidence);
+        self.types_to_name.append(&mut rhs.types_to_name);
+        self
+    }
+}
+
+impl HasSpan for TypeScheme {
+    fn span(&self) -> chumsky::prelude::SimpleSpan<usize, u64> {
+        self.ty.span()
+    }
 }
 
 impl TypeScheme {
@@ -390,12 +406,12 @@ impl<'env> Solver<'env> {
             .copied()
             .collect::<Vec<_>>();
 
-        let sig_evs = signature.evidence.iter().cloned().collect::<FxHashSet<_>>();
+        let sig_evs = signature.evidence.iter().copied().collect::<FxHashSet<_>>();
         let extra_evidence = evs
             .into_iter()
             .collect::<FxHashSet<_>>()
             .difference(&sig_evs)
-            .cloned()
+            .copied()
             .collect::<Vec<_>>();
 
         if !extra_types.is_empty() || !extra_row.is_empty() || !extra_evidence.is_empty() {

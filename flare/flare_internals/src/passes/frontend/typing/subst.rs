@@ -242,7 +242,6 @@ impl Solver<'_> {
                 unsub_ast.convert(Expr::Inject(dir, nast))
             }),
             Expr::Item(id, item) => SubstOut::new(unsub_ast.convert(Expr::Item(id, item))),
-            _ => todo!("{unsub_ast:?}"),
         }
         // dbg!(res)
     }

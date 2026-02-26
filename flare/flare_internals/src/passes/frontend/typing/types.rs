@@ -51,7 +51,6 @@ pub enum Type {
     // Infer,
     Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
     Unifier(TyUniVar),
-    Generic(Spanned<Intern<String>>),
 
     // Template(Spanned<Intern<String>>),
     Var(TypeVar),
@@ -66,8 +65,6 @@ pub enum Type {
     // Package(Spanned<Intern<String>>),
     // Item(ItemId),
     TypeFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    TypeApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    User(Spanned<Intern<String>>, &'static [Spanned<Intern<Self>>]),
     Prod(Spanned<Intern<Row>>),
     Sum(Spanned<Intern<Row>>),
     Label(Label, Spanned<Intern<Self>>),
@@ -93,16 +90,22 @@ impl Type {
         match self {
             Self::Var(v) => format!(
                 "?{}",
-                scheme.types_to_name.get(v).copied().unwrap_or_else(
-                    || Intern::from(v.0.to_string()) // panic!("Type variable {v:?} has no associated name : {scheme:?}")
-                ) // .coopied()
-                  // .uwrap_or_else(|| v.0.to_string().into())
+                scheme
+                    .types_to_name
+                    .iter()
+                    .find(|(var, _)| var == v)
+                    .map(|(v_, x)| x)
+                    .copied()
+                    .unwrap_or_else(
+                        || Intern::from(v.0.to_string()) // panic!("Type variable {v:?} has no associated name : {scheme:?}")
+                    ) // .coopied()
+                      // .uwrap_or_else(|| v.0.to_string().into())
             ),
             Self::Func(l, r) => format!("{} -> {}", l.0.render(scheme), r.0.render(scheme)),
             Self::Prod(r) => format!("{{{}}}", r.render(scheme)),
             Self::Sum(r) => format!("|{}|", r.render(scheme)),
             Self::TypeFun(l, r) => format!("[{}]{}", l.0.render(scheme), r.0.render(scheme)),
-            Self::TypeApp(l, r) => format!("{}::[{}]", r.0.render(scheme), l.0.render(scheme)),
+            // Self::TypeApp(l, r) => format!("{}::[{}]", r.0.render(scheme), l.0.render(scheme)),
             _ => format!("{self}"),
         }
     }
@@ -132,7 +135,6 @@ impl Type {
             | Self::Bool
             | Self::Unit
             | Self::Particle(_)
-            | Self::Generic(_)
             | Self::Var(_) => Ok(()),
             Self::Func(arg, ret) => {
                 arg.0.occurs_check(var).map_err(|_| *self)?;
@@ -154,12 +156,11 @@ impl Type {
                 r.0.occurs_check(var).map_err(|_| *self)
             }
 
-            Self::TypeApp(l, r) => {
-                l.0.occurs_check(var).map_err(|_| *self)?;
-                r.0.occurs_check(var).map_err(|_| *self)
-            }
-
-            Self::User(..) | Self::Hole => unreachable!("Shouldn't happen"),
+            // Self::TypeApp(l, r) => {
+            //     l.0.occurs_check(var).map_err(|_| *self)?;
+            //     r.0.occurs_check(var).map_err(|_| *self)
+            // }
+            Self::Hole => Ok(()),
             Self::Subtable(_, _) => todo!(), // _ => todo!("{self:?}"),
         }
     }
@@ -237,7 +238,6 @@ impl fmt::Display for Type {
             Self::Sum(r) => write!(f, "|{r}|"),
             Self::Label(l, t) => write!(f, "{}: {t}", l.0.0),
             Self::TypeFun(l, r) => write!(f, "[{l}]{r}"),
-            Self::TypeApp(l, r) => write!(f, "{l} {r}"),
             _ => write!(f, "{self:#?}"),
         }
     }

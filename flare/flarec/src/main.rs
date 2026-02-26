@@ -98,7 +98,7 @@ macro_rules! make_target {
     ($target:tt, $cli:ident) => {{
         let files = $cli.input_files;
         let target = $target;
-        let ctx = Context::new(files, target, []);
+        let ctx = Context::new(files, target);
         let filectx = ctx.filectx.clone();
         let now: Instant = Instant::now();
         ctx.parse()
@@ -139,7 +139,7 @@ fn main() -> CompResult<()> {
         EmitOptions::IR => {
             let files = cli.input_files;
             let target = IRTarget;
-            let ctx = Context::new(files, target, []);
+            let ctx = Context::new(files, target);
             let filectx = ctx.filectx.clone();
             let now: Instant = Instant::now();
             ctx.parse()

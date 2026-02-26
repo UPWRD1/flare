@@ -1,16 +1,14 @@
 use crate::resource::{
     errors::CompResult,
-    rep::frontend::{ast::Syntax, cst::CstExpr},
+    rep::{
+        common::{Ident, Spanned, Variable},
+        frontend::cst::CstExpr,
+    },
 };
 
 // use chumsky::input::ValueInput;
 use internment::Intern;
 use rustc_hash::FxHashSet;
-
-// use rkyv::with::{ArchiveWith, DeserializeWith, With};
-// use rkyv::{Archive, Deserialize, Serialize};
-// use rkyv_with::{ArchiveWith, DeserializeWith};
-// use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QualifierFragment {
@@ -25,12 +23,6 @@ pub enum QualifierFragment {
     Wildcard(Intern<String>),
     Dummy(&'static str),
 }
-
-use crate::resource::rep::{
-    common::Ident,
-    common::Spanned,
-    frontend::ast::{Expr, Variable},
-};
 
 impl QualifierFragment {
     pub fn name(&self) -> &Intern<String> {
@@ -48,6 +40,13 @@ impl QualifierFragment {
     }
 
     pub fn is(&self, rhs: &Self) -> bool {
+        match (self, rhs) {
+            (Self::Wildcard(_), _) | (_, Self::Wildcard(_)) => self.is_unstrict(rhs),
+            (_, _) => self == rhs,
+        }
+    }
+
+    pub fn is_unstrict(&self, rhs: &Self) -> bool {
         self.name() == rhs.name()
     }
 

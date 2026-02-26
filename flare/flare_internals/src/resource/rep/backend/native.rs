@@ -83,7 +83,7 @@ impl VirtualValue {
             VirtualValue::Scalar(_, ty)
             | VirtualValue::Func(_, ty)
             | VirtualValue::StackStruct { ty, ptr: _ }
-            | VirtualValue::UnstableStruct { ty, fields: _ } => ty.clone(),
+            | VirtualValue::UnstableStruct { ty, fields: _ } => *ty,
             VirtualValue::Closure(closure) => closure.func.ty(),
             VirtualValue::Pointer(pointee_type, value) => pointee_type.ty(),
             VirtualValue::TaggedUnion { body, tag } => todo!(),

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 use petgraph::{
@@ -8,24 +10,13 @@ use petgraph::{
 };
 use rustc_hash::FxHashSet;
 
-// const INTRINSIC_FUNC_ADD: usize = 0;
-// const INTRINSIC_FUNC_SUB: usize = 1;
-// const INTRINSIC_FUNC_MUL: usize = 2;
-// const INTRINSIC_FUNC_DIV: usize = 3;
-// const INTRINSIC_FUNC_CEQ: usize = 4;
-// const INTRINSIC_FUNC_NEQ: usize = 5;
-// const INTRINSIC_FUNC_CLT: usize = 6;
-// const INTRINSIC_FUNC_CLE: usize = 7;
-// const INTRINSIC_FUNC_CGT: usize = 8;
-// const INTRINSIC_FUNC_CGE: usize = 9;
-
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 
 const INACCESSIBLE_IDENTIFIER: &str = "%INACCESSIBLE%";
 use crate::{
     passes::frontend::{
         environment::Environment,
-        typing::{ClosedRow, Row, Type},
+        typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeScheme, TypeVar},
     },
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
@@ -66,6 +57,105 @@ pub struct Resolver {
     errors: Vec<CompilerErr>,
 }
 
+#[derive(Default, Debug)]
+pub struct TypeFixer {
+    unbound_types: BTreeSet<TypeVar>,
+    unbound_rows: BTreeSet<RowVar>,
+    pub types_to_name: Vec<(TypeVar, Intern<String>)>,
+    evidence: Vec<Evidence>,
+    type_var_count: usize,
+    // seen_row_vars: FxHashMap<NodeId, RowVar>,
+    // inside_type_fun: TyappState,
+}
+
+impl TypeFixer {
+    fn new_type_var(&mut self) -> TypeVar {
+        let v = TypeVar(self.type_var_count);
+        // let v = TypeVar(n);
+        self.type_var_count += 1;
+        v
+    }
+
+    fn helper(&mut self, t: Spanned<Intern<CstType>>) -> Spanned<Intern<Type>> {
+        match *t.0 {
+            CstType::Generic(n) => {
+                println!("Generic {}", n.0);
+                let v = if let Some((v, _)) =
+                    self.types_to_name.iter().find(|(_, name)| ***name == *n.0)
+                {
+                    println!("Loaded {v:?}");
+                    *v
+                } else {
+                    let v = self.new_type_var();
+                    self.types_to_name.push((v, n.0));
+                    self.unbound_types.insert(v);
+                    println!("Created {v:?}");
+                    v
+                };
+
+                t.convert(Type::Var(v))
+            }
+
+            CstType::Func(l, r) => {
+                let l = self.helper(l);
+                let r = self.helper(r);
+                t.convert(Type::Func(l, r))
+            }
+
+            CstType::Prod(row) => t.convert(Type::Prod(
+                t.convert(Row::Closed(ClosedRow {
+                    fields: row.fields,
+                    values: row
+                        .values
+                        .iter()
+                        .map(|value_ty| self.helper(*value_ty))
+                        .collect::<Vec<_>>()
+                        .leak(),
+                })),
+            )),
+            CstType::Sum(row) => t.convert(Type::Sum(
+                t.convert(Row::Closed(ClosedRow {
+                    fields: row.fields,
+                    values: row
+                        .values
+                        .iter()
+                        .map(|value_ty| self.helper(*value_ty))
+                        .collect::<Vec<_>>()
+                        .leak(),
+                })),
+            )),
+            CstType::Label(l, t) => t.convert(Type::Label(l, self.helper(t))),
+            CstType::User(t, g) => {
+                unreachable!("Encountered user type {t}[{g:?}] after resolution")
+            }
+
+            CstType::GenericApp(l, r) => {
+                // Should have been reduced by analyze_type; attempt recovery
+                // let reduced = self.analyze_type(t); // re-run beta reduction
+                // self.helper(reduced, f)
+                panic!()
+                // let r = self.convert_type(r);
+
+                // t.convert(Type::TypeApp(l, r))
+            }
+            CstType::GenericFun(l, r) => {
+                // panic!("Should have been resolved");
+                // let l = self.helper(l);
+                self.helper(r)
+
+                // t.convert(Type::TypeFun(l, r))
+            }
+            CstType::Particle(p) => t.convert(Type::Particle(p)),
+            CstType::Unit => t.convert(Type::Unit),
+            CstType::Num => t.convert(Type::Num),
+            CstType::Bool => t.convert(Type::Bool),
+            CstType::String => t.convert(Type::String),
+            CstType::Hole => t.convert(Type::Hole),
+        }
+        // dbg!(o)
+    }
+}
+
 type DagIdx = usize;
 
 impl Resolver {
@@ -76,48 +166,26 @@ impl Resolver {
             current_dag_node: None,
             dag: DiGraph::new(),
             main_dag_idx: None,
-            // generic_scope: im::HashMap::with_hasher(FxBuildHasher),
             errors: Vec::new(),
-            // intrinsics,
         }
     }
 
     pub fn analyze(mut self) -> CompResult<(Environment<UntypedAst>, Vec<NodeIndex>)> {
-        let filtered: Vec<(NodeIndex, PackageEntry<UntypedCst>)> = self
+        let err_no_main = DynamicErr::new("Could not find a main function")
+            .label("not found in any packages", SimpleSpan::default());
+
+        let g = self
             .env
             .graph
-            .node_indices()
-            .filter_map(|idx| {
-                self.env
-                    .value(idx)
-                    .map(|x| {
-                        if let ItemKind::Package(p) = x.kind {
-                            Some((idx, p))
-                        } else {
-                            None
-                        }
-                    })
-                    .ok()
-                    .flatten()
-            })
-            .collect();
-
-        let err_no_main = DynamicErr::new("Could not find a main function").label(
-            "not found in this package",
-            filtered.first().expect("No packages").1.name.1,
-        );
-        for (idx, p) in filtered {
-            self.analyze_package(idx, p)
-        }
-
+            .clone()
+            .map(|idx, item| self.analyze_item(idx, item), |idx, e| *e);
         let reachable: FxHashSet<NodeIndex> =
             Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
                 .iter(&self.dag)
                 .collect();
-        self.dag.reverse();
-        // dbg!(&reachable);
-        // let sorted = reachable;
-        let sorted: Vec<NodeIndex> = toposort(&self.dag, None)
+        self.debug();
+        // self.dag.reverse();
+        let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
             // self.debug();
             // let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
             .into_iter()
@@ -125,87 +193,64 @@ impl Resolver {
             .filter(|x| reachable.contains(x))
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
-
-        let g = self.env.graph.map_owned(|idx, n| todo!(), |idx, e| e);
-        let env = Environment::from_graph_and_root(g, self.env.root);
-        Ok((env, sorted))
-    }
-
-    fn analyze_package(&mut self, idx: NodeIndex, p: PackageEntry<UntypedCst>) {
-        self.current_parent = QualifierFragment::Package(p.name.0);
-        let children = self
-            .env
-            .graph
-            .neighbors_directed(idx, petgraph::Direction::Outgoing)
-            .map(NodeIndex::index)
-            .collect::<Vec<usize>>();
-
-        for child in children {
-            let node_idx = NodeIndex::new(child);
-            // dbg!(child);
-            let dag_idx = if let Some((node_idx, _)) =
-                self.dag.node_references().find(|(_, x)| **x == child)
-            {
-                // dbg!(node_idx);
-                node_idx
-            } else {
-                self.dag
-                    .try_add_node(child)
-                    .unwrap_or_else(|_| unreachable!("Graph overflow in resolution"))
-            };
-
-            self.analyze_item(child, node_idx, dag_idx);
+        sorted.reverse();
+        if self.errors.is_empty() {
+            let env = Environment::from_graph_and_root(g, self.env.root);
+            Ok((env, sorted))
+        } else {
+            Err(ErrorCollection::new(self.errors).into())
         }
     }
 
-    fn analyze_item(
-        &mut self,
-        child: usize,
-        node_idx: NodeIndex,
-        dag_idx: NodeIndex,
-    ) -> Item<UntypedAst> {
-        let item = self
-            .env
-            .graph
-            .node_weight(node_idx)
-            .expect("Node should exist");
+    fn analyze_item(&mut self, node_idx: NodeIndex, item: &Item<UntypedCst>) -> Item<UntypedAst> {
+        let dag_idx = if let Some((node_idx, _)) = self
+            .dag
+            .node_references()
+            .find(|(_, x)| **x == node_idx.index())
+        {
+            // dbg!(node_idx);
+            node_idx
+        } else {
+            self.dag
+                .try_add_node(node_idx.index())
+                .unwrap_or_else(|_| unreachable!("Graph overflow in resolution"))
+        };
 
+        self.current_dag_node = Some(dag_idx);
+        self.current_parent = self
+            .env
+            .get_parent(node_idx)
+            .unwrap_or(QualifierFragment::Root);
         match item.kind {
             ItemKind::Package(PackageEntry { name, id }) => {
                 Item::new(ItemKind::Package(PackageEntry { name, id }))
             }
             ItemKind::Function(f) => {
+                dbg!(f.sig);
                 if *f.name.0 == "main" {
                     self.main_dag_idx = Some(dag_idx);
                 }
-
                 let f = self.analyze_func(f, dag_idx);
+
                 Item::new(ItemKind::Function(f))
             }
             ItemKind::Type(n, g, t) => {
-                // self.generic_scope.clear();
-                let t = self.analyze_type(t);
-                Item::new(ItemKind::Type(n, vec![].leak(), t))
-                // self.generic_scope.clear();
+                let scheme = self.convert_type(t, Kind::Ty);
 
-                // dbg!(t); /* do nothing */
+                Item::new(ItemKind::Type(n, vec![].leak(), scheme))
             }
-
             ItemKind::Extern { name, args, sig } => {
-                let sig = self.in_context(|me| me.analyze_type(sig), dag_idx);
+                let sig = self.in_context(|me| me.convert_type(sig, Kind::Extern(name.0)), dag_idx);
 
                 Item::new(ItemKind::Extern { name, args, sig })
             }
-            _ => unreachable!("{child:?}, {:?}", item.kind),
+            ItemKind::Root => Item::new(ItemKind::Root),
+            ItemKind::Filename(f) => Item::new(ItemKind::Filename(f)),
+            ItemKind::Dummy(d) => Item::new(ItemKind::Dummy(d)),
         }
     }
 
-    fn in_context<T>(
-        &mut self,
-        mut f: impl FnMut(&mut Self) -> T,
-        dag_idx: NodeIndex,
-        // dag: &mut DiGraph<usize, ()>,
-    ) -> T {
+    fn in_context<T>(&mut self, mut f: impl FnMut(&mut Self) -> T, dag_idx: NodeIndex) -> T {
         let old = self.current_dag_node;
         self.current_dag_node = Some(dag_idx);
 
@@ -221,8 +266,10 @@ impl Resolver {
     ) -> FunctionItem<UntypedAst> {
         self.in_context(
             |me| {
-                // me.generic_scope.clear();
-                let sig = me.analyze_type(the_func.sig);
+                // me.generic_scope.clear()
+                // dbg!(the_func.sig);
+                let sig = me.convert_type(the_func.sig, Kind::Func);
+                // dbg!(sig.ty);
                 let body = me.analyze_expr(the_func.body, &[]);
                 // me.generic_scope.clear();
                 FunctionItem {
@@ -235,25 +282,40 @@ impl Resolver {
         )
     }
 
-    fn analyze_type(&mut self, t: Spanned<Intern<CstType>>) -> Spanned<Intern<Type>> {
-        // dbg!(self.current_node);
-        // dbg!(&self.generic_scope);
+    fn extract_generics(&self, t: Spanned<Intern<CstType>>, kind: Kind) -> TypeScheme {
+        let mut f = TypeFixer::default();
+        let ty = f.helper(t);
+        TypeScheme {
+            unbound_types: f.unbound_types,
+            unbound_rows: f.unbound_rows,
+            evidence: f.evidence,
+            ty,
+            types_to_name: f.types_to_name,
+            kind,
+        }
+    }
+
+    fn convert_type(&mut self, t: Spanned<Intern<CstType>>, kind: Kind) -> TypeScheme {
+        let t = self.analyze_type(t);
         // dbg!(t);
+        self.extract_generics(t, kind)
+    }
+    fn analyze_type(&mut self, t: Spanned<Intern<CstType>>) -> Spanned<Intern<CstType>> {
         match *t.0 {
             CstType::Func(l, r) => {
                 let l = self.analyze_type(l);
                 let r = self.analyze_type(r);
 
-                t.convert(Type::Func(l, r))
+                t.modify(CstType::Func(l, r))
             }
             CstType::Label(l, the_r) => {
                 let new_t = self.analyze_type(the_r);
                 // dbg!(new_t);
-                t.convert(Type::Label(l, new_t))
+                t.modify(CstType::Label(l, new_t))
             }
             CstType::User(name, instanced_generics) => {
                 let the_item = self.resolve_name_type(&name);
-                // dbg!(the_item.get_type_universal());
+
                 if let Ok(item_id) = the_item {
                     // self.dag_add(item_id);
                     let the_item = self
@@ -261,72 +323,69 @@ impl Resolver {
                         .value(NodeIndex::new(item_id.0))
                         .expect("Item has not been defined in the environment");
 
-                    if let ItemKind::Type(_, _generics, new_t) = the_item.kind {
+                    if let ItemKind::Type(_, generics, new_t) = the_item.kind {
+                        // dbg!(new_t);
                         // if !instanced_generics.is_empty() {
                         let analyzed_instances: Vec<_> = instanced_generics
                             .iter()
                             .map(|ty| self.analyze_type(*ty))
                             .collect();
+
                         let new_t = self.analyze_type(new_t);
 
                         let mut final_t = analyzed_instances
                             .into_iter()
-                            .fold(new_t, |x, y| Spanned(Type::TypeApp(x, y).into(), x.1));
+                            .fold(new_t, |x, y| Spanned(CstType::GenericApp(x, y).into(), x.1));
                         final_t.1 = t.1;
-                        final_t
-                        // self.analyze_type(final_t)
+
+                        self.analyze_type(final_t)
                     } else {
                         panic!("not a type")
                     }
                 } else {
                     let err = errors::not_defined(name.0, &name.1);
                     self.errors.push(err);
-                    name.convert(Type::Hole)
+                    name.convert(CstType::Hole)
                 }
             }
             CstType::Prod(r) => {
-                let new_r = Row::Closed(
-                    ClosedRow {
-                        values: r
-                            .values
-                            .iter()
-                            .map(|t| -> Spanned<Intern<Type>> {
-                                // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
-                                self.analyze_type(*t)
-                            })
-                            .collect::<Vec<_>>()
-                            .leak(),
-                        fields: r.fields,
-                    }
-                    .sort(),
-                );
+                let new_r = CstClosedRow {
+                    values: r
+                        .values
+                        .iter()
+                        .map(|t| -> Spanned<Intern<CstType>> {
+                            // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                            self.analyze_type(*t)
+                        })
+                        .collect::<Vec<_>>()
+                        .leak(),
+                    fields: r.fields,
+                };
 
-                t.convert(Type::Prod(t.convert(new_r)))
+                t.convert(CstType::Prod(new_r))
             }
             CstType::Sum(r) => {
-                let new_r = Row::Closed(
-                    ClosedRow {
-                        values: r
-                            .values
-                            .iter()
-                            .map(|t| -> Spanned<Intern<Type>> {
-                                // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
-                                self.analyze_type(*t)
-                            })
-                            .collect::<Vec<_>>()
-                            .leak(),
-                        fields: r.fields,
-                    }
-                    .sort(),
-                );
-                t.convert(Type::Sum(t.convert(new_r)))
+                let new_r = CstClosedRow {
+                    values: r
+                        .values
+                        .iter()
+                        .map(|t| -> Spanned<Intern<CstType>> {
+                            // let t = self.resolve_name_generic(&n.0)?.get_ty()?.0;
+                            self.analyze_type(*t)
+                        })
+                        .collect::<Vec<_>>()
+                        .leak(),
+                    fields: r.fields,
+                };
+                t.convert(CstType::Sum(new_r))
             }
             CstType::GenericApp(l, r) => {
-                // let l = self.analyze_type(l);
+                let l = self.analyze_type(l);
                 // let r = self.analyze_type(r);
-
                 if let CstType::GenericFun(param, body) = *l.0 {
-                    self.analyze_type(subst_generic_type(body, param.0, r.0))
+                    let subst = subst_generic_type(body, param.0, r.0);
+                    // dbg!(subst);
+                    self.analyze_type(subst)
                 } else {
                     panic!("Not a generic function")
                     // t.modify(Type::TypeApp(l, r))
@@ -337,15 +396,15 @@ impl Resolver {
                 let l = self.analyze_type(l);
                 let r = self.analyze_type(r);
 
-                t.convert(Type::TypeFun(l, r))
+                t.convert(CstType::GenericFun(l, r))
             }
-            CstType::Generic(spanned) => panic!("Escaped Generic {spanned:?}"),
-            CstType::Particle(p) => t.convert(Type::Particle(p)),
-            CstType::Unit => t.convert(Type::Unit),
-            CstType::Num => t.convert(Type::Num),
-            CstType::Bool => t.convert(Type::Bool),
-            CstType::String => t.convert(Type::String),
-            CstType::Hole => t.convert(Type::Hole),
+            CstType::Generic(_)
+            | CstType::Particle(_)
+            | CstType::Unit
+            | CstType::Num
+            | CstType::Bool
+            | CstType::String
+            | CstType::Hole => t,
         }
     }
 
@@ -373,7 +432,6 @@ impl Resolver {
             CstExpr::Concat(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                // let t = Type::Prod(crate::passes::midend::typing::Row::Closed(());
                 expr.convert(Expr::Concat(l, r))
             }
             CstExpr::Project(direction, ex) => {
@@ -391,9 +449,9 @@ impl Resolver {
                 expr.convert(Expr::Branch(l, r))
             }
             CstExpr::Label(l, v) => {
+                // dbg!(vars);
+                // dbg!(expr);
                 let v = self.analyze_expr(v, vars);
-                // let new_vars = [vars, &[(l.0.0, v)]].concat();
-
                 expr.convert(Expr::Label(l, v))
             }
             CstExpr::Unlabel(v, l) => {
@@ -553,32 +611,32 @@ impl Resolver {
         &mut self,
         p: Spanned<Intern<Pattern<Untyped>>>,
         vars: Vec<Untyped>,
-    ) -> (Spanned<Intern<Expr<Untyped>>>, Vec<Untyped>) {
+    ) -> (Spanned<Intern<CstExpr<Untyped>>>, Vec<Untyped>) {
         // dbg!(&p);
 
         match *p.0 {
             Pattern::Wildcard => (
-                p.convert(Expr::Ident(Untyped(p.convert(p.1.to_string())))),
+                p.convert(CstExpr::Ident(Untyped(p.convert(p.1.to_string())))),
                 vars,
             ),
-            Pattern::Var(v) => (p.convert(Expr::Ident(v)), [vars, [v].to_vec()].concat()),
+            Pattern::Var(v) => (p.convert(CstExpr::Ident(v)), [vars, [v].to_vec()].concat()),
             Pattern::Number(_) => todo!(),
             Pattern::String(_) => todo!(),
-            Pattern::Particle(p) => (p.convert(Expr::Particle(p)), vars),
+            Pattern::Particle(p) => (p.convert(CstExpr::Particle(p)), vars),
             Pattern::Bool(_) => todo!(),
-            Pattern::Unit => (p.convert(Expr::Unit), vars),
+            Pattern::Unit => (p.convert(CstExpr::Unit), vars),
             Pattern::Ctor(label, ex) => {
                 if *ex.0 == Pattern::Unit {
                     let inaccessible = Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string()));
 
                     (
-                        p.convert(Expr::Unit),
+                        p.convert(CstExpr::Unit),
                         [vars, [inaccessible].to_vec()].concat(),
                     )
                 } else {
                     let (ex, vars) = self.resolve_pattern(ex, vars);
 
-                    (p.convert(Expr::Unlabel(ex, label)), vars)
+                    (p.convert(CstExpr::Unlabel(ex, label)), vars)
                 }
             }
             _ => todo!(),
@@ -590,21 +648,26 @@ impl Resolver {
         b: MatchArm<Untyped>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
-        let body = self.analyze_expr(b.body, vars);
+        // dbg!(b.body);
         let (pat_expr, bindings) = self.resolve_pattern(b.pat, vec![]);
+        // let new_bindings: Vec<_> = bindings
+        //     .into_iter()
+        //     .map(|b| (b.0.0, b.0.convert(Expr::Ident(b))))
+        //     .collect();
 
-        bindings.into_iter().fold(body, |prev, v| {
+        let v = bindings.into_iter().fold(b.body, |prev, v| {
             if *v.0.0 == INACCESSIBLE_IDENTIFIER {
-                prev.modify(Expr::Lambda(v, prev))
+                prev.modify(CstExpr::Lambda(v, prev))
             } else {
-                let unwrapped = prev.modify(Expr::Let(v, pat_expr, prev));
-                prev.modify(Expr::Lambda(v, unwrapped))
+                let unwrapped = prev.modify(CstExpr::Let(v, pat_expr, prev));
+                prev.modify(CstExpr::Lambda(v, unwrapped))
             }
-        })
+        });
+        self.analyze_expr(v, vars)
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
-    #[deprecated]
+    // #[deprecated]
     /// Pretty-print GraphViz for the internal state of the dependancy graph.
     fn debug(&self) {
         let render = |_, (_, v): (_, &usize)| {
@@ -638,11 +701,8 @@ impl Resolver {
             self.dag.add_node(env_node)
         };
 
-        // dbg!(self.current_dag_node, n);
-
         if let Some(current) = self.current_dag_node
             && n != current
-        // && !self.dag.contains_edge(current, n)
         {
             self.dag.update_edge(current, n, ());
         }
@@ -760,11 +820,6 @@ pub fn subst_generic_type(
                 subst_generic_type(value, target, replacement),
             ))
         }
-        // (Type::TypeApp(l, r), _) => {
-        //     let l = subst_generic_type(l, target, replacement);
-        //     let r = subst_generic_type(r, target, replacement);
-        //     accum = accum.modify(Type::TypeApp(l, r))
-        // }
         // GENERATED: Claude
         (CstType::GenericFun(param, body), _) => {
             if *param.0 == *target {
@@ -775,18 +830,12 @@ pub fn subst_generic_type(
                 let new_body = subst_generic_type(body, target, replacement);
                 accum = accum.modify(CstType::GenericFun(param, new_body))
             }
-            // let r = subst_generic_type(r, target, replacement);
-            // accum = accum.modify(Type::TypeFun(l, r))
         }
-
-        // Type::TypeApp(l, r) => {
-        //     accum = accum.modify(Type::TypeApp(
+        // (CstType::GenericApp(l, r), _) => {
+        //     accum = accum.modify(CstType::GenericApp(
         //         subst_generic_type(l, target, replacement),
         //         subst_generic_type(r, target, replacement),
         //     ));
-        // }
-        // Type::TypeFun(l, r) => {
-        //     accum = accum.modify(Type::TypeFun(l, subst_generic_type(r, target, replacement)));
         // }
         _ => accum = subject,
     }

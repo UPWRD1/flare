@@ -13,9 +13,9 @@ use crate::resource::{
     errors::{self, CompResult, DynamicErr},
     rep::{
         // concretetypes::{EnumVariant, Ty},
-        common::{HasSpan, Ident, Spanned},
+        common::{HasSpan, Ident, Spanned, Syntax},
         frontend::{
-            ast::{Syntax, Untyped},
+            ast::Untyped,
             cst::{CstExpr, Definition, ImplDef, Program, UntypedCst},
             csttypes::CstType,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
@@ -315,6 +315,7 @@ impl<S: Syntax> Environment<S> {
         let paths = self.search_for_edge(frag);
         for path in &paths {
             // dbg!(path);
+            // if path.first().ok_or_else(err)?.is(packctx) {
             if path.first().ok_or_else(err)?.is(packctx) {
                 return self.get(path);
             }
@@ -523,6 +524,27 @@ impl<S: Syntax> Environment<S> {
             },
         };
         (rec.f)(&rec, self, self.root, qualifier_path) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
+    }
+
+    pub fn get_parent(&self, idx: NodeIndex) -> Option<QualifierFragment> {
+        let parents = self
+            .graph
+            .edges_directed(idx, petgraph::Direction::Incoming);
+        let mut the_edge = None;
+        for parent in parents {
+            let source = parent.source();
+            let edge_idx = self.graph.find_edge(source, idx)?;
+            let edge = self.graph.edge_weight(edge_idx).copied()?;
+            if matches!(edge, QualifierFragment::Package(_)) {
+                the_edge = Some(edge);
+            } else if !matches!(edge, QualifierFragment::Root) {
+                the_edge = self.get_parent(source);
+            } else {
+                continue;
+            }
+        }
+
+        the_edge
     }
 
     // #[cfg(test)]

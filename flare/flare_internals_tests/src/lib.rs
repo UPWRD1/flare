@@ -32,7 +32,10 @@ mod helper {
 
 #[cfg(test)]
 mod tests {
-    use flare_internals::passes::frontend::{resolution::subst_generic_type, typing::Type};
+    use flare_internals::{
+        passes::frontend::resolution::subst_generic_type,
+        resource::rep::frontend::csttypes::CstType,
+    };
 
     use crate::helper::SpanGenerator;
 
@@ -42,17 +45,17 @@ mod tests {
     fn subst_ty() {
         let mut g = SpanGenerator::new();
         let t = g.build(|g| {
-            Type::Func(
-                g.build(|g| Type::Generic(g.with("T".to_string()))),
-                g.build(|g| Type::Generic(g.with("T".to_string()))),
+            CstType::Func(
+                g.build(|g| CstType::Generic(g.with("T".to_string()))),
+                g.build(|g| CstType::Generic(g.with("T".to_string()))),
             )
         });
 
-        let comp = g.build(|g| Type::Func(g.with(Type::String), g.with(Type::String)));
+        let comp = g.build(|g| CstType::Func(g.with(CstType::String), g.with(CstType::String)));
         let sub = subst_generic_type(
             t,
-            Type::Generic(g.with("T".to_string())).into(),
-            Type::String.into(),
+            CstType::Generic(g.with("T".to_string())).into(),
+            CstType::String.into(),
         );
         assert_eq!(sub, comp)
     }

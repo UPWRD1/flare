@@ -1,11 +1,11 @@
 use internment::Intern;
 
 use crate::resource::{
-    errors::{CompResult, DynamicErr},
+    errors::CompResult,
     rep::{
-        common::{Ident, Named, Spanned},
+        common::{Ident, Spanned, Syntax, Variable},
         frontend::{
-            ast::{BinOp, Direction, ItemId, Kind, Label, Syntax, Untyped, Variable},
+            ast::{BinOp, Direction, ItemId, Kind, Label, Untyped},
             csttypes::CstType,
             files::FileID,
         },
@@ -144,7 +144,7 @@ pub enum Definition<S: Syntax> {
     Extern(S::Name, &'static [S::Variable], S::Type),
     ImplDef(ImplDef<S>),
 }
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ItemDefinition<S: Syntax> {
     pub def: Definition<S>,
     pub is_pub: bool,

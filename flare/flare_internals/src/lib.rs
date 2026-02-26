@@ -92,7 +92,8 @@ use crate::{
             frontend::{
                 ast::{
                     ItemId,
-                    UntypedAst, // Untyped
+                    UntypedAst,
+                    // Untyped
                 },
                 cst::{Package, Program, UntypedCst},
                 files::{FileID, FileSource},
