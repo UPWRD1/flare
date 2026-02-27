@@ -234,9 +234,8 @@ impl<T: Target> Context<T, Parse> {
 
 impl<T: Target> Context<T, Build> {
     pub fn resolve(self) -> CompResult<Context<T, Resolve>> {
-        let mut resolver = Resolver::new(self.op.env);
+        let resolver = Resolver::new(self.op.env);
         let (env, order) = resolver.analyze()?;
-
         Ok(Context {
             op: Resolve { order, env },
             filectx: self.filectx,
@@ -261,6 +260,7 @@ impl<T: Target> Context<T, Typecheck> {
     pub fn lower(self) -> CompResult<Context<T, Lower>> {
         let lowerer = Lowerer::new();
         let ir = lowerer.lower(self.op.source, &self.op.items);
+        // Sanity check
         Ok(Context {
             op: Lower { ir },
             filectx: self.filectx,
@@ -284,7 +284,7 @@ impl<T: Target> Context<T, Simplify> {
     pub fn monomorph(self) -> CompResult<Context<T, Monomorph>> {
         let ir = monomorph::monomorph(self.op.ir);
         // Sanity check
-        // debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
+        debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
         // let ir = self.op.ir;
         Ok(Context {
             op: Monomorph { ir },

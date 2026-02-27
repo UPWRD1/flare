@@ -441,7 +441,7 @@ impl Solver<'_> {
                     UnificationError::RowsNotEqual(l, r) => {
                         let err = match provenance {
                             Provenance::ExpectedCombine(l_span, r_span) => {
-                                DynamicErr::new(format!("Row mismatch between {l} and {r}"))
+                                DynamicErr::new(format!("Row mismatch between {} and {}", l.0, r.0))
                                     .label(
                                         format!(
                                             "Expected {} to combine with {}",
@@ -454,7 +454,7 @@ impl Solver<'_> {
                             }
 
                             Provenance::ExpectedUnify(l_span, r_span) => {
-                                DynamicErr::new(format!("Row mismatch between {l} and {r}"))
+                                DynamicErr::new(format!("Row mismatch between {} and {}", l.0, r.0))
                                     .label(
                                         format!(
                                             "Expected {} to unify with {}",
@@ -467,15 +467,17 @@ impl Solver<'_> {
                                     .extra("from", l.1)
                                     .extra("and from", r.1)
                             }
-                            _ => DynamicErr::new(format!("Row mismatch between {l} and {r}"))
-                                .label(
-                                    format!(
-                                        "Expected {}, found {}",
-                                        r.render(scheme),
-                                        l.render(scheme)
-                                    ),
-                                    provenance.id(),
-                                ),
+                            _ => {
+                                DynamicErr::new(format!("Row mismatch between {} and {}", l.0, r.0))
+                                    .label(
+                                        format!(
+                                            "Expected {}, found {}",
+                                            r.render(scheme),
+                                            l.render(scheme)
+                                        ),
+                                        provenance.id(),
+                                    )
+                            }
                         };
                         (provenance.id(), err.into())
                     }

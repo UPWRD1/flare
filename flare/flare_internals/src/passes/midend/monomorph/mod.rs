@@ -373,7 +373,8 @@ impl Monomorpher {
                         let new_ty = replacement
                             .apps
                             .iter()
-                            .fold(og_ty.clone(), |ty, tyapp| ty.subst_app_final(tyapp.clone()));
+                            .fold(og_ty.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()));
+                        // dbg!(&new_ty);
 
                         IR::Item(new_ty, replacement.replacement)
                     } else {

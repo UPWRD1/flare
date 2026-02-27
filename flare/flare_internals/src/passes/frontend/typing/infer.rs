@@ -74,6 +74,17 @@ impl Solver<'_> {
             }
 
             Expr::Call(fun, arg) => {
+                // let (arg_out, arg_ty) = self.infer(env.clone(), arg);
+                // let ret_ty: Spanned<Intern<Type>> = fun.convert(Type::Unifier(self.fresh_ty_var()));
+                // let fun_ty = ast.convert(Type::Func(arg_ty, ret_ty));
+                // let mut fun_out = self.check(env, fun, fun_ty);
+                // fun_out.constraints.extend(arg_out.constraints);
+                // (
+                //     fun_out.with_typed_ast(|fun_ast| {
+                //         ast.convert(Expr::Call(fun_ast, arg_out.typed_ast))
+                //     }),
+                //     ret_ty,
+                // )
                 let fun_id = fun.id();
                 let (fun_out, supposed_fun_ty) = self.infer(env.clone(), fun);
                 let mut constraint = fun_out.constraints;

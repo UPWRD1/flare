@@ -518,6 +518,7 @@ impl Simplifier {
                         panic!("Empty branches");
                         // break self.rebuild(*scrutinee, in_scope, ctx);
                     }
+                    
                     let branches: Vec<Branch> = branches
                         .into_iter()
                         .map(|b| self.simplify_branch(b,  &in_scope))

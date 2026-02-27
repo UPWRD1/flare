@@ -108,43 +108,46 @@ impl Solver<'_> {
         }
     }
 
-    pub fn substitute_ty(&mut self, ty: Spanned<Intern<Type>>) -> SubstOut<Spanned<Intern<Type>>> {
-        match *ty.0 {
-            Type::Num => SubstOut::new(ty.convert(Type::Num)),
-            Type::String => SubstOut::new(ty.convert(Type::String)),
-            Type::Bool => SubstOut::new(ty.convert(Type::Bool)),
-            Type::Unit => SubstOut::new(ty.convert(Type::Unit)),
+    pub fn substitute_ty(
+        &mut self,
+        the_ty: Spanned<Intern<Type>>,
+    ) -> SubstOut<Spanned<Intern<Type>>> {
+        match *the_ty.0 {
+            Type::Num => SubstOut::new(the_ty.convert(Type::Num)),
+            Type::String => SubstOut::new(the_ty.convert(Type::String)),
+            Type::Bool => SubstOut::new(the_ty.convert(Type::Bool)),
+            Type::Unit => SubstOut::new(the_ty.convert(Type::Unit)),
 
-            Type::Particle(p) => SubstOut::new(ty.convert(Type::Particle(p))),
-            Type::Var(v) => SubstOut::new(ty.convert(Type::Var(v))),
+            Type::Particle(p) => SubstOut::new(the_ty.convert(Type::Particle(p))),
+            Type::Var(v) => SubstOut::new(the_ty.convert(Type::Var(v))),
             Type::Unifier(v) => {
                 let root = self.tables.unification_table.find(v);
                 match self.tables.unification_table.probe_value(root) {
                     Some(t) => self.substitute_ty(t),
                     None => {
                         let ty_var = self.tyvar_for_unifier(root);
-                        SubstOut::new(ty.convert(Type::Var(ty_var))).with_unbound_ty(ty_var)
+                        SubstOut::new(the_ty.convert(Type::Var(ty_var))).with_unbound_ty(ty_var)
                     }
                 }
             }
             Type::Func(arg, ret) => {
                 let arg_out = self.substitute_ty(arg);
                 let ret_out = self.substitute_ty(ret);
-                arg_out.merge(ret_out, |arg, ret| ty.convert(Type::Func(arg, ret)))
+                arg_out.merge(ret_out, |arg, ret| the_ty.convert(Type::Func(arg, ret)))
             }
             Type::Label(field, value) => self
                 .substitute_ty(value)
-                .map(|t| ty.convert(Type::Label(field, t))),
+                .map(|t| the_ty.convert(Type::Label(field, t))),
             Type::Prod(row) => self
                 .substitute_row(row)
                 .map(Type::Prod)
-                .map(|t| ty.convert(t)),
+                .map(|t| the_ty.convert(t)),
             Type::Sum(row) => self
                 .substitute_row(row)
                 .map(Type::Sum)
-                .map(|t| ty.convert(t)),
+                .map(|t| the_ty.convert(t)),
 
-            _ => todo!("{ty:?}"),
+            _ => todo!("{the_ty:?}"),
         }
     }
 
@@ -221,7 +224,7 @@ impl Solver<'_> {
                 .map(|nast| unsub_ast.convert(Expr::Label(label, nast))),
             Expr::Unlabel(ast, label) => self
                 .substitute_ast(ast)
-                .map(|nast| unsub_ast.convert(Expr::Label(label, nast))),
+                .map(|nast| unsub_ast.convert(Expr::Unlabel(nast, label))),
             // Products constructor and destructor
             Expr::Concat(left, right) => self
                 .substitute_ast(left)

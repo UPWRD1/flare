@@ -219,24 +219,3 @@ impl<V: Variable> Expr<V> {
         }
     }
 }
-
-impl<V: Variable> fmt::Display for Expr<V> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expr::Ident(n) => write!(f, "{}", n),
-            Expr::Number(ordered_float) => write!(f, "{ordered_float}"),
-            Expr::String(s) => write!(f, "\"{s}\""),
-            Expr::Bool(v) => write!(f, "{v}"),
-            Expr::Hole(_) => todo!(),
-
-            Expr::Lambda(v, b) => write!(f, "|{v}| {b}"),
-            Expr::Call(l, r) => write!(f, "{l}({r})"),
-
-            Expr::Add(l, r) => write!(f, "{l} + {r}"),
-            Expr::Sub(l, r) => write!(f, "{l} - {r}"),
-            Expr::Mul(l, r) => write!(f, "{l} * {r}"),
-            Expr::Div(l, r) => write!(f, "{l} / {r}"),
-            _ => write!(f, "{self:?}"),
-        }
-    }
-}

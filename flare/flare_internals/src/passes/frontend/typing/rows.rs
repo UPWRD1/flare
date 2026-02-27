@@ -112,7 +112,7 @@ impl Display for ClosedRow {
             self.fields
                 .iter()
                 .zip(self.values.iter())
-                .map(|(label, field)| format!("{}: {}", label.0.0, field))
+                .map(|(label, field)| format!("{}: {}", label.0.0, field.0))
                 .join(", ")
         )
     }

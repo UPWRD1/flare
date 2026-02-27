@@ -52,7 +52,6 @@ pub enum Type {
     Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
     Unifier(TyUniVar),
 
-    // Template(Spanned<Intern<String>>),
     Var(TypeVar),
     Particle(Spanned<Intern<String>>),
     #[default]
@@ -229,15 +228,15 @@ impl fmt::Display for Type {
             Self::Bool => write!(f, "bool"),
             Self::String => write!(f, "str"),
             Self::Unit => write!(f, "unit"),
-            Self::Particle(p) => write!(f, "@{p}"),
+            Self::Particle(p) => write!(f, "@{}", p.0),
 
             Self::Unifier(u) => write!(f, "%var{}", u.0),
             Self::Var(v) => write!(f, "?{}", v.0),
-            Self::Func(l, r) => write!(f, "{l} -> {r}"),
-            Self::Prod(r) => write!(f, "{{{r}}}"),
-            Self::Sum(r) => write!(f, "|{r}|"),
-            Self::Label(l, t) => write!(f, "{}: {t}", l.0.0),
-            Self::TypeFun(l, r) => write!(f, "[{l}]{r}"),
+            Self::Func(l, r) => write!(f, "{} -> {}", l.0, r.0),
+            Self::Prod(r) => write!(f, "{{{}}}", r.0),
+            Self::Sum(r) => write!(f, "|{}|", r.0),
+            Self::Label(l, t) => write!(f, "{}: {}", l.0.0, t.0),
+            Self::TypeFun(l, r) => write!(f, "[{}]{}", l.0, r.0),
             _ => write!(f, "{self:#?}"),
         }
     }

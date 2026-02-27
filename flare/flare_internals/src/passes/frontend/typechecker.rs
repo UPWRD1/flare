@@ -116,7 +116,7 @@ impl Typechecker {
                             }
                         })?
                         // .inspect(|types_output| {
-                        // println!("Checked {} : {}", f.name.0, types_output.scheme.ty.0)
+                        //     println!("Checked {} : {}", f.name.0, types_output.scheme.ty.0)
                         // })?
                     }
 

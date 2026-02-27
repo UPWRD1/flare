@@ -38,6 +38,12 @@ impl Solver<'_> {
             (Expr::Unit, Type::Unit) => GenOut::new(vec![], Spanned(Expr::Unit.into(), id)),
 
             // Lambdas
+            // (Expr::Lambda(arg, body), Type::Func(arg_ty, ret_ty)) => {
+            //     let env = env.update(arg.0.0, arg_ty);
+            //     self.check(env, body, ret_ty).with_typed_ast(|body| {
+            //         Spanned(Expr::Lambda(Typed(arg, arg_ty), body).into(), id)
+            //     })
+            // }
             (Expr::Lambda(arg, body), ty) => {
                 let mut constraints = vec![];
                 let (arg_ty, ret_ty) = if let Type::Func(arg, ret) = ty {
@@ -108,12 +114,9 @@ impl Solver<'_> {
                 ),
             ),
 
-            (Expr::Unlabel(term, lbl), _) => {
-                // dbg!(term);
-                // dbg!(the_ty);
-                self.check(env, term, Spanned(Type::Label(lbl, the_ty).into(), lbl.0.1))
-                    .with_typed_ast(|term| Spanned(Expr::Unlabel(term, lbl).into(), id))
-            }
+            (Expr::Unlabel(term, lbl), _) => self
+                .check(env, term, Spanned(Type::Label(lbl, the_ty).into(), lbl.0.1))
+                .with_typed_ast(|term| Spanned(Expr::Unlabel(term, lbl).into(), id)),
 
             (Expr::Concat(left, right), Type::Prod(goal_row)) => {
                 let left_row = Row::Unifier(self.fresh_row_var());

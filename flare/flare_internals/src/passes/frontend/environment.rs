@@ -158,7 +158,7 @@ impl Environment<UntypedCst> {
 
         for (importing_package_qual, imports) in new_package_to_imports {
             let importing_package = me.get(&[importing_package_qual.0][..]).map_err(|_| {
-                errors::not_defined(importing_package_qual, &importing_package_qual.1)
+                errors::not_defined(importing_package_qual.0, &importing_package_qual.1)
             })?;
 
             for import_path in imports {

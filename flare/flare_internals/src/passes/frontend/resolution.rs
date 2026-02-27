@@ -79,17 +79,17 @@ impl TypeFixer {
     fn helper(&mut self, t: Spanned<Intern<CstType>>) -> Spanned<Intern<Type>> {
         match *t.0 {
             CstType::Generic(n) => {
-                println!("Generic {}", n.0);
+                // println!("Generic {}", n.0);
                 let v = if let Some((v, _)) =
                     self.types_to_name.iter().find(|(_, name)| ***name == *n.0)
                 {
-                    println!("Loaded {v:?}");
+                    // println!("Loaded {v:?}");
                     *v
                 } else {
                     let v = self.new_type_var();
                     self.types_to_name.push((v, n.0));
                     self.unbound_types.insert(v);
-                    println!("Created {v:?}");
+                    // println!("Created {v:?}");
                     v
                 };
 
@@ -126,7 +126,7 @@ impl TypeFixer {
             )),
             CstType::Label(l, t) => t.convert(Type::Label(l, self.helper(t))),
             CstType::User(t, g) => {
-                unreachable!("Encountered user type {t}[{g:?}] after resolution")
+                unreachable!("Encountered user type {}[{g:?}] after resolution", t.0)
             }
 
             CstType::GenericApp(l, r) => {
@@ -159,6 +159,7 @@ impl TypeFixer {
 type DagIdx = usize;
 
 /// A single destructuring step produced by pattern compilation.
+#[derive(Debug, Clone, Copy)]
 struct Binding {
     binder: Untyped,
     /// The RHS: some destructuring of the scrutinee (e.g. Unlabel, or the scrutinee itself)
@@ -192,7 +193,7 @@ impl Resolver {
             Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
                 .iter(&self.dag)
                 .collect();
-        self.debug();
+        // self.debug();
         // self.dag.reverse();
         let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
             // self.debug();
@@ -240,6 +241,9 @@ impl Resolver {
                     self.main_dag_idx = Some(dag_idx);
                 }
                 let f = self.analyze_func(f, dag_idx);
+
+                // println!("{}", f.body);
+                // println!("-------------------");
 
                 Item::new(ItemKind::Function(f))
             }
@@ -437,12 +441,14 @@ impl Resolver {
 
         match *expr.0 {
             CstExpr::Ident(u) => {
-                if let Some(expr) = vars
+                if let Some(val_expr) = vars
                     .iter()
                     .rev()
                     .find(|n| u.ident().is_ok_and(|name| n.0 == name.0))
                 {
-                    expr.1
+                    val_expr.1
+                    // dbg!(u, val_expr);
+                    // expr.convert(Expr::Ident(u))
                 } else {
                     // dbg!(expr);
                     self.resolve_name_expr(expr)
@@ -641,14 +647,16 @@ impl Resolver {
         // Extend vars with user-visible bindings so analyze_expr can resolve them.
         // Each maps the binder name -> its destructured value expression.
         let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<Expr<Untyped>>>)> = vars.to_vec();
-        // for binding in &bindings {
-        //     if binding.user_visible {
-        //         branch_vars.push((binding.binder.0.0, binding.value));
-        //     }
-        // }
+        for binding in &bindings {
+            // dbg!(binding);
+            if binding.user_visible {
+                branch_vars.push((binding.binder.0.0, binding.value));
+            }
+        }
+        // dbg!(&bindings);
 
         let body = self.analyze_expr(b.body, &branch_vars);
-
+        // dbg!(body);
         // Fold bindings into nested lets around the body.
         // Reversing means the first binding (outermost destructor) ends up outermost.
         //   bindings = [b0, b1, b2], body = B
@@ -662,7 +670,9 @@ impl Resolver {
         });
 
         let span = b.pat.1;
-        Spanned(Intern::new(Expr::Lambda(param, wrapped)), span)
+        let expr = Expr::Lambda(param, wrapped);
+        // dbg!(expr);
+        Spanned(expr.into(), span)
     }
     /// Recursively compile a pattern into a flat sequence of let-bindings,
     /// threading the current scrutinee expression down through nested constructors.
@@ -674,6 +684,11 @@ impl Resolver {
         match *p.0 {
             // Wildcard: consume scrutinee, emit nothing.
             // The lambda parameter stays unbound in the body — type is τ → R.
+            // Pattern::Wildcard => vec![Binding {
+            //     binder: Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string())),
+            //     value: scrutinee,
+            //     user_visible: false,
+            // }],
             Pattern::Wildcard => vec![],
 
             // Var: bind the scrutinee directly under the variable name.
@@ -687,20 +702,22 @@ impl Resolver {
             // Unit: irrefutable, no value to extract.
             Pattern::Unit => vec![],
 
-            // Nullary constructor Ctor(A, Unit):
-            //   The scrutinee is a sum type with a label; unlabeling constrains
-            //   the type to `{A: ()}` without producing a user-visible binding.
-            //   λparam. let %inaccessible% = unlabel(param, A) in body
-            Pattern::Ctor(label, inner_pat) if *inner_pat.0 == Pattern::Unit => {
-                let inner_val: Spanned<Intern<Expr<Untyped>>> =
-                    scrutinee.convert(Expr::Unlabel(scrutinee, label));
-                let inacc = Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string()));
-                vec![Binding {
-                    binder: inacc,
-                    value: inner_val,
-                    user_visible: false,
-                }]
-            }
+            // // Nullary constructor Ctor(A, Unit):
+            // //   The scrutinee is a sum type with a label; unlabeling constrains
+            // //   the type to `{A: ()}` without producing a user-visible binding.
+            // //   λparam. let %inaccessible% = unlabel(param, A) in body
+            // Pattern::Ctor(label, inner_pat) if *inner_pat.0 == Pattern::Unit => {
+            //     // let inner_val = scrutinee.convert::<Expr<Untyped>>(Expr::Unit);
+            //     let inner_val = scrutinee.convert(Expr::Unlabel(scrutinee, label));
+            //     let inacc = Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string()));
+            //     // vec![]
+
+            //     vec![Binding {
+            //         binder: inacc,
+            //         value: inner_val,
+            //         user_visible: false,
+            //     }]
+            // }
 
             // Unary constructor Ctor(A, inner):
             //   Unlabel the scrutinee to expose the inner value, then recurse.

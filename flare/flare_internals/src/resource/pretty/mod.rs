@@ -16,6 +16,7 @@ pub trait DocExt<'a> {
     fn text(self, t: impl Display) -> Self;
     fn hard_line(self) -> Self;
     fn render(self, r: impl Render) -> Self;
+    fn comma(self) -> Self;
 }
 
 impl<'a> DocExt<'a> for Doc<'a> {
@@ -46,6 +47,10 @@ impl<'a> DocExt<'a> for Doc<'a> {
 
     fn render(self, r: impl Render) -> Self {
         self.append(r.render())
+    }
+
+    fn comma(self) -> Self {
+        self.text(",")
     }
 }
 

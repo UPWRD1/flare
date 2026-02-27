@@ -93,11 +93,11 @@ impl<T> From<(T, SimpleSpan<usize, u64>)> for Spanned<T> {
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Spanned<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+// impl<T: fmt::Display> fmt::Display for Spanned<T> {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}", self.0)
+//     }
+// }
 pub type NodeId = SimpleSpan<usize, u64>;
 /// Trait for entities that have Names. Implementing this trait is preferred
 /// over a custom name implementation. Currently the only major type that

@@ -81,27 +81,27 @@ impl Subst {
         // dbg!(res)
     }
 
-    pub fn subst_ty_final(self, haystack: IRType, needle: usize) -> IRType {
-        match haystack {
-            IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => {
-                haystack
-            }
-            IRType::Var(type_var) => match type_var.0.cmp(&needle) {
-                Ordering::Equal => self.subst_ty_var(),
-                Ordering::Less => IRType::Var(type_var),
-                Ordering::Greater => IRType::Var(TypeVar(type_var.0 - 1)),
-            },
-            IRType::Fun(arg, ret) => IRType::fun(
-                self.clone().subst_ty_final(*arg, needle),
-                self.subst_ty_final(*ret, needle),
-            ),
-            IRType::TyFun(kind, body) => self.shifted().subst_ty_final(*body, needle),
-            IRType::Prod(row) => IRType::prod(self.subst_row(row, needle)),
-            IRType::Sum(row) => IRType::sum(self.subst_row(row, needle)),
-            IRType::Volatile(v) => IRType::volatile(self.subst_ty_final(*v, needle)),
-        }
-        // dbg!(res)
-    }
+    // pub fn subst_ty_final(self, haystack: IRType, needle: usize) -> IRType {
+    //     match haystack {
+    //         IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => {
+    //             haystack
+    //         }
+    //         IRType::Var(type_var) => match type_var.0.cmp(&needle) {
+    //             Ordering::Equal => self.subst_ty_var(),
+    //             Ordering::Less => IRType::Var(type_var),
+    //             Ordering::Greater => IRType::Var(TypeVar(type_var.0 - 1)),
+    //         },
+    //         IRType::Fun(arg, ret) => IRType::fun(
+    //             self.clone().subst_ty_final(*arg, needle),
+    //             self.subst_ty_final(*ret, needle),
+    //         ),
+    //         IRType::TyFun(kind, body) => self.shifted().subst_ty_final(*body, needle),
+    //         IRType::Prod(row) => IRType::prod(self.subst_row(row, needle)),
+    //         IRType::Sum(row) => IRType::sum(self.subst_row(row, needle)),
+    //         IRType::Volatile(v) => IRType::volatile(self.subst_ty_final(*v, needle)),
+    //     }
+    // dbg!(res)
+    // }
 }
 
 impl Row {
@@ -138,21 +138,21 @@ impl IRType {
         }
     }
 
-    pub fn subst_app_final(self, payload: TyApp) -> Self {
-        match payload {
-            TyApp::Ty(ty) => self.subst_ty_final(ty),
+    // pub fn subst_app_final(self, payload: TyApp) -> Self {
+    //     match payload {
+    //         TyApp::Ty(ty) => self.subst_ty_final(ty),
 
-            TyApp::Row(row) => self.subst_row(row),
-        }
-    }
+    //         TyApp::Row(row) => self.subst_row(row),
+    //     }
+    // }
 
     pub fn subst_ty(self, ty: Self) -> Self {
         Subst::TyPayload(ty).subst_ty(self, 0)
     }
 
-    pub fn subst_ty_final(self, ty: Self) -> Self {
-        Subst::TyPayload(ty).subst_ty_final(self, 0)
-    }
+    // pub fn subst_ty_final(self, ty: Self) -> Self {
+    //     Subst::TyPayload(ty).subst_ty_final(self, 0)
+    // }
 
     pub fn subst_row(self, row: Row) -> Self {
         Subst::RowPayload(row).subst_ty(self, 0)
