@@ -674,6 +674,7 @@ impl Resolver {
         // dbg!(expr);
         Spanned(expr.into(), span)
     }
+
     /// Recursively compile a pattern into a flat sequence of let-bindings,
     /// threading the current scrutinee expression down through nested constructors.
     fn compile_pattern(
@@ -734,77 +735,6 @@ impl Resolver {
             _ => todo!(),
         }
     }
-    // fn resolve_pattern(
-    //     &mut self,
-    //     p: Spanned<Intern<Pattern<Untyped>>>,
-    //     vars: &mut Vec<(Spanned<Intern<CstExpr<Untyped>>>, Untyped)>,
-    // ) {
-    //     dbg!(&p);
-
-    //     let inaccessible = Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string()));
-    //     match *p.0 {
-    //         Pattern::Wildcard => vars.push((p.convert(CstExpr::Ident(inaccessible)), inaccessible)),
-    //         Pattern::Var(v) => vars.push((p.convert(CstExpr::Ident(v)), v)),
-    //         Pattern::Number(_) => todo!(),
-    //         Pattern::String(_) => todo!(),
-    //         Pattern::Particle(p) => todo!(),
-    //         Pattern::Bool(_) => todo!(),
-    //         Pattern::Unit => {} // vars.push((p.convert(CstExpr::Unit), inaccessible)),
-    //         Pattern::Ctor(label, ex) => {
-    //             // if *ex.0 == Pattern::Unit {
-    //             //     // Make sure we use the correct types
-    //             //     // (
-    //             //     //     p.convert(CstExpr::Unit),
-    //             //     //     [vars, [inaccessible].to_vec()].concat(),
-    //             //     // )
-
-    //             //     vars.push((
-    //             //         p.convert(CstExpr::Unlabel(
-    //             //             p.convert(CstExpr::Ident(inaccessible)),
-    //             //             label,
-    //             //         )),
-    //             //         inaccessible,
-    //             //     ))
-    //             // } else {
-    //             self.resolve_pattern(ex, vars);
-    //             if let Some((ex, v)) = vars.last() {
-    //                 vars.push((p.convert(CstExpr::Unlabel(*ex, label)), *v))
-    //             }
-    //         }
-    //         _ => todo!(),
-    //     }
-    // }
-
-    // fn resolve_branch(
-    //     &mut self,
-    //     b: MatchArm<Untyped>,
-    //     vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-    // ) -> Spanned<Intern<Expr<Untyped>>> {
-    //     let mut new_vars = vars.to_vec();
-    //     let mut bindings = vec![];
-    //     // dbg!(b.body);
-    //     self.resolve_pattern(b.pat, &mut bindings);
-    //     // let new_bindings: Vec<_> = bindings
-    //     //     .into_iter()
-    //     //     .map(|b| (b.0.0, b.0.convert(Expr::Ident(b))))
-    //     //     .collect();
-
-    //     let v = bindings
-    //         .into_iter()
-    //         .enumerate()
-    //         .fold(b.body, |prev, (idx, (pat_expr, v))| {
-    //             dbg!(prev);
-    //             if *v.0.0 == INACCESSIBLE_IDENTIFIER {
-    //                 prev.modify(CstExpr::Lambda(v, prev))
-    //             } else {
-    //                 // let name = Untyped(v.0.map(|s| format!("{s}{idx}").into()));
-    //                 let unwrapped = prev.modify(CstExpr::Let(v, pat_expr, prev));
-    //                 prev.modify(CstExpr::Lambda(v, unwrapped))
-    //             }
-    //         });
-    //     dbg!(v);
-    //     self.analyze_expr(v, vars)
-    // }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     // #[deprecated]
