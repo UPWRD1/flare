@@ -1,13 +1,11 @@
 use crate::{
-    FileCtx,
-    
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
             common::Spanned,
             frontend::{ast::{
-                self, BinOp,  Direction, Expr, Label,   Untyped, UntypedAst // Untyped,
-            }, cst::{CstExpr, Definition, ItemDefinition, MatchArm, Package, Pattern, UntypedCst}, csttypes::{CstClosedRow, CstType}, files::FileID}
+                self, BinOp,  Direction, Label,   Untyped,  
+            }, cst::{CstExpr, Definition, ItemDefinition, MatchArm, Package, Pattern, UntypedCst}, csttypes::{CstClosedRow, CstType}, files::{FileID, FileSource}}
         },
     },
 };
@@ -1022,17 +1020,14 @@ fn make_input(
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<UntypedCst>>> {
-    let input: &'static str = ctx
-        .get(&fid)
-        .unwrap_or_else(|| unreachable!("FileID {} does not exist in context: {:?}", fid, ctx))
-        .source.clone().leak();
-    let tokens: Vec<Spanned<Token>> = match lexer(fid).parse(input).into_result() {
+pub fn parse(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
+    let input: &'static str = file.source.clone().leak();
+    let tokens: Vec<Spanned<Token>> = match lexer(file.id).parse(input).into_result() {
         Ok(tokens) => tokens,
         Err(errs) => {
             return Err(ErrorCollection::new(
                 errs.into_iter()
-                    .map(|x| parse_failure(&x, fid).into())
+                    .map(|x| parse_failure(&x, file.id).into())
                     .collect(),
             )
             .into());
@@ -1043,7 +1038,7 @@ pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<UntypedCst>>>
 
     let packg: Result<Vec<Package<UntypedCst>>, CompilerErr> = match parser(&make_input)
         .parse(make_input(
-            SimpleSpan::new(fid, 0..input.len()),
+            SimpleSpan::new(file.id, 0..input.len()),
             tokens.leak(),
         ))
         .into_result()
@@ -1052,7 +1047,7 @@ pub fn parse(ctx: &FileCtx, fid: FileID) -> CompResult<Vec<Package<UntypedCst>>>
         Err(e) => {
             let errs = ErrorCollection::new(
                 e.iter()
-                    .map(|e| parse_failure(e, fid).into())
+                    .map(|e| parse_failure(e, file.id).into())
                     .collect::<Vec<CompilerErr>>(),
             );
             Err(errs.into())

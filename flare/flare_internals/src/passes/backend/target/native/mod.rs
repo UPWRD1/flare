@@ -234,7 +234,7 @@ impl<'builder_ctx, 'module> IRConverter<'builder_ctx, 'module> {
         } else {
             // dbg!(&obj);
             let obj_vv = self.convert_lir(obj.clone());
-            dbg!(&obj_vv);
+
             if let VirtualValue::Scalar(..) = obj_vv {
                 // struct was destructured in arguments
                 obj_vv

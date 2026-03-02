@@ -11,8 +11,6 @@ use petgraph::{
 use rustc_hash::FxHashSet;
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
-
-const INACCESSIBLE_IDENTIFIER: &str = "%INACCESSIBLE%";
 use crate::{
     passes::frontend::{
         environment::Environment,
@@ -79,17 +77,17 @@ impl TypeFixer {
     fn helper(&mut self, t: Spanned<Intern<CstType>>) -> Spanned<Intern<Type>> {
         match *t.0 {
             CstType::Generic(n) => {
-                // println!("Generic {}", n.0);
+                println!("Generic {}", n.0);
                 let v = if let Some((v, _)) =
                     self.types_to_name.iter().find(|(_, name)| ***name == *n.0)
                 {
-                    // println!("Loaded {v:?}");
+                    println!("Loaded {v:?}");
                     *v
                 } else {
                     let v = self.new_type_var();
                     self.types_to_name.push((v, n.0));
                     self.unbound_types.insert(v);
-                    // println!("Created {v:?}");
+                    println!("Created {v:?}");
                     v
                 };
 
@@ -141,7 +139,7 @@ impl TypeFixer {
             CstType::GenericFun(l, r) => {
                 // panic!("Should have been resolved");
                 // let l = self.helper(l);
-                panic!("GenericFun should have been eliminated before TypeFixer")
+                self.helper(r)
 
                 // t.convert(Type::TypeFun(l, r))
             }
@@ -159,7 +157,6 @@ impl TypeFixer {
 type DagIdx = usize;
 
 /// A single destructuring step produced by pattern compilation.
-#[derive(Debug, Clone, Copy)]
 struct Binding {
     binder: Untyped,
     /// The RHS: some destructuring of the scrutinee (e.g. Unlabel, or the scrutinee itself)
@@ -193,7 +190,7 @@ impl Resolver {
             Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
                 .iter(&self.dag)
                 .collect();
-        // self.debug();
+        self.debug();
         // self.dag.reverse();
         let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
             // self.debug();
@@ -236,30 +233,17 @@ impl Resolver {
                 Item::new(ItemKind::Package(PackageEntry { name, id }))
             }
             ItemKind::Function(f) => {
-                // dbg!(f.sig);
+                dbg!(f.sig);
                 if *f.name.0 == "main" {
                     self.main_dag_idx = Some(dag_idx);
                 }
                 let f = self.analyze_func(f, dag_idx);
 
-                // println!("{}", f.body);
-                // println!("-------------------");
-
                 Item::new(ItemKind::Function(f))
             }
             ItemKind::Type(n, g, t) => {
-                let scheme = if matches!(*t.0, CstType::GenericFun(_, _)) {
-                    TypeScheme {
-                        unbound_types: BTreeSet::new(),
-                        unbound_rows: BTreeSet::new(),
-                        evidence: vec![],
-                        ty: t.convert(Type::Hole),
-                        types_to_name: vec![],
-                        kind: Kind::Ty,
-                    }
-                } else {
-                    self.convert_type(t, Kind::Ty)
-                };
+                let scheme = self.convert_type(t, Kind::Ty);
+
                 Item::new(ItemKind::Type(n, vec![].leak(), scheme))
             }
             ItemKind::Extern { name, args, sig } => {
@@ -354,7 +338,7 @@ impl Resolver {
                             .map(|ty| self.analyze_type(*ty))
                             .collect();
 
-                        // let new_t = self.analyze_type(new_t);
+                        let new_t = self.analyze_type(new_t);
 
                         let mut final_t = analyzed_instances
                             .into_iter()
@@ -413,7 +397,6 @@ impl Resolver {
                     panic!("Not a generic function")
                     // t.modify(Type::TypeApp(l, r))
                 }
-                // t.modify(Type::TypeApp(l, r))
             }
             CstType::GenericFun(l, r) => {
                 let l = self.analyze_type(l);
@@ -441,14 +424,12 @@ impl Resolver {
 
         match *expr.0 {
             CstExpr::Ident(u) => {
-                if let Some(val_expr) = vars
+                if let Some(expr) = vars
                     .iter()
                     .rev()
                     .find(|n| u.ident().is_ok_and(|name| n.0 == name.0))
                 {
-                    val_expr.1
-                    // dbg!(u, val_expr);
-                    // expr.convert(Expr::Ident(u))
+                    expr.1
                 } else {
                     // dbg!(expr);
                     self.resolve_name_expr(expr)
@@ -735,7 +716,6 @@ impl Resolver {
             _ => todo!(),
         }
     }
-
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     // #[deprecated]
     /// Pretty-print GraphViz for the internal state of the dependancy graph.

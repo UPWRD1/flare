@@ -130,20 +130,16 @@ pub struct Simplify {
     pub ir: Vec<IR>,
 }
 
-pub struct Reduce {
-    pub ir: Vec<IR>,
-}
-
 pub struct Monomorph {
     pub ir: Vec<IR>,
 }
 
-pub struct Convert {
-    converted: Vec<ClosureConvertOut>,
+pub struct Reduce {
+    pub ir: Vec<IR>,
 }
 
-pub struct Generate<T: Target> {
-    output: T::Output,
+pub struct Convert {
+    pub cc: Vec<ClosureConvertOut>,
 }
 
 pub trait Operation {}
@@ -168,174 +164,103 @@ pub struct Context<T, O> {
     pub op: O,
 }
 
-impl<T: Target> Context<T, Init> {
-    pub fn new(src_paths: Vec<PathBuf>, target: T) -> Self {
-        let filectx = src_paths
-            .into_iter()
-            .map(|filepath| {
-                let id = convert_path_to_id(&filepath);
+pub fn make_filectx(src_paths: Vec<PathBuf>) -> FileCtx {
+    src_paths
+        .into_iter()
+        .map(|filepath| {
+            let id = convert_path_to_id(&filepath);
 
-                let src_text = std::fs::read_to_string(&filepath).unwrap();
+            let src_text = std::fs::read_to_string(&filepath).unwrap();
 
-                let source = FileSource {
-                    filepath,
-                    source: src_text,
-                };
-                (id, source)
-            })
-            .collect();
-        Self {
-            filectx,
-            target,
-            op: Init,
-        }
-    }
-
-    fn parse_file(&self, id: FileID) -> CompResult<Vec<Package<UntypedCst>>> {
-        parser::parse(&self.filectx, id)
-    }
-
-    pub fn parse(self) -> CompResult<Context<T, Parse>> {
-        let mut processed: Vec<(Vec<Package<UntypedCst>>, FileID)> = vec![];
-        for id in self.filectx.keys() {
-            let pack = self.parse_file(*id)?;
-            processed.push((pack, *id))
-        }
-
-        let v: Vec<_> = processed
-            .into_iter()
-            .flat_map(|(packages, id)| {
-                packages
-                    .into_iter()
-                    .map(|p| (p, id))
-                    .collect::<Vec<(Package<_>, FileID)>>()
-            })
-            .collect::<Vec<_>>();
-
-        let program = Program { packages: v };
-        Ok(Context {
-            op: Parse { program },
-            filectx: self.filectx,
-            target: self.target,
+            let source = FileSource {
+                filepath,
+                source: src_text,
+                id,
+            };
+            (id, source)
         })
-    }
+        .collect()
 }
 
-impl<T: Target> Context<T, Parse> {
-    pub fn build(self) -> CompResult<Context<T, Build>> {
-        let env = Environment::<UntypedCst>::build(&self.op.program)?;
-        Ok(Context {
-            op: Build { env },
-            filectx: self.filectx,
-            target: self.target,
+fn parse_file(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
+    parser::parse(file)
+}
+
+pub fn parse(filectx: FileCtx) -> CompResult<Parse> {
+    let mut processed: Vec<(Vec<Package<UntypedCst>>, FileID)> = vec![];
+    for (id, file) in filectx {
+        let pack = parse_file(&file)?;
+        processed.push((pack, id))
+    }
+
+    let v: Vec<_> = processed
+        .into_iter()
+        .flat_map(|(packages, id)| {
+            packages
+                .into_iter()
+                .map(|p| (p, id))
+                .collect::<Vec<(Package<_>, FileID)>>()
         })
-    }
+        .collect::<Vec<_>>();
+
+    let program = Program { packages: v };
+    Ok(Parse { program })
 }
 
-impl<T: Target> Context<T, Build> {
-    pub fn resolve(self) -> CompResult<Context<T, Resolve>> {
-        let resolver = Resolver::new(self.op.env);
-        let (env, order) = resolver.analyze()?;
-        Ok(Context {
-            op: Resolve { order, env },
-            filectx: self.filectx,
-            target: self.target,
-        })
-    }
+pub fn build(parse: &Parse) -> CompResult<Build> {
+    let env = Environment::<UntypedCst>::build(&parse.program)?;
+    Ok(Build { env })
 }
 
-impl<T: Target> Context<T, Resolve> {
-    pub fn typecheck(self) -> CompResult<Context<T, Typecheck>> {
-        let tc = Typechecker::new(self.op.order.leak(), self.op.env);
-        let (items, source) = tc.check()?;
-        Ok(Context {
-            op: Typecheck { items, source },
-            filectx: self.filectx,
-            target: self.target,
-        })
-    }
+pub fn resolve(build: Build) -> CompResult<Resolve> {
+    let resolver = Resolver::new(build.env);
+    let (env, order) = resolver.analyze()?;
+    Ok(Resolve { order, env })
 }
 
-impl<T: Target> Context<T, Typecheck> {
-    pub fn lower(self) -> CompResult<Context<T, Lower>> {
-        let lowerer = Lowerer::new();
-        let ir = lowerer.lower(self.op.source, &self.op.items);
-        // Sanity check
-        Ok(Context {
-            op: Lower { ir },
-            filectx: self.filectx,
-            target: self.target,
-        })
-    }
+pub fn typecheck(resolve: Resolve) -> CompResult<Typecheck> {
+    let tc = Typechecker::new(resolve.order.leak(), resolve.env);
+    let (items, source) = tc.check()?;
+    Ok(Typecheck { items, source })
 }
 
-impl<T: Target> Context<T, Lower> {
-    pub fn simplify(self) -> CompResult<Context<T, Simplify>> {
-        let ir = simplify::simplify(self.op.ir);
-        Ok(Context {
-            op: Simplify { ir },
-            filectx: self.filectx,
-            target: self.target,
-        })
-    }
+pub fn lower(tc: Typecheck) -> CompResult<Lower> {
+    let lowerer = Lowerer::new();
+    let ir = lowerer.lower(tc.source, &tc.items);
+    // Sanity check
+    Ok(Lower { ir })
 }
 
-impl<T: Target> Context<T, Simplify> {
-    pub fn monomorph(self) -> CompResult<Context<T, Monomorph>> {
-        let ir = monomorph::monomorph(self.op.ir);
-        // Sanity check
-        debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
-        // let ir = self.op.ir;
-        Ok(Context {
-            op: Monomorph { ir },
-            filectx: self.filectx,
-            target: self.target,
-        })
-    }
+pub fn simplify(lower: Lower) -> CompResult<Simplify> {
+    let ir = simplify::simplify(lower.ir);
+    Ok(Simplify { ir })
 }
 
-impl<T: Target> Context<T, Monomorph> {
-    pub fn reduce(self) -> CompResult<Context<T, Reduce>> {
-        let ir = reduce::reduce(self.op.ir);
-        // let ir = self.op.ir;
-        Ok(Context {
-            op: Reduce { ir },
-            filectx: self.filectx,
-            target: self.target,
-        })
-    }
-}
-impl<T: Target> Context<T, Reduce> {
-    pub fn convert(self) -> CompResult<Context<T, Convert>> {
-        let converted = closure_convert(self.op.ir);
-        Ok(Context {
-            op: Convert { converted },
-            filectx: self.filectx,
-            target: self.target,
-        })
-    }
+pub fn monomorph(simplify: Simplify) -> CompResult<Monomorph> {
+    let ir = monomorph::monomorph(simplify.ir);
+    // Sanity check
+    debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
+    // let ir = self.op.ir;
+    Ok(Monomorph { ir })
 }
 
-impl<T: Target> Context<T, Convert> {
-    pub fn generate(self) -> CompResult<Context<T, Generate<T>>> {
-        let g = Generator::new(self.target.clone(), self.op.converted);
-
-        let output = g.generate();
-        Ok(Context {
-            op: Generate { output },
-            filectx: self.filectx,
-            target: self.target.clone(),
-        })
-    }
+pub fn reduce(ir: Monomorph) -> CompResult<Reduce> {
+    let ir = reduce::reduce(ir.ir);
+    Ok(Reduce { ir })
 }
 
-impl<T: Target> Context<T, Generate<T>> {
-    pub fn finish(self) -> CompResult<Vec<u8>> {
-        Ok((self.op.output).into())
-    }
+pub fn convert(ir: Reduce) -> CompResult<Convert> {
+    let cc = closure_convert(ir.ir);
+    Ok(Convert { cc })
 }
 
-pub fn convert_path_to_id(path: &Path) -> FileID {
+pub fn generate<T: Target>(converted: Convert, target: T) -> CompResult<T::Output> {
+    let g = Generator::new(target, converted.cc);
+    let output = g.generate();
+    Ok(output)
+}
+
+fn convert_path_to_id(path: &Path) -> FileID {
     let mut hasher = FxHasher::default();
     path.hash(&mut hasher);
     //path.canonicalize().unwrap().hash(&mut hasher);
