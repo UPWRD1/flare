@@ -21,10 +21,7 @@ use itertools::Itertools;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    passes::backend::{
-        lir::ClosureConvertOut,
-        target::{Target as FlareTarget, native::FunctionPurpose},
-    },
+    passes::backend::{lir::ClosureConvertOut, target::Target as FlareTarget},
     resource::{
         errors::CompResult,
         rep::{
@@ -1051,6 +1048,12 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         }
         fn_val.as_any_value_enum()
     }
+}
+
+enum FunctionPurpose {
+    Closure,
+    Main,
+    Normal,
 }
 
 #[derive(Clone, Copy)]

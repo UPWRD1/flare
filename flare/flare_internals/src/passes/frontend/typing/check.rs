@@ -259,23 +259,6 @@ impl Solver<'_> {
                     the_ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
                 })
             }
-            // (Expr::Let(name, def, body), _) => {
-            //     let def_var = self.fresh_ty_var();
-            //     let def_var: Spanned<Intern<Type>> = def.convert(Type::Unifier(def_var));
-            //     let (mut def_out, def_ty) = self.infer(env.clone(), def);
-            //     def_out.constraints.push(Constraint::TypeEqual(
-            //         Provenance::ExpectedUnify(def.1, name.0.1),
-            //         def_ty,
-            //         def_var,
-            //     ));
-            //     // dbg!(the_ty);
-            //     let env = env.update(name.0.0, def_var);
-            //     let body_out = self.check(env, body, the_ty);
-            //     def_out.constraints.extend(body_out.constraints);
-            //     def_out.with_typed_ast(|def| {
-            //         the_ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
-            //     })
-            // }
 
             // Wildcard
             (_, _) => {

@@ -157,6 +157,7 @@ impl TypeFixer {
 type DagIdx = usize;
 
 /// A single destructuring step produced by pattern compilation.
+#[derive(Debug)]
 struct Binding {
     binder: Untyped,
     /// The RHS: some destructuring of the scrutinee (e.g. Unlabel, or the scrutinee itself)
@@ -621,10 +622,10 @@ impl Resolver {
         // The branch becomes: λparam. <lets> in body
         // `param` is the lambda binder that receives the matchee at the call site.
         let param = Untyped(b.pat.convert("%match_arg%".to_string()));
-        let scrutinee: Spanned<Intern<Expr<Untyped>>> = b.pat.convert(Expr::Ident(param));
+        let branch_arg: Spanned<Intern<Expr<Untyped>>> = b.pat.convert(Expr::Ident(param));
 
-        let bindings = self.compile_pattern(b.pat, scrutinee);
-
+        let bindings = self.compile_pattern(b.pat, branch_arg);
+        dbg!(&bindings);
         // Extend vars with user-visible bindings so analyze_expr can resolve them.
         // Each maps the binder name -> its destructured value expression.
         let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<Expr<Untyped>>>)> = vars.to_vec();
@@ -661,7 +662,7 @@ impl Resolver {
     fn compile_pattern(
         &mut self,
         p: Spanned<Intern<Pattern<Untyped>>>,
-        scrutinee: Spanned<Intern<Expr<Untyped>>>,
+        branch_arg: Spanned<Intern<Expr<Untyped>>>,
     ) -> Vec<Binding> {
         match *p.0 {
             // Wildcard: consume scrutinee, emit nothing.
@@ -677,7 +678,7 @@ impl Resolver {
             //   λparam. let v = param in body
             Pattern::Var(v) => vec![Binding {
                 binder: v,
-                value: scrutinee,
+                value: branch_arg,
                 user_visible: true,
             }],
 
@@ -706,7 +707,7 @@ impl Resolver {
             //   λparam. let <inner bindings of unlabel(param, A)> in body
             Pattern::Ctor(label, inner_pat) => {
                 let inner_val: Spanned<Intern<Expr<Untyped>>> =
-                    scrutinee.convert(Expr::Unlabel(scrutinee, label));
+                    branch_arg.convert(Expr::Unlabel(branch_arg, label));
                 self.compile_pattern(inner_pat, inner_val)
             }
 

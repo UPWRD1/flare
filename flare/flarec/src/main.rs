@@ -17,9 +17,7 @@ use std::{fs::File, io::Write, panic, path::PathBuf, time::Instant};
 use clap::{Parser, ValueEnum, crate_description, crate_version};
 use flare_internals::{
     build, convert, generate, lower, make_filectx, monomorph, parse,
-    passes::backend::target::{
-        Target, c::C, irtarget::IRTarget, lirtarget::LIRTarget, llvm::LLVM, native::Native,
-    },
+    passes::backend::target::{Target, irtarget::IRTarget, lirtarget::LIRTarget, llvm::LLVM},
     reduce, resolve,
     resource::errors::CompResult,
     simplify, typecheck,
@@ -90,8 +88,6 @@ struct Cli {
 enum EmitOptions {
     LIR,
     IR,
-    C,
-    O,
     #[default]
     LLVM,
 }
@@ -142,10 +138,11 @@ fn main() -> CompResult<()> {
             let checked = typecheck(resolved)?;
             let lowered = lower(checked)?;
             let simplified = simplify(lowered)?;
-            let monomorphed = monomorph(simplified)?;
-            let reduced = reduce(monomorphed)?;
+            // let monomorphed = monomorph(simplified)?;
+            // let reduced = reduce(monomorphed)?;
             {
-                let ir = reduced.ir;
+                // let ir = lowered.ir;
+                let ir = simplified.ir;
 
                 let output = ir
                     .into_iter()
@@ -163,8 +160,6 @@ fn main() -> CompResult<()> {
             }
         }
         EmitOptions::LIR => make_target!(LIRTarget, cli),
-        EmitOptions::C => make_target!(C, cli),
-        EmitOptions::O => make_target!(Native, cli),
         EmitOptions::LLVM => make_target!(LLVM, cli),
     }
 }

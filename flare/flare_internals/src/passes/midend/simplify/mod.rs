@@ -18,7 +18,7 @@ enum Occurrence {
     /// Appears once inside a function
     OnceInFun,
     /// Appears once inside a branch
-    OnceInBranch,
+    // OnceInBranch,
     /// Appears many times
     Many,
 }
@@ -70,23 +70,23 @@ impl Occurrences {
     }
 
     
-fn in_branch(self, free: &FxHashSet<VarId>) -> Self {
-        Self {
-            vars: self
-                .vars
-                .into_iter()
-                .map(|(id, occ)| {
-                    (
-                        id,
-                        match occ {
-                            Occurrence::Once if free.contains(&id) =>  Occurrence::OnceInBranch,
-                            occ => occ,
-                        },
-                    )
-                })
-                .collect(),
-        }
-    }
+// fn in_branch(self, free: &FxHashSet<VarId>) -> Self {
+//         Self {
+//             vars: self
+//                 .vars
+//                 .into_iter()
+//                 .map(|(id, occ)| {
+//                     (
+//                         id,
+//                         match occ {
+//                             Occurrence::Once if free.contains(&id) =>  Occurrence::OnceInBranch,
+//                             occ => occ,
+//                         },
+//                     )
+//                 })
+//                 .collect(),
+//         }
+//     }
 
     #[must_use]
     fn merge(mut self, other: Self) -> Self {
@@ -327,10 +327,10 @@ impl OccuranceAnalyzer {
                         self.occurrence_analysis(&branch.body);
                     branch_free.remove(&branch.param.id);
 
-                    branch_occs
-                        .vars
-                        .entry(branch.param.id).and_modify(|v| *v = Occurrence::OnceInBranch)
-                        .or_insert(Occurrence::Dead);
+                    // branch_occs
+                    //     .vars
+                    //     .entry(branch.param.id).and_modify(|v| *v = Occurrence::OnceInBranch)
+                    //     .or_insert(Occurrence::Dead);
 
                     branch_occs = branch_occs.in_fun(&branch_free);
                     scrutinee_free.extend(branch_free);
@@ -400,15 +400,18 @@ struct Simplifier {
 }
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
-    let ref_ir = the_ir.clone();
+    // let ref_ir = the_ir.clone();
 let mut occ_a = OccuranceAnalyzer::new();
 let mut simplifier = Simplifier::new();
     the_ir
-                .into_iter()
-        .map(|ir| {
+                .into_iter().enumerate()
+        .map(|(i, ir)| {
+            dbg!(i);
             let mut ir = ir;
-            for _ in 0..4 {
+            for n in 0..4 {
+            println!("Pass {n}");
             let (_, occs) =
+            
                 occ_a.occurrence_analysis(&ir);
             // dbg!(&occs);
                 simplifier.with_occs(occs);
@@ -525,6 +528,7 @@ impl Simplifier {
                         .collect();
 
                     ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
+
                     *scrutinee
                 }
                 IR::Tag(ty, idx, body) => {
@@ -542,13 +546,10 @@ impl Simplifier {
     }
 
     fn simplify_branch(&mut self, b: Branch, in_scope: &InScope) -> Branch {
-        // let in_scope = in_scope.update(b.param.id, Definition::BoundTo(scrutinee, Occurrence::OnceInBranch));
-        Branch {
+       Branch {
             body: self.simplify(
                 b.body,
-                
                 in_scope.update(b.param.id, Definition::Unknown),
-                // in_scope.update(b.param.id, Definition::BoundTo(, Occurrence::OnceInBranch)),
                 Vec::new(),
             ),
             ..b
@@ -556,10 +557,7 @@ impl Simplifier {
     }
 
     fn simplify_local(&mut self, var: Var, defn: IR, body: IR, ctx: &mut SimplifierContext) -> IR {
-        // if let IR::Var(ref v) = defn && *v == var {
-        //     return body
-        // }
-        match self.occs.lookup_var(&var) {
+      match self.occs.lookup_var(&var) {
             Occurrence::Dead => {
                 self.locals_inlined += 1;
                 body
@@ -636,7 +634,7 @@ impl Simplifier {
                 "Encountered dead or single-use variable while determining inline viablility. This should have been handled prior.",
             ),
             Occurrence::OnceInFun => ir.is_value() && self.some_benefit(ir, in_scope, ctx),
-            Occurrence::OnceInBranch |
+            // Occurrence::OnceInBranch |
             Occurrence::Many => {
                 // dbg!(&ir);
                 // dbg!(ir.size());
