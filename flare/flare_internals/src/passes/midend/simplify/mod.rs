@@ -238,15 +238,14 @@ IR::Item(t, id) => {
 }
 struct OccuranceAnalyzer {
     // items: &'i [IR],
-    in_branch: bool,
 }
 impl OccuranceAnalyzer {
     pub fn new() -> Self {
-        Self { in_branch: false }
+        Self {} 
     }
 
     fn occurrence_analysis(
-        &mut self,
+        &self,
         ir: &IR,
         // seen: &im::HashSet<ItemId, FxBuildHasher>,
     ) -> (FxHashSet<VarId>, Occurrences) {
@@ -321,7 +320,7 @@ impl OccuranceAnalyzer {
             IR::Case(_, scrutinee, branches) => {
                 let (mut scrutinee_free, mut scrutinee_occs) =
                     self.occurrence_analysis(scrutinee);
-                self.in_branch = true;
+                
                 for branch in branches {
                     let (mut branch_free, mut branch_occs) =
                         self.occurrence_analysis(&branch.body);
@@ -336,7 +335,6 @@ impl OccuranceAnalyzer {
                     scrutinee_free.extend(branch_free);
                     scrutinee_occs = scrutinee_occs.merge(branch_occs);
                 }
-                self.in_branch = false;
                 (scrutinee_free, scrutinee_occs)
             }
 
@@ -401,20 +399,18 @@ struct Simplifier {
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
     // let ref_ir = the_ir.clone();
-let mut occ_a = OccuranceAnalyzer::new();
-let mut simplifier = Simplifier::new();
+let occ_a = OccuranceAnalyzer::new();
     the_ir
                 .into_iter().enumerate()
         .map(|(i, ir)| {
-            dbg!(i);
+            let mut simplifier = Simplifier::new();
             let mut ir = ir;
             for n in 0..4 {
             println!("Pass {n}");
             let (_, occs) =
             
                 occ_a.occurrence_analysis(&ir);
-            // dbg!(&occs);
-                simplifier.with_occs(occs);
+            simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
                     // println!("Simplified after {i} passes");
