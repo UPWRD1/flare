@@ -398,8 +398,7 @@ struct Simplifier {
 }
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
-    // let ref_ir = the_ir.clone();
-let occ_a = OccuranceAnalyzer::new();
+    let occ_a = OccuranceAnalyzer::new();
     the_ir
                 .into_iter().enumerate()
         .map(|(i, ir)| {
@@ -409,7 +408,7 @@ let occ_a = OccuranceAnalyzer::new();
             println!("Pass {n}");
             let (_, occs) =
             
-                occ_a.occurrence_analysis(&ir);
+            occ_a.occurrence_analysis(&ir);
             simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
