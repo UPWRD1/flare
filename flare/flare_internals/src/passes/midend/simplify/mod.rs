@@ -96,9 +96,7 @@ impl Occurrences {
                 .and_modify(|self_occ| {
                     *self_occ = match (*self_occ, occ) {
                         (Occurrence::Dead, occ) | (occ, Occurrence::Dead) => occ,
-//                         (Occurrence::Many | Occurrence::Once | Occurrence::OnceInFun  |  Occurrence::OnceInBranch, _) |
-// (_, Occurrence::Many) | (Occurrence::Once, Occurrence::Once) => Occurrence::Many,
-(_, _) => Occurrence::Many,
+                        (_, _) => Occurrence::Many,
                     };
                 })
                 .or_insert(occ);
@@ -115,8 +113,7 @@ pub fn subst_ty(haystack: IR, payload: IRType) -> IR {
         | IR::Bool(_)
         | IR::Unit
         | IR::Particle(_)
-        // c IR::Tuple(_)
-         => haystack,
+       => haystack,
         IR::Fun(var, ir) => IR::fun(
             var.map_ty(|ty| ty.subst_ty(payload.clone())),
             subst_ty(*ir, payload),
@@ -326,10 +323,10 @@ impl OccuranceAnalyzer {
                         self.occurrence_analysis(&branch.body);
                     branch_free.remove(&branch.param.id);
 
-                    // branch_occs
-                    //     .vars
-                    //     .entry(branch.param.id).and_modify(|v| *v = Occurrence::OnceInBranch)
-                    //     .or_insert(Occurrence::Dead);
+                    branch_occs
+                        .vars
+                        .entry(branch.param.id).and_modify(|v| *v = Occurrence::OnceInFun)
+                        .or_insert(Occurrence::Dead);
 
                     branch_occs = branch_occs.in_fun(&branch_free);
                     scrutinee_free.extend(branch_free);
@@ -392,9 +389,6 @@ struct Simplifier {
     locals_inlined: usize,
     tuples_inlined: usize,
     inline_size_threshold: usize,
-    // items: &'p [IR],
-
-    // seen_items: FxHashSet<ItemId>,
 }
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
@@ -404,12 +398,10 @@ pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
         .map(|(i, ir)| {
             let mut simplifier = Simplifier::new();
             let mut ir = ir;
-            for n in 0..4 {
-            println!("Pass {n}");
-            let (_, occs) =
-            
-            occ_a.occurrence_analysis(&ir);
-            simplifier.with_occs(occs);
+            for _ in 0..4 {
+                // println!("Pass {n}");
+                let (_, occs) = occ_a.occurrence_analysis(&ir);
+                simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
                     // println!("Simplified after {i} passes");
@@ -424,9 +416,7 @@ pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
 impl Simplifier {
     fn new() -> Self {
         Self {
-            // occs:,
-            // items ,
-            inline_size_threshold: 60,//60, // GHC magic number is 60
+           inline_size_threshold: 60,//60, // GHC magic number is 60
             subst: FxHashMap::default(),
             ..Default::default()        }
     }

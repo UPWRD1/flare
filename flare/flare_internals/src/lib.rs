@@ -186,11 +186,11 @@ fn parse_file(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
     parser::parse(file)
 }
 
-pub fn parse(filectx: FileCtx) -> CompResult<Parse> {
+pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
     let mut processed: Vec<(Vec<Package<UntypedCst>>, FileID)> = vec![];
     for (id, file) in filectx {
-        let pack = parse_file(&file)?;
-        processed.push((pack, id))
+        let pack = parse_file(file)?;
+        processed.push((pack, *id))
     }
 
     let v: Vec<_> = processed
@@ -207,7 +207,7 @@ pub fn parse(filectx: FileCtx) -> CompResult<Parse> {
     Ok(Parse { program })
 }
 
-pub fn build(parse: &Parse) -> CompResult<Build> {
+pub fn build(parse: Parse) -> CompResult<Build> {
     let env = Environment::<UntypedCst>::build(&parse.program)?;
     Ok(Build { env })
 }

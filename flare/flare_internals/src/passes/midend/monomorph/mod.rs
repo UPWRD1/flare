@@ -43,7 +43,6 @@ pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
     };
 
     m.generate_irs(*main_idx)
-    // the_ir
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
@@ -63,7 +62,6 @@ struct Replacement {
     ref_item: ItemId,
     apps: &'static [TyApp],
     replacement: ItemId,
-    // output: IR,
 }
 
 impl fmt::Display for Replacement {
@@ -224,20 +222,8 @@ impl Monomorpher {
 
         new_irs
             .into_iter()
-            .map(|ir| {
-                let mut ir = ir;
-                // let needs_updating = ir.who_do_i_call();
-                // dbg!(&needs_updating, &replacements);
-                // for replacement in replacements
-                //     .iter()
-                //     .filter(|rep| needs_updating.contains(&rep.ref_item))
-                // {
-                // dbg!(replacement);
-                // ir = ir
-                ir = self.instantiate_replacement(ir, &replacements);
-                // }
-                ir
-            })
+            .map(|ir| self.instantiate_replacement(ir, &replacements))
+            .inspect(|f| println!("{f}\n-------------------------------\n"))
             .collect()
     }
 
@@ -429,9 +415,7 @@ impl Monomorpher {
                     ir
                 }
             }
-            // IR::Bin(l, o, )
             IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) | IR::Var(_) => ir,
-            // _ => ir,
             IR::If(ir, ir1, ir2) => todo!(),
             IR::Bin(l, op, r) => IR::bin(
                 self.instantiate_replacement(*l, replacements),

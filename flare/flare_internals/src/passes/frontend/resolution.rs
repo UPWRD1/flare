@@ -77,17 +77,17 @@ impl TypeFixer {
     fn helper(&mut self, t: Spanned<Intern<CstType>>) -> Spanned<Intern<Type>> {
         match *t.0 {
             CstType::Generic(n) => {
-                println!("Generic {}", n.0);
+                // println!("Generic {}", n.0);
                 let v = if let Some((v, _)) =
                     self.types_to_name.iter().find(|(_, name)| ***name == *n.0)
                 {
-                    println!("Loaded {v:?}");
+                    // println!("Loaded {v:?}");
                     *v
                 } else {
                     let v = self.new_type_var();
                     self.types_to_name.push((v, n.0));
                     self.unbound_types.insert(v);
-                    println!("Created {v:?}");
+                    // println!("Created {v:?}");
                     v
                 };
 
@@ -191,11 +191,7 @@ impl Resolver {
             Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
                 .iter(&self.dag)
                 .collect();
-        self.debug();
-        // self.dag.reverse();
         let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
-            // self.debug();
-            // let sorted: Vec<NodeIndex> = kosaraju_scc(&self.dag)
             .into_iter()
             .flatten()
             .filter(|x| reachable.contains(x))
@@ -234,7 +230,7 @@ impl Resolver {
                 Item::new(ItemKind::Package(PackageEntry { name, id }))
             }
             ItemKind::Function(f) => {
-                dbg!(f.sig);
+                // dbg!(f.sig);
                 if *f.name.0 == "main" {
                     self.main_dag_idx = Some(dag_idx);
                 }
@@ -625,7 +621,7 @@ impl Resolver {
         let branch_arg: Spanned<Intern<Expr<Untyped>>> = b.pat.convert(Expr::Ident(param));
 
         let bindings = self.compile_pattern(b.pat, branch_arg);
-        dbg!(&bindings);
+        // dbg!(&bindings);
         // Extend vars with user-visible bindings so analyze_expr can resolve them.
         // Each maps the binder name -> its destructured value expression.
         let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<Expr<Untyped>>>)> = vars.to_vec();
@@ -684,6 +680,11 @@ impl Resolver {
 
             // Unit: irrefutable, no value to extract.
             Pattern::Unit => vec![],
+            // Pattern::Unit => vec![Binding {
+            //     binder: Untyped(p.convert("%inaccessible".to_string())),
+            //     value: p.convert(Expr::Unit),
+            //     user_visible: false,
+            // }],
 
             // // Nullary constructor Ctor(A, Unit):
             // //   The scrutinee is a sum type with a label; unlabeling constrains

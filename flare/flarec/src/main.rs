@@ -98,68 +98,68 @@ macro_rules! make_target {
         let target = $target;
         let ctx = make_filectx(files);
         let now: Instant = Instant::now();
-        let parsed = parse(ctx)?;
-        let built = build(&parsed)?;
-        let resolved = resolve(built)?;
-        let checked = typecheck(resolved)?;
-        let lowered = lower(checked)?;
-        let simplified = simplify(lowered)?;
-        let monomorphed = monomorph(simplified)?;
-        let reduced = reduce(monomorphed)?;
-        let converted = convert(reduced)?;
-        let generated = generate(converted, target)?;
-        let output: Vec<u8> = generated.into();
-        {
-            let elapsed = now.elapsed();
-            println!("Compiled  in {elapsed:.2?}",);
-            let f = $cli.output_file.with_extension(target.ext());
-            let mut f = File::create(f).unwrap();
-            f.write_all(&output)?;
+        parse(&ctx)
+            .and_then(build)
+            .and_then(resolve)
+            .and_then(typecheck)
+            .and_then(lower)
+            .and_then(simplify)
+            .and_then(monomorph)
+            .and_then(reduce)
+            .and_then(convert)
+            .and_then(|cc| generate(cc, target))
+            .and_then(|res| {
+                let output: Vec<u8> = res.into();
+                let elapsed = now.elapsed();
+                println!("Compiled  in {elapsed:.2?}",);
+                let f = $cli.output_file.with_extension(target.ext());
+                let mut f = File::create(f).unwrap();
+                f.write_all(&output)?;
 
-            Ok(())
-        }
+                Ok(())
+            })
+            .inspect_err(|e| e.report(&ctx))
     }};
 }
 
-fn main() -> CompResult<()> {
+fn main() {
     enable_loggin();
     panic_hook();
 
-    let cli = Cli::parse();
+    let cli = Cli::parse(); // unsafe { backtrace_on_stack_overflow::enable() };
 
-    // unsafe { backtrace_on_stack_overflow::enable() };
     match cli.emit {
         EmitOptions::IR => {
             let ctx = make_filectx(cli.input_files);
             let now: Instant = Instant::now();
-            let parsed = parse(ctx)?;
-            let built = build(&parsed)?;
-            let resolved = resolve(built)?;
-            let checked = typecheck(resolved)?;
-            let lowered = lower(checked)?;
-            let simplified = simplify(lowered)?;
-            // let monomorphed = monomorph(simplified)?;
-            // let reduced = reduce(monomorphed)?;
-            {
-                // let ir = lowered.ir;
-                let ir = simplified.ir;
+            parse(&ctx)
+                .and_then(build)
+                .and_then(resolve)
+                .and_then(typecheck)
+                .and_then(lower)
+                .and_then(simplify)
+                // .and_then(monomorph)
+                .and_then(|res| {
+                    let ir = res.ir;
 
-                let output = ir
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, x)| format!("item #{i}: is\n{x}\nend item #{i}"))
-                    .collect::<Vec<String>>()
-                    .join("\n\n");
-                let elapsed = now.elapsed();
-                println!("Compiled  in {elapsed:.2?}",);
-                let f = cli.output_file.with_extension(IRTarget.ext());
-                let mut f = File::create(f).unwrap();
-                f.write_all(output.as_bytes())?;
+                    let output = ir
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, x)| format!("item #{i}: is\n{x}\nend item #{i}"))
+                        .collect::<Vec<String>>()
+                        .join("\n\n");
+                    let elapsed = now.elapsed();
+                    println!("Compiled  in {elapsed:.2?}",);
+                    let f = cli.output_file.with_extension(IRTarget.ext());
+                    let mut f = File::create(f).unwrap();
+                    f.write_all(output.as_bytes())?;
 
-                Ok(())
-            }
+                    Ok(())
+                })
+                .inspect_err(|e| e.report(&ctx))
         }
         EmitOptions::LIR => make_target!(LIRTarget, cli),
         EmitOptions::LLVM => make_target!(LLVM, cli),
     }
+    .unwrap_or_else(|_| std::process::exit(1))
 }
