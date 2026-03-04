@@ -185,7 +185,7 @@ impl LowerSolvedEv<'_> {
                 let [left_var, right_var, goal_var] = vars;
                 let goal_len = self.goal.len();
                 let mut branches = self.goal_indices.clone().into_iter().map(|row_index| {
-                    let (i, ty, len, var, sum) = match row_index {
+                    let (i, branch_matching_ty, len, var, sum) = match row_index {
                         RowIndex::Left(i) => (
                             i,
                             self.left[i].clone().shifted(),
@@ -201,7 +201,7 @@ impl LowerSolvedEv<'_> {
                             right_sum.clone(),
                         ),
                     };
-                    let [case_var] = self.make_vars([ty]);
+                    let [case_var] = self.make_vars([branch_matching_ty]);
                     IR::branch(case_var.clone(), {
                         IR::app(
                             IR::Var(var),

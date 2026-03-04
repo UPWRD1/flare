@@ -212,7 +212,7 @@ impl IR {
                     unreachable!("Type applied to non-forall IR term");
                 };
                 match (kind, ty_app) {
-                    (Kind::Type, TyApp::Ty(ty)) => ret_ty.subst_ty(ty.clone()),
+                    (Kind::Type, TyApp::Ty(ty)) => ret_ty.subst_ty(ty.clone(), 0),
                     (Kind::Row, TyApp::Row(row)) => ret_ty.subst_row(row.clone()),
                     (Kind::Type, TyApp::Row(_)) => {
                         unreachable!("Kind mismatch. Type applied a Row to variable of kind Type",)
@@ -396,7 +396,7 @@ impl IR {
             | Self::Unit
             | Self::Bool(_)
             | Self::Particle(_) => true,
-            Self::Field(x, _) if x.is_trivial() => true,
+            // Self::Field(x, _) if x.is_trivial() => true,
             _ => false,
         }
     }

@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+use rustc_hash::FxHashSet;
+
 use crate::resource::rep::midend::irtype::{IRType, Row, TyApp, TypeVar};
 
 #[derive(Clone)]
@@ -132,7 +134,15 @@ impl Row {
 impl IRType {
     pub fn subst_app(self, payload: TyApp) -> Self {
         match payload {
-            TyApp::Ty(ty) => self.subst_ty(ty),
+            TyApp::Ty(ty) => self.subst_ty(ty, 0),
+
+            TyApp::Row(row) => self.subst_row(row),
+        }
+    }
+
+    pub fn subst_app_with_cutoff(self, payload: TyApp, needle: usize) -> Self {
+        match payload {
+            TyApp::Ty(ty) => self.subst_ty(ty, needle),
 
             TyApp::Row(row) => self.subst_row(row),
         }
@@ -146,8 +156,36 @@ impl IRType {
     //     }
     // }
 
-    pub fn subst_ty(self, ty: Self) -> Self {
-        Subst::TyPayload(ty).subst_ty(self, 0)
+    pub fn how_many_vars(&self) -> usize {
+        fn helper(t: &IRType, cache: &mut FxHashSet<TypeVar>) {
+            match t {
+                IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => {}
+                IRType::Var(v) => {
+                    cache.insert(*v);
+                }
+                IRType::Fun(l, r) => {
+                    helper(l, cache);
+                    helper(r, cache);
+                }
+                IRType::TyFun(kind, ty) => helper(ty, cache),
+                IRType::Prod(row) | IRType::Sum(row) => match row {
+                    Row::Open(type_var) => todo!(),
+                    Row::Closed(irtypes) => {
+                        for t in irtypes {
+                            helper(t, cache);
+                        }
+                    }
+                },
+                IRType::Volatile(irtype) => todo!(),
+            }
+        }
+        let mut cache = FxHashSet::default();
+        helper(self, &mut cache);
+        cache.len()
+    }
+
+    pub fn subst_ty(self, ty: Self, needle: usize) -> Self {
+        Subst::TyPayload(ty).subst_ty(self, needle)
     }
 
     // pub fn subst_ty_final(self, ty: Self) -> Self {
