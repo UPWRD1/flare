@@ -7,7 +7,7 @@ unit become unit in {{num * unit} | unit}
 end item #1
 
 item #2: is
-fn [$0:{{num * unit} | unit}, $1:{num * unit} -> ?0] =>
+fn [$0:{{num * unit} | unit}, $1:{num * unit} -> {num * unit}] =>
   match $0:
     | $8:{num * unit} then [#0](
       [$1](
@@ -39,7 +39,7 @@ fn [$0:num] =>
 end item #6
 
 item #7: is
-fn [$0:{num * unit}, $1:num -> ?0] =>
+fn [$0:{num * unit}, $1:num -> num] =>
   {
     [$1](
     $0.1),

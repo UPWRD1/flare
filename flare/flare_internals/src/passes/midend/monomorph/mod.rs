@@ -213,7 +213,7 @@ impl Monomorpher {
             };
             replacements.insert(replacement);
             let un_monomorphed_ir = self.ref_ir[&mono.ref_item].clone();
-            let morphed_ir = self.instantiate_monomorph(un_monomorphed_ir, *mono, None);
+            let morphed_ir = self.instantiate_monomorph(un_monomorphed_ir, *mono);
             // println!("{morphed_ir}\n");
 
             self.mono_ids_to_ty.insert(*mono, ItemId(id));
@@ -228,11 +228,9 @@ impl Monomorpher {
             .collect()
     }
 
-    fn instantiate_monomorph(&self, ir: IR, morph: Monomorph, depth: Option<usize>) -> IR {
+    fn instantiate_monomorph(&self, ir: IR, morph: Monomorph) -> IR {
         match ir {
-            IR::TyFun(k, body) => {
-                self.instantiate_monomorph(*body, morph, depth.map_or(Some(0), |d| Some(d + 1)))
-            }
+            IR::TyFun(k, body) => IR::ty_fun(k, self.instantiate_monomorph(*body, morph)),
             IR::TyApp(body, app) => {
                 dbg!(&app);
                 dbg!(morph.apps);
@@ -241,11 +239,11 @@ impl Monomorpher {
                     _ => app,
                 };
                 let body = match new_app {
-                    TyApp::Ty(ref t) => simplify::subst_ty_at(*body, t.clone(), depth.unwrap_or(0)),
+                    TyApp::Ty(ref t) => simplify::subst_ty(*body, t.clone()),
                     TyApp::Row(ref row) => simplify::subst_row(*body, row.clone()),
                 };
 
-                IR::ty_app(self.instantiate_monomorph(body, morph, depth), new_app)
+                IR::ty_app(self.instantiate_monomorph(body, morph), new_app)
             }
             IR::Local(v, d, b) => {
                 let v = v.map_ty(|f| {
@@ -254,77 +252,84 @@ impl Monomorpher {
                         .iter()
                         .fold(f, |ty, tyapp| ty.subst_app(tyapp.clone()))
                 });
-                let defn = self.instantiate_monomorph(*d, morph, depth);
+                let defn = self.instantiate_monomorph(*d, morph);
 
-                let body = self.instantiate_monomorph(*b, morph, depth);
+                let body = self.instantiate_monomorph(*b, morph);
                 IR::local(v, defn, body)
             }
             IR::App(l, r) => IR::app(
-                self.instantiate_monomorph(*l, morph, depth),
-                self.instantiate_monomorph(*r, morph, depth),
+                self.instantiate_monomorph(*l, morph),
+                self.instantiate_monomorph(*r, morph),
             ),
             IR::Fun(v, body) => IR::fun(
                 v.map_ty(|f| {
-                    morph.apps.iter().fold(f, |ty, tyapp| {
-                        ty.subst_app_with_cutoff(tyapp.clone(), depth.unwrap())
-                    })
+                    morph
+                        .apps
+                        .iter()
+                        .fold(f, |ty, tyapp| ty.subst_app(tyapp.clone()))
                 }),
-                self.instantiate_monomorph(*body, morph, depth),
+                self.instantiate_monomorph(*body, morph),
             ),
             IR::Tuple(v) => IR::Tuple(
                 v.into_iter()
-                    .map(|ir| self.instantiate_monomorph(ir, morph, depth))
+                    .map(|ir| self.instantiate_monomorph(ir, morph))
                     .collect(),
             ),
             IR::Case(t, ir, b) => {
-                let t = morph.apps.iter().fold(t, |ty, tyapp| {
-                    ty.subst_app_with_cutoff(tyapp.clone(), depth.unwrap())
-                });
+                let t = morph
+                    .apps
+                    .iter()
+                    .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone()));
                 IR::case(
                     t,
-                    self.instantiate_monomorph(*ir, morph, depth),
+                    self.instantiate_monomorph(*ir, morph),
                     b.into_iter().map(|b| Branch {
                         param: b.param.map_ty(|t| {
-                            morph.apps.iter().fold(t, |ty, tyapp| {
-                                ty.subst_app_with_cutoff(tyapp.clone(), depth.unwrap())
-                            })
+                            morph
+                                .apps
+                                .iter()
+                                .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone()))
                         }),
-                        body: self.instantiate_monomorph(b.body, morph, depth),
+                        body: self.instantiate_monomorph(b.body, morph),
                     }),
                 )
             }
-            IR::Field(ir, u) => IR::field(self.instantiate_monomorph(*ir, morph, depth), u),
+            IR::Field(ir, u) => IR::field(self.instantiate_monomorph(*ir, morph), u),
             IR::Tag(t, u, ir) => IR::tag(
-                morph.apps.iter().fold(t, |ty, tyapp| {
-                    ty.subst_app_with_cutoff(tyapp.clone(), depth.unwrap())
-                }),
+                morph
+                    .apps
+                    .iter()
+                    .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone())),
                 u,
-                self.instantiate_monomorph(*ir, morph, depth),
+                self.instantiate_monomorph(*ir, morph),
             ),
             IR::Var(v) => IR::Var(v.map_ty(|t| {
-                morph.apps.iter().fold(t.clone(), |ty, tyapp| {
-                    ty.subst_app_with_cutoff(tyapp.clone(), depth.unwrap())
-                })
+                morph
+                    .apps
+                    .iter()
+                    .fold(t.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()))
             })),
             IR::Item(t, id) => {
-                let new_t = morph.apps.iter().fold(t, |ty, tyapp| {
-                    ty.subst_app_with_cutoff(tyapp.clone(), depth.unwrap())
-                });
+                let new_t = morph
+                    .apps
+                    .iter()
+                    .fold(t, |ty, tyapp| ty.subst_app(tyapp.clone()));
                 IR::Item(new_t, id)
             }
             IR::Extern(n, t) => {
-                let t = morph.apps.iter().fold(t.clone(), |ty, tyapp| {
-                    ty.subst_app_with_cutoff(tyapp.clone(), depth.unwrap())
-                });
+                let t = morph
+                    .apps
+                    .iter()
+                    .fold(t.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()));
                 IR::Extern(n, t)
             }
             IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => ir,
 
             IR::If(ir, ir1, ir2) => todo!(),
             IR::Bin(l, op, r) => IR::bin(
-                self.instantiate_monomorph(*l, morph, depth),
+                self.instantiate_monomorph(*l, morph),
                 op,
-                self.instantiate_monomorph(*r, morph, depth),
+                self.instantiate_monomorph(*r, morph),
             ),
         }
     }
