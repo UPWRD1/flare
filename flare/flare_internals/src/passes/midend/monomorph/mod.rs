@@ -1,4 +1,5 @@
 use core::fmt;
+use std::collections::VecDeque;
 
 use itertools::Itertools;
 use petgraph::{dot::Config, prelude::*};
@@ -161,7 +162,7 @@ impl Monomorpher {
 
         while let Some(node) = iter.next() {
             if let IR::TyApp(_, _) = node {
-                let mut apps = vec![];
+                let mut apps = VecDeque::new();
                 let mut sub_iter = node.iter();
 
                 // Collect all consecutive TyApp nodes
@@ -174,13 +175,13 @@ impl Monomorpher {
                                 }
                                 _ => app.clone(),
                             };
-                            apps.push(app);
+                            apps.push_front(app);
                             iter.next();
                         }
                         IR::Item(_, id) => {
                             result.insert(Monomorph {
                                 ref_item: *id,
-                                apps: apps.leak(),
+                                apps: std::convert::Into::<Vec<_>>::into(apps).leak(),
                             });
                             break;
                         }
@@ -355,12 +356,10 @@ impl Monomorpher {
                     if let Some(replacement) = replacements.iter().find(|replacement| {
                         morph.ref_item == replacement.ref_item && morph.apps == replacement.apps
                     }) {
-                        // dbg!(&og_ty);
                         let new_ty = replacement
                             .apps
                             .iter()
                             .fold(og_ty.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()));
-                        // dbg!(&new_ty);
 
                         IR::Item(new_ty, replacement.replacement)
                     } else {

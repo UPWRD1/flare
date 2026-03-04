@@ -138,7 +138,7 @@ fn main() {
                 .and_then(typecheck)
                 .and_then(lower)
                 .and_then(simplify)
-                // .and_then(monomorph)
+                .and_then(monomorph)
                 .and_then(|res| {
                     let ir = res.ir;
 

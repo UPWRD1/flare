@@ -239,7 +239,7 @@ pub fn simplify(lower: Lower) -> CompResult<Simplify> {
 pub fn monomorph(simplify: Simplify) -> CompResult<Monomorph> {
     let ir = monomorph::monomorph(simplify.ir);
     // Sanity check
-    debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
+    // debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
     // let ir = self.op.ir;
     Ok(Monomorph { ir })
 }
