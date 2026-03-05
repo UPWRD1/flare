@@ -88,7 +88,7 @@ impl Occurrences {
 
 pub fn subst_ty_at(haystack: IR, payload: IRType, depth: usize) -> IR {
     match haystack {
-        IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_ty(payload,depth))),
+        IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_ty(payload.clone(),depth))),
         IR::Num(_)
         | IR::Str(_)
         | IR::Bool(_)
@@ -101,7 +101,7 @@ pub fn subst_ty_at(haystack: IR, payload: IRType, depth: usize) -> IR {
         ),
         IR::App(fun, arg) => IR::app(subst_ty_at(*fun, payload.clone(), depth), subst_ty_at(*arg, payload, depth)),
 
-IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty_at(*ir, payload, depth)),
+IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty_at(*ir, payload, depth + 1)),
     IR::TyApp(ir, ty) => IR::ty_app(
       subst_ty_at(*ir, payload.clone(), depth),
       match ty {
@@ -118,7 +118,7 @@ IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty_at(*ir, payload, depth)),
                            IR::field(subst_ty_at(*ir, payload, depth), u)
     
         }
-        IR::Tag(t, u, ir) => IR::tag(t.subst_ty(payload.clone(), 0), u, subst_ty_at(*ir, payload, depth)),
+        IR::Tag(t, u, ir) => IR::tag(t.subst_ty(payload.clone(), depth), u, subst_ty_at(*ir, payload, depth)),
         IR::Tuple(elements) => {
             IR::tuple(
                 elements
@@ -132,7 +132,7 @@ IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty_at(*ir, payload, depth)),
               subst_ty_at(*ir, payload.clone(),depth),
                 branches.into_iter().map(|x|
                     Branch{
-                        param: x.param.map_ty(|ty| ty.subst_ty(payload.clone(), 0)),
+                        param: x.param.map_ty(|ty| ty.subst_ty(payload.clone(), depth)),
                         body: subst_ty_at(x.body, payload.clone(),depth)
                     }
                 )
@@ -163,7 +163,7 @@ pub fn subst_row(haystack: IR, payload: Row ) -> IR {
 
 pub fn subst_row_at(haystack: IR, payload: Row, needle: usize) -> IR {
   match haystack {
-    IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_row(payload, 0))),
+    IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_row(payload, needle))),
     
  IR::Num(_)
         | IR::Str(_)
@@ -173,45 +173,45 @@ pub fn subst_row_at(haystack: IR, payload: Row, needle: usize) -> IR {
         // c IR::Tuple(_)
         | IR::Extern(_, _) => haystack,
     IR::Fun(var, ir) => IR::fun(
-      var.map_ty(|ty| ty.subst_row(payload.clone(), 0)),
-      subst_row(*ir, payload),
+      var.map_ty(|ty| ty.subst_row(payload.clone(), needle)),
+      subst_row_at(*ir, payload, needle),
     ),
-    IR::App(fun, arg) => IR::app(subst_row(*fun, payload.clone()), subst_row(*arg, payload)),
-    IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_row(*ir, payload)),
+    IR::App(fun, arg) => IR::app(subst_row_at(*fun, payload.clone(),needle), subst_row_at(*arg, payload, needle)),
+    IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_row_at(*ir, payload, needle + 1)),
     IR::TyApp(ir, ty) => IR::ty_app(
-      subst_row(*ir, payload.clone()),
+      subst_row_at(*ir, payload.clone(), needle),
       match ty {
-        TyApp::Ty(ty) => TyApp::Ty(ty.subst_row(payload, 0, )),
+        TyApp::Ty(ty) => TyApp::Ty(ty.subst_row(payload, needle, )),
         TyApp::Row(row) => TyApp::Row(row.subst_row(payload)),
       },
     ),
     IR::Tuple(elems) => IR::tuple(
       elems
         .into_iter()
-        .map(|elem| subst_row(elem, payload.clone())),
+        .map(|elem| subst_row_at(elem, payload.clone(), needle)),
     ),
-    IR::Field(ir, indx) => IR::field(subst_row(*ir, payload), indx),
-    IR::Tag(ty, tag, ir) => IR::tag(ty.subst_row(payload.clone(), 0), tag, subst_row(*ir, payload)),
+    IR::Field(ir, indx) => IR::field(subst_row_at(*ir, payload, needle), indx),
+    IR::Tag(ty, tag, ir) => IR::tag(ty.subst_row(payload.clone(), needle), tag, subst_row_at(*ir, payload, needle)),
     IR::Case(ty, ir, branches) => IR::case(
-      ty.subst_row(payload.clone(), 0),
-      subst_row(*ir, payload.clone()),
+      ty.subst_row(payload.clone(), needle),
+      subst_row_at(*ir, payload.clone(), needle),
       branches.into_iter().map(|branch| Branch {
-        param: branch.param.map_ty(|ty| ty.subst_row(payload.clone(), 0, )),
-        body: subst_row(branch.body, payload.clone()),
+        param: branch.param.map_ty(|ty| ty.subst_row(payload.clone(), needle, )),
+        body: subst_row_at(branch.body, payload.clone(), needle),
       }),
     ),
     IR::Local(var, defn, body) => IR::local(
-      var.map_ty(|ty| ty.subst_row(payload.clone(), 0)),
-      subst_row(*defn, payload.clone()),
-      subst_row(*body, payload),
+      var.map_ty(|ty| ty.subst_row(payload.clone(), needle)),
+      subst_row_at(*defn, payload.clone(), needle),
+      subst_row_at(*body, payload, needle),
     ),
 
 IR::Item(t, id) => {
-            IR::Item(t.subst_row(payload, 0), id)
+            IR::Item(t.subst_row(payload, needle), id)
         }
 
          IR::If(ir, t, o) => {
-            IR::r#if(subst_row(*ir, payload.clone()), subst_row(*t, payload.clone()), subst_row(*o, payload))
+            IR::r#if(subst_row_at(*ir, payload.clone(), needle), subst_row_at(*t, payload.clone(), needle), subst_row_at(*o, payload, needle))
         },
         IR::Bin(ir, bin_op, ir1) => todo!(),
   }
@@ -662,10 +662,11 @@ impl Simplifier {
                         self.tuples_inlined += 1;
 
                         let field = irs[idx].clone();
-                        return self.simplify(field, in_scope, ctx);
+                        ir = field;
+                        // return self.simplify(field, in_scope, ctx);
                     } else{
-                        let obj = self.simplify(ir, in_scope.clone(), Vec::new());
-                        ir = IR::field(obj, idx);
+                        // let obj = self.simplify(ir, in_scope.clone(), Vec::new());
+                        ir = IR::field(ir, idx);
                      }
                 }
                 ContextEntry::Tag(ty, idx) => ir = IR::tag(ty, idx, ir),

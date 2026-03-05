@@ -74,9 +74,7 @@ impl Subst {
             IRType::TyFun(kind, body) => {
                 // IRType::ty_fun(kind, self.shifted().subst_ty(*body, needle + 1))
 
-                IRType::ty_fun(kind, self.shifted().subst_ty(*body, needle + 1))
-
-                // Type::ty_fun(kind, self.shifted().subst_ty(*body, needle))
+                IRType::ty_fun(kind, self.shifted().subst_ty(*body, needle))
             }
             IRType::Prod(row) => IRType::prod(self.subst_row(row, needle)),
             IRType::Sum(row) => IRType::sum(self.subst_row(row, needle)),

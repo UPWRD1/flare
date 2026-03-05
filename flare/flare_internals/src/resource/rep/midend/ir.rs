@@ -35,10 +35,8 @@ impl Var {
 
     #[must_use]
     pub fn map_ty(self, f: impl FnOnce(IRType) -> IRType) -> Self {
-        Self {
-            ty: f(self.ty),
-            ..self
-        }
+        let ty = f(self.ty);
+        Self { ty, ..self }
     }
 }
 
@@ -457,6 +455,29 @@ impl IR {
         let mut params = vec![];
         let body = split_funs(self, &mut params);
         (params, body)
+    }
+
+    pub fn children(self) -> Vec<Self> {
+        match self {
+            IR::Var(_) | IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
+                vec![]
+            }
+            IR::Fun(_, ir) => vec![*ir],
+            IR::App(l, r) => vec![*l, *r],
+            IR::TyFun(kind, ir) => vec![*ir],
+            IR::TyApp(ir, ty_app) => vec![*ir],
+            IR::Local(var, ir, ir1) => vec![*ir, *ir1],
+            IR::If(ir, ir1, ir2) => vec![*ir, *ir1, *ir2],
+            IR::Bin(ir, bin_op, ir1) => vec![*ir, *ir1],
+            IR::Tuple(irs) => irs,
+            IR::Field(ir, _) => vec![*ir],
+            IR::Tag(irtype, _, ir) => vec![*ir],
+            IR::Case(irtype, ir, branchs) => vec![*ir]
+                .into_iter()
+                .chain(branchs.into_iter().map(|b| b.body))
+                .collect(),
+            IR::Item(..) | IR::Extern(..) => vec![],
+        }
     }
 
     pub fn iter<'a>(&'a self) -> IrIterator<'a> {

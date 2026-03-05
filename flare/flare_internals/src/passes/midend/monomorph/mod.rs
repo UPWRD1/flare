@@ -1,449 +1,370 @@
 use core::fmt;
 
 use itertools::Itertools;
-use petgraph::{dot::Config, prelude::*};
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     passes::midend::simplify,
     resource::rep::midend::{
         ir::{Branch, IR, ItemId},
-        irtype::{IRType, TyApp},
+        irtype::TyApp,
     },
 };
 
-// How to Monomorph
-// Guarantees:
-// 1. The last function is always main().
-// 2. main() never takes any type parameters.
-// 3. Therefore, start from the back.
+// Monomorphisation — overview
+// ===========================
 //
-// Algorithm:
-// 1. Read the IR:
-// 2. If we find a tyapp chain, fold all the tyapps into a new Monomorph
-// 3. If the mononomorph is cached:
-//     - use the cached ID
-//     - else
-//         1. recursively solve the new monomorph
-//         2. generate and use a new ID
-// 4. Replace the application chain with the id
+// We work in three phases.
+//
+// Phase 1 — Discovery
+//   Starting from main (the last item, which has no type parameters), we run
+//   a worklist over (item, concrete_type_args) pairs called "Monomorphs".
+//   For each new Monomorph we beta-reduce its leading TyFun binders against
+//   the concrete type args (via simplify::subst_ty_at), which replaces every
+//   type-variable reference in the body with a concrete type.  We then scan
+//   the resulting body for TyApp-Item chains and bare Item calls to discover
+//   the next generation of Monomorphs.
+//
+// Phase 2 — Ordering
+//   We run an iterative post-order DFS over the dependency graph so that
+//   every callee is assigned a lower ID than its callers.
+//
+// Phase 3 — Rewriting
+//   For each Monomorph in post-order we beta-reduce its IR (same as Phase 1)
+//   and then walk the result replacing every TyApp-Item chain or bare Item
+//   with a plain Item carrying the new ID assigned in Phase 2.  TyFun nodes
+//   are erased — monomorphic IR has no type abstractions.
+//
+// Why beta-reduction instead of depth-tracked substitution
+// --------------------------------------------------------
+//   simplify::subst_ty_at(body, t, 0) substitutes t for Var(0) in body and
+//   correctly re-numbers all remaining De Bruijn indices.  Applying this once
+//   per TyFun binder (always at depth 0, peeling from the outside in) makes
+//   the substitution trivially correct without any manual depth arithmetic.
 
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
-    let main_id = the_ir.len() as u32 - 1;
-    let mut m = Monomorpher::new(the_ir.into_iter(), main_id);
+    let main_id = ItemId(the_ir.len() as u32 - 1);
 
-    let init_monomorph = Monomorph {
-        ref_item: ItemId(main_id),
+    let ref_ir: FxHashMap<ItemId, IR> = the_ir
+        .into_iter()
+        .enumerate()
+        .map(|(i, ir)| (ItemId(i as u32), ir))
+        .collect();
+
+    let root = Monomorph {
+        ref_item: main_id,
         apps: Vec::new().leak(),
     };
-    m.solve_monomorph(&init_monomorph);
-    m.debug_graph();
-    let Some(main_idx) = m.graph_cache.get(&init_monomorph) else {
-        unreachable!("Main was not added to cache");
-    };
 
-    m.generate_irs(*main_idx)
+    // Phase 1 — discover every reachable (item, type_args) pair.
+    let all_deps = discover(&ref_ir, root);
+
+    // Phase 2 — post-order: callees before callers.
+    let order = post_order(root, &all_deps);
+    let id_map: FxHashMap<Monomorph, ItemId> = order
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (*m, ItemId(i as u32)))
+        .collect();
+
+    // Phase 3 — instantiate and rewrite.
+    order
+        .iter()
+        .map(|mono| {
+            let ir = ref_ir[&mono.ref_item].clone();
+            let body = beta_reduce_tyfuns(ir, mono.apps);
+            rewrite(body, &id_map)
+        })
+        .inspect(|ir| println!("{ir}\n-------------------------------\n"))
+        .collect()
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
+// ── Core type ────────────────────────────────────────────────────────────────
+
+/// A specific monomorphic instantiation of an IR item.
+///
+/// `apps` lists the concrete type arguments in application order (the first
+/// element corresponds to the outermost `TyFun` binder).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct Monomorph {
     ref_item: ItemId,
     apps: &'static [TyApp],
 }
 
 impl fmt::Display for Monomorph {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "#{}[{}]", self.ref_item.0, self.apps.iter().join(", "))
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-struct Replacement {
-    ref_item: ItemId,
-    apps: &'static [TyApp],
-    replacement: ItemId,
-}
+// ── Phase 1: discovery ───────────────────────────────────────────────────────
 
-impl fmt::Display for Replacement {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "#{}[{}] ==> #{}",
-            self.ref_item.0,
-            self.apps.iter().join(", "),
-            self.replacement.0,
-        )
+/// Collect every Monomorph reachable from `root` together with its direct
+/// dependencies, using a worklist so each Monomorph is processed only once.
+fn discover(
+    ref_ir: &FxHashMap<ItemId, IR>,
+    root: Monomorph,
+) -> FxHashMap<Monomorph, Vec<Monomorph>> {
+    let mut all_deps: FxHashMap<Monomorph, Vec<Monomorph>> = FxHashMap::default();
+    let mut worklist: Vec<Monomorph> = vec![root];
+
+    while let Some(mono) = worklist.pop() {
+        if all_deps.contains_key(&mono) {
+            continue;
+        }
+
+        let ir = ref_ir[&mono.ref_item].clone();
+
+        // After beta-reduction, every TyApp-Item chain in the body carries
+        // fully concrete type arguments — no free type variables remain.
+        let body = beta_reduce_tyfuns(ir, mono.apps);
+        let deps = scan_calls(&body);
+
+        for &dep in &deps {
+            if !all_deps.contains_key(&dep) {
+                worklist.push(dep);
+            }
+        }
+
+        all_deps.insert(mono, deps);
     }
+
+    all_deps
 }
 
-#[derive(Default)]
-struct Monomorpher {
-    ref_ir: FxHashMap<ItemId, IR>,
-    graph: DiGraph<Monomorph, ()>,
-    graph_cache: FxHashMap<Monomorph, NodeIndex>,
-    mono_ids_to_ty: FxHashMap<Monomorph, ItemId>,
-}
+// ── Phase 2: ordering ────────────────────────────────────────────────────────
 
-impl Monomorpher {
-    fn new(ref_ir: impl Iterator<Item = IR>, main_id: u32) -> Self {
-        Self {
-            ref_ir: ref_ir
-                .enumerate()
-                .map(|(i, ir)| (ItemId(i as u32), ir))
-                .collect(),
+/// Iterative post-order DFS: every dependency appears before its dependents.
+///
+/// The `(node, children_pushed)` pair on the stack lets us emit a node only
+/// after all of its children have been processed, without recursion.
+fn post_order(root: Monomorph, all_deps: &FxHashMap<Monomorph, Vec<Monomorph>>) -> Vec<Monomorph> {
+    let mut visited: FxHashSet<Monomorph> = FxHashSet::default();
+    let mut order: Vec<Monomorph> = Vec::new();
+    let mut stack: Vec<(Monomorph, bool)> = vec![(root, false)];
 
-            ..Default::default()
+    while let Some((mono, children_pushed)) = stack.pop() {
+        if children_pushed {
+            // All descendants have been emitted; emit this node.
+            order.push(mono);
+            continue;
+        }
+        if visited.contains(&mono) {
+            continue;
+        }
+        visited.insert(mono);
+
+        // Re-push self so it is emitted after all children complete.
+        stack.push((mono, true));
+
+        // Push unvisited children.  Reversed so the first dependency is
+        // processed first (preserves a natural left-to-right order).
+        if let Some(deps) = all_deps.get(&mono) {
+            for dep in deps.iter().rev() {
+                if !visited.contains(dep) {
+                    stack.push((*dep, false));
+                }
+            }
         }
     }
 
-    #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
-    #[deprecated]
-    pub fn debug_graph(&self) {
-        let render = |_, v: (_, &Monomorph)| format!("label = \"{}\"", v.1);
+    order
+}
 
-        let dot = petgraph::dot::Dot::with_attr_getters(
-            &self.graph,
-            &[
-                Config::EdgeNoLabel,
-                Config::NodeNoLabel,
-                Config::RankDir(petgraph::dot::RankDir::LR),
-            ],
-            &|_, _| String::new(),
-            &render,
-        );
-        dbg!(dot);
+// ── Shared helper: beta-reduction ────────────────────────────────────────────
+
+/// Peel the leading TyFun binders off `ir`, substituting each concrete type
+/// argument from `apps` in turn.
+///
+/// Each step performs one beta-reduction:
+///   `(TyFun(_, body))[t]  →  subst_ty_at(body, t, 0)`
+///
+/// `subst_ty_at` replaces `Var(0)` throughout `body` with `t` and shifts all
+/// remaining De Bruijn indices down by one, so repeated application is always
+/// at depth 0 and index arithmetic stays trivial.
+fn beta_reduce_tyfuns(mut ir: IR, apps: &[TyApp]) -> IR {
+    for app in apps {
+        ir = match ir {
+            IR::TyFun(_, body) => match app {
+                TyApp::Ty(t) => simplify::subst_ty_at(*body, t.clone(), 0),
+                TyApp::Row(r) => simplify::subst_row_at(*body, r.clone(), 0),
+            },
+            // Fewer binders than type args: ill-typed input, stop early.
+            other => return other,
+        };
     }
+    ir
+}
 
-    fn get_or_insert(&mut self, mono: &Monomorph) -> NodeIndex {
-        if let Some(x) = self.graph_cache.get(mono) {
-            *x
-        } else {
-            let idx = self.graph.add_node(*mono);
-            self.graph_cache.insert(*mono, idx);
-            idx
+// ── Shared helper: TyApp chain peeling ───────────────────────────────────────
+
+/// Walk a left-spine TyApp chain by reference and collect the base `Item` and
+/// its type arguments in application order (outermost first).
+///
+/// `TyApp(TyApp(Item(f), A), B)`  →  `Some(Monomorph { f, [A, B] })`
+///
+/// Returns `None` if the base of the chain is not a bare `Item` (e.g. a
+/// lambda or local variable).
+fn peel_ty_app(ir: &IR) -> Option<Monomorph> {
+    let mut apps: Vec<TyApp> = Vec::new();
+    let mut cur = ir;
+    loop {
+        match cur {
+            IR::TyApp(inner, app) => {
+                apps.push(app.clone());
+                cur = inner;
+            }
+            IR::Item(_, id) => {
+                // Apps were accumulated outer→inner; reverse for canonical order.
+                apps.reverse();
+                return Some(Monomorph {
+                    ref_item: *id,
+                    apps: apps.leak(),
+                });
+            }
+            _ => return None,
+        }
+    }
+}
+
+// ── Phase 1 helper: call scanning ────────────────────────────────────────────
+
+/// Walk `ir` (after beta-reduction) with an explicit stack, collecting every
+/// Item reference together with its type arguments as a `Monomorph`.
+///
+/// When a TyApp-Item chain is found it is peeled as a single unit.
+/// Bare Item nodes (no type arguments) produce a Monomorph with empty apps.
+/// Anything else is recursed into via `IR::children()`.
+fn scan_calls(ir: &IR) -> Vec<Monomorph> {
+    let mut result: Vec<Monomorph> = Vec::new();
+    let mut stack: Vec<IR> = vec![ir.clone()];
+
+    while let Some(node) = stack.pop() {
+        match node {
+            IR::TyApp(ref inner, _) => match peel_ty_app(&node) {
+                Some(mono) => result.push(mono),
+                // Chain doesn't end in a bare Item; descend into the body.
+                None => stack.push(*inner.clone()),
+            },
+            IR::Item(_, id) => {
+                result.push(Monomorph {
+                    ref_item: id,
+                    apps: Vec::new().leak(),
+                });
+            }
+            node => {
+                for child in node.children() {
+                    stack.push(child);
+                }
+            }
         }
     }
 
-    fn solve_monomorph(&mut self, mono: &Monomorph) {
-        let ir = self.ref_ir.get(&mono.ref_item).expect("IR should exist");
-        // dbg!(ir);
-        let sub_morphs = self.collect_needed_morphs(ir, mono);
+    result
+}
 
-        let raw_calls: Vec<_> = ir
-            .who_do_i_call()
-            .into_iter()
-            .filter(|id| !sub_morphs.iter().any(|mono| mono.ref_item == *id))
-            .collect();
+// ── Phase 3: rewriting ───────────────────────────────────────────────────────
 
-        let parent_node = self.get_or_insert(mono);
+/// Recursively rewrite `ir` to use the new monomorphic IDs from `id_map`.
+///
+/// - `TyFun` nodes are erased (monomorphic IR has no type abstractions).
+/// - `TyApp`-`Item` chains are collapsed to a single `Item` with the new ID.
+/// - Bare `Item` nodes are remapped to their new IDs.
+/// - All other nodes are recursed into with their structure preserved.
+fn rewrite(ir: IR, id_map: &FxHashMap<Monomorph, ItemId>) -> IR {
+    match ir {
+        // Type abstractions vanish in monomorphic IR.
+        IR::TyFun(_, body) => rewrite(*body, id_map),
 
-        for ref_item in raw_calls.iter().rev() {
-            let imaginary_morph = Monomorph {
-                ref_item: *ref_item,
+        // Try to resolve the whole TyApp-Item chain to a new bare Item.
+        // Fall back to recursive rewriting if the chain is not a known Item.
+        IR::TyApp(inner, app) => match resolve_ty_app_chain(&inner, &app, id_map) {
+            Some(resolved) => resolved,
+            None => IR::ty_app(rewrite(*inner, id_map), app),
+        },
+
+        // A bare Item called with no type arguments.
+        IR::Item(t, id) => {
+            let mono = Monomorph {
+                ref_item: id,
                 apps: Vec::new().leak(),
             };
-
-            let imaginary_morph_node = self.get_or_insert(&imaginary_morph);
-            self.graph.add_edge(parent_node, imaginary_morph_node, ());
-            self.solve_monomorph(&imaginary_morph);
-        }
-
-        for sub_morph in sub_morphs {
-            let sub_morph_node = self.get_or_insert(&sub_morph);
-            self.graph.add_edge(parent_node, sub_morph_node, ());
-            self.solve_monomorph(&sub_morph);
-        }
-    }
-
-    fn collect_needed_morphs(&self, ir: &IR, parent_mono: &Monomorph) -> FxHashSet<Monomorph> {
-        let mut result = FxHashSet::default();
-        let mut iter = ir.iter();
-        let mut depth = 0;
-        while let Some(node) = iter.next() {
-            // dbg!(depth);
-            if let IR::TyApp(_, _) = node {
-                let mut apps = Vec::new();
-                let mut sub_iter = node.iter();
-
-                // Collect all consecutive TyApp nodes
-                for sub_node in sub_iter.by_ref() {
-                    match sub_node {
-                        IR::TyApp(_, app) => {
-                            let app = match app {
-                                TyApp::Ty(IRType::Var(v)) if v.0 + 1 >= depth => parent_mono
-                                    .apps
-                                    .get((v.0 + 1) - depth)
-                                    .cloned()
-                                    .unwrap_or(app.clone()),
-                                _ => app.clone(),
-                            };
-                            apps.push(app);
-                            iter.next();
-                        }
-                        IR::Item(_, id) => {
-                            result.insert(Monomorph {
-                                ref_item: *id,
-                                apps: std::convert::Into::<Vec<_>>::into(apps).leak(),
-                            });
-                            break;
-                        }
-                        _ => continue,
-                    }
-                }
-            } else if let IR::TyFun(_, _) = node {
-                depth += 1;
+            match id_map.get(&mono) {
+                Some(&new_id) => IR::Item(t, new_id),
+                None => IR::Item(t, id),
             }
         }
-        result
+
+        IR::Local(v, d, b) => IR::local(v, rewrite(*d, id_map), rewrite(*b, id_map)),
+        IR::App(l, r) => IR::app(rewrite(*l, id_map), rewrite(*r, id_map)),
+        IR::Fun(v, body) => IR::fun(v, rewrite(*body, id_map)),
+        IR::Tuple(v) => IR::Tuple(v.into_iter().map(|ir| rewrite(ir, id_map)).collect()),
+        IR::Case(t, body, branches) => IR::case(
+            t,
+            rewrite(*body, id_map),
+            branches.into_iter().map(|b| Branch {
+                param: b.param,
+                body: rewrite(b.body, id_map),
+            }),
+        ),
+        IR::Field(ir, u) => IR::field(rewrite(*ir, id_map), u),
+        IR::Tag(t, u, ir) => IR::tag(t, u, rewrite(*ir, id_map)),
+        IR::If(c, t, e) => IR::If(
+            Box::new(rewrite(*c, id_map)),
+            Box::new(rewrite(*t, id_map)),
+            Box::new(rewrite(*e, id_map)),
+        ),
+        IR::Bin(l, op, r) => IR::bin(rewrite(*l, id_map), op, rewrite(*r, id_map)),
+
+        // Leaves with no Item references.
+        IR::Extern(_, _)
+        | IR::Num(_)
+        | IR::Str(_)
+        | IR::Bool(_)
+        | IR::Unit
+        | IR::Particle(_)
+        | IR::Var(_) => ir,
     }
+}
 
-    fn generate_irs(&mut self, main_idx: NodeIndex) -> Vec<IR> {
-        let mut dfs = DfsPostOrder::new(&self.graph, main_idx);
-        // let mut dfs = Topo::new(&self.graph)
-        //     .iter(&self.graph)
-        //     .collect::<Vec<_>>()
-        //     .into_iter()
-        //     .rev();
-        let mut new_irs: Vec<IR> = Vec::with_capacity(self.graph_cache.len() * 2);
-        let mut id = 0;
-        let mut replacements: FxHashSet<Replacement> =
-            FxHashSet::with_capacity_and_hasher(self.graph_cache.len(), FxBuildHasher);
-        while let Some(n) = dfs.next(&self.graph) {
-            let mono = self.graph.node_weight(n).expect("Monomorph should exist");
-            let replacement = Replacement {
-                ref_item: mono.ref_item,
-                apps: mono.apps,
-                replacement: ItemId(id),
-            };
-            replacements.insert(replacement);
-            let un_monomorphed_ir = self.ref_ir[&mono.ref_item].clone();
-            let morphed_ir = self.instantiate_monomorph(un_monomorphed_ir, *mono, 0);
-            // println!("{morphed_ir}\n");
+/// Peek into a `TyApp(inner, first_app)` chain *by reference*, build the
+/// `Monomorph` key, and return the remapped `Item` if the chain ends in a
+/// known Item.
+///
+/// Working by reference means we never consume the boxes before knowing
+/// whether the lookup will succeed.  The caller falls back to plain recursive
+/// rewriting when this returns `None`.
+fn resolve_ty_app_chain(
+    inner: &IR,
+    first_app: &TyApp,
+    id_map: &FxHashMap<Monomorph, ItemId>,
+) -> Option<IR> {
+    let mut apps: Vec<TyApp> = vec![first_app.clone()];
+    let mut cur: &IR = inner;
 
-            self.mono_ids_to_ty.insert(*mono, ItemId(id));
-            new_irs.push(morphed_ir);
-            id += 1;
-        }
-
-        new_irs
-            .into_iter()
-            .map(|ir| self.instantiate_replacement(ir, &replacements))
-            .inspect(|f| println!("{f}\n-------------------------------\n"))
-            .collect()
-    }
-
-    fn subst_ty_with_depth(ty: IRType, apps: &[TyApp], depth: usize) -> IRType {
-        // dbg!(&ty, depth, apps);
-        // apps.iter()
-        //     .fold(ty, |ty, tyapp| ty.subst_app(tyapp.clone()))
-
-        // apps.iter().fold(ty, |ty, tyapp| {
-        //     ty.subst_app_with_cutoff(tyapp.clone(), depth)
-        // })
-
-        ty.subst_vars(&|v| {
-            if v.0 >= depth {
-                let idx = v.0 - depth;
-                match apps.get(idx) {
-                    Some(TyApp::Ty(t)) => t.clone(),
-                    Some(TyApp::Row(_)) => IRType::Var(v), // rows don't substitute into types
-                    None => IRType::Var(v),                // no substitution for this var
-                }
-            } else {
-                // Bound by a tyfn we're currently inside — leave it alone
-                IRType::Var(v)
+    loop {
+        match cur {
+            IR::TyApp(inner2, app2) => {
+                apps.push(app2.clone());
+                cur = inner2;
             }
-        })
-    }
-    fn instantiate_monomorph(&self, ir: IR, morph: Monomorph, depth: usize) -> IR {
-        // dbg!(depth);
-        match ir {
-            IR::TyFun(k, body) => {
-                IR::ty_fun(k, self.instantiate_monomorph(*body, morph, depth + 1))
-            }
-            IR::TyApp(body, app) => {
-                // dbg!(&app);
-                // dbg!(morph.apps);
-                let new_app = match app {
-                    TyApp::Ty(IRType::Var(v)) => {
-                        // dbg!(v.0);
-                        if v.0 + 1 >= depth {
-                            let idx = v.0 + 1 - depth;
-                            morph.apps.get(idx).cloned().unwrap_or(app.clone())
-                        } else {
-                            // dbg!(&app);
-                            app.clone()
-                        }
-                    }
-                    _ => app,
+            IR::Item(og_ty, id) => {
+                // Reverse to canonical application order before the lookup.
+                apps.reverse();
+                let mono = Monomorph {
+                    ref_item: *id,
+                    apps: apps.leak(),
                 };
-                let body = match new_app {
-                    TyApp::Ty(ref t) => simplify::subst_ty_at(*body, t.clone(), depth),
-                    TyApp::Row(ref row) => simplify::subst_row_at(*body, row.clone(), depth),
-                };
-                // dbg!(&new_app);
-                IR::ty_app(self.instantiate_monomorph(body, morph, depth), new_app)
-
-                // self.instantiate_monomorph(body, morph, depth)
-            }
-
-            IR::Local(v, d, b) => {
-                let v = v.map_ty(|f| Self::subst_ty_with_depth(f, morph.apps, depth));
-                let defn = self.instantiate_monomorph(*d, morph, depth);
-
-                let body = self.instantiate_monomorph(*b, morph, depth);
-                IR::local(v, defn, body)
-            }
-            IR::App(l, r) => IR::app(
-                self.instantiate_monomorph(*l, morph, depth),
-                self.instantiate_monomorph(*r, morph, depth),
-            ),
-            IR::Fun(v, body) => IR::fun(
-                v.map_ty(|f| Self::subst_ty_with_depth(f, morph.apps, depth)),
-                self.instantiate_monomorph(*body, morph, depth),
-            ),
-            IR::Tuple(v) => IR::Tuple(
-                v.into_iter()
-                    .map(|ir| self.instantiate_monomorph(ir, morph, depth))
-                    .collect(),
-            ),
-            IR::Case(ret_ty, body, branches) => {
-                let t = Self::subst_ty_with_depth(ret_ty, morph.apps, depth);
-                IR::case(
-                    t,
-                    self.instantiate_monomorph(*body, morph, depth),
-                    branches.into_iter().map(|b| Branch {
-                        param: b
-                            .param
-                            .map_ty(|bt| Self::subst_ty_with_depth(bt, morph.apps, depth)),
-                        body: self.instantiate_monomorph(b.body, morph, depth),
-                    }),
-                )
-            }
-            IR::Field(ir, u) => IR::field(self.instantiate_monomorph(*ir, morph, depth), u),
-            IR::Tag(t, u, ir) => IR::tag(
-                Self::subst_ty_with_depth(t, morph.apps, depth),
-                u,
-                self.instantiate_monomorph(*ir, morph, depth),
-            ),
-            IR::Var(v) => IR::Var(v.map_ty(|t| {
-                morph
+                let &new_id = id_map.get(&mono)?;
+                // Apply the concrete type args to the item's type annotation.
+                let new_ty = mono
                     .apps
                     .iter()
-                    .fold(t.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()))
-            })),
-            IR::Item(t, id) => {
-                let new_t = Self::subst_ty_with_depth(t, morph.apps, depth);
-                IR::Item(new_t, id)
+                    .fold(og_ty.clone(), |ty, a| ty.subst_app(a.clone()));
+                return Some(IR::Item(new_ty, new_id));
             }
-            IR::Extern(n, t) => {
-                let t = Self::subst_ty_with_depth(t, morph.apps, depth);
-                IR::Extern(n, t)
-            }
-            IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => ir,
-
-            IR::If(ir, ir1, ir2) => todo!(),
-            IR::Bin(l, op, r) => IR::bin(
-                self.instantiate_monomorph(*l, morph, depth),
-                op,
-                self.instantiate_monomorph(*r, morph, depth),
-            ),
-        }
-    }
-
-    fn instantiate_replacement(&self, ir: IR, replacements: &FxHashSet<Replacement>) -> IR {
-        match ir {
-            IR::TyFun(k, body) => self.instantiate_replacement(*body, replacements),
-            IR::TyApp(body, app) => {
-                fn probe_item(ir: &IR, app_accum: Vec<TyApp>) -> Option<(Monomorph, IRType)> {
-                    match ir {
-                        IR::TyApp(ir, t) => probe_item(ir, [app_accum, vec![t.clone()]].concat()),
-                        IR::Item(t, item_id) => {
-                            let mut apps = app_accum;
-                            apps.reverse();
-                            Some((
-                                Monomorph {
-                                    ref_item: *item_id,
-                                    apps: apps.leak(),
-                                },
-                                t.clone(),
-                            ))
-                        }
-                        _ => None,
-                    }
-                }
-
-                if let Some((morph, og_ty)) = probe_item(&body, vec![app.clone()]) {
-                    if let Some(replacement) = replacements.iter().find(|replacement| {
-                        morph.ref_item == replacement.ref_item && morph.apps == replacement.apps
-                    }) {
-                        let new_ty = replacement
-                            .apps
-                            .iter()
-                            .fold(og_ty.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()));
-
-                        IR::Item(new_ty, replacement.replacement)
-                    } else {
-                        //This is not the correct item to replace
-                        IR::TyApp(body, app)
-                    }
-                } else {
-                    panic!("here!");
-                    // The types should have been applied in monomorphing
-                    // dbg!("here! {body}");
-                    self.instantiate_replacement(*body, replacements)
-                }
-            }
-            IR::Local(v, d, b) => {
-                let defn = self.instantiate_replacement(*d, replacements);
-
-                let body = self.instantiate_replacement(*b, replacements);
-                IR::local(v, defn, body)
-            }
-            IR::App(l, r) => IR::app(
-                self.instantiate_replacement(*l, replacements),
-                self.instantiate_replacement(*r, replacements),
-            ),
-            IR::Fun(v, body) => IR::fun(v, self.instantiate_replacement(*body, replacements)),
-
-            IR::Tuple(v) => IR::tuple(
-                v.into_iter()
-                    .map(|ir| self.instantiate_replacement(ir, replacements)),
-            ),
-            IR::Case(t, ir, b) => IR::case(
-                t,
-                self.instantiate_replacement(*ir, replacements),
-                b.into_iter().map(|b| Branch {
-                    param: b.param,
-                    body: self.instantiate_replacement(b.body, replacements),
-                }),
-            ),
-            IR::Field(ir, u) => IR::field(self.instantiate_replacement(*ir, replacements), u),
-            IR::Tag(t, u, ir) => IR::tag(t, u, self.instantiate_replacement(*ir, replacements)),
-
-            IR::Item(ref t, id) => {
-                // Recursive item call
-                if let Some(replacement) = replacements
-                    .iter()
-                    .find(|replacement| id == replacement.ref_item)
-                {
-                    let t = replacement
-                        .apps
-                        .iter()
-                        .fold(t.clone(), |ty, tyapp| ty.subst_app(tyapp.clone()));
-                    IR::Item(t, replacement.replacement)
-                } else {
-                    ir
-                }
-            }
-            IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) | IR::Var(_) => ir,
-            IR::If(ir, ir1, ir2) => todo!(),
-            IR::Bin(l, op, r) => IR::bin(
-                self.instantiate_replacement(*l, replacements),
-                op,
-                self.instantiate_replacement(*r, replacements),
-            ),
-            IR::Extern(intern, _) => todo!(),
+            // Base is not an Item; signal the caller to fall back.
+            _ => return None,
         }
     }
 }
