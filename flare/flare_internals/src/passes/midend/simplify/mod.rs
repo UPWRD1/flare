@@ -69,25 +69,6 @@ impl Occurrences {
         }
     }
 
-    
-// fn in_branch(self, free: &FxHashSet<VarId>) -> Self {
-//         Self {
-//             vars: self
-//                 .vars
-//                 .into_iter()
-//                 .map(|(id, occ)| {
-//                     (
-//                         id,
-//                         match occ {
-//                             Occurrence::Once if free.contains(&id) =>  Occurrence::OnceInBranch,
-//                             occ => occ,
-//                         },
-//                     )
-//                 })
-//                 .collect(),
-//         }
-//     }
-
     #[must_use]
     fn merge(mut self, other: Self) -> Self {
         for (var, occ) in other.vars {
@@ -116,13 +97,13 @@ pub fn subst_ty_at(haystack: IR, payload: IRType, depth: usize) -> IR {
        => haystack,
         IR::Fun(var, ir) => IR::fun(
             var.map_ty(|ty| ty.subst_ty(payload.clone(), depth)),
-            subst_ty(*ir, payload),
+            subst_ty_at(*ir, payload, depth),
         ),
-        IR::App(fun, arg) => IR::app(subst_ty(*fun, payload.clone()), subst_ty(*arg, payload)),
+        IR::App(fun, arg) => IR::app(subst_ty_at(*fun, payload.clone(), depth), subst_ty_at(*arg, payload, depth)),
 
-IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
+IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty_at(*ir, payload, depth)),
     IR::TyApp(ir, ty) => IR::ty_app(
-      subst_ty(*ir, payload.clone()),
+      subst_ty_at(*ir, payload.clone(), depth),
       match ty {
         TyApp::Ty(ty) => TyApp::Ty(ty.subst_ty(payload, depth)),
         TyApp::Row(row) => TyApp::Row(row.subst_ty(payload)),
@@ -130,33 +111,29 @@ IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
     ),
                 IR::Local(var, defn, body) => IR::local(
             var.map_ty(|ty| ty.subst_ty(payload.clone(), depth)),
-            subst_ty(*defn, payload.clone()),
-            subst_ty(*body, payload),
+            subst_ty_at(*defn, payload.clone(), depth),
+            subst_ty_at(*body, payload, depth),
         ),
         IR::Field(ir, u) => {
-                           IR::field(subst_ty(*ir, payload), u)
+                           IR::field(subst_ty_at(*ir, payload, depth), u)
     
         }
-        IR::Tag(t, u, ir) => IR::tag(t.subst_ty(payload.clone(), 0), u, subst_ty(*ir, payload)),
+        IR::Tag(t, u, ir) => IR::tag(t.subst_ty(payload.clone(), 0), u, subst_ty_at(*ir, payload, depth)),
         IR::Tuple(elements) => {
-            // dbg!(&elements);
             IR::tuple(
                 elements
                     .into_iter()
-                    .map(|elem| subst_ty(elem, payload.clone()))
+                    .map(|elem| subst_ty_at(elem, payload.clone(),depth))
                                 )
         }
         IR::Case(t, ir, branches) => {
-            // dbg!(&t, &payload);
-            IR::case(
-                // t,
+           IR::case(
                 t.subst_ty(payload.clone(), depth),
-                // *ir,
-                subst_ty(*ir, payload.clone()),
+              subst_ty_at(*ir, payload.clone(),depth),
                 branches.into_iter().map(|x|
                     Branch{
                         param: x.param.map_ty(|ty| ty.subst_ty(payload.clone(), 0)),
-                        body: subst_ty(x.body, payload.clone())
+                        body: subst_ty_at(x.body, payload.clone(),depth)
                     }
                 )
             )
@@ -171,87 +148,22 @@ IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
         }
        
         IR::If(ir, t, o) => {
-            IR::r#if(subst_ty(*ir, payload.clone()), subst_ty(*t, payload.clone()), subst_ty(*o, payload))
+            IR::r#if(subst_ty_at(*ir, payload.clone(),depth), subst_ty_at(*t, payload.clone(),depth), subst_ty_at(*o, payload,depth))
         },
         IR::Bin(ir, bin_op, ir1) => todo!(),
     }
 }
 pub fn subst_ty(haystack: IR, payload: IRType) -> IR {
-    match haystack {
-        IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_ty(payload, 0))),
-        IR::Num(_)
-        | IR::Str(_)
-        | IR::Bool(_)
-        | IR::Unit
-        | IR::Particle(_)
-       => haystack,
-        IR::Fun(var, ir) => IR::fun(
-            var.map_ty(|ty| ty.subst_ty(payload.clone(), 0)),
-            subst_ty(*ir, payload),
-        ),
-        IR::App(fun, arg) => IR::app(subst_ty(*fun, payload.clone()), subst_ty(*arg, payload)),
-
-IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
-    IR::TyApp(ir, ty) => IR::ty_app(
-      subst_ty(*ir, payload.clone()),
-      match ty {
-        TyApp::Ty(ty) => TyApp::Ty(ty.subst_ty(payload, 0)),
-        TyApp::Row(row) => TyApp::Row(row.subst_ty(payload)),
-      },
-    ),
-                IR::Local(var, defn, body) => IR::local(
-            var.map_ty(|ty| ty.subst_ty(payload.clone(), 0)),
-            subst_ty(*defn, payload.clone()),
-            subst_ty(*body, payload),
-        ),
-        IR::Field(ir, u) => {
-                           IR::field(subst_ty(*ir, payload), u)
-    
-        }
-        IR::Tag(t, u, ir) => IR::tag(t.subst_ty(payload.clone(), 0), u, subst_ty(*ir, payload)),
-        IR::Tuple(elements) => {
-            // dbg!(&elements);
-            IR::tuple(
-                elements
-                    .into_iter()
-                    .map(|elem| subst_ty(elem, payload.clone()))
-                                )
-        }
-        IR::Case(t, ir, branches) => {
-            // dbg!(&t, &payload);
-            IR::case(
-                // t,
-                t.subst_ty(payload.clone(), 0),
-                // *ir,
-                subst_ty(*ir, payload.clone()),
-                branches.into_iter().map(|x|
-                    Branch{
-                        param: x.param.map_ty(|ty| ty.subst_ty(payload.clone(), 0)),
-                        body: subst_ty(x.body, payload.clone())
-                    }
-                )
-            )
-
-    
-                    }
-        IR::Item(t, id) => {
-            IR::Item(t.subst_ty(payload, 0), id)
-        },
-        IR::Extern(n, t) => {
-            IR::Extern(n, t.subst_ty(payload, 0))
-        }
-       
-        IR::If(ir, t, o) => {
-            IR::r#if(subst_ty(*ir, payload.clone()), subst_ty(*t, payload.clone()), subst_ty(*o, payload))
-        },
-        IR::Bin(ir, bin_op, ir1) => todo!(),
-    }
+    subst_ty_at(haystack, payload, 0)
 }
 
+pub fn subst_row(haystack: IR, payload: Row ) -> IR {
+    subst_row_at(haystack, payload, 0)
+}
 
-pub fn subst_row(haystack: IR, payload: Row) -> IR {
+pub fn subst_row_at(haystack: IR, payload: Row, needle: usize) -> IR {
   match haystack {
-    IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_row(payload))),
+    IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_row(payload, 0))),
     
  IR::Num(_)
         | IR::Str(_)
@@ -261,7 +173,7 @@ pub fn subst_row(haystack: IR, payload: Row) -> IR {
         // c IR::Tuple(_)
         | IR::Extern(_, _) => haystack,
     IR::Fun(var, ir) => IR::fun(
-      var.map_ty(|ty| ty.subst_row(payload.clone())),
+      var.map_ty(|ty| ty.subst_row(payload.clone(), 0)),
       subst_row(*ir, payload),
     ),
     IR::App(fun, arg) => IR::app(subst_row(*fun, payload.clone()), subst_row(*arg, payload)),
@@ -269,7 +181,7 @@ pub fn subst_row(haystack: IR, payload: Row) -> IR {
     IR::TyApp(ir, ty) => IR::ty_app(
       subst_row(*ir, payload.clone()),
       match ty {
-        TyApp::Ty(ty) => TyApp::Ty(ty.subst_row(payload)),
+        TyApp::Ty(ty) => TyApp::Ty(ty.subst_row(payload, 0, )),
         TyApp::Row(row) => TyApp::Row(row.subst_row(payload)),
       },
     ),
@@ -279,23 +191,23 @@ pub fn subst_row(haystack: IR, payload: Row) -> IR {
         .map(|elem| subst_row(elem, payload.clone())),
     ),
     IR::Field(ir, indx) => IR::field(subst_row(*ir, payload), indx),
-    IR::Tag(ty, tag, ir) => IR::tag(ty.subst_row(payload.clone()), tag, subst_row(*ir, payload)),
+    IR::Tag(ty, tag, ir) => IR::tag(ty.subst_row(payload.clone(), 0), tag, subst_row(*ir, payload)),
     IR::Case(ty, ir, branches) => IR::case(
-      ty.subst_row(payload.clone()),
+      ty.subst_row(payload.clone(), 0),
       subst_row(*ir, payload.clone()),
       branches.into_iter().map(|branch| Branch {
-        param: branch.param.map_ty(|ty| ty.subst_row(payload.clone())),
+        param: branch.param.map_ty(|ty| ty.subst_row(payload.clone(), 0, )),
         body: subst_row(branch.body, payload.clone()),
       }),
     ),
     IR::Local(var, defn, body) => IR::local(
-      var.map_ty(|ty| ty.subst_row(payload.clone())),
+      var.map_ty(|ty| ty.subst_row(payload.clone(), 0)),
       subst_row(*defn, payload.clone()),
       subst_row(*body, payload),
     ),
 
 IR::Item(t, id) => {
-            IR::Item(t.subst_row(payload), id)
+            IR::Item(t.subst_row(payload, 0), id)
         }
 
          IR::If(ir, t, o) => {

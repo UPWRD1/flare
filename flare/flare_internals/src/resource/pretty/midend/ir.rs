@@ -4,7 +4,11 @@ use itertools::Itertools;
 use tiny_pretty::Doc;
 
 use crate::resource::{
-    pretty::{DocExt, INC, Render}, rep::midend::{ir::{Branch, IR, Var}, irtype::{IRType, Row, TyApp}},
+    pretty::{DocExt, INC, Render},
+    rep::midend::{
+        ir::{Branch, IR, Var},
+        irtype::{IRType, Row, TyApp},
+    },
 };
 
 impl IR {
@@ -45,7 +49,7 @@ impl Render for IR {
     fn render(self) -> Doc<'static> {
         // dbg!(level);
         match self {
-            Self::Var(var) => var.render_n(),
+            Self::Var(var) => var.render(),
             Self::Num(ordered_float) => Doc::text(format!("{ordered_float}")),
             Self::Str(intern) => Doc::text(format!("\"{intern}\"")),
             Self::Bool(b) => Doc::text(format!("{b}")),
@@ -66,6 +70,9 @@ impl Render for IR {
                         .brackets(),
                     )
                     .space()
+                    // .text("->")
+                    // .render(ir.type_of())
+                    // .space()
                     .text("=>") // .append(Doc::)
                     .group()
                     .append(Doc::line_or_space().append(ir.render()).group().nest(INC))

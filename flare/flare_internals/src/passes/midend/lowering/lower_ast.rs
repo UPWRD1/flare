@@ -512,7 +512,6 @@ impl<'source> LowerAst<'source> {
                     || unreachable!("Branch AST node lacks expected type"),
                     |ty| self.types.lower_ty(*ty.0),
                 );
-                // dbg!(ret_ty);
                 let branch = IR::ty_app(IR::field(IR::Var(param), 1), TyApp::Ty(ret_ty));
 
                 let left = self.lower_ast(left);

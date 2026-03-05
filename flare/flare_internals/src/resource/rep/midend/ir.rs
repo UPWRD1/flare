@@ -190,9 +190,11 @@ impl IR {
                 if let IRType::Fun(fun_arg_ty, ret_ty) = fun.type_of() {
                     if arg.type_of() != *fun_arg_ty {
                         unreachable!(
-                            "Function applied to wrong argument type. Expected {}, found {}",
+                            "Function applied to wrong argument type. Expected {}, found {}\n fun: {}\narg: {}",
                             fun_arg_ty,
-                            arg.type_of()
+                            arg.type_of(),
+                            fun,
+                            arg
                         );
                     }
                     *ret_ty
@@ -213,7 +215,7 @@ impl IR {
                 };
                 match (kind, ty_app) {
                     (Kind::Type, TyApp::Ty(ty)) => ret_ty.subst_ty(ty.clone(), 0),
-                    (Kind::Row, TyApp::Row(row)) => ret_ty.subst_row(row.clone()),
+                    (Kind::Row, TyApp::Row(row)) => ret_ty.subst_row(row.clone(), 0),
                     (Kind::Type, TyApp::Row(_)) => {
                         unreachable!("Kind mismatch. Type applied a Row to variable of kind Type",)
                     }
@@ -264,7 +266,7 @@ impl IR {
 
                 if body.type_of() != elems[*tag] {
                     unreachable!(
-                        "Tagged value has element with the wrong type {} vs {}, \nir = {}",
+                        "Tagged value has element with the wrong type body {} vs elem {}, \nir = {}",
                         body.type_of(),
                         elems[*tag],
                         self,
@@ -289,8 +291,9 @@ impl IR {
 
                     if ty != &branch.body.type_of() {
                         unreachable!(
-                            "ICE: Branch body has unexpected return type. ty: {ty:?} vs branch: {:?}",
-                            branch.body.type_of()
+                            "ICE: Branch body has unexpected return type. ty: {ty:?} vs branch: {:?}\n\nbranch:\n{}",
+                            branch.body.type_of(),
+                            branch.body,
                         )
                     }
                 }

@@ -72,6 +72,8 @@ impl Subst {
                 self.subst_ty(*ret, needle),
             ),
             IRType::TyFun(kind, body) => {
+                // IRType::ty_fun(kind, self.shifted().subst_ty(*body, needle + 1))
+
                 IRType::ty_fun(kind, self.shifted().subst_ty(*body, needle + 1))
 
                 // Type::ty_fun(kind, self.shifted().subst_ty(*body, needle))
@@ -136,7 +138,7 @@ impl IRType {
         match payload {
             TyApp::Ty(ty) => self.subst_ty(ty, 0),
 
-            TyApp::Row(row) => self.subst_row(row),
+            TyApp::Row(row) => self.subst_row(row, 0),
         }
     }
 
@@ -144,7 +146,29 @@ impl IRType {
         match payload {
             TyApp::Ty(ty) => self.subst_ty(ty, needle),
 
-            TyApp::Row(row) => self.subst_row(row),
+            TyApp::Row(row) => self.subst_row(row, needle),
+        }
+    }
+
+    pub fn subst_vars(self, f: &impl Fn(TypeVar) -> Self) -> Self {
+        match self {
+            Self::Num | Self::Unit | Self::Str | Self::Bool | Self::Particle(_) => self,
+            Self::Var(v) => f(v),
+            Self::Fun(l, r) => Self::fun(l.subst_vars(f), r.subst_vars(f)),
+            Self::TyFun(kind, t) => Self::ty_fun(kind, t.subst_vars(f)),
+            Self::Prod(row) => match row {
+                Row::Open(type_var) => todo!(),
+                Row::Closed(irtypes) => Self::prod(Row::Closed(
+                    irtypes.into_iter().map(|t| t.subst_vars(f)).collect(),
+                )),
+            },
+            Self::Sum(row) => match row {
+                Row::Open(type_var) => todo!(),
+                Row::Closed(irtypes) => Self::sum(Row::Closed(
+                    irtypes.into_iter().map(|t| t.subst_vars(f)).collect(),
+                )),
+            },
+            Self::Volatile(irtype) => todo!(),
         }
     }
 
@@ -188,12 +212,8 @@ impl IRType {
         Subst::TyPayload(ty).subst_ty(self, needle)
     }
 
-    // pub fn subst_ty_final(self, ty: Self) -> Self {
-    //     Subst::TyPayload(ty).subst_ty_final(self, 0)
-    // }
-
-    pub fn subst_row(self, row: Row) -> Self {
-        Subst::RowPayload(row).subst_ty(self, 0)
+    pub fn subst_row(self, row: Row, needle: usize) -> Self {
+        Subst::RowPayload(row).subst_ty(self, needle)
     }
 
     fn adjust(&mut self, cutoff: usize) {
