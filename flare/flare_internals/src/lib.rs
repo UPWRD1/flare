@@ -221,6 +221,9 @@ pub fn resolve(build: Build) -> CompResult<Resolve> {
 pub fn typecheck(resolve: Resolve) -> CompResult<Typecheck> {
     let tc = Typechecker::new(resolve.order.leak(), resolve.env);
     let (items, source) = tc.check()?;
+    // for item in &items {
+    //     println!("#{}:\n{}\n------------", item.0.0, item.1.typed_ast)
+    // }
     Ok(Typecheck { items, source })
 }
 

@@ -154,9 +154,13 @@ impl Render for IR {
                     .braces()
                 }
             }
-            Self::Case(_, scrutinee, branches) => Doc::text("match")
+            Self::Case(t, scrutinee, branches) => Doc::text("match")
                 .space()
                 .append(scrutinee.render())
+                .space()
+                .text("ret")
+                .space()
+                .render(t)
                 .text(":")
                 .append(
                     Doc::list(
@@ -192,7 +196,7 @@ impl Render for IR {
                 .space()
                 .render(t),
             Self::Particle(p) => Doc::text(format!("@{p}")),
-            Self::Item(_t, id) => Doc::text(format!("#{}", id.0)),
+            Self::Item(t, id) => Doc::text(format!("#{}:", id.0)).render(t),
             // .append(Doc::space())
             // .append(t.render()),
             Self::Extern(n, _) => Doc::text(format!("extern_{n}")),

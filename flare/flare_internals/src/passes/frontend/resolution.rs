@@ -21,7 +21,7 @@ use crate::{
         rep::{
             common::{Ident, Spanned},
             frontend::{
-                ast::{Direction, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
+                ast::{Expr, ItemId, Kind, Label, Untyped, UntypedAst},
                 cst::{CstExpr, MatchArm, Pattern, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind, PackageEntry},
@@ -498,7 +498,7 @@ impl Resolver {
                 };
                 expr.convert(Expr::Call(func, arg))
             }
-            CstExpr::FieldAccess(l, r) => self.resolve_field_access(expr, l, r, vars),
+            CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars),
             CstExpr::If(cond, then, otherwise) => {
                 let cond = self.analyze_expr(cond, vars);
                 let then_vars = vars;
@@ -577,38 +577,55 @@ impl Resolver {
     fn resolve_field_access(
         &mut self,
         expr: Spanned<Intern<CstExpr<Untyped>>>,
-        l: Spanned<Intern<CstExpr<Untyped>>>,
-        r: Spanned<Intern<CstExpr<Untyped>>>,
         vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
     ) -> Spanned<Intern<Expr<Untyped>>> {
+        let CstExpr::FieldAccess(l, r) = *expr.0 else {
+            panic!("Not a field access")
+        };
         let l = self.analyze_expr(l, vars);
         if let Expr::Item(_, _) = *l.0 {
             self.resolve_name_expr(r)
-        } else if let Expr::Ident(n) = *l.0 {
-            if let Some((_variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
-                let projection: Spanned<Intern<Expr<Untyped>>> = {
-                    let combo = *val;
-                    let id = r.ident().expect("Expression should be nameable");
-                    {
-                        let ex = combo.convert(Expr::Project(Direction::Right, combo));
-
-                        combo.convert(Expr::Unlabel(ex, Label(id)))
-                    }
-                };
-                expr.convert(projection.0)
-            } else {
-                todo!()
-            }
-        } else if let Expr::Unlabel(_combo, _labell) = *l.0 {
-            self.resolve_name_expr(r)
         } else {
-            let ex = l.convert(Expr::Project(Direction::Right, l));
-
-            let id = r.ident().expect("Expression should be nameable");
-            l.convert(Expr::Unlabel(ex, Label(id)))
-            // todo!("{l:?}")
+            let id = r.ident().unwrap();
+            expr.convert(Expr::Access(l, Label(id)))
         }
-    }
+    } // fn resolve_field_access(
+    //     &mut self,
+    //     expr: Spanned<Intern<CstExpr<Untyped>>>,
+    //     vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+    // ) -> Spanned<Intern<Expr<Untyped>>> {
+    //     let CstExpr::FieldAccess(l, r) = *expr.0 else {
+    //         panic!("Not a field access")
+    //     };
+    //     let l = self.analyze_expr(l, vars);
+    //     if let Expr::Item(_, _) = *l.0 {
+    //         self.resolve_name_expr(r)
+    //     } else if let Expr::Ident(n) = *l.0 {
+    //         if let Some((_variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
+    //             let projection: Spanned<Intern<Expr<Untyped>>> = {
+    //                 let combo = *val;
+    //                 let id = r.ident().expect("Expression should be nameable");
+    //                 {
+    //                     dbg!(val);
+    //                     let ex = combo.convert(Expr::Project(Direction::Right, combo));
+
+    //                     combo.convert(Expr::Unlabel(ex, Label(id)))
+    //                 }
+    //             };
+    //             expr.convert(projection.0)
+    //         } else {
+    //             todo!()
+    //         }
+    //     } else if let Expr::Unlabel(_combo, _labell) = *l.0 {
+    //         self.resolve_name_expr(r)
+    //     } else {
+    //         dbg!(l);
+    //         let ex = l.convert(Expr::Project(Direction::Right, l));
+
+    //         let id = r.ident().expect("Expression should be nameable");
+    //         l.convert(Expr::Unlabel(ex, Label(id)))
+    //     }
+    // }
 
     fn resolve_branch(
         &mut self,

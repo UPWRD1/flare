@@ -107,12 +107,12 @@ impl Subst {
 }
 
 impl Row {
-    pub fn subst_ty(self, ty: IRType) -> Self {
-        Subst::TyPayload(ty).subst_row(self, 0)
+    pub fn subst_ty(self, ty: IRType, needle: usize) -> Self {
+        Subst::TyPayload(ty).subst_row(self, needle)
     }
 
-    pub fn subst_row(self, row: Self) -> Self {
-        Subst::RowPayload(row).subst_row(self, 0)
+    pub fn subst_row(self, row: Self, needle: usize) -> Self {
+        Subst::RowPayload(row).subst_row(self, needle)
     }
 
     fn adjust(&mut self, cutoff: usize) {

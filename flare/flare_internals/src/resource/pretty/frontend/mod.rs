@@ -134,6 +134,7 @@ impl<V: Variable + Render> Render for Spanned<Intern<Expr<V>>> {
                 .hard_line()
                 .nest(4)
                 .append(body.render().hard_line().nest(4)),
+            Expr::Access(l, r) => l.render().text(".").text(r.0.0),
         }
     }
 }

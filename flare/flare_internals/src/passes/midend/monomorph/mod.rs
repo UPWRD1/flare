@@ -75,7 +75,7 @@ pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
             let body = beta_reduce_tyfuns(ir, mono.apps);
             rewrite(body, &id_map)
         })
-        .inspect(|ir| println!("{ir}\n-------------------------------\n"))
+        // .inspect(|ir| println!("{ir}\n-------------------------------\n"))
         .collect()
 }
 
@@ -190,7 +190,7 @@ fn beta_reduce_tyfuns(mut ir: IR, apps: &[TyApp]) -> IR {
                 TyApp::Row(r) => simplify::subst_row_at(*body, r.clone(), 0),
             },
             // Fewer binders than type args: ill-typed input, stop early.
-            other => return other,
+            other => panic!("NOt enough args"), //return other,
         };
     }
     ir
@@ -361,6 +361,8 @@ fn resolve_ty_app_chain(
                     .apps
                     .iter()
                     .fold(og_ty.clone(), |ty, a| ty.subst_app(a.clone()));
+                dbg!(mono.apps);
+                dbg!(og_ty, &new_ty);
                 return Some(IR::Item(new_ty, new_id));
             }
             // Base is not an Item; signal the caller to fall back.

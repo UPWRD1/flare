@@ -1,6 +1,9 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::resource::rep::midend::ir::{Branch, IR, ItemId};
+use crate::resource::rep::midend::{
+    ir::{Branch, IR, ItemId},
+    irtype::{IRType, Row},
+};
 
 fn track_seen(ir: &[IR]) -> FxHashSet<ItemId> {
     ir.iter().rev().flat_map(|ir| ir.who_do_i_call()).collect()
@@ -35,21 +38,40 @@ pub fn reduce(irs: Vec<IR>) -> Vec<IR> {
     ir.into_iter().map(|ir| reduce_ir(ir, &map)).collect()
 }
 
+fn strip_ty(ty: IRType) -> IRType {
+    // dbg!(&ty);
+    match ty {
+        IRType::Var(type_var) => panic!("Invalid"),
+        IRType::Fun(l, r) => IRType::fun(strip_ty(*l), strip_ty(*r)),
+        IRType::TyFun(kind, irtype) => strip_ty(*irtype),
+        IRType::Prod(row) => IRType::Prod(match row {
+            Row::Open(type_var) => todo!(),
+            Row::Closed(irtypes) => Row::Closed(irtypes.into_iter().map(strip_ty).collect()),
+        }),
+        IRType::Sum(row) => IRType::Sum(match row {
+            Row::Open(type_var) => todo!(),
+            Row::Closed(irtypes) => Row::Closed(irtypes.into_iter().map(strip_ty).collect()),
+        }),
+        IRType::Volatile(irtype) => IRType::volatile(strip_ty(*irtype)),
+        _ => ty,
+    }
+}
+
 fn reduce_ir(ir: IR, map: &FxHashMap<ItemId, ItemId>) -> IR {
     match ir {
         // IR::Comment(s, ir) => IR::Comment(s, Box::new(reduce_ir(*ir, map))),
-        IR::Fun(var, ir) => IR::fun(var, reduce_ir(*ir, map)),
+        IR::Fun(var, ir) => IR::fun(var.map_ty(strip_ty), reduce_ir(*ir, map)),
         IR::App(l, r) => IR::app(reduce_ir(*l, map), reduce_ir(*r, map)),
-        IR::TyFun(kind, ir) => IR::ty_fun(kind, reduce_ir(*ir, map)),
-        IR::TyApp(ir, ty_app) => IR::ty_app(reduce_ir(*ir, map), ty_app),
-        IR::Local(var, defn, body) => IR::local(var, reduce_ir(*defn, map), reduce_ir(*body, map)),
+        IR::TyFun(..)| //IR::ty_fun(kind, reduce_ir(*ir, map)),
+        IR::TyApp(..) => panic!("Invalid"), // IR::ty_app(reduce_ir(*ir, map), ty_app),
+        IR::Local(var, defn, body) => IR::local(var.map_ty(strip_ty), reduce_ir(*defn, map), reduce_ir(*body, map)),
         IR::If(ir, t, o) => IR::r#if(reduce_ir(*ir, map), reduce_ir(*t, map), reduce_ir(*o, map)),
         IR::Bin(l, op, r) => IR::bin(reduce_ir(*l, map), op, reduce_ir(*r, map)),
         IR::Tuple(irs) => IR::tuple(irs.into_iter().map(|ir| reduce_ir(ir, map))),
         IR::Field(ir, i) => IR::field(reduce_ir(*ir, map), i),
-        IR::Tag(ty, tag, body) => IR::tag(ty, tag, reduce_ir(*body, map)),
+        IR::Tag(ty, tag, body) => IR::tag(strip_ty(ty), tag, reduce_ir(*body, map)),
         IR::Case(t, ir, branchs) => IR::case(
-            t,
+            strip_ty(t),
             reduce_ir(*ir, map),
             branchs.into_iter().map(|b| Branch {
                 body: reduce_ir(b.body, map),
@@ -57,7 +79,7 @@ fn reduce_ir(ir: IR, map: &FxHashMap<ItemId, ItemId>) -> IR {
             }),
         ),
         IR::Item(t, item_id) => IR::Item(
-            t,
+            strip_ty(t),
             *map.get(&item_id)
                 .unwrap_or_else(|| panic!("cannot find {:?}", item_id)),
         ),

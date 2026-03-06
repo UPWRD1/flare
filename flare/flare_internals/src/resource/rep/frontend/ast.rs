@@ -143,7 +143,8 @@ where
     Sub(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Comparison(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
 
-    // Access(Spanned<Intern<Self>>),
+    Access(Spanned<Intern<Self>>, Label),
+
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     If(
         Spanned<Intern<Self>>,

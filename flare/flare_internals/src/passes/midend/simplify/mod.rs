@@ -106,7 +106,7 @@ IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty_at(*ir, payload, depth + 1)),
       subst_ty_at(*ir, payload.clone(), depth),
       match ty {
         TyApp::Ty(ty) => TyApp::Ty(ty.subst_ty(payload, depth)),
-        TyApp::Row(row) => TyApp::Row(row.subst_ty(payload)),
+        TyApp::Row(row) => TyApp::Row(row.subst_ty(payload, depth)),
       },
     ),
                 IR::Local(var, defn, body) => IR::local(
@@ -137,9 +137,7 @@ IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty_at(*ir, payload, depth + 1)),
                     }
                 )
             )
-
-    
-                    }
+        }
         IR::Item(t, id) => {
             IR::Item(t.subst_ty(payload, depth), id)
         },
@@ -182,7 +180,7 @@ pub fn subst_row_at(haystack: IR, payload: Row, needle: usize) -> IR {
       subst_row_at(*ir, payload.clone(), needle),
       match ty {
         TyApp::Ty(ty) => TyApp::Ty(ty.subst_row(payload, needle, )),
-        TyApp::Row(row) => TyApp::Row(row.subst_row(payload)),
+        TyApp::Row(row) => TyApp::Row(row.subst_row(payload, needle)),
       },
     ),
     IR::Tuple(elems) => IR::tuple(

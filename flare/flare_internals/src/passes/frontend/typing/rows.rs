@@ -82,6 +82,26 @@ impl Row {
             _ => false,
         }
     }
+
+    pub fn field_index(&self, l: Label) -> usize {
+        match self {
+            Self::Open(row_var) => todo!(),
+            Self::Unifier(row_uni_var) => todo!(),
+            Self::Closed(closed_row) => closed_row
+                .fields
+                .iter()
+                .position(|f| f.0.0 == l.0.0)
+                .unwrap(),
+        }
+    }
+
+    pub fn len_fields(&self) -> usize {
+        match self {
+            Self::Open(row_var) => todo!(),
+            Self::Unifier(row_uni_var) => todo!(),
+            Self::Closed(closed_row) => closed_row.fields.len(),
+        }
+    }
 }
 
 impl Display for Row {

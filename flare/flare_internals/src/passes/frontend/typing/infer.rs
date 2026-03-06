@@ -8,7 +8,7 @@ use crate::{
     },
     resource::rep::{
         common::Spanned,
-        frontend::ast::{Direction, Expr, Untyped},
+        frontend::ast::{Direction, Expr, Label, Untyped},
     },
 };
 
@@ -155,19 +155,18 @@ impl Solver<'_> {
                 )
             }
 
-            // Expr::Let(name, def, body) => {
-            //     let (mut def_out, def_ty) = self.infer(env.clone(), def);
-            //     // dbg!(name, def_ty);
-            //     let env = env.update(name.0.0, def_ty);
-            //     let (body_out, body_ty) = self.infer(env, body);
-            //     def_out.constraints.extend(body_out.constraints);
-            //     (
-            //         def_out.with_typed_ast(|def| {
-            //             ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
-            //         }),
-            //         body_ty,
-            //     )
-            // }
+            Expr::Let(name, def, body) => {
+                let (mut def_out, def_ty) = self.infer(env.clone(), def);
+                let env = env.update(name.0.0, def_ty);
+                let (body_out, body_ty) = self.infer(env, body);
+                def_out.constraints.extend(body_out.constraints);
+                (
+                    def_out.with_typed_ast(|def| {
+                        ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
+                    }),
+                    body_ty,
+                )
+            }
             Expr::Add(l, r) => {
                 let num_ty = ast.convert(Type::Num);
                 let left_out = self.check(env.clone(), l, num_ty);
@@ -428,11 +427,52 @@ impl Solver<'_> {
                     ty,
                 )
             }
-
-            _ => unreachable!(
-                "Encountered unknown/invalid expression during inference: {:?}",
-                ast.0
-            ),
+            Expr::Access(l, r) => {
+                // dbg!(l, r);
+                let (out, ty) = self.infer(env.clone(), l);
+                // dbg!(ty);
+                let row: Row = ty.0.to_row();
+                let path = path_to_field(row.field_index(r), row.len_fields());
+                let projections = apply_field_path(l, &path, r);
+                self.infer(env, ast.convert(*projections.0))
+            } // _ => unreachable!(
+              //     "Encountered unknown/invalid expression during inference: {:?}",
+              //     ast.0
+              // ),
         }
     }
+}
+
+fn path_to_field(index: usize, total: usize) -> Vec<Direction> {
+    match total {
+        // Single field — bare label, no projection needed
+        1 => vec![],
+
+        _ => {
+            if index == total - 1 {
+                // Rightmost field is always Right
+                vec![Direction::Right]
+            } else {
+                // Everything else recurses into the Left sub-pair,
+                // which itself has (total - 1) fields
+                let mut path = vec![Direction::Left];
+                path.extend(path_to_field(index, total - 1));
+                path
+            }
+        }
+    }
+}
+
+/// Builds the projection + unlabel chain from a path.
+fn apply_field_path(
+    base: Spanned<Intern<Expr<Untyped>>>,
+    path: &[Direction],
+    label: Label,
+) -> Spanned<Intern<Expr<Untyped>>> {
+    // Walk projections inward
+    let projected = path
+        .iter()
+        .fold(base, |acc, &dir| acc.convert(Expr::Project(dir, acc)));
+    // Strip the label at the leaf
+    projected.convert(Expr::Unlabel(projected, label))
 }
