@@ -6,7 +6,7 @@ entry:
   %cast_slot = alloca float, align 4
   store float %0, ptr %cast_slot, align 4
   %bytes = load [4 x i8], ptr %cast_slot, align 1
-  %body_store = insertvalue <{ i8, [4 x i8] }> <{ i8 1, [4 x i8] undef }>, [4 x i8] %bytes, 1
+  %body_store = insertvalue <{ i8, [4 x i8] }> <{ i8 0, [4 x i8] undef }>, [4 x i8] %bytes, 1
   ret <{ i8, [4 x i8] }> %body_store
 }
 
@@ -15,23 +15,23 @@ entry:
   %cast_slot = alloca i8, align 1
   store i8 0, ptr %cast_slot, align 1
   %bytes = load [4 x i8], ptr %cast_slot, align 1
-  %body_store = insertvalue <{ i8, [4 x i8] }> <{ i8 0, [4 x i8] undef }>, [4 x i8] %bytes, 1
+  %body_store = insertvalue <{ i8, [4 x i8] }> <{ i8 1, [4 x i8] undef }>, [4 x i8] %bytes, 1
   ret <{ i8, [4 x i8] }> %body_store
 }
 
-define <{ i8, [4 x i8] }> @flare_f_3(i8 %0) {
-entry:
-  %closure_indirect = call <{ i8, [4 x i8] }> @flare_f_1()
-  ret <{ i8, [4 x i8] }> %closure_indirect
-}
-
-define <{ i8, [4 x i8] }> @flare_f_4({ ptr, { ptr } } %0, float %1) {
+define <{ i8, [4 x i8] }> @flare_f_3({ ptr, { ptr } } %0, float %1) {
 entry:
   %closure_env = extractvalue { ptr, { ptr } } %0, 1
   %closure_field = extractvalue { ptr } %closure_env, 0
   %closure_indirect = call float %closure_field(float %1)
   %closure_indirect1 = call <{ i8, [4 x i8] }> @flare_f_0(float %closure_indirect)
   ret <{ i8, [4 x i8] }> %closure_indirect1
+}
+
+define <{ i8, [4 x i8] }> @flare_f_4(i8 %0) {
+entry:
+  %closure_indirect = call <{ i8, [4 x i8] }> @flare_f_1()
+  ret <{ i8, [4 x i8] }> %closure_indirect
 }
 
 define <{ i8, [4 x i8] }> @flare_f_2(<{ i8, [4 x i8] }> %0, ptr %1) {
@@ -49,34 +49,34 @@ case_merge:                                       ; preds = %case_arm_1, %case_a
 case_arm_0:                                       ; preds = %entry
   %cast_slot = alloca <{ i8, [4 x i8] }>, align 8
   store <{ i8, [4 x i8] }> %0, ptr %cast_slot, align 1
-  %bytes = load i8, ptr %cast_slot, align 1
-  %closure_indirect = call <{ i8, [4 x i8] }> @flare_f_3(i8 %bytes)
+  %bytes = load float, ptr %cast_slot, align 4
+  %env_insert = insertvalue { ptr } undef, ptr %1, 0
+  %env_insert1 = insertvalue { ptr, { ptr } } { ptr @flare_f_3, { ptr } undef }, { ptr } %env_insert, 1
+  %closure_fn = extractvalue { ptr, { ptr } } %env_insert1, 0
+  %closure_indirect = call <{ i8, [4 x i8] }> %closure_fn({ ptr, { ptr } } %env_insert1, float %bytes)
   br label %case_merge
 
 case_arm_1:                                       ; preds = %entry
-  %cast_slot1 = alloca <{ i8, [4 x i8] }>, align 8
-  store <{ i8, [4 x i8] }> %0, ptr %cast_slot1, align 1
-  %bytes2 = load float, ptr %cast_slot1, align 4
-  %env_insert = insertvalue { ptr } undef, ptr %1, 0
-  %env_insert3 = insertvalue { ptr, { ptr } } { ptr @flare_f_4, { ptr } undef }, { ptr } %env_insert, 1
-  %closure_fn = extractvalue { ptr, { ptr } } %env_insert3, 0
-  %closure_indirect4 = call <{ i8, [4 x i8] }> %closure_fn({ ptr, { ptr } } %env_insert3, float %bytes2)
+  %cast_slot2 = alloca <{ i8, [4 x i8] }>, align 8
+  store <{ i8, [4 x i8] }> %0, ptr %cast_slot2, align 1
+  %bytes3 = load i8, ptr %cast_slot2, align 1
+  %closure_indirect4 = call <{ i8, [4 x i8] }> @flare_f_4(i8 %bytes3)
   br label %case_merge
 
 trap_block:                                       ; preds = %entry
   unreachable
 }
 
-define float @flare_f_6({ ptr, { float } } %0, i8 %1) {
+define float @flare_f_6(float %0) {
+entry:
+  ret float %0
+}
+
+define float @flare_f_7({ ptr, { float } } %0, i8 %1) {
 entry:
   %closure_env = extractvalue { ptr, { float } } %0, 1
   %closure_field = extractvalue { float } %closure_env, 0
   ret float %closure_field
-}
-
-define float @flare_f_7(float %0) {
-entry:
-  ret float %0
 }
 
 define float @flare_f_5(<{ i8, [4 x i8] }> %0, float %1) {
@@ -94,18 +94,18 @@ case_merge:                                       ; preds = %case_arm_1, %case_a
 case_arm_0:                                       ; preds = %entry
   %cast_slot = alloca <{ i8, [4 x i8] }>, align 8
   store <{ i8, [4 x i8] }> %0, ptr %cast_slot, align 1
-  %bytes = load i8, ptr %cast_slot, align 1
-  %env_insert = insertvalue { float } undef, float %1, 0
-  %env_insert1 = insertvalue { ptr, { float } } { ptr @flare_f_6, { float } undef }, { float } %env_insert, 1
-  %closure_fn = extractvalue { ptr, { float } } %env_insert1, 0
-  %closure_indirect = call float %closure_fn({ ptr, { float } } %env_insert1, i8 %bytes)
+  %bytes = load float, ptr %cast_slot, align 4
+  %closure_indirect = call float @flare_f_6(float %bytes)
   br label %case_merge
 
 case_arm_1:                                       ; preds = %entry
-  %cast_slot2 = alloca <{ i8, [4 x i8] }>, align 8
-  store <{ i8, [4 x i8] }> %0, ptr %cast_slot2, align 1
-  %bytes3 = load float, ptr %cast_slot2, align 4
-  %closure_indirect4 = call float @flare_f_7(float %bytes3)
+  %cast_slot1 = alloca <{ i8, [4 x i8] }>, align 8
+  store <{ i8, [4 x i8] }> %0, ptr %cast_slot1, align 1
+  %bytes2 = load i8, ptr %cast_slot1, align 1
+  %env_insert = insertvalue { float } undef, float %1, 0
+  %env_insert3 = insertvalue { ptr, { float } } { ptr @flare_f_7, { float } undef }, { float } %env_insert, 1
+  %closure_fn = extractvalue { ptr, { float } } %env_insert3, 0
+  %closure_indirect4 = call float %closure_fn({ ptr, { float } } %env_insert3, i8 %bytes2)
   br label %case_merge
 
 trap_block:                                       ; preds = %entry

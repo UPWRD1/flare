@@ -66,7 +66,7 @@ impl Solver<'_> {
         }
     }
 
-    fn normalize_row(&mut self, row: Spanned<Intern<Row>>) -> Spanned<Intern<Row>> {
+    pub fn normalize_row(&mut self, row: Spanned<Intern<Row>>) -> Spanned<Intern<Row>> {
         row.map(|row| match *row {
             Row::Unifier(var) => match self.tables.row_unification_table.probe_value(var) {
                 Some(Row::Closed(closed)) => Row::Closed(self.normalize_closed_row(closed)).into(),
@@ -290,16 +290,22 @@ impl Solver<'_> {
         match (*left.0, *right.0, *goal.0) {
             (Row::Closed(l), Row::Closed(r), g) => {
                 let calc_goal = ClosedRow::merge(l, r);
-                self.unify_row_row(
-                    Spanned(Row::Closed(calc_goal).into(), left.1.union(right.1)),
-                    goal.convert(g),
-                )
+
+                // self.unify_row_row(
+                //                    Spanned(Row::Closed(calc_goal).into(), left.1.union(right.1)),
+                //                    goal.convert(g),
+                //                )
+                self.unify_row_row(goal.convert(Row::Closed(calc_goal)), goal)
             }
             (Row::Unifier(var), Row::Closed(sub), Row::Closed(goal)) => {
                 let diff_row = self.diff_and_unify(goal, sub)?;
 
+                // self.unify_row_row(
+                //                     Spanned(Row::Unifier(var).into(), left.1.union(right.1)),
+                //                     right.convert(Row::Closed(diff_row)),
+                //                 )
                 self.unify_row_row(
-                    Spanned(Row::Unifier(var).into(), left.1.union(right.1)),
+                    left.convert(Row::Unifier(var)),
                     right.convert(Row::Closed(diff_row)),
                 )
             }
@@ -307,8 +313,13 @@ impl Solver<'_> {
             (Row::Closed(sub), Row::Unifier(var), Row::Closed(goal)) => {
                 let diff_row = self.diff_and_unify(goal, sub)?;
 
+                // self.unify_row_row(
+                //     Spanned(Row::Unifier(var).into(), left.1.union(right.1)),
+                //     left.convert(Row::Closed(diff_row)),
+                // )
+
                 self.unify_row_row(
-                    Spanned(Row::Unifier(var).into(), left.1.union(right.1)),
+                    right.convert(Row::Unifier(var)),
                     left.convert(Row::Closed(diff_row)),
                 )
             }

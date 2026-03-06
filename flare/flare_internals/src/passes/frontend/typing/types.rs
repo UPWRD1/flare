@@ -216,6 +216,7 @@ impl Type {
         // TODO Replace with `Intern<Row>`
         match self {
             Self::Prod(row) | Self::Sum(row) => *row.0,
+            Self::Label(lbl, ty) => Row::single(lbl, ty),
             _ => unreachable!("expected row, found {self:?}"),
         }
     }

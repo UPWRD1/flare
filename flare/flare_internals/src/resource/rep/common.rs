@@ -5,17 +5,17 @@ use crate::resource::{
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use std::{
-    fmt::{self, Debug, Display},
+    fmt::{Debug, Display},
     hash::{self, Hash},
 };
 
 pub trait Variable:
-    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display + HasSpan
+    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display
 {
 }
 pub trait Syntax: Debug + Copy + 'static {
-    type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + HasSpan;
-    type Type: Clone + Debug + PartialEq + Eq + Hash + 'static + HasSpan;
+    type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static;
+    type Type: Clone + Debug + PartialEq + Eq + Hash + 'static;
     type Variable: Variable + Copy;
     type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Ident;
 }
@@ -92,12 +92,6 @@ impl<T> From<(T, SimpleSpan<usize, u64>)> for Spanned<T> {
         Self(value.0, value.1)
     }
 }
-
-// impl<T: fmt::Display> fmt::Display for Spanned<T> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", self.0)
-//     }
-// }
 pub type NodeId = SimpleSpan<usize, u64>;
 /// Trait for entities that have Names. Implementing this trait is preferred
 /// over a custom name implementation. Currently the only major type that

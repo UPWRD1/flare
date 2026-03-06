@@ -361,8 +361,8 @@ fn resolve_ty_app_chain(
                     .apps
                     .iter()
                     .fold(og_ty.clone(), |ty, a| ty.subst_app(a.clone()));
-                dbg!(mono.apps);
-                dbg!(og_ty, &new_ty);
+                // dbg!(mono.apps);
+                // dbg!(og_ty, &new_ty);
                 return Some(IR::Item(new_ty, new_id));
             }
             // Base is not an Item; signal the caller to fall back.

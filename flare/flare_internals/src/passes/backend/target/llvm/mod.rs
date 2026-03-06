@@ -1093,14 +1093,14 @@ impl FlareTarget for LLVM {
             match purpose {
                 FunctionPurpose::Normal | FunctionPurpose::Closure => {
                     // log::info!("{}", item);
-                    llvm_ctx.codegen_item(item);
+                    llvm_ctx.codegen_item(item).unwrap();
                     // log::info!("---------------------------------")
                 }
 
                 FunctionPurpose::Main => {
                     let id = item.id;
                     // log::info!("{}", item);
-                    let main_id = llvm_ctx.codegen_item(item);
+                    let main_id = llvm_ctx.codegen_item(item).unwrap();
                     // log::info!("------------main---------");
                     llvm_ctx.generate_main_func(&id);
 

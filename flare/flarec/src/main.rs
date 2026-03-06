@@ -96,7 +96,7 @@ macro_rules! make_target {
     ($target:tt, $cli:ident) => {{
         let files = $cli.input_files;
         let target = $target;
-        let ctx = make_filectx(files);
+        let ctx = make_filectx(&files);
         let now: Instant = Instant::now();
         parse(&ctx)
             .and_then(build)
@@ -111,10 +111,11 @@ macro_rules! make_target {
             .and_then(|res| {
                 let output: Vec<u8> = res.into();
                 let elapsed = now.elapsed();
-                println!("Compiled  in {elapsed:.2?}",);
-                let f = $cli.output_file.with_extension(target.ext());
-                let mut f = File::create(f).unwrap();
+                println!("Compiled {} files in {elapsed:.2?}", files.len());
+                let fpath = $cli.output_file.with_extension(target.ext());
+                let mut f = File::create(&fpath)?;
                 f.write_all(&output)?;
+                println!("Wrote {} bytes to {}", output.len(), fpath.display());
 
                 Ok(())
             })
@@ -130,7 +131,7 @@ fn main() {
 
     match cli.emit {
         EmitOptions::IR => {
-            let ctx = make_filectx(cli.input_files);
+            let ctx = make_filectx(&cli.input_files);
             let now: Instant = Instant::now();
             parse(&ctx)
                 .and_then(build)

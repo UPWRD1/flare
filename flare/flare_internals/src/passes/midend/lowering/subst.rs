@@ -72,8 +72,6 @@ impl Subst {
                 self.subst_ty(*ret, needle),
             ),
             IRType::TyFun(kind, body) => {
-                // IRType::ty_fun(kind, self.shifted().subst_ty(*body, needle + 1))
-
                 IRType::ty_fun(kind, self.shifted().subst_ty(*body, needle))
             }
             IRType::Prod(row) => IRType::prod(self.subst_row(row, needle)),

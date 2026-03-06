@@ -164,16 +164,16 @@ pub struct Context<T, O> {
     pub op: O,
 }
 
-pub fn make_filectx(src_paths: Vec<PathBuf>) -> FileCtx {
+pub fn make_filectx(src_paths: &[PathBuf]) -> FileCtx {
     src_paths
         .into_iter()
         .map(|filepath| {
-            let id = convert_path_to_id(&filepath);
+            let id = convert_path_to_id(filepath);
 
-            let src_text = std::fs::read_to_string(&filepath).unwrap();
+            let src_text = std::fs::read_to_string(filepath).unwrap();
 
             let source = FileSource {
-                filepath,
+                filepath: filepath.to_path_buf(),
                 source: src_text,
                 id,
             };

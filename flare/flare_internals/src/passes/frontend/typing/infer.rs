@@ -427,18 +427,20 @@ impl Solver<'_> {
                     ty,
                 )
             }
-            Expr::Access(l, r) => {
-                // dbg!(l, r);
-                let (out, ty) = self.infer(env.clone(), l);
-                // dbg!(ty);
-                let row: Row = ty.0.to_row();
-                let path = path_to_field(row.field_index(r), row.len_fields());
-                let projections = apply_field_path(l, &path, r);
-                self.infer(env, ast.convert(*projections.0))
-            } // _ => unreachable!(
-              //     "Encountered unknown/invalid expression during inference: {:?}",
-              //     ast.0
-              // ),
+
+            Expr::Access(base, field) => {} // Expr::Access(l, r) => {
+                                            //     let ret_var = self.fresh_row_var();
+                                            //     let (out, ty) = self.infer(env.clone(), l);
+                                            //     self.fresh_row_combination(l_id, r_id, goal_id)
+                                            //     let row: Row = ty.0.to_row();
+                                            //     let row = self.normalize_row(ty.convert(row)).0;
+                                            //     let path = path_to_field(row.field_index(r), row.len_fields());
+                                            //     let projections = apply_field_path(l, &path, r);
+                                            //     self.infer(env, ast.convert(*projections.0))
+                                            // } // _ => unreachable!(
+                                            //     "Encountered unknown/invalid expression during inference: {:?}",
+                                            //     ast.0
+                                            // ),
         }
     }
 }
