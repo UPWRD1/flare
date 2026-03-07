@@ -8,7 +8,10 @@ use crate::{
         rows::{RowCombination, RowVar},
         types::TypeVar,
     },
-    resource::rep::{common::Spanned, frontend::ast::Expr},
+    resource::rep::{
+        common::Spanned,
+        frontend::ast::{Direction, Expr},
+    },
 };
 
 #[derive(Debug)]
@@ -245,7 +248,13 @@ impl Solver<'_> {
                 unsub_ast.convert(Expr::Inject(dir, nast))
             }),
             Expr::Item(id, item) => SubstOut::new(unsub_ast.convert(Expr::Item(id, item))),
-            Expr::Access(..) => panic!("Should not be here"),
+            Expr::Access(ex, label) => {
+                let row_comb = self.tables.row_to_combo.get(&unsub_ast.1);
+                // dbg!(row_comb);
+                let expr = unsub_ast.convert(Expr::Project(Direction::Left, ex));
+                let expr = unsub_ast.convert(Expr::Unlabel(expr, label));
+                self.substitute_ast(expr)
+            }
         }
         // dbg!(res)
     }

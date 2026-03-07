@@ -23,7 +23,7 @@ use crate::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
             common::{HasSpan, Ident, NodeId, Spanned, Variable},
-            frontend::ast::{Expr, ItemId, Kind, Untyped},
+            frontend::ast::{Expr, ItemId, Kind, Label, Untyped},
         },
     },
 };
@@ -78,6 +78,7 @@ pub enum Provenance {
     ExpectedCombine(NodeId, NodeId),
 
     ConditionIsBool(NodeId),
+    FieldAccess(NodeId, Label),
 }
 
 impl Provenance {
@@ -87,7 +88,8 @@ impl Provenance {
             | Self::AppExpectedFun(node_id)
             | Self::ExpectedCombine(node_id, _)
             | Self::ConditionIsBool(node_id)
-            | Self::ExpectedUnify(node_id, _) => *node_id,
+            | Self::ExpectedUnify(node_id, _)
+            | Self::FieldAccess(node_id, _) => *node_id,
         }
     }
 }

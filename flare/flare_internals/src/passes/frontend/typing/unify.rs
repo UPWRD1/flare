@@ -446,6 +446,22 @@ impl Solver<'_> {
                                 )
                                 .extra("and here", r_span);
                                 (l_span, err.into())
+                            }
+                            Provenance::FieldAccess(l_span, l) => {
+                                let err = DynamicErr::new(format!(
+                                    "Expected {} to contain {}",
+                                    left.0, right.0
+                                ))
+                                .label(
+                                    format!(
+                                        "Expected {} to combine with {}",
+                                        right.0.render(scheme),
+                                        left.0.render(scheme)
+                                    ),
+                                    l_span,
+                                )
+                                .extra("and here", l.0.1);
+                                (l_span, err.into())
                             } // _ => unreachable!("Invalid providence"),
                         }
                     }

@@ -428,19 +428,23 @@ impl Solver<'_> {
                 )
             }
 
-            Expr::Access(base, field) => {} // Expr::Access(l, r) => {
-                                            //     let ret_var = self.fresh_row_var();
-                                            //     let (out, ty) = self.infer(env.clone(), l);
-                                            //     self.fresh_row_combination(l_id, r_id, goal_id)
-                                            //     let row: Row = ty.0.to_row();
-                                            //     let row = self.normalize_row(ty.convert(row)).0;
-                                            //     let path = path_to_field(row.field_index(r), row.len_fields());
-                                            //     let projections = apply_field_path(l, &path, r);
-                                            //     self.infer(env, ast.convert(*projections.0))
-                                            // } // _ => unreachable!(
-                                            //     "Encountered unknown/invalid expression during inference: {:?}",
-                                            //     ast.0
-                                            // ),
+            // Expr::Access(base, field) => {}
+            // Expr::Access(l, r) => {
+            //     let ret_var = self.fresh_row_var();
+            //     let (out, ty) = self.infer(env.clone(), l);
+
+            //     let row: Row = ty.0.to_row();
+            //     // let row = self.normalize_row(ty.convert(row)).0;
+            //     let path = path_to_field(row.field_index(r), row.len_fields());
+            //     let projections = apply_field_path(l, &path, r);
+            //     self.infer(env, ast.convert(*projections.0))
+            // }
+            Expr::Access(base, field) => {
+                let field_ty = self.fresh_ty_var();
+                let field_ty_spanned = ast.convert(Type::Unifier(field_ty));
+                let out = self.check(env, ast, field_ty_spanned); // check the whole Access node
+                (out, field_ty_spanned)
+            }
         }
     }
 }
@@ -449,7 +453,6 @@ fn path_to_field(index: usize, total: usize) -> Vec<Direction> {
     match total {
         // Single field — bare label, no projection needed
         1 => vec![],
-
         _ => {
             if index == total - 1 {
                 // Rightmost field is always Right

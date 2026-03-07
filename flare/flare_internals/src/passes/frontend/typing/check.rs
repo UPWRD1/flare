@@ -259,6 +259,36 @@ impl Solver<'_> {
                     the_ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
                 })
             }
+            (Expr::Access(base, field), _) => {
+                // τ (expected_ty) is already known — this is the bidirectional payoff.
+                // Construct: (field ▸ τ) ⊙ ζ_rest ∼ ζ_base
+
+                let field_singleton = field.0.convert(Row::single(field, the_ty));
+                let rest_row = field.0.convert(Row::Unifier(self.fresh_row_var()));
+                let base_row = base.convert(Row::Unifier(self.fresh_row_var()));
+                let row_comb = RowCombination {
+                    left: field_singleton,
+                    right: rest_row,
+                    goal: base_row,
+                };
+
+                // Check the base has the combined product type
+                let base_out = self.check(env, base, base.convert(Type::Prod(base_row)));
+
+                let mut constraints = base_out.constraints;
+                constraints.push(Constraint::RowCombine(
+                    Provenance::FieldAccess(base.1, field),
+                    row_comb,
+                ));
+
+                // Record the combination so codegen can recover the projection path
+                self.tables.row_to_combo.insert(the_ast.1, row_comb);
+
+                GenOut::new(
+                    constraints,
+                    the_ast.convert(Expr::Access(base_out.typed_ast, field)),
+                )
+            }
 
             // Wildcard
             (_, _) => {

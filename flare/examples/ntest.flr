@@ -59,7 +59,7 @@ package Main =
 
     let seven :num = 7
 
-    let main: num = {x = 3}.x
+    let main: num = {x = 3,  y = 2}.y
         # 3
         # let mul = fn x y => x * y in
         # let the_num = seven in
