@@ -440,8 +440,9 @@ impl Solver<'_> {
             //     self.infer(env, ast.convert(*projections.0))
             // }
             Expr::Access(base, field) => {
+                // println!("here!");
                 let field_ty = self.fresh_ty_var();
-                let field_ty_spanned = ast.convert(Type::Unifier(field_ty));
+                let field_ty_spanned = field.0.convert(Type::Unifier(field_ty));
                 let out = self.check(env, ast, field_ty_spanned); // check the whole Access node
                 (out, field_ty_spanned)
             }

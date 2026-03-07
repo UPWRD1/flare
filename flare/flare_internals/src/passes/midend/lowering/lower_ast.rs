@@ -530,7 +530,12 @@ impl<'source> LowerAst<'source> {
                         .get(&id)
                         .copied()
                         .map(|ev| self.lookup_ev(ev))
-                        .expect("Project AST node lacks an expected evidence");
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Project AST node lacks an expected evidence: {id}, evs:\n{:#?}",
+                                self.row_to_ev
+                            )
+                        });
                     let direction_field = match direction {
                         Direction::Left => 2,
                         Direction::Right => 3,

@@ -138,9 +138,9 @@ fn main() {
                 .and_then(resolve)
                 .and_then(typecheck)
                 .and_then(lower)
-                .and_then(simplify)
-                .and_then(monomorph)
-                .and_then(reduce)
+                // .and_then(simplify)
+                // .and_then(monomorph)
+                // .and_then(reduce)
                 .and_then(|res| {
                     let ir = res.ir;
                     // dbg!(&ir);
