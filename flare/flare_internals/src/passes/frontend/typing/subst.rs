@@ -249,11 +249,12 @@ impl Solver<'_> {
             }),
             Expr::Item(id, item) => SubstOut::new(unsub_ast.convert(Expr::Item(id, item))),
             Expr::Access(ex, label) => {
-                let row_comb = self.tables.row_to_combo.get(&unsub_ast.1);
-                // dbg!(row_comb);
-                let expr = unsub_ast.convert(Expr::Project(Direction::Left, ex));
-                let expr = unsub_ast.convert(Expr::Unlabel(expr, label));
-                self.substitute_ast(expr)
+                let row_comb = self.tables.row_to_combo.get(&unsub_ast.1).unwrap();
+                dbg!(row_comb);
+                self.substitute_ast(ex).map(|ex| {
+                    let expr = ex.convert(Expr::Project(Direction::Left, ex));
+                    label.0.convert(Expr::Unlabel(expr, label))
+                })
             }
         }
         // dbg!(res)

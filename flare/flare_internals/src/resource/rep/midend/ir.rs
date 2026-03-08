@@ -308,7 +308,10 @@ impl IR {
                 let lty = l.type_of();
                 let rty = r.type_of();
                 if lty != rty || !matches!(lty, IRType::Num) {
-                    unreachable!("Expected number type in arithmatic operation while generating IR",)
+                    unreachable!(
+                        "Expected number type in arithmatic operation while generating IR, found: {}\n {}",
+                        lty, rty,
+                    )
                 }
                 lty
                 //     (

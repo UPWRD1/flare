@@ -1,4 +1,6 @@
 cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.bc --emit llvm
+    Blocking waiting for file lock on artifact directory
+   Compiling flare_internals v0.1.0 (/Users/lukedavis/Projects/GitHub/flare/flare/flare_internals)
 warning: unused import: `HasSpan`
   --> flare_internals/src/passes/frontend/typing/check.rs:10:18
    |
@@ -330,6 +332,7 @@ help: use `let _ = ...` to ignore the resulting value
     |             +++++++
 
 warning: `flare_internals` (lib) generated 42 warnings (run `cargo fix --lib -p flare_internals` to apply 20 suggestions)
+   Compiling flarec v0.1.0 (/Users/lukedavis/Projects/GitHub/flare/flare/flarec)
 warning: unused import: `resource::errors::CompResult`
   --> flarec/src/main.rs:22:5
    |
@@ -339,7 +342,7 @@ warning: unused import: `resource::errors::CompResult`
    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
 
 warning: `flarec` (bin "flarec") generated 1 warning (run `cargo fix --bin "flarec" -p flarec` to apply 1 suggestion)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.82s
      Running `target/debug/flarec examples/ntest.flr examples/option.flr -o examples/ntest.bc --emit llvm`
 [flare_internals/src/passes/frontend/typing/infer.rs:443:17] "here!" = "here!"
 Brrrrrrrr!

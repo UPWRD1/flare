@@ -260,7 +260,7 @@ impl Solver<'_> {
                 })
             }
             (Expr::Access(base, field), _) => {
-                // dbg!(the_ty);
+                dbg!(base.1, field.0.1, the_ast.1, the_ty.1);
                 // τ (expected_ty) is already known — this is the bidirectional payoff.
                 // Construct: (field ▸ τ) ⊙ ζ_rest ∼ ζ_base
                 let field_row_span = field.0.1; // use field's span for the singleton row
@@ -278,7 +278,7 @@ impl Solver<'_> {
                         constraints.push(Constraint::TypeEqual(
                             Provenance::FieldAccess(base.1, field),
                             base_ty,
-                            base.convert(Type::Prod(fresh)),
+                            base_ty.convert(Type::Prod(fresh)),
                         ));
                         fresh
                     }
@@ -294,7 +294,7 @@ impl Solver<'_> {
                 // let mut constraints = base_out.constraints;
 
                 let field_singleton = field.0.convert(Row::single(field, the_ty));
-                let goal_row = the_ast.convert(Row::Unifier(self.fresh_row_var()));
+                let goal_row = base.convert(Row::Unifier(self.fresh_row_var()));
 
                 let row_comb = RowCombination {
                     left: field_singleton,

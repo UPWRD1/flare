@@ -440,7 +440,7 @@ impl Solver<'_> {
             //     self.infer(env, ast.convert(*projections.0))
             // }
             Expr::Access(base, field) => {
-                dbg!("here!");
+                // dbg!(base.1, field.0.1, id);
 
                 let field_ty = self.fresh_ty_var();
                 let field_ty_spanned = field.0.convert(Type::Unifier(field_ty));
