@@ -1,0 +1,538 @@
+cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.bc --emit llvm
+warning: unused import: `HasSpan`
+  --> flare_internals/src/passes/frontend/typing/check.rs:10:18
+   |
+10 |         common::{HasSpan, Spanned},
+   |                  ^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `passes::PassBuilderOptions`
+  --> flare_internals/src/passes/backend/target/llvm/mod.rs:10:5
+   |
+10 |     passes::PassBuilderOptions,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/backend/lir.rs:30:26
+   |
+30 |                         .intersperse(Doc::text(", "))
+   |                          ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+   = note: `#[warn(unstable_name_collisions)]` (part of `#[warn(future_incompatible)]`) on by default
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/backend/lir.rs:41:26
+   |
+41 |                         .intersperse(Doc::text(","))
+   |                          ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/backend/lir.rs:62:22
+   |
+62 |                     .intersperse(Doc::text(","))
+   |                      ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/backend/lir.rs:74:30
+   |
+74 | ...                   .intersperse(Doc::text(","))
+   |                        ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/backend/types.rs:20:22
+   |
+20 |                     .intersperse(Doc::text(","))
+   |                      ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/backend/types.rs:34:30
+   |
+34 | ...                   .intersperse(Doc::text(", "))
+   |                        ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/backend/types.rs:43:22
+   |
+43 |                     .intersperse(Doc::text(","))
+   |                      ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/backend/types.rs:51:22
+   |
+51 |                     .intersperse(Doc::text("|"))
+   |                      ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/resource/pretty/frontend/mod.rs:48:22
+   |
+48 |                     .intersperse(Doc::text(", "))
+   |                      ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+
+warning: unused variable: `spanned`
+  --> flare_internals/src/resource/pretty/frontend/mod.rs:60:28
+   |
+60 |             Type::Subtable(spanned, simple_span) => todo!(),
+   |                            ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spanned`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `simple_span`
+  --> flare_internals/src/resource/pretty/frontend/mod.rs:60:37
+   |
+60 |             Type::Subtable(spanned, simple_span) => todo!(),
+   |                                     ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_simple_span`
+
+warning: unused variable: `ty_uni_var`
+  --> flare_internals/src/resource/pretty/frontend/mod.rs:61:27
+   |
+61 |             Type::Unifier(ty_uni_var) => todo!(),
+   |                           ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ty_uni_var`
+
+warning: unused variable: `spanned`
+  --> flare_internals/src/resource/pretty/frontend/mod.rs:72:27
+   |
+72 |             Type::TypeFun(spanned, spanned1) => todo!(),
+   |                           ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spanned`
+
+warning: unused variable: `spanned1`
+  --> flare_internals/src/resource/pretty/frontend/mod.rs:72:36
+   |
+72 |             Type::TypeFun(spanned, spanned1) => todo!(),
+   |                                    ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spanned1`
+
+warning: unused variable: `label`
+  --> flare_internals/src/resource/pretty/frontend/mod.rs:75:25
+   |
+75 |             Type::Label(label, spanned) => todo!(),
+   |                         ^^^^^ help: if this is intentional, prefix it with an underscore: `_label`
+
+warning: unused variable: `spanned`
+  --> flare_internals/src/resource/pretty/frontend/mod.rs:75:32
+   |
+75 |             Type::Label(label, spanned) => todo!(),
+   |                                ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spanned`
+
+warning: unused variable: `l`
+   --> flare_internals/src/resource/pretty/frontend/mod.rs:102:30
+    |
+102 |             Expr::Comparison(l, bin_op, spanned1) => todo!(),
+    |                              ^ help: if this is intentional, prefix it with an underscore: `_l`
+
+warning: unused variable: `bin_op`
+   --> flare_internals/src/resource/pretty/frontend/mod.rs:102:33
+    |
+102 |             Expr::Comparison(l, bin_op, spanned1) => todo!(),
+    |                                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_bin_op`
+
+warning: unused variable: `spanned1`
+   --> flare_internals/src/resource/pretty/frontend/mod.rs:102:41
+    |
+102 |             Expr::Comparison(l, bin_op, spanned1) => todo!(),
+    |                                         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_spanned1`
+
+warning: unused variable: `row`
+   --> flare_internals/src/resource/pretty/midend/irtype.rs:109:23
+    |
+109 |             Self::Row(row) => todo!(),
+    |                       ^^^ help: if this is intentional, prefix it with an underscore: `_row`
+
+warning: unused variable: `kind`
+   --> flare_internals/src/resource/rep/midend/ir.rs:467:23
+    |
+467 |             IR::TyFun(kind, ir) => vec![*ir],
+    |                       ^^^^ help: if this is intentional, prefix it with an underscore: `_kind`
+
+warning: unused variable: `ty_app`
+   --> flare_internals/src/resource/rep/midend/ir.rs:468:27
+    |
+468 |             IR::TyApp(ir, ty_app) => vec![*ir],
+    |                           ^^^^^^ help: if this is intentional, prefix it with an underscore: `_ty_app`
+
+warning: unused variable: `var`
+   --> flare_internals/src/resource/rep/midend/ir.rs:469:23
+    |
+469 |             IR::Local(var, ir, ir1) => vec![*ir, *ir1],
+    |                       ^^^ help: if this is intentional, prefix it with an underscore: `_var`
+
+warning: unused variable: `bin_op`
+   --> flare_internals/src/resource/rep/midend/ir.rs:471:25
+    |
+471 |             IR::Bin(ir, bin_op, ir1) => vec![*ir, *ir1],
+    |                         ^^^^^^ help: if this is intentional, prefix it with an underscore: `_bin_op`
+
+warning: unused variable: `irtype`
+   --> flare_internals/src/resource/rep/midend/ir.rs:474:21
+    |
+474 |             IR::Tag(irtype, _, ir) => vec![*ir],
+    |                     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_irtype`
+
+warning: unused variable: `irtype`
+   --> flare_internals/src/resource/rep/midend/ir.rs:475:22
+    |
+475 |             IR::Case(irtype, ir, branchs) => vec![*ir]
+    |                      ^^^^^^ help: if this is intentional, prefix it with an underscore: `_irtype`
+
+warning: unused variable: `ty`
+   --> flare_internals/src/resource/rep/backend/lir.rs:122:24
+    |
+122 |             Self::Case(ty, scrutinee, branches) => {
+    |                        ^^ help: if this is intentional, prefix it with an underscore: `_ty`
+
+warning: trait `CardinalOps` is never used
+ --> flare_internals/src/passes/midend/analyze/usage.rs:1:7
+  |
+1 | trait CardinalOps {
+  |       ^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: enum `Demand` is never used
+ --> flare_internals/src/passes/midend/analyze/usage.rs:7:6
+  |
+7 | enum Demand {
+  |      ^^^^^^
+
+warning: enum `Multiplicity` is never used
+  --> flare_internals/src/passes/midend/analyze/usage.rs:34:6
+   |
+34 | enum Multiplicity {
+   |      ^^^^^^^^^^^^
+
+warning: enum `Usage` is never used
+  --> flare_internals/src/passes/midend/analyze/usage.rs:50:6
+   |
+50 | enum Usage {
+   |      ^^^^^
+
+warning: methods `mu` and `mul` are never used
+  --> flare_internals/src/passes/midend/analyze/usage.rs:56:8
+   |
+55 | impl Usage {
+   | ---------- methods in this implementation
+56 |     fn mu(&self) -> usize {
+   |        ^^
+...
+63 |     fn mul(&self) -> impl CardinalOps {
+   |        ^^^
+
+warning: function `path_to_field` is never used
+   --> flare_internals/src/passes/frontend/typing/infer.rs:454:4
+    |
+454 | fn path_to_field(index: usize, total: usize) -> Vec<Direction> {
+    |    ^^^^^^^^^^^^^
+
+warning: function `apply_field_path` is never used
+   --> flare_internals/src/passes/frontend/typing/infer.rs:474:4
+    |
+474 | fn apply_field_path(
+    |    ^^^^^^^^^^^^^^^^
+
+warning: field `id` is never read
+  --> flare_internals/src/passes/frontend/typing/inst.rs:13:5
+   |
+12 | pub struct Instantiate<'a> {
+   |            ----------- field in this struct
+13 |     id: NodeId,
+   |     ^^
+
+warning: method `render_n` is never used
+  --> flare_internals/src/resource/pretty/midend/ir.rs:37:8
+   |
+36 | impl Var {
+   | -------- method in this implementation
+37 |     fn render_n(self) -> Doc<'static> {
+   |        ^^^^^^^^
+
+warning: unused `Result` that must be used
+   --> flare_internals/src/passes/backend/target/llvm/mod.rs:244:17
+    |
+244 |                 self.builder.build_return(Some(&ir_body));
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+244 |                 let _ = self.builder.build_return(Some(&ir_body));
+    |                 +++++++
+
+warning: unused `Result` that must be used
+   --> flare_internals/src/passes/backend/target/llvm/mod.rs:267:17
+    |
+267 |                 self.builder.build_return(None);
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+267 |                 let _ = self.builder.build_return(None);
+    |                 +++++++
+
+warning: unused `Result` that must be used
+   --> flare_internals/src/passes/backend/target/llvm/mod.rs:505:13
+    |
+505 | / ...   self.builder
+506 | | ...       .build_store(tag_ptr, self.context.i8_type().const_int(idx as u64, false));
+    | |____________________________________________________________________________________^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+505 |             let _ = self.builder
+    |             +++++++
+
+warning: unused `Result` that must be used
+   --> flare_internals/src/passes/backend/target/llvm/mod.rs:512:13
+    |
+512 |             self.builder.build_store(body_ptr, body);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: this `Result` may be an `Err` variant, which should be handled
+help: use `let _ = ...` to ignore the resulting value
+    |
+512 |             let _ = self.builder.build_store(body_ptr, body);
+    |             +++++++
+
+warning: `flare_internals` (lib) generated 42 warnings (run `cargo fix --lib -p flare_internals` to apply 20 suggestions)
+warning: unused import: `resource::errors::CompResult`
+  --> flarec/src/main.rs:22:5
+   |
+22 |     resource::errors::CompResult,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `flarec` (bin "flarec") generated 1 warning (run `cargo fix --bin "flarec" -p flarec` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running `target/debug/flarec examples/ntest.flr examples/option.flr -o examples/ntest.bc --emit llvm`
+[flare_internals/src/passes/frontend/typing/infer.rs:443:17] "here!" = "here!"
+Brrrrrrrr!
+Your code was too cool for flarec!
+
+flarec encountered a fatal, internal compiler error (ICE) during compilation.
+This is a bug within flarec.
+This may be caused by a bug in your code, or an issue with your environment.
+
+Please file an issue here:
+	https://github.com/UPWRD1/flare/issues/new/choose
+
+Error details:
+ICE at flare_internals/src/passes/midend/lowering/lower_ast.rs:534
+	Project AST node lacks an expected evidence: 1051..1057, evs:
+{
+    1168..1174: RowEquation {
+        left: Spanned(
+            Closed(
+                ClosedRow {
+                    fields: [
+                        Label(
+                            Spanned(
+                                "data",
+                                920..926,
+                            ),
+                        ),
+                    ],
+                    values: [
+                        Spanned(
+                            Var(
+                                TypeVar(
+                                    0,
+                                ),
+                            ),
+                            884..886,
+                        ),
+                    ],
+                },
+            ),
+            913..917,
+        ),
+        right: Spanned(
+            Closed(
+                ClosedRow {
+                    fields: [
+                        Label(
+                            Spanned(
+                                "extra",
+                                936..940,
+                            ),
+                        ),
+                    ],
+                    values: [
+                        Spanned(
+                            Unit,
+                            936..940,
+                        ),
+                    ],
+                },
+            ),
+            1168..1174,
+        ),
+        goal: Spanned(
+            Closed(
+                ClosedRow {
+                    fields: [
+                        Label(
+                            Spanned(
+                                "data",
+                                800..804,
+                            ),
+                        ),
+                        Label(
+                            Spanned(
+                                "extra",
+                                810..815,
+                            ),
+                        ),
+                    ],
+                    values: [
+                        Spanned(
+                            Var(
+                                TypeVar(
+                                    0,
+                                ),
+                            ),
+                            806..808,
+                        ),
+                        Spanned(
+                            Unit,
+                            817..821,
+                        ),
+                    ],
+                },
+            ),
+            799..822,
+        ),
+    },
+}
+
+stack backtrace:
+   0: std::backtrace_rs::backtrace::libunwind::trace
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/../../backtrace/src/backtrace/libunwind.rs:117:9
+   1: std::backtrace_rs::backtrace::trace_unsynchronized
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/../../backtrace/src/backtrace/mod.rs:66:14
+   2: std::backtrace::Backtrace::create
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/backtrace.rs:331:13
+   3: flarec::panic_hook::{{closure}}
+             at ./flarec/src/main.rs:67:25
+   4: <alloc::boxed::Box<F,A> as core::ops::function::Fn<Args>>::call
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/alloc/src/boxed.rs:2220:9
+   5: std::panicking::panic_with_hook
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:833:13
+   6: std::panicking::panic_handler::{{closure}}
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:698:13
+   7: std::sys::backtrace::__rust_end_short_backtrace
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/sys/backtrace.rs:176:18
+   8: __rustc::rust_begin_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:689:5
+   9: core::panicking::panic_fmt
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/core/src/panicking.rs:80:14
+  10: flare_internals::passes::midend::lowering::lower_ast::LowerAst::lower_ast::{{closure}}
+             at ./flare_internals/src/passes/midend/lowering/lower_ast.rs:534:29
+  11: core::option::Option<T>::unwrap_or_else
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/option.rs:1067:21
+  12: flare_internals::passes::midend::lowering::lower_ast::LowerAst::lower_ast
+             at ./flare_internals/src/passes/midend/lowering/lower_ast.rs:533:26
+  13: flare_internals::passes::midend::lowering::lower_ast::LowerAst::lower_ast
+             at ./flare_internals/src/passes/midend/lowering/lower_ast.rs:486:67
+  14: flare_internals::passes::midend::lowering::lower_ast::LowerAst::lower_ast
+             at ./flare_internals/src/passes/midend/lowering/lower_ast.rs:437:36
+  15: flare_internals::passes::midend::lowering::Lowerer::lower_logic
+             at ./flare_internals/src/passes/midend/lowering/mod.rs:147:28
+  16: flare_internals::passes::midend::lowering::Lowerer::lower::{{closure}}
+             at ./flare_internals/src/passes/midend/lowering/mod.rs:102:37
+  17: core::iter::adapters::map::map_fold::{{closure}}
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:88:28
+  18: <core::slice::iter::Iter<T> as core::iter::traits::iterator::Iterator>::fold
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs:279:27
+  19: <core::iter::adapters::map::Map<I,F> as core::iter::traits::iterator::Iterator>::fold
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:128:19
+  20: core::iter::traits::iterator::Iterator::for_each
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:828:14
+  21: alloc::vec::Vec<T,A>::extend_trusted
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs:3860:26
+  22: <alloc::vec::Vec<T,A> as alloc::vec::spec_extend::SpecExtend<T,I>>::spec_extend
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/spec_extend.rs:27:14
+  23: <alloc::vec::Vec<T> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<T,I>>::from_iter
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/spec_from_iter_nested.rs:60:16
+  24: <alloc::vec::Vec<T> as alloc::vec::spec_from_iter::SpecFromIter<T,I>>::from_iter
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/spec_from_iter.rs:33:9
+  25: <alloc::vec::Vec<T> as core::iter::traits::collect::FromIterator<T>>::from_iter
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs:3724:9
+  26: core::iter::traits::iterator::Iterator::collect
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2028:9
+  27: flare_internals::passes::midend::lowering::Lowerer::lower
+             at ./flare_internals/src/passes/midend/lowering/mod.rs:103:14
+  28: flare_internals::lower
+             at ./flare_internals/src/lib.rs:232:22
+  29: core::ops::function::FnOnce::call_once
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+  30: core::result::Result<T,E>::and_then
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs:1493:22
+  31: flarec::main
+             at ./flarec/src/main.rs:105:14
+  32: core::ops::function::FnOnce::call_once
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+  33: std::sys::backtrace::__rust_begin_short_backtrace
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:160:18
+  34: std::rt::lang_start::{{closure}}
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/rt.rs:206:18
+  35: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/core/src/ops/function.rs:287:21
+  36: std::panicking::catch_unwind::do_call
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:581:40
+  37: std::panicking::catch_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:544:19
+  38: std::panic::catch_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panic.rs:359:14
+  39: std::rt::lang_start_internal::{{closure}}
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/rt.rs:175:24
+  40: std::panicking::catch_unwind::do_call
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:581:40
+  41: std::panicking::catch_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panicking.rs:544:19
+  42: std::panic::catch_unwind
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/panic.rs:359:14
+  43: std::rt::lang_start_internal
+             at /rustc/01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf/library/std/src/rt.rs:171:5
+  44: std::rt::lang_start
+             at /Users/lukedavis/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/rt.rs:205:5
+  45: _main
+
+flarec will now panic. Goodbye.
+error: Recipe `full` failed on line 17 with exit code 101
