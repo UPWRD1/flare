@@ -1,71 +1,117 @@
 item #0: is
-let $14:{
-  num -> num -> {num * num} *
-  TyFunc Type num -> ?0 -> num -> ?0 -> {num | num} -> ?0 *
-  {{num * num} -> num * num -> {num | num}} *
-  {{num * num} -> num * num -> {num | num}}
+let $30:{
+  num -> {@x * str} -> {@x * str * num} *
+  TyFunc Type num -> ?0 -> {@x | str} -> ?0 -> {@x | str | num} -> ?0 *
+  {{@x * str * num} -> num * num -> {@x | str | num}} *
+  {{@x * str * num} -> {@x * str} * {@x | str} -> {@x | str | num}}
 } = {
-    fn [$15:num, $16:num] =>
+    fn [$31:num, $32:{@x * str}] =>
       {
-        $16:num,
-        $15:num},
+        $32:{@x * str}.0,
+        $32:{@x * str}.1,
+        $31:num},
     tyfn Type =>
-      fn [$17:num -> ?0, $18:num -> ?0, $19:{num | num}] =>
-        match $19:{num | num} ret ?0:
-          | $20:num then [$18:num -> ?0](
-            $20:num),
-          | $21:num then [$17:num -> ?0](
-            $21:num),
+      fn [$33:num -> ?0, $34:{@x | str} -> ?0, $35:{@x | str | num}] =>
+        match $35:{@x | str | num} ret ?0:
+          | $36:@x then [$34:{@x | str} -> ?0](
+            $36:@x become @x in {@x | str}),
+          | $37:str then [$34:{@x | str} -> ?0](
+            $37:str become str in {@x | str}),
+          | $38:num then [$33:num -> ?0](
+            $38:num),
     {
-      fn [$22:{num * num}] => $22:{num * num}.1,
-      fn [$23:num] =>
-        [fn [$24:num] => $24:num become num in {num | num}](
-        $23:num)},
+      fn [$39:{@x * str * num}] => $39:{@x * str * num}.2,
+      fn [$40:num] =>
+        [fn [$41:num] => $41:num become num in {@x | str | num}](
+        $40:num)},
     {
-      fn [$25:{num * num}] => $25:{num * num}.0,
-      fn [$26:num] =>
-        [fn [$27:num] => $27:num become num in {num | num}](
-        $26:num)}}
-in
-  let $0:{
-    num -> num -> {num * num} *
-    TyFunc Type num -> ?0 -> num -> ?0 -> {num | num} -> ?0 *
-    {{num * num} -> num * num -> {num | num}} *
-    {{num * num} -> num * num -> {num | num}}
-  } = {
-      fn [$1:num, $2:num] =>
+      fn [$42:{@x * str * num}] =>
         {
-          $1:num,
-          $2:num},
+          $42:{@x * str * num}.0,
+          $42:{@x * str * num}.1},
+      fn [$43:{@x | str}] =>
+        match $43:{@x | str} ret {@x | str | num}:
+          | $44:@x then $44:@x become @x in {@x | str | num},
+          | $45:str then $45:str become str in {@x | str | num}}}
+in
+  let $16:{
+    @x -> str -> {@x * str} *
+    TyFunc Type @x -> ?0 -> str -> ?0 -> {@x | str} -> ?0 *
+    {{@x * str} -> @x * @x -> {@x | str}} *
+    {{@x * str} -> str * str -> {@x | str}}
+  } = {
+      fn [$17:@x, $18:str] =>
+        {
+          $17:@x,
+          $18:str},
       tyfn Type =>
-        fn [$3:num -> ?0, $4:num -> ?0, $5:{num | num}] =>
-          match $5:{num | num} ret ?0:
-            | $6:num then [$3:num -> ?0](
-              $6:num),
-            | $7:num then [$4:num -> ?0](
-              $7:num),
+        fn [$19:@x -> ?0, $20:str -> ?0, $21:{@x | str}] =>
+          match $21:{@x | str} ret ?0:
+            | $22:@x then [$19:@x -> ?0](
+              $22:@x),
+            | $23:str then [$20:str -> ?0](
+              $23:str),
       {
-        fn [$8:{num * num}] => $8:{num * num}.0,
-        fn [$9:num] =>
-          [fn [$10:num] => $10:num become num in {num | num}](
-          $9:num)},
+        fn [$24:{@x * str}] => $24:{@x * str}.0,
+        fn [$25:@x] => [fn [$26:@x] => $26:@x become @x in {@x | str}]($25:@x)},
       {
-        fn [$11:{num * num}] => $11:{num * num}.1,
-        fn [$12:num] =>
-          [fn [$13:num] => $13:num become num in {num | num}](
-          $12:num)}}
+        fn [$27:{@x * str}] => $27:{@x * str}.1,
+        fn [$28:str] =>
+          [fn [$29:str] => $29:str become str in {@x | str}](
+          $28:str)}}
   in
-    [$14:{
-      num -> num -> {num * num} *
-      TyFunc Type num -> ?0 -> num -> ?0 -> {num | num} -> ?0 *
-      {{num * num} -> num * num -> {num | num}} *
-      {{num * num} -> num * num -> {num | num}}
-    }.2.0](
-    [$0:{
-      num -> num -> {num * num} *
-      TyFunc Type num -> ?0 -> num -> ?0 -> {num | num} -> ?0 *
-      {{num * num} -> num * num -> {num | num}} *
-      {{num * num} -> num * num -> {num | num}}
-    }.0](
-    2, 3))
+    let $0:{
+      {@x * str} -> num -> {@x * str * num} *
+      TyFunc Type {@x | str} -> ?0 -> num -> ?0 -> {@x | str | num} -> ?0 *
+      {{@x * str * num} -> {@x * str} * {@x | str} -> {@x | str | num}} *
+      {{@x * str * num} -> num * num -> {@x | str | num}}
+    } = {
+        fn [$1:{@x * str}, $2:num] =>
+          {
+            $1:{@x * str}.0,
+            $1:{@x * str}.1,
+            $2:num},
+        tyfn Type =>
+          fn [$3:{@x | str} -> ?0, $4:num -> ?0, $5:{@x | str | num}] =>
+            match $5:{@x | str | num} ret ?0:
+              | $6:@x then [$3:{@x | str} -> ?0](
+                $6:@x become @x in {@x | str}),
+              | $7:str then [$3:{@x | str} -> ?0](
+                $7:str become str in {@x | str}),
+              | $8:num then [$4:num -> ?0](
+                $8:num),
+        {
+          fn [$9:{@x * str * num}] =>
+            {
+              $9:{@x * str * num}.0,
+              $9:{@x * str * num}.1},
+          fn [$10:{@x | str}] =>
+            match $10:{@x | str} ret {@x | str | num}:
+              | $11:@x then $11:@x become @x in {@x | str | num},
+              | $12:str then $12:str become str in {@x | str | num}},
+        {
+          fn [$13:{@x * str * num}] => $13:{@x * str * num}.2,
+          fn [$14:num] =>
+            [fn [$15:num] => $15:num become num in {@x | str | num}](
+            $14:num)}}
+    in
+      [$30:{
+        num -> {@x * str} -> {@x * str * num} *
+        TyFunc Type num -> ?0 -> {@x | str} -> ?0 -> {@x | str | num} -> ?0 *
+        {{@x * str * num} -> num * num -> {@x | str | num}} *
+        {{@x * str * num} -> {@x * str} * {@x | str} -> {@x | str | num}}
+      }.2.0](
+      [$0:{
+        {@x * str} -> num -> {@x * str * num} *
+        TyFunc Type {@x | str} -> ?0 -> num -> ?0 -> {@x | str | num} -> ?0 *
+        {{@x * str * num} -> {@x * str} * {@x | str} -> {@x | str | num}} *
+        {{@x * str * num} -> num * num -> {@x | str | num}}
+      }.0](
+      [$16:{
+        @x -> str -> {@x * str} *
+        TyFunc Type @x -> ?0 -> str -> ?0 -> {@x | str} -> ?0 *
+        {{@x * str} -> @x * @x -> {@x | str}} *
+        {{@x * str} -> str * str -> {@x | str}}
+      }.0](
+      @x, "why?"), 3))
 end item #0

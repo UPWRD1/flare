@@ -92,6 +92,39 @@ impl Provenance {
             | Self::FieldAccess(node_id, _) => *node_id,
         }
     }
+    fn to_dyn_err(self, left: &Spanned<String>, right: &Spanned<String>) -> DynamicErr {
+        // let left = l
+        match self {
+            Self::UnexpectedFun(node_id) => {
+                DynamicErr::new("Encountered an unexpected function".to_string())
+                    .label("This is a function", node_id)
+                    .extra(format!("This is {}", left.0), left.1)
+                    .extra(format!("This is {}", right.0), right.1)
+            }
+            Self::AppExpectedFun(node_id) => DynamicErr::new("Expected a function".to_string())
+                .label("This is not a function", node_id)
+                .extra(format!("This is {}", left.0), left.1)
+                .extra(format!("This is {}", right.0), right.1),
+            Self::ExpectedUnify(simple_span, simple_span1) => {
+                DynamicErr::new(format!("Type mismatch between {} and {}", left.0, right.0))
+                    .label(format!("This is {}", left.0), left.1)
+                    .extra(format!("This is {}", right.0), right.1)
+            }
+            Self::ExpectedCombine(l_span, r_span) => {
+                DynamicErr::new(format!("Row mismatch between {} and {}", left.0, right.0))
+                    .label(
+                        format!("Expected {} to combine with {}", right.0, left.0),
+                        l_span,
+                    )
+                    .extra("and here", r_span)
+            }
+            Self::ConditionIsBool(simple_span) => DynamicErr::new("Expected bool").label(
+                format!("This condition should be a bool, found {}", right.0),
+                right.1,
+            ),
+            Self::FieldAccess(simple_span, label) => todo!(),
+        }
+    }
 }
 
 #[derive(Debug)]

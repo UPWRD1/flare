@@ -260,38 +260,39 @@ impl Solver<'_> {
                 })
             }
             (Expr::Access(base, field), _) => {
-                dbg!(the_ty);
+                // dbg!(the_ty);
                 // τ (expected_ty) is already known — this is the bidirectional payoff.
                 // Construct: (field ▸ τ) ⊙ ζ_rest ∼ ζ_base
                 let field_row_span = field.0.1; // use field's span for the singleton row
                 // Infer base first — gives us the concrete row directly
-                // let (base_out, base_ty) = self.infer(env, base);
+                let (base_out, base_ty) = self.infer(env, base);
+                let mut constraints = base_out.constraints;
+
+                // Extract or constrain the base row without introducing a fresh variable
+                let base_row = match *base_ty.0 {
+                    Type::Prod(row) => row,
+                    Type::Unifier(_) => {
+                        // Base type is still unknown — we do need a fresh row here,
+                        // but only in this case
+                        let fresh = base.convert(Row::Unifier(self.fresh_row_var()));
+                        constraints.push(Constraint::TypeEqual(
+                            Provenance::FieldAccess(base.1, field),
+                            base_ty,
+                            base.convert(Type::Prod(fresh)),
+                        ));
+                        fresh
+                    }
+                    _ => {
+                        // Type error: base is not a product
+                        // emit diagnostic and return error type
+                        panic!("base is not a product type")
+                    }
+                };
+                // let base_row = base.convert(Row::Unifier(self.fresh_row_var()));
+                // let base_infer_ty = base.convert(Type::Prod(base_row));
+                // let base_out = self.check(env, base, base_infer_ty);
                 // let mut constraints = base_out.constraints;
 
-                // // Extract or constrain the base row without introducing a fresh variable
-                // let base_row = match *base_ty.0 {
-                //     Type::Prod(row) => row,
-                //     Type::Unifier(_) => {
-                //         // Base type is still unknown — we do need a fresh row here,
-                //         // but only in this case
-                //         let fresh = base.convert(Row::Unifier(self.fresh_row_var()));
-                //         constraints.push(Constraint::TypeEqual(
-                //             Provenance::FieldAccess(base.1, field),
-                //             base_ty,
-                //             base.convert(Type::Prod(fresh)),
-                //         ));
-                //         fresh
-                //     }
-                //     _ => {
-                //         // Type error: base is not a product
-                //         // emit diagnostic and return error type
-                //         panic!("base is not a product type")
-                //     }
-                // };
-                let base_row = base.convert(Row::Unifier(self.fresh_row_var()));
-                let base_infer_ty = base.convert(Type::Prod(base_row));
-                let base_out = self.check(env, base, base_infer_ty);
-                let mut constraints = base_out.constraints;
                 let field_singleton = field.0.convert(Row::single(field, the_ty));
                 let goal_row = the_ast.convert(Row::Unifier(self.fresh_row_var()));
 
