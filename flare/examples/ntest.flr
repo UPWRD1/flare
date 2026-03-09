@@ -60,7 +60,7 @@ package Main =
     let seven :num = 7
 
     let main: num =
-    let a = {x = 2, y = @y, z= "asdf"} in let b = {x = @x, y = "y", z = 2} in a.x + b.z
+    # let a = {x = 2, y = @y, z= "asdf"} in let b = {x = @x, y = "y", z = 2} in a.x + b.z
         # 3
         # let mul = fn x y => x * y in
         # let the_num = seven in
@@ -72,9 +72,9 @@ package Main =
         # let unwrapped = unwrap_or mapped (new_Wrapper 0) in
         # extract unwrapped                
         
-        # let v = new_Wrapper 10 in
-        # let mapped = map_wrapper v (fn data => data * 2) in
-        # (extract mapped) - 20
+        let v = new_Wrapper 10 in
+        let mapped = map_wrapper v (fn data => data * 2) in
+        (extract mapped) - 20
         # (combine (id (extract v)) (id @ok )).0
         
          

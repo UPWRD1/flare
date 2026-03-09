@@ -258,7 +258,7 @@ impl Solver<'_> {
                     // Single Project(Left) node under the Access node's original NodeId.
                     // The row solver already built evidence mapping the field to its
                     // flat index in the base row — no structural path-following needed.
-                    let projected = unsub_ast.convert(Expr::Project(Direction::Left, subst_ex));
+                    let projected = subst_ex.convert(Expr::Project(Direction::Left, subst_ex));
                     // Unlabel is transparent in lowering (it just passes through),
                     // so this only exists to satisfy the type structure.
                     unsub_ast.convert(Expr::Unlabel(projected, label))
