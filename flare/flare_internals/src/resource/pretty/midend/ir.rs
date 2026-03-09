@@ -49,7 +49,7 @@ impl Render for IR {
     fn render(self) -> Doc<'static> {
         // dbg!(level);
         match self {
-            Self::Var(var) => var.render(),
+            Self::Var(var) => var.render_n(),
             Self::Num(ordered_float) => Doc::text(format!("{ordered_float}")),
             Self::Str(intern) => Doc::text(format!("\"{intern}\"")),
             Self::Bool(b) => Doc::text(format!("{b}")),

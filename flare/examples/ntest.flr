@@ -60,7 +60,7 @@ package Main =
     let seven :num = 7
 
     let main: num =
-    let a = {x = 2, y = 0, z= 3} in let b = {x = 1, y = 7, z = 2} in a.x + b.z
+    let a = {x = 2, y = @y, z= "asdf"} in let b = {x = @x, y = "y", z = 2} in a.x + b.z
         # 3
         # let mul = fn x y => x * y in
         # let the_num = seven in

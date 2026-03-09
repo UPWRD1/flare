@@ -250,13 +250,13 @@ impl Solver<'_> {
             }),
             Expr::Item(id, item) => SubstOut::new(unsub_ast.convert(Expr::Item(id, item))),
             Expr::Access(ex, label) => {
-                let row_comb = self.tables.row_to_combo.get(&unsub_ast.1).unwrap();
-                dbg!(row_comb);
-                dbg!(ex);
-                let path = find_label_path(ex, label.0.0).unwrap();
-                let expr = apply_field_path(ex, &path, label);
-                dbg!(expr);
-                self.substitute_ast(expr)
+                // let row_comb = self.tables.row_to_combo.get(&unsub_ast.1).unwrap();
+                self.substitute_ast(ex).map(|ex| {
+                    dbg!(ex);
+
+                    let path = find_label_path(ex, label.0.0).unwrap();
+                    unsub_ast.modify(apply_field_path(ex, &path, label).0)
+                })
                 // let expr = ex.convert(Expr::Project(Direction::Left, ex));
                 // let expr = unsub_ast.convert(Expr::Unlabel(expr, label));
                 // self.substitute_ast(expr)
