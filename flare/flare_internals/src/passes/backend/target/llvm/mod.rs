@@ -657,16 +657,32 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                         .create_variant_instance(scrutinee.type_of(), branch_idx)
                         .into_struct_type();
                     let variant_body_ty = variant.get_field_type_at_index(1).unwrap();
+                    // let slot = self
+                    //     .builder
+                    //     .build_alloca(scrutinee_bv.get_type(), "cast_slot")
+                    //     .unwrap();
+                    // self.builder.build_store(slot, scrutinee_bv).unwrap();
+                    // let scrutinee_as_tag = self
+                    //     .builder
+                    //     .build_load(variant_body_ty, slot, "bytes")
+                    //     .unwrap();
+
                     let slot = self
                         .builder
                         .build_alloca(scrutinee_bv.get_type(), "cast_slot")
                         .unwrap();
+
                     self.builder.build_store(slot, scrutinee_bv).unwrap();
+
+                    let payload_ptr = self
+                        .builder
+                        .build_struct_gep(scrutinee_bv.get_type(), slot, 1, "payload_gep")
+                        .unwrap();
+
                     let scrutinee_as_tag = self
                         .builder
-                        .build_load(variant_body_ty, slot, "bytes")
-                        .unwrap();
-                    // let arg = dbg!(branch_lir.type_of());
+                        .build_load(variant_body_ty, payload_ptr, "payload_load")
+                        .unwrap(); // let arg = dbg!(branch_lir.type_of());
                     let v = self.handle_app(branch_lir.clone(), vec![scrutinee_as_tag], |arg| arg);
 
                     self.builder
