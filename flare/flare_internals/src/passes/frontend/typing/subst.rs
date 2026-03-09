@@ -5,7 +5,6 @@ use internment::Intern;
 use crate::{
     passes::frontend::typing::{
         ClosedRow, Evidence, ItemWrapper, Row, Solver, Type, Typed,
-        infer::{apply_field_path, find_label_path},
         rows::{RowCombination, RowVar},
         types::TypeVar,
     },
@@ -189,7 +188,7 @@ impl Solver<'_> {
             Expr::Div(l, r) => self
                 .substitute_ast(l)
                 .merge(self.substitute_ast(r), |l, r| {
-                    unsub_ast.convert(Expr::Mul(l, r))
+                    unsub_ast.convert(Expr::Div(l, r))
                 }),
             Expr::Comparison(l, op, r) => {
                 SubstOut::new(unsub_ast.convert(Expr::Comparison(l, op, r)))
@@ -249,17 +248,21 @@ impl Solver<'_> {
                 unsub_ast.convert(Expr::Inject(dir, nast))
             }),
             Expr::Item(id, item) => SubstOut::new(unsub_ast.convert(Expr::Item(id, item))),
+            // Expr::Access(ex, label) => {
+            //     // let row_comb = self.tables.row_to_combo.get(&unsub_ast.1).unwrap();
+            //     self.substitute_ast(ex)
+            //         .map(|ex| unsub_ast.modify(desugar_access(ex, label.0.0).unwrap().0))
+            // }
             Expr::Access(ex, label) => {
-                // let row_comb = self.tables.row_to_combo.get(&unsub_ast.1).unwrap();
-                self.substitute_ast(ex).map(|ex| {
-                    dbg!(ex);
-
-                    let path = find_label_path(ex, label.0.0).unwrap();
-                    unsub_ast.modify(apply_field_path(ex, &path, label).0)
+                self.substitute_ast(ex).map(|subst_ex| {
+                    // Single Project(Left) node under the Access node's original NodeId.
+                    // The row solver already built evidence mapping the field to its
+                    // flat index in the base row — no structural path-following needed.
+                    let projected = unsub_ast.convert(Expr::Project(Direction::Left, subst_ex));
+                    // Unlabel is transparent in lowering (it just passes through),
+                    // so this only exists to satisfy the type structure.
+                    unsub_ast.convert(Expr::Unlabel(projected, label))
                 })
-                // let expr = ex.convert(Expr::Project(Direction::Left, ex));
-                // let expr = unsub_ast.convert(Expr::Unlabel(expr, label));
-                // self.substitute_ast(expr)
             }
         }
         // dbg!(res)
@@ -327,5 +330,31 @@ impl Solver<'_> {
             .merge(self.substitute_row(comb.goal), |(left, right), goal| {
                 Evidence::RowEquation { left, right, goal }
             })
+    }
+}
+
+fn desugar_access(
+    base: Spanned<Intern<Expr<Typed>>>,
+    label: Intern<String>,
+) -> Option<Spanned<Intern<Expr<Typed>>>> {
+    match *base.0 {
+        // Found it: strip the label wrapper
+        Expr::Label(lbl, body) if lbl.0.0 == label => Some(body),
+
+        // Recurse into a concat — use THIS concat's NodeId on the Project
+        Expr::Concat(left, right) => {
+            if let Some(inner) = desugar_access(left, label) {
+                // base.convert gives the Project the Concat's NodeId ← key
+                Some(base.convert(Expr::Project(Direction::Left, inner)))
+            } else {
+                desugar_access(right, label)
+                    .map(|inner| base.convert(Expr::Project(Direction::Right, inner)))
+            }
+        }
+
+        // Transparent wrappers
+        Expr::Unlabel(inner, _) => desugar_access(inner, label),
+
+        _ => None,
     }
 }

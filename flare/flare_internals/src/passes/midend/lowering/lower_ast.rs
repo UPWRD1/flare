@@ -545,10 +545,6 @@ impl<'source> LowerAst<'source> {
                 }
             }
             Expr::Inject(direction, body) => {
-                // dbg!(body.0);
-                // dbg!(self.row_to_ev);
-                // dbg!(id);
-
                 let param = self
                     .row_to_ev
                     .get(&id)
