@@ -292,8 +292,8 @@ impl Solver<'_> {
                 // let base_infer_ty = base.convert(Type::Prod(base_row));
                 // let base_out = self.check(env, base, base_infer_ty);
                 // let mut constraints = base_out.constraints;
-
-                let field_singleton = field.0.convert(Row::single(field, the_ty));
+                let tv = field.0.convert(Type::Unifier(self.fresh_ty_var()));
+                let field_singleton = field.0.convert(Row::single(field, tv));
                 let goal_row = base.convert(Row::Unifier(self.fresh_row_var()));
 
                 let row_comb = RowCombination {
@@ -305,6 +305,12 @@ impl Solver<'_> {
                 constraints.push(Constraint::RowCombine(
                     Provenance::FieldAccess(base.1, field),
                     row_comb,
+                ));
+
+                constraints.push(Constraint::TypeEqual(
+                    Provenance::FieldAccess(base.1, field),
+                    the_ty,
+                    tv,
                 ));
 
                 // Record the combination so codegen can recover the projection path

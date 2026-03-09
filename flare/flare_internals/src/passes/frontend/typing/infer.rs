@@ -7,7 +7,7 @@ use crate::{
         inst::Instantiate,
     },
     resource::rep::{
-        common::Spanned,
+        common::{Spanned, Variable},
         frontend::ast::{Direction, Expr, Label, Untyped},
     },
 };
@@ -470,12 +470,38 @@ fn path_to_field(index: usize, total: usize) -> Vec<Direction> {
     }
 }
 
+/// Returns the sequence of projections needed to reach `target` in a nested pair tree.
+/// e.g. for (A <> B) <> C, target=B → [Left, Right]
+pub fn find_label_path<V: Variable>(
+    expr: Spanned<Intern<Expr<V>>>,
+    target: Intern<String>,
+) -> Option<Vec<Direction>> {
+    match *expr.0 {
+        // Base case: this is the label we're looking for
+        Expr::Label(ref l, _) if l.0.0 == target => Some(vec![]),
+
+        // Recursive case: search left and right branches
+        Expr::Concat(left, right) => {
+            if let Some(mut path) = find_label_path(right, target) {
+                path.insert(0, Direction::Right);
+                Some(path)
+            } else if let Some(mut path) = find_label_path(left, target) {
+                path.insert(0, Direction::Left);
+                Some(path)
+            } else {
+                None
+            }
+        }
+
+        _ => None,
+    }
+}
 /// Builds the projection + unlabel chain from a path.
-fn apply_field_path(
-    base: Spanned<Intern<Expr<Untyped>>>,
+pub fn apply_field_path<V: Variable>(
+    base: Spanned<Intern<Expr<V>>>,
     path: &[Direction],
     label: Label,
-) -> Spanned<Intern<Expr<Untyped>>> {
+) -> Spanned<Intern<Expr<V>>> {
     // Walk projections inward
     let projected = path
         .iter()

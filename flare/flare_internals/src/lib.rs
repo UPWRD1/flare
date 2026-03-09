@@ -166,7 +166,7 @@ pub struct Context<T, O> {
 
 pub fn make_filectx(src_paths: &[PathBuf]) -> FileCtx {
     src_paths
-        .into_iter()
+        .iter()
         .map(|filepath| {
             let id = convert_path_to_id(filepath);
 

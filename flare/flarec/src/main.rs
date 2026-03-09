@@ -18,9 +18,7 @@ use clap::{Parser, ValueEnum, crate_description, crate_version};
 use flare_internals::{
     build, convert, generate, lower, make_filectx, monomorph, parse,
     passes::backend::target::{Target, irtarget::IRTarget, lirtarget::LIRTarget, llvm::LLVM},
-    reduce, resolve,
-    resource::errors::CompResult,
-    simplify, typecheck,
+    reduce, resolve, simplify, typecheck,
 };
 fn enable_loggin() {
     if cfg!(debug_assertions) {

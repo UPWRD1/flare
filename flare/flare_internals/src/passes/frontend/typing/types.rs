@@ -43,13 +43,11 @@ impl UnifyKey for TyUniVar {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-// pub struct TypeVar(pub Intern<String>);
 pub struct TypeVar(pub usize);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum Type {
-    // Infer,
-    Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
+    // Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
     Unifier(TyUniVar),
 
     Var(TypeVar),
@@ -69,8 +67,6 @@ pub enum Type {
     Label(Label, Spanned<Intern<Self>>),
     Hole,
 }
-// #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-// pub struct InternType(pub Intern<Type>);
 
 impl EqUnifyValue for Spanned<Intern<Type>> {}
 
@@ -160,7 +156,6 @@ impl Type {
             //     r.0.occurs_check(var).map_err(|_| *self)
             // }
             Self::Hole => Ok(()),
-            Self::Subtable(_, _) => todo!(), // _ => todo!("{self:?}"),
         }
     }
 

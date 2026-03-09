@@ -57,7 +57,6 @@ impl Render for Spanned<Intern<Row>> {
 impl Render for Spanned<Intern<Type>> {
     fn render(self) -> Doc<'static> {
         match *self.0 {
-            Type::Subtable(spanned, simple_span) => todo!(),
             Type::Unifier(ty_uni_var) => todo!(),
             Type::Var(v) => Doc::text(format!("?{}", v.0)),
             Type::Num => Doc::text("num"),
