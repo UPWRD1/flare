@@ -32,7 +32,6 @@ impl Render for LIR {
                 )
                 .brackets(),
             ),
-            Self::FuncRef(app_type) => app_type.render(),
             Self::Apply(ir, ir1) => ir.render().append(ir1.render().parens()),
             Self::BulkApply(fun, args) => fun.render().append(
                 Doc::list(
@@ -89,6 +88,17 @@ impl Render for LIR {
 
             Self::Item(id, _) => Doc::text(format!("#{}", id.0)),
             Self::Extern(n, _) => Doc::text(format!("extern_{}", n)),
+            Self::If(c, t, o) => Doc::text("if")
+                .space()
+                .render(*c)
+                .space()
+                .text("then")
+                .space()
+                .render(*t)
+                .space()
+                .text("else")
+                .space()
+                .render(*o),
         }
     }
 }

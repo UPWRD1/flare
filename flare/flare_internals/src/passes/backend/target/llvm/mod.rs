@@ -14,7 +14,7 @@ use inkwell::{
     types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::{
         AggregateValueEnum, AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue,
-        BasicValueEnum, FunctionValue, PointerValue,
+        BasicValueEnum, FloatValue, FunctionValue, PointerValue,
     },
 };
 use itertools::Itertools;
@@ -97,6 +97,7 @@ impl LLVMTypeConvert for LIRType {
     fn convert<'ctx: 'ir, 'ir>(&self, context: &LLVMContext<'ctx>) -> BasicTypeEnum<'ir> {
         let ty: &dyn AnyType = match self {
             Self::Int => &context.context.i32_type(),
+            Self::Bool => &context.context.bool_type(),
             Self::Float => &context.context.f32_type(),
             Self::String => todo!(),
             Self::Unit => &context.context.i8_type(),
@@ -448,7 +449,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             LIR::BulkApply(fun, arg_lirs) => {
                 self.handle_app(*fun, arg_lirs, |arg| self.codegen_ir(arg, None))
             }
-            LIR::FuncRef(app_type) => todo!(),
+
             LIR::Local(var, def, body) => {
                 let v = if var.ty.is_alloca() {
                     let local_slot = self
@@ -483,6 +484,40 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
             LIR::Extern(intern, lirtype) => todo!(),
             LIR::BinOp(left, bin_op, right) => self.codegen_binop(*left, bin_op, *right),
+            LIR::If(c, t, o) => {
+                let cond_value = self.codegen_ir(*c, None).into_int_value();
+                let the_func = self.current_func.borrow().unwrap();
+                let cmp = self
+                    .builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::NE,
+                        cond_value,
+                        self.context.bool_type().const_zero(),
+                        "ifcmp",
+                    )
+                    .unwrap();
+                let then_block = self.context.append_basic_block(the_func, "thenbb");
+                let else_block = self.context.append_basic_block(the_func, "elsebb");
+                let merge_block = self.context.append_basic_block(the_func, "mergebb");
+                self.builder
+                    .build_conditional_branch(cmp, then_block, else_block);
+                self.builder.position_at_end(then_block);
+                let then_res = self.codegen_ir(*t, None);
+                self.builder.build_unconditional_branch(merge_block);
+
+                self.builder.position_at_end(else_block);
+                let else_res = self.codegen_ir(*o, None);
+                self.builder.build_unconditional_branch(merge_block);
+
+                self.builder.position_at_end(merge_block);
+                let phi = self
+                    .builder
+                    .build_phi(then_res.get_type(), "if-phi")
+                    .unwrap();
+                phi.add_incoming(&[(&then_res, then_block), (&else_res, else_block)]);
+
+                phi.as_basic_value()
+            }
         }
     }
 
@@ -842,39 +877,42 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
     fn codegen_binop(&self, left: LIR, bin_op: BinOp, right: LIR) -> BasicValueEnum<'ir> {
         let lhs = self.codegen_ir(left, None);
         let rhs = self.codegen_ir(right, None);
-        BasicValueEnum::from(
-            match bin_op {
-                BinOp::Eq => todo!(),
-                BinOp::Neq => todo!(),
-                BinOp::Gt => todo!(),
-                BinOp::Lt => todo!(),
-                BinOp::Gte => todo!(),
-                BinOp::Lte => todo!(),
-                BinOp::Add => self.builder.build_float_add(
+
+        match bin_op {
+            BinOp::Eq => self
+                .builder
+                .build_float_compare(
+                    inkwell::FloatPredicate::OEQ,
                     lhs.into_float_value(),
                     rhs.into_float_value(),
-                    "add",
-                ),
-                BinOp::Sub => self.builder.build_float_sub(
-                    lhs.into_float_value(),
-                    rhs.into_float_value(),
-                    "sub",
-                ),
-                BinOp::Mul => self.builder.build_float_mul(
-                    lhs.into_float_value(),
-                    rhs.into_float_value(),
-                    "mul",
-                ),
-                BinOp::Div => self.builder.build_float_div(
-                    lhs.into_float_value(),
-                    rhs.into_float_value(),
-                    "div",
-                ),
-                BinOp::And => todo!(),
-                BinOp::Or => todo!(),
-            }
-            .expect("Failed to complete op"),
-        )
+                    "feq",
+                )
+                .map(|v| v.as_basic_value_enum()),
+            BinOp::Neq => todo!(),
+            BinOp::Gt => todo!(),
+            BinOp::Lt => todo!(),
+            BinOp::Gte => todo!(),
+            BinOp::Lte => todo!(),
+            BinOp::Add => self
+                .builder
+                .build_float_add(lhs.into_float_value(), rhs.into_float_value(), "add")
+                .map(|v| v.as_basic_value_enum()),
+            BinOp::Sub => self
+                .builder
+                .build_float_sub(lhs.into_float_value(), rhs.into_float_value(), "sub")
+                .map(|v| v.as_basic_value_enum()),
+            BinOp::Mul => self
+                .builder
+                .build_float_mul(lhs.into_float_value(), rhs.into_float_value(), "mul")
+                .map(|v| v.as_basic_value_enum()),
+            BinOp::Div => self
+                .builder
+                .build_float_div(lhs.into_float_value(), rhs.into_float_value(), "div")
+                .map(|v| v.as_basic_value_enum()),
+            BinOp::And => todo!(),
+            BinOp::Or => todo!(),
+        }
+        .expect("Failed to complete op")
     }
 
     fn handle_app<T>(
@@ -1116,12 +1154,12 @@ impl FlareTarget for LLVM {
         }
 
         // Then run a pipeline using Clang-style pass pipeline strings
-        // let options = PassBuilderOptions::create();
+        let options = PassBuilderOptions::create();
 
-        // llvm_ctx
-        //     .module
-        //     .run_passes("default<O2>", &machine, options)
-        //     .unwrap();
+        llvm_ctx
+            .module
+            .run_passes("default<O2>", &llvm_ctx.machine, options)
+            .unwrap();
 
         let bit = llvm_ctx.module.write_bitcode_to_memory();
         // let o = bit.create_object_file().unwrap();

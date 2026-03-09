@@ -198,6 +198,7 @@ impl Resolver {
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
         sorted.reverse();
+        self.debug();
         if self.errors.is_empty() {
             let env = Environment::from_graph_and_root(g, self.env.root);
             Ok((env, sorted))

@@ -13,6 +13,7 @@ impl Render for LIRType {
             Self::Int => Doc::text("i32"),
             Self::Float => Doc::text("f32"),
             Self::String => Doc::text("str"),
+            Self::Bool => Doc::text("bool"),
             Self::Unit => Doc::text("unit"),
             Self::Closure(l, r) => Doc::list(
                 l.iter()

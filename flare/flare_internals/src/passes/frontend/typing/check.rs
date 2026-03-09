@@ -260,7 +260,7 @@ impl Solver<'_> {
                 })
             }
             (Expr::Access(base, field), _) => {
-                dbg!(base.1, field.0.1, the_ast.1, the_ty.1);
+                // dbg!(base.1, field.0.1, the_ast.1, the_ty.1);
                 // τ (expected_ty) is already known — this is the bidirectional payoff.
                 // Construct: (field ▸ τ) ⊙ ζ_rest ∼ ζ_base
                 // Infer base first — gives us the concrete row directly

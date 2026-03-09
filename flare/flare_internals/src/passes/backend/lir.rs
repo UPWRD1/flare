@@ -158,6 +158,11 @@ impl ClosureConvert {
                 //     LIR::BulkApply(Box::new(extern_ref), vec![])
                 // }
             }
+            ir::IR::If(c, t, e) => LIR::r#if(
+                self.convert(*c, env),
+                self.convert(*t, env),
+                self.convert(*e, env),
+            ),
             _ => todo!("{ir:?}"),
         }
     }
@@ -314,6 +319,7 @@ fn lower_ty(ty: &IRType) -> LIRType {
         IRType::Prod(r) => LIRType::Struct(lower_row(r)),
         IRType::Sum(r) => LIRType::Union(lower_row(r)),
         IRType::Particle(_) => LIRType::String,
+        IRType::Bool => LIRType::Bool,
         _ => todo!("{ty:?}"),
     }
 }

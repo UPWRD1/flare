@@ -64,7 +64,8 @@ struct Closure {
 //   return f0(f1(f4(10.0), c7)) - 20.0;
 // }
 
-// int main() {
+int main() {
+  return 3;
 //   double res = f6();
 //   return (int) res;
-// }
+}

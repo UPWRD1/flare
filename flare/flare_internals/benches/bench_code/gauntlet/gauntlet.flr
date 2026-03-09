@@ -6,49 +6,54 @@ package Main =
 	# 
 	# It does not forgive.
 	# It does not forget.
-	extern num_string: num -> string
+	extern num_string: num -> str
 
-	struct Elephant =
+	type Elephant ={
 		weight: num,
-
-	struct Giraffe =
+	}
+	
+	type Giraffe = {
 		height_cm: num,
-
-	struct Chimp =
+	}
+	
+	type Chimp = {
 		iq: num
+	}
+	
+	type AnimalKind =|
+		Elephant {Elephant, num},
+		Giraffe Giraffe,
+		Chimp Chimp
+	|
 
-	enum AnimalKind =
-		Elephant{Elephant, num},
-		Giraffe{Giraffe},
-		Chimp{Chimp}
-
-	struct Animal =
+	type Animal = {
 		kind: AnimalKind,
 		name: str,
 		hungry: bool,
-
+	}
+	
 	let id x : ?T -> ?T = x
 
-	struct Iter[?T] =
-		data: ?T,
-		index: num,
-			
-	let main =
+	# type Iter[?T] = {
+	# 	data: ?T,
+	# 	index: num,
+	# }
+	
+	let main: num =
 		let zoo = {
-			Animal {
- 				kind = AnimalKind.Chimp { Chimp { iq = 140 } },
+			{
+ 				kind = AnimalKind.Chimp {  iq = 140 },
 				name = "Bob",
 				hungry = true
 			},
-			Animal {
-		 		kind = AnimalKind.Giraffe {Giraffe { height_cm = 6000 } },
+			{
+		 		kind = AnimalKind.Giraffe { height_cm = 6000  },
 		 		name = "Gerry",
 		 		hungry = false
-		 	},
-		} in
-		match zoo.0.kind 
-			| Chimp{c} then c.iq,
-			| Giraffe{g} then g.height_cm,
-			| Elephant{e, age} then e.weight + age
+		 	}
+		} in match zoo.0.kind 
+			| Chimp c then c.iq,
+			| Giraffe g then g.height_cm,
+			| Elephant {e, age} then e.weight + age
 		
 	
