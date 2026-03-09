@@ -17,7 +17,7 @@ tyfn Type =>
     fn [$0:{?1 * unit}, $1:?1 -> ?0] =>
       {
         [$1](
-        $0.1),
+        $0.0),
         $0.1}
 end item #2
 
@@ -30,5 +30,5 @@ item #4: is
 [[num]::[num]::#2:TyFunc Type TyFunc Type {?1 * unit} -> ?1 -> ?0 -> {?0 *
   unit}](
 [[num]::#1:TyFunc Type ?0 -> {?0 * unit}](
-10), fn [$2:num] => $2*2))-20
+10), fn [$2:num] => $2*2))-2
 end item #4

@@ -594,6 +594,24 @@ impl<'source> LowerAst<'source> {
                     _ => unimplemented!(),
                 }
             }
+            Expr::Access(base, field) => {
+                let base_ir = self.lower_ast(base);
+
+                // id = ast.1 is the Access node's NodeId, which is exactly what
+                // row_to_combo was keyed on during type checking — no fragility
+                let ev = self
+                    .row_to_ev
+                    .get(&id)
+                    .copied()
+                    .unwrap_or_else(|| panic!("Access node lacks evidence: {:?}", id));
+
+                let param = self.lookup_ev(ev);
+
+                // Evidence tuple layout: (concat, branch, (prj_left, inj_left), (prj_right, inj_right))
+                // left = {field: t} singleton, so prj_left returns t directly via ⊢ Π(τ) ≈ τ
+                let prj_left = IR::field(IR::field(IR::Var(param), 2), 0);
+                IR::app(prj_left, base_ir)
+            }
             _ => todo!("{ast:?}"),
         }
     }

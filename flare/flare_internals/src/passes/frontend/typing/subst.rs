@@ -251,19 +251,22 @@ impl Solver<'_> {
             // Expr::Access(ex, label) => {
             //     // let row_comb = self.tables.row_to_combo.get(&unsub_ast.1).unwrap();
             //     self.substitute_ast(ex)
-            //         .map(|ex| unsub_ast.modify(desugar_access(ex, label.0.0).unwrap().0))
+            //         .map(|ex| desugar_access(ex, label.0.0).unwrap())
             // }
-            Expr::Access(ex, label) => {
-                self.substitute_ast(ex).map(|subst_ex| {
-                    // Single Project(Left) node under the Access node's original NodeId.
-                    // The row solver already built evidence mapping the field to its
-                    // flat index in the base row — no structural path-following needed.
-                    let projected = subst_ex.convert(Expr::Project(Direction::Left, subst_ex));
-                    // Unlabel is transparent in lowering (it just passes through),
-                    // so this only exists to satisfy the type structure.
-                    unsub_ast.convert(Expr::Unlabel(projected, label))
-                })
-            }
+            // Expr::Access(ex, label) => {
+            //     self.substitute_ast(ex).map(|subst_ex| {
+            //         // Single Project(Left) node under the Access node's original NodeId.
+            //         // The row solver already built evidence mapping the field to its
+            //         // flat index in the base row — no structural path-following needed.
+            //         let projected = subst_ex.convert(Expr::Project(Direction::Left, subst_ex));
+            //         // Unlabel is transparent in lowering (it just passes through),
+            //         // so this only exists to satisfy the type structure.
+            //         unsub_ast.convert(Expr::Unlabel(projected, label))
+            //     })
+            // }
+            Expr::Access(ex, label) => self
+                .substitute_ast(ex)
+                .map(|subst_ex| unsub_ast.convert(Expr::Access(subst_ex, label))),
         }
         // dbg!(res)
     }

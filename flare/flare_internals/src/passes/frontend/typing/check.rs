@@ -318,7 +318,7 @@ impl Solver<'_> {
                 ));
 
                 // Record the combination so codegen can recover the projection path
-                self.tables.row_to_combo.insert(base.1, row_comb);
+                self.tables.row_to_combo.insert(the_ast.1, row_comb);
 
                 GenOut::new(
                     constraints,
