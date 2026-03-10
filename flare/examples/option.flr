@@ -17,8 +17,7 @@ package Option =
 
     pub let map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
             match o in
-                |Some v| then Some (f(v)), #this is ok
-                # |Some v| then let v = f(v) in |Some v|, # this isn't
-                  
+                # |Some v| then Some (f(v)), #this is ok
+                |Some v| then let v = f(v) in |Some v|,                   
                 |None| then None,
-                   
+

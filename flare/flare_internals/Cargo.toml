@@ -15,6 +15,7 @@ chumsky = {version = "0.12.0", features = ["pratt", "memoization",] }
 cranelift = {version = "0.128.3", features = ["module", "object"]}
 ena = "0.14.3"
 im = "15.1.0"
+inkwell = {version = "0.8.0", features = ["llvm21-1"]}
 internment = {version = "0.8.6", features = []}
 itertools = "0.14.0"
 log = "0.4.28"

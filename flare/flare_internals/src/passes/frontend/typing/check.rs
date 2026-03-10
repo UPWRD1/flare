@@ -7,7 +7,7 @@ use crate::{
         rows::{Row, RowCombination},
     },
     resource::rep::{
-        common::Spanned,
+        common::{HasSpan, Spanned},
         frontend::ast::{Direction, Expr, Untyped},
     },
 };
@@ -38,7 +38,13 @@ impl Solver<'_> {
             (Expr::Unit, Type::Unit) => GenOut::new(vec![], Spanned(Expr::Unit.into(), id)),
 
             // Lambdas
-            (Expr::Lambda(arg, body, is_anon), ty) => {
+            // (Expr::Lambda(arg, body), Type::Func(arg_ty, ret_ty)) => {
+            //     let env = env.update(arg.0.0, arg_ty);
+            //     self.check(env, body, ret_ty).with_typed_ast(|body| {
+            //         Spanned(Expr::Lambda(Typed(arg, arg_ty), body).into(), id)
+            //     })
+            // }
+            (Expr::Lambda(arg, body), ty) => {
                 let mut constraints = vec![];
                 let (arg_ty, ret_ty) = if let Type::Func(arg, ret) = ty {
                     (arg, ret)
@@ -61,11 +67,7 @@ impl Solver<'_> {
                 constraints.extend(body_out.constraints);
                 GenOut::new(
                     constraints,
-                    the_ast.convert(Expr::Lambda(
-                        Typed(arg, arg_ty),
-                        body_out.typed_ast,
-                        is_anon,
-                    )),
+                    the_ast.convert(Expr::Lambda(Typed(arg, arg_ty), body_out.typed_ast)),
                 )
             }
             (Expr::If(cond, then, other), _) => {
@@ -112,12 +114,9 @@ impl Solver<'_> {
                 ),
             ),
 
-            (Expr::Unlabel(term, lbl), _) => {
-                // dbg!(term);
-                // dbg!(the_ty);
-                self.check(env, term, Spanned(Type::Label(lbl, the_ty).into(), lbl.0.1))
-                    .with_typed_ast(|term| Spanned(Expr::Unlabel(term, lbl).into(), id))
-            }
+            (Expr::Unlabel(term, lbl), _) => self
+                .check(env, term, Spanned(Type::Label(lbl, the_ty).into(), lbl.0.1))
+                .with_typed_ast(|term| Spanned(Expr::Unlabel(term, lbl).into(), id)),
 
             (Expr::Concat(left, right), Type::Prod(goal_row)) => {
                 let left_row = Row::Unifier(self.fresh_row_var());
@@ -260,23 +259,72 @@ impl Solver<'_> {
                     the_ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
                 })
             }
-            // (Expr::Let(name, def, body), _) => {
-            //     let def_var = self.fresh_ty_var();
-            //     let def_var: Spanned<Intern<Type>> = def.convert(Type::Unifier(def_var));
-            //     let (mut def_out, def_ty) = self.infer(env.clone(), def);
-            //     def_out.constraints.push(Constraint::TypeEqual(
-            //         Provenance::ExpectedUnify(def.1, name.0.1),
-            //         def_ty,
-            //         def_var,
-            //     ));
-            //     // dbg!(the_ty);
-            //     let env = env.update(name.0.0, def_var);
-            //     let body_out = self.check(env, body, the_ty);
-            //     def_out.constraints.extend(body_out.constraints);
-            //     def_out.with_typed_ast(|def| {
-            //         the_ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
-            //     })
-            // }
+            (Expr::Access(base, field), _) => {
+                // dbg!(base.1, field.0.1, the_ast.1, the_ty.1);
+                // τ (expected_ty) is already known — this is the bidirectional payoff.
+                // Construct: (field ▸ τ) ⊙ ζ_rest ∼ ζ_base
+                // Infer base first — gives us the concrete row directly
+                let (base_out, base_ty) = self.infer(env, base);
+                let mut constraints = base_out.constraints;
+                let base_row = {
+                    let fresh = base.convert(Row::Unifier(self.fresh_row_var()));
+                    constraints.push(Constraint::TypeEqual(
+                        Provenance::FieldAccess(base.1, field),
+                        base_ty,
+                        base_ty.convert(Type::Prod(fresh)),
+                    ));
+                    fresh
+                };
+                // Extract or constrain the base row without introducing a fresh variable
+                // let base_row = match *base_ty.0 {
+                //     Type::Prod(row) => row,
+                //     Type::Unifier(_) => {
+                //         // Base type is still unknown — we do need a fresh row here,
+                //         // but only in this case
+                //         let fresh = base.convert(Row::Unifier(self.fresh_row_var()));
+                //         constraints.push(Constraint::TypeEqual(
+                //             Provenance::FieldAccess(base.1, field),
+                //             base_ty,
+                //             base_ty.convert(Type::Prod(fresh)),
+                //         ));
+                //         fresh
+                //     }
+                //     _ => {
+                //         // Type error: base is not a product
+                //         // emit diagnostic and return error type
+                //         panic!("base is not a product type")
+                //     }
+                // };
+                let tv = field.0.convert(Type::Unifier(self.fresh_ty_var()));
+                let field_singleton = field.0.convert(Row::single(field, tv));
+                // let field_singleton = field.0.convert(Row::single(field, the_ty));
+                let goal_row = the_ast.convert(Row::Unifier(self.fresh_row_var()));
+
+                let row_comb = RowCombination {
+                    left: field_singleton,
+                    right: goal_row,
+                    goal: base_row,
+                };
+
+                constraints.push(Constraint::RowCombine(
+                    Provenance::FieldAccess(base.1, field),
+                    row_comb,
+                ));
+
+                constraints.push(Constraint::TypeEqual(
+                    Provenance::FieldAccess(base.1, field),
+                    the_ty,
+                    tv,
+                ));
+
+                // Record the combination so codegen can recover the projection path
+                self.tables.row_to_combo.insert(the_ast.1, row_comb);
+
+                GenOut::new(
+                    constraints,
+                    the_ast.convert(Expr::Access(base_out.typed_ast, field)),
+                )
+            }
 
             // Wildcard
             (_, _) => {

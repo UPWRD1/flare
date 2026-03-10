@@ -7,8 +7,8 @@ use crate::{
         inst::Instantiate,
     },
     resource::rep::{
-        common::Spanned,
-        frontend::ast::{Direction, Expr, Untyped},
+        common::{Spanned, Variable},
+        frontend::ast::{Direction, Expr, Label, Untyped},
     },
 };
 
@@ -57,7 +57,7 @@ impl Solver<'_> {
                     *ty,
                 )
             }
-            Expr::Lambda(arg, body, is_anon) => {
+            Expr::Lambda(arg, body) => {
                 let arg_tyvar = self.fresh_ty_var();
                 let arg_ty = arg.0.convert(Type::Unifier(arg_tyvar));
                 let env = env.update(arg.0.0, arg_ty);
@@ -65,11 +65,8 @@ impl Solver<'_> {
                 let (body_out, body_ty) = self.infer(env, body);
                 (
                     GenOut {
-                        typed_ast: ast.convert(Expr::Lambda(
-                            Typed(arg, arg_ty),
-                            body_out.typed_ast,
-                            is_anon,
-                        )),
+                        typed_ast: ast
+                            .convert(Expr::Lambda(Typed(arg, arg_ty), body_out.typed_ast)),
                         ..body_out
                     },
                     ast.convert(Type::Func(arg_ty, body_ty)),
@@ -77,6 +74,17 @@ impl Solver<'_> {
             }
 
             Expr::Call(fun, arg) => {
+                // let (arg_out, arg_ty) = self.infer(env.clone(), arg);
+                // let ret_ty: Spanned<Intern<Type>> = fun.convert(Type::Unifier(self.fresh_ty_var()));
+                // let fun_ty = ast.convert(Type::Func(arg_ty, ret_ty));
+                // let mut fun_out = self.check(env, fun, fun_ty);
+                // fun_out.constraints.extend(arg_out.constraints);
+                // (
+                //     fun_out.with_typed_ast(|fun_ast| {
+                //         ast.convert(Expr::Call(fun_ast, arg_out.typed_ast))
+                //     }),
+                //     ret_ty,
+                // )
                 let fun_id = fun.id();
                 let (fun_out, supposed_fun_ty) = self.infer(env.clone(), fun);
                 let mut constraint = fun_out.constraints;
@@ -147,19 +155,18 @@ impl Solver<'_> {
                 )
             }
 
-            // Expr::Let(name, def, body) => {
-            //     let (mut def_out, def_ty) = self.infer(env.clone(), def);
-            //     // dbg!(name, def_ty);
-            //     let env = env.update(name.0.0, def_ty);
-            //     let (body_out, body_ty) = self.infer(env, body);
-            //     def_out.constraints.extend(body_out.constraints);
-            //     (
-            //         def_out.with_typed_ast(|def| {
-            //             ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
-            //         }),
-            //         body_ty,
-            //     )
-            // }
+            Expr::Let(name, def, body) => {
+                let (mut def_out, def_ty) = self.infer(env.clone(), def);
+                let env = env.update(name.0.0, def_ty);
+                let (body_out, body_ty) = self.infer(env, body);
+                def_out.constraints.extend(body_out.constraints);
+                (
+                    def_out.with_typed_ast(|def| {
+                        ast.convert(Expr::Let(Typed(name, def_ty), def, body_out.typed_ast))
+                    }),
+                    body_ty,
+                )
+            }
             Expr::Add(l, r) => {
                 let num_ty = ast.convert(Type::Num);
                 let left_out = self.check(env.clone(), l, num_ty);
@@ -421,10 +428,25 @@ impl Solver<'_> {
                 )
             }
 
-            _ => unreachable!(
-                "Encountered unknown/invalid expression during inference: {:?}",
-                ast.0
-            ),
+            // Expr::Access(base, field) => {}
+            // Expr::Access(l, r) => {
+            //     let ret_var = self.fresh_row_var();
+            //     let (out, ty) = self.infer(env.clone(), l);
+
+            //     let row: Row = ty.0.to_row();
+            //     // let row = self.normalize_row(ty.convert(row)).0;
+            //     let path = path_to_field(row.field_index(r), row.len_fields());
+            //     let projections = apply_field_path(l, &path, r);
+            //     self.infer(env, ast.convert(*projections.0))
+            // }
+            Expr::Access(base, field) => {
+                // dbg!(base.1, field.0.1, id);
+
+                let field_ty = self.fresh_ty_var();
+                let field_ty_spanned = field.0.convert(Type::Unifier(field_ty));
+                let out = self.check(env, ast, field_ty_spanned); // check the whole Access node
+                (out, field_ty_spanned)
+            }
         }
     }
 }

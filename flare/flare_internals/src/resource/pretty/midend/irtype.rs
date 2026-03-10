@@ -4,7 +4,7 @@ use itertools::Itertools;
 use tiny_pretty::Doc;
 
 use crate::resource::{
-    pretty::{INC, Render},
+    pretty::{DocExt, INC, Render},
     rep::midend::irtype::{IRType, Row, TyApp},
 };
 
@@ -24,6 +24,7 @@ impl Render for IRType {
             Self::TyFun(kind, t) => Doc::text(format!("TyFunc {kind:?} ")).append(t.render()),
             Self::Prod(row) => row.render("*"),
             Self::Sum(row) => row.render("|"),
+            Self::Volatile(v) => v.render().text("!"),
         }
     }
 }

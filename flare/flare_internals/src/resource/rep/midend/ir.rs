@@ -35,10 +35,8 @@ impl Var {
 
     #[must_use]
     pub fn map_ty(self, f: impl FnOnce(IRType) -> IRType) -> Self {
-        Self {
-            ty: f(self.ty),
-            ..self
-        }
+        let ty = f(self.ty);
+        Self { ty, ..self }
     }
 }
 
@@ -190,9 +188,11 @@ impl IR {
                 if let IRType::Fun(fun_arg_ty, ret_ty) = fun.type_of() {
                     if arg.type_of() != *fun_arg_ty {
                         unreachable!(
-                            "Function applied to wrong argument type. Expected {}, found {}",
+                            "Function applied to wrong argument type. Expected {}, found {}\n fun: {}\narg: {}",
                             fun_arg_ty,
-                            arg.type_of()
+                            arg.type_of(),
+                            fun,
+                            arg
                         );
                     }
                     *ret_ty
@@ -212,8 +212,8 @@ impl IR {
                     unreachable!("Type applied to non-forall IR term");
                 };
                 match (kind, ty_app) {
-                    (Kind::Type, TyApp::Ty(ty)) => ret_ty.subst_ty(ty.clone()),
-                    (Kind::Row, TyApp::Row(row)) => ret_ty.subst_row(row.clone()),
+                    (Kind::Type, TyApp::Ty(ty)) => ret_ty.subst_ty(ty.clone(), 0),
+                    (Kind::Row, TyApp::Row(row)) => ret_ty.subst_row(row.clone(), 0),
                     (Kind::Type, TyApp::Row(_)) => {
                         unreachable!("Kind mismatch. Type applied a Row to variable of kind Type",)
                     }
@@ -264,7 +264,7 @@ impl IR {
 
                 if body.type_of() != elems[*tag] {
                     unreachable!(
-                        "Tagged value has element with the wrong type {} vs {}, \nir = {}",
+                        "Tagged value has element with the wrong type body {} vs elem {}, \nir = {}",
                         body.type_of(),
                         elems[*tag],
                         self,
@@ -289,8 +289,9 @@ impl IR {
 
                     if ty != &branch.body.type_of() {
                         unreachable!(
-                            "ICE: Branch body has unexpected return type: ty {ty:?} vs branch: {:?}",
-                            branch.body.type_of()
+                            "ICE: Branch body has unexpected return type. ty: {ty:?} vs branch: {:?}\n\nbranch:\n{}",
+                            branch.body.type_of(),
+                            branch.body,
                         )
                     }
                 }
@@ -307,7 +308,10 @@ impl IR {
                 let lty = l.type_of();
                 let rty = r.type_of();
                 if lty != rty || !matches!(lty, IRType::Num) {
-                    unreachable!("Expected number type in arithmatic operation while generating IR",)
+                    unreachable!(
+                        "Expected number type in arithmatic operation while generating IR, found: {}\n {}",
+                        lty, rty,
+                    )
                 }
                 lty
                 //     (
@@ -389,30 +393,39 @@ impl IR {
     }
 
     pub fn is_trivial(&self) -> bool {
-        matches!(
-            self,
-            // Self::Var(_)
-            |Self::Num(_)| Self::Str(_) | Self::Unit | Self::Bool(_) | Self::Particle(_)
-        )
+        match self {
+            Self::Var(_)
+            | Self::Num(_)
+            | Self::Str(_)
+            | Self::Unit
+            | Self::Bool(_)
+            | Self::Particle(_) => true,
+            // Self::Field(x, _) if x.is_trivial() => true,
+            _ => false,
+        }
     }
     pub fn is_value(&self) -> bool {
         match self {
             Self::Bin(l, _, r) => l.is_value() && r.is_value(),
 
             Self::TyFun(_, ir) => ir.is_value(),
+            Self::TyApp(ir, _) => ir.is_value(),
             Self::Local(_, defn, body) => defn.is_value() && body.is_value(),
             Self::Tuple(s) => s.iter().all(Self::is_value),
-            Self::Var(_) | Self::App(_, _) | Self::TyApp(_, _) => false,
-            Self::Num(_)
+            Self::App(f, a) if f.is_value() && a.is_value() => true,
+            Self::App(_, _) | Self::Case(..) => false,
+            Self::Field(ir, _) => ir.is_value(),
+            Self::Fun(..) => true,
+            Self::Var(_)
+            | Self::Num(_)
             | Self::Str(_)
             | Self::Unit
             | Self::Bool(_)
             | Self::Particle(_)
-            | Self::Fun(_, _)
-            | Self::Tag(_, _, _)
-            | Self::Case(_, _, _) => true,
-            Self::Item(_, _) | Self::Extern(_, _) => false,
-            _ => todo!("{self:?}"),
+            | Self::Tag(_, _, _) => true,
+            Self::Item(_, _) | Self::Extern(_, _) => true,
+            Self::If(..) => false,
+            // _ => todo!("{self:?}"),
         }
     }
 
@@ -445,6 +458,29 @@ impl IR {
         let mut params = vec![];
         let body = split_funs(self, &mut params);
         (params, body)
+    }
+
+    pub fn children(self) -> Vec<Self> {
+        match self {
+            IR::Var(_) | IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
+                vec![]
+            }
+            IR::Fun(_, ir) => vec![*ir],
+            IR::App(l, r) => vec![*l, *r],
+            IR::TyFun(kind, ir) => vec![*ir],
+            IR::TyApp(ir, ty_app) => vec![*ir],
+            IR::Local(var, ir, ir1) => vec![*ir, *ir1],
+            IR::If(ir, ir1, ir2) => vec![*ir, *ir1, *ir2],
+            IR::Bin(ir, bin_op, ir1) => vec![*ir, *ir1],
+            IR::Tuple(irs) => irs,
+            IR::Field(ir, _) => vec![*ir],
+            IR::Tag(irtype, _, ir) => vec![*ir],
+            IR::Case(irtype, ir, branchs) => vec![*ir]
+                .into_iter()
+                .chain(branchs.into_iter().map(|b| b.body))
+                .collect(),
+            IR::Item(..) | IR::Extern(..) => vec![],
+        }
     }
 
     pub fn iter<'a>(&'a self) -> IrIterator<'a> {

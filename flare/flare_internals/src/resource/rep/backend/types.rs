@@ -5,6 +5,7 @@ pub enum LIRType {
     Int,
     Float,
     String,
+    Bool,
     Unit,
     Struct(Intern<[Self]>),
     Union(Intern<[Self]>),
@@ -33,8 +34,8 @@ impl LIRType {
     pub fn closure_to_struct_rep(self) -> Self {
         match self {
             LIRType::ClosureEnv(f, env) => {
-                // let env_struct = LIRType::Struct(env);
-                // LIRType::Struct(vec![*f, env_struct].as_slice().into())
+                let env_struct = LIRType::Struct(env);
+                LIRType::Struct(vec![*f, env_struct].as_slice().into())
 
                 // LIRType::Struct({
                 //     let env = env.iter().copied();
@@ -45,7 +46,7 @@ impl LIRType {
                 //         .as_slice()
                 //         .into()
                 // })
-                LIRType::Struct(env)
+                // LIRType::Struct(env)
             }
             _ => panic!("Not a closure {self:?}"),
         }
@@ -66,8 +67,17 @@ impl LIRType {
         // (args.to_vec(), *ret)
         if let Self::Closure(args, ret) = self {
             (args.to_vec(), *ret)
+        } else if let Self::ClosureEnv(t, _) = self {
+            t.destructure_closure()
         } else {
-            panic!("Not a closure")
+            panic!("Not a closure: {self:?}")
+        }
+    }
+    pub fn get_closure_func(self) -> Intern<Self> {
+        if let Self::ClosureEnv(c, _) = self {
+            c
+        } else {
+            panic!("Not a closureenv")
         }
     }
 
@@ -84,6 +94,22 @@ impl LIRType {
             variants.to_vec()
         } else {
             panic!("Not a union")
+        }
+    }
+
+    pub fn is_alloca(&self) -> bool {
+        false
+        // matches!(
+        //     self,
+        //     Self::Struct(_) | Self::Union(_) | Self::ClosureEnv(..)
+        // )
+    }
+
+    pub fn ret_ty(&self) -> Self {
+        match self {
+            LIRType::Closure(_, r) => **r,
+            LIRType::ClosureEnv(f, _) => f.ret_ty(),
+            _ => panic!("Not a closure or env"),
         }
     }
 }

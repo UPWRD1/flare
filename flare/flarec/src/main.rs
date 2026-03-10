@@ -11,17 +11,17 @@
 //    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
+
 #![allow(clippy::upper_case_acronyms)]
 use std::{fs::File, io::Write, panic, path::PathBuf, time::Instant};
 
 use clap::{Parser, ValueEnum, crate_description, crate_version};
 use flare_internals::{
-    Context,
-    passes::backend::target::{
-        Target, c::C, irtarget::IRTarget, lirtarget::LIRTarget, native::Native,
-    },
-    resource::errors::CompResult,
+    build, convert, generate, lower, make_filectx, monomorph, parse,
+    passes::backend::target::{Target, irtarget::IRTarget, lirtarget::LIRTarget, llvm::LLVM},
+    reduce, resolve, simplify, typecheck,
 };
+
 fn enable_loggin() {
     if cfg!(debug_assertions) {
         pretty_env_logger::formatted_builder()
@@ -88,70 +88,61 @@ struct Cli {
 enum EmitOptions {
     LIR,
     IR,
-    C,
     #[default]
-    O,
+    LLVM,
 }
 
 macro_rules! make_target {
     ($target:tt, $cli:ident) => {{
         let files = $cli.input_files;
         let target = $target;
-        let ctx = Context::new(files, target, []);
-        let filectx = ctx.filectx.clone();
+        let ctx = make_filectx(&files);
         let now: Instant = Instant::now();
-        ctx.parse()
-            .and_then(|ctx| ctx.build())
-            .and_then(|ctx| ctx.resolve())
-            .and_then(|ctx| ctx.typecheck())
-            .and_then(|ctx| ctx.lower())
-            .and_then(|ctx| ctx.simplify())
-            .and_then(|ctx| ctx.monomorph())
-            .and_then(|ctx| ctx.reduce())
-            .and_then(|ctx| ctx.convert())
-            .and_then(|ctx| ctx.generate())
-            .and_then(|ctx| ctx.finish())
-            .and_then(|output| {
+        parse(&ctx)
+            .and_then(build)
+            .and_then(resolve)
+            .and_then(typecheck)
+            .and_then(lower)
+            .and_then(simplify)
+            .and_then(monomorph)
+            .and_then(reduce)
+            .and_then(convert)
+            .and_then(|cc| generate(cc, target))
+            .and_then(|res| {
+                let output: Vec<u8> = res.into();
                 let elapsed = now.elapsed();
-                println!("Compiled  in {elapsed:.2?}",);
-                let f = $cli.output_file.with_extension(target.ext());
-                let mut f = File::create(f).unwrap();
+                println!("Compiled {} files in {elapsed:.2?}", files.len());
+                let fpath = $cli.output_file.with_extension(target.ext());
+                let mut f = File::create(&fpath)?;
                 f.write_all(&output)?;
+                println!("Wrote {} bytes to {}", output.len(), fpath.display());
 
                 Ok(())
             })
-            .inspect_err(|e| {
-                e.report(&filectx);
-                std::process::exit(1)
-            })
+            .inspect_err(|e| e.report(&ctx))
     }};
 }
 
-fn main() -> CompResult<()> {
+fn main() {
     enable_loggin();
     panic_hook();
 
-    let cli = Cli::parse();
+    let cli = Cli::parse(); // unsafe { backtrace_on_stack_overflow::enable() };
 
-    // unsafe { backtrace_on_stack_overflow::enable() };
     match cli.emit {
         EmitOptions::IR => {
-            let files = cli.input_files;
-            let target = IRTarget;
-            let ctx = Context::new(files, target, []);
-            let filectx = ctx.filectx.clone();
+            let ctx = make_filectx(&cli.input_files);
             let now: Instant = Instant::now();
-            ctx.parse()
-                .and_then(|ctx| ctx.build())
-                .and_then(|ctx| ctx.resolve())
-                .and_then(|ctx| ctx.typecheck())
-                .and_then(|ctx| ctx.lower())
-                .and_then(|ctx| ctx.simplify())
-                .and_then(|ctx| ctx.monomorph())
-                .and_then(|ctx| ctx.reduce())
-                .and_then(|output| {
-                    let ir = output.op.ir;
-
+            parse(&ctx)
+                .and_then(build)
+                .and_then(resolve)
+                .and_then(typecheck)
+                .and_then(lower)
+                .and_then(simplify)
+                .and_then(monomorph)
+                .and_then(reduce)
+                .and_then(|res| {
+                    let ir = res.ir;
                     let output = ir
                         .into_iter()
                         .enumerate()
@@ -160,19 +151,16 @@ fn main() -> CompResult<()> {
                         .join("\n\n");
                     let elapsed = now.elapsed();
                     println!("Compiled  in {elapsed:.2?}",);
-                    let f = cli.output_file.with_extension(target.ext());
+                    let f = cli.output_file.with_extension(IRTarget.ext());
                     let mut f = File::create(f).unwrap();
                     f.write_all(output.as_bytes())?;
 
                     Ok(())
                 })
-                .inspect_err(|e| {
-                    e.report(&filectx);
-                    std::process::exit(1)
-                })
+                .inspect_err(|e| e.report(&ctx))
         }
         EmitOptions::LIR => make_target!(LIRTarget, cli),
-        EmitOptions::C => make_target!(C, cli),
-        EmitOptions::O => make_target!(Native, cli),
+        EmitOptions::LLVM => make_target!(LLVM, cli),
     }
+    .unwrap_or_else(|_| std::process::exit(1))
 }

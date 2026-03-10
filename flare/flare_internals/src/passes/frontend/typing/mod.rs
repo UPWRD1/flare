@@ -22,8 +22,8 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
-            common::{Ident, NodeId, Spanned},
-            frontend::ast::{Expr, ItemId, Kind, Untyped, Variable},
+            common::{HasSpan, Ident, NodeId, Spanned, Variable},
+            frontend::ast::{Expr, ItemId, Kind, Label, Untyped},
         },
     },
 };
@@ -33,9 +33,15 @@ pub struct Typed(pub Untyped, pub Spanned<Intern<Type>>);
 
 impl Variable for Typed {}
 
+impl HasSpan for Typed {
+    fn span(&self) -> chumsky::prelude::SimpleSpan<usize, u64> {
+        self.0.span()
+    }
+}
+
 impl Display for Typed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.0, self.1)
+        write!(f, "{}: {}", self.0, self.1.0)
     }
 }
 
@@ -51,7 +57,7 @@ pub enum Constraint {
     RowCombine(Provenance, RowCombination),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Evidence {
     RowEquation {
         left: Spanned<Intern<Row>>,
@@ -72,6 +78,7 @@ pub enum Provenance {
     ExpectedCombine(NodeId, NodeId),
 
     ConditionIsBool(NodeId),
+    FieldAccess(NodeId, Label),
 }
 
 impl Provenance {
@@ -81,7 +88,41 @@ impl Provenance {
             | Self::AppExpectedFun(node_id)
             | Self::ExpectedCombine(node_id, _)
             | Self::ConditionIsBool(node_id)
-            | Self::ExpectedUnify(node_id, _) => *node_id,
+            | Self::ExpectedUnify(node_id, _)
+            | Self::FieldAccess(node_id, _) => *node_id,
+        }
+    }
+    fn to_dyn_err(self, left: &Spanned<String>, right: &Spanned<String>) -> DynamicErr {
+        // let left = l
+        match self {
+            Self::UnexpectedFun(node_id) => {
+                DynamicErr::new("Encountered an unexpected function".to_string())
+                    .label("This is a function", node_id)
+                    .extra(format!("This is {}", left.0), left.1)
+                    .extra(format!("This is {}", right.0), right.1)
+            }
+            Self::AppExpectedFun(node_id) => DynamicErr::new("Expected a function".to_string())
+                .label("This is not a function", node_id)
+                .extra(format!("This is {}", left.0), left.1)
+                .extra(format!("This is {}", right.0), right.1),
+            Self::ExpectedUnify(simple_span, simple_span1) => {
+                DynamicErr::new(format!("Type mismatch between {} and {}", left.0, right.0))
+                    .label(format!("This is {}", left.0), left.1)
+                    .extra(format!("This is {}", right.0), right.1)
+            }
+            Self::ExpectedCombine(l_span, r_span) => {
+                DynamicErr::new(format!("Row mismatch between {} and {}", left.0, right.0))
+                    .label(
+                        format!("Expected {} to combine with {}", right.0, left.0),
+                        l_span,
+                    )
+                    .extra("and here", r_span)
+            }
+            Self::ConditionIsBool(simple_span) => DynamicErr::new("Expected bool").label(
+                format!("This condition should be a bool, found {}", right.0),
+                right.1,
+            ),
+            Self::FieldAccess(simple_span, label) => todo!(),
         }
     }
 }
@@ -114,14 +155,30 @@ impl GenOut {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Default)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, Hash)]
 pub struct TypeScheme {
     pub unbound_types: BTreeSet<TypeVar>,
     pub unbound_rows: BTreeSet<RowVar>,
     pub evidence: Vec<Evidence>,
     pub ty: Spanned<Intern<Type>>,
-    pub types_to_name: FxHashMap<TypeVar, Intern<String>>,
+    pub types_to_name: Vec<(TypeVar, Intern<String>)>,
     pub kind: Kind,
+}
+
+impl TypeScheme {
+    pub fn merge(mut self, mut rhs: Self) -> Self {
+        self.unbound_types.append(&mut rhs.unbound_types);
+        self.unbound_rows.append(&mut rhs.unbound_rows);
+        self.evidence.append(&mut rhs.evidence);
+        self.types_to_name.append(&mut rhs.types_to_name);
+        self
+    }
+}
+
+impl HasSpan for TypeScheme {
+    fn span(&self) -> chumsky::prelude::SimpleSpan<usize, u64> {
+        self.ty.span()
+    }
 }
 
 impl TypeScheme {
@@ -384,12 +441,12 @@ impl<'env> Solver<'env> {
             .copied()
             .collect::<Vec<_>>();
 
-        let sig_evs = signature.evidence.iter().cloned().collect::<FxHashSet<_>>();
+        let sig_evs = signature.evidence.iter().copied().collect::<FxHashSet<_>>();
         let extra_evidence = evs
             .into_iter()
             .collect::<FxHashSet<_>>()
             .difference(&sig_evs)
-            .cloned()
+            .copied()
             .collect::<Vec<_>>();
 
         if !extra_types.is_empty() || !extra_row.is_empty() || !extra_evidence.is_empty() {

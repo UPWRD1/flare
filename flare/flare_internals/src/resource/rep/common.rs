@@ -1,22 +1,37 @@
+use crate::resource::{
+    errors::CompResult,
+    rep::frontend::{ast::Expr, files::FileID},
+};
 use chumsky::span::SimpleSpan;
 use internment::Intern;
-use std::{fmt, hash};
-use crate::resource::{
-    
-    errors::CompResult,
-    rep::{
-        
-        frontend::{ast::{Expr, Variable}, files::FileID},
-    },
+use std::{
+    fmt::{Debug, Display},
+    hash::{self, Hash},
 };
 
-pub trait SpanWrapped {
-    fn get_span(&self) -> SimpleSpan<usize, u64>;
-    
+pub trait Variable:
+    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display
+{
+}
+pub trait Syntax: Debug + Copy + 'static {
+    type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static;
+    type Type: Clone + Debug + PartialEq + Eq + Hash + 'static;
+    type Variable: Variable + Copy;
+    type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Ident;
 }
 
 pub trait Ident {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>>;
+}
+
+pub trait HasSpan {
+    fn span(&self) -> SimpleSpan<usize, u64>;
+}
+
+impl<T> HasSpan for Spanned<Intern<T>> {
+    fn span(&self) -> SimpleSpan<usize, u64> {
+        self.1
+    }
 }
 
 impl Ident for Spanned<Intern<String>> {
@@ -77,22 +92,6 @@ impl<T> From<(T, SimpleSpan<usize, u64>)> for Spanned<T> {
         Self(value.0, value.1)
     }
 }
-
-// pub type Spanned<T> = (T, SimpleSpan<usize, FileID>);
-impl<T> SpanWrapped for Spanned<T> {
-    fn get_span(&self) -> SimpleSpan<usize, u64>
-    where
-        Self: SpanWrapped,
-    {
-        self.1
-    }
-}
-
-impl<T: fmt::Display> fmt::Display for Spanned<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 pub type NodeId = SimpleSpan<usize, u64>;
 /// Trait for entities that have Names. Implementing this trait is preferred
 /// over a custom name implementation. Currently the only major type that
@@ -116,4 +115,3 @@ pub trait Named<V: Variable>: std::fmt::Debug {
         }
     }
 }
-

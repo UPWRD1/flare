@@ -1,0 +1,2 @@
+package Main =
+	let main: num = {x = 3, y = 2}.x

@@ -1,13 +1,14 @@
-use crate::resource::errors::CompResult;
+use crate::resource::{
+    errors::CompResult,
+    rep::{
+        common::{Ident, Spanned, Variable},
+        frontend::cst::CstExpr,
+    },
+};
 
 // use chumsky::input::ValueInput;
 use internment::Intern;
 use rustc_hash::FxHashSet;
-
-// use rkyv::with::{ArchiveWith, DeserializeWith, With};
-// use rkyv::{Archive, Deserialize, Serialize};
-// use rkyv_with::{ArchiveWith, DeserializeWith};
-// use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QualifierFragment {
@@ -22,13 +23,6 @@ pub enum QualifierFragment {
     Wildcard(Intern<String>),
     Dummy(&'static str),
 }
-
-
-use crate::resource::rep::{
-    common::Spanned,
-    frontend::ast::{Expr, Variable},
-    common::Ident,
-};
 
 impl QualifierFragment {
     pub fn name(&self) -> &Intern<String> {
@@ -46,17 +40,24 @@ impl QualifierFragment {
     }
 
     pub fn is(&self, rhs: &Self) -> bool {
+        match (self, rhs) {
+            (Self::Wildcard(_), _) | (_, Self::Wildcard(_)) => self.is_unstrict(rhs),
+            (_, _) => self == rhs,
+        }
+    }
+
+    pub fn is_unstrict(&self, rhs: &Self) -> bool {
         self.name() == rhs.name()
     }
 
     #[allow(clippy::type_complexity)]
     pub fn from_expr<V: Variable>(
-        expr: &Spanned<Intern<Expr<V>>>,
+        expr: &Spanned<Intern<CstExpr<V>>>,
     ) -> CompResult<FxHashSet<Vec<QualifierFragment>>> {
         struct CheckFieldAccess<'rec, V: Variable> {
             f: &'rec dyn Fn(
                 &'rec Self,
-                &'rec Spanned<Intern<Expr<V>>>,
+                &'rec Spanned<Intern<CstExpr<V>>>,
                 &[QualifierFragment],
                 &mut FxHashSet<Vec<QualifierFragment>>,
             ) -> CompResult<Vec<QualifierFragment>>,
@@ -64,12 +65,12 @@ impl QualifierFragment {
         let mut paths = FxHashSet::default();
         let cfa = CheckFieldAccess {
             f: &|cfa: &CheckFieldAccess<'_, V>,
-                 e: &Spanned<Intern<Expr<V>>>,
+                 e: &Spanned<Intern<CstExpr<V>>>,
                  accum: &[QualifierFragment],
                  paths: &mut FxHashSet<Vec<QualifierFragment>>|
              -> CompResult<Vec<QualifierFragment>> {
                 match &*e.0 {
-                    Expr::FieldAccess(l, r) => {
+                    CstExpr::FieldAccess(l, r) => {
                         let accum = if accum.is_empty() {
                             [(Self::Package(l.ident()?.0))].to_vec()
                         } else {
@@ -79,7 +80,7 @@ impl QualifierFragment {
                         (cfa.f)(cfa, r, &accum, paths)
                         //self.graph.node_weight(n).cloned()
                     }
-                    Expr::Concat(l, r) => {
+                    CstExpr::Concat(l, r) => {
                         (cfa.f)(cfa, l, accum, paths)?;
                         (cfa.f)(cfa, r, accum, paths)?;
                         // paths.insert(l_path);
@@ -87,7 +88,7 @@ impl QualifierFragment {
                         Ok(accum.to_vec())
                     }
 
-                    Expr::Label(_, v) => {
+                    CstExpr::Label(_, v) => {
                         let accum = [accum, &[(Self::Wildcard(v.ident()?.0))]].concat();
                         paths.insert(accum.clone());
                         Ok(accum.to_vec())

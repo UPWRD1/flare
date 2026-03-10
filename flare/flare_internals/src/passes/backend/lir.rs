@@ -36,12 +36,12 @@ impl ClosureConvert {
     fn convert(&mut self, ir: ir::IR, env: &im::HashMap<ir::Var, Var, FxBuildHasher>) -> LIR {
         match ir {
             ir::IR::Num(n) => {
-                if n.fract() == 0.0 {
-                    let n = n.0 as i32;
-                    LIR::Int(n)
-                } else {
-                    LIR::Float(n)
-                }
+                // if n.fract() == 0.0 {
+                //     let n = n.0 as i32;
+                //     LIR::Int(n)
+                // } else {
+                LIR::Float(n)
+                // }
             }
             ir::IR::Str(s) => LIR::Str(s),
             ir::IR::Unit => LIR::Unit,
@@ -49,29 +49,32 @@ impl ClosureConvert {
             ir::IR::Particle(p) => LIR::Str(p),
 
             ir::IR::Local(var, defn, body) => {
+                // dbg!(&var, env);
                 let defn = self.convert(*defn, env);
                 let v = Var {
                     id: self.var_supply.supply_for(var.id),
+                    // id: self.var_supply.supply(),
                     ty: lower_ty(&var.ty),
                 };
                 let body = self.convert(*body, &env.update(var, v));
                 LIR::local(v, defn, body)
             }
             ir::IR::Fun(ref v, ref body) => {
+                // dbg!(v);
                 let mut env = env.clone();
                 let mut rec_body = ir.clone();
                 let mut vars = vec![];
-                while let ir::IR::Fun(v, b) = rec_body {
+                while let ir::IR::Fun(fun_var, b) = rec_body {
                     let var = Var {
-                        id: self.var_supply.supply_for(v.id),
-                        ty: lower_ty(&v.ty),
+                        id: self.var_supply.supply_for(fun_var.id),
+                        ty: lower_ty(&fun_var.ty),
                     };
                     vars.push(var);
-                    env = env.update(v, var);
+                    env = env.update(fun_var, var);
                     rec_body = *b;
                 }
                 // dbg!(&vars);
-                self.make_closure(&vars, *body.clone(), &env)
+                self.make_closure(&vars, rec_body, &env)
             }
             ir::IR::App(fun, arg) => {
                 self.is_in_app = true;
@@ -103,7 +106,6 @@ impl ClosureConvert {
             }
             ir::IR::Tuple(v) => LIR::Struct(v.into_iter().map(|v| self.convert(v, env)).collect()),
             ir::IR::Tag(t, idx, ir) => LIR::tag(lower_ty(&t), idx, self.convert(*ir, env)), //TODO: special tag for unions
-            // ir::IR::Item(t, d) => LIR::Item(d, lower_ty(&t)),
             ir::IR::Field(ir, u) => LIR::index(self.convert(*ir, env), u),
             ir::IR::Bin(l, op, r) => LIR::binop(self.convert(*l, env), op, self.convert(*r, env)),
             ir::IR::Case(ty, scrutinee, branches) => LIR::case(
@@ -111,12 +113,31 @@ impl ClosureConvert {
                 self.convert(*scrutinee, env),
                 branches
                     .into_iter()
-                    .map(|b| ir::IR::fun(b.param, b.body))
+                    .map(|b| b.as_fun())
                     .map(|ir| self.convert(ir, env)),
             ),
 
             ir::IR::Item(t, d) => {
-                LIR::Item(self.item_supply.supply_for(d), lower_ty(&t))
+                let id = self.item_supply.supply_for(d);
+                let ty = lower_ty(&t);
+                let item = LIR::Item(id, ty);
+                match ty {
+                    LIRType::Closure(args, _) if !args.is_empty() => item,
+
+                    LIRType::ClosureEnv(f, e)
+                        if matches!(*f, LIRType::Closure(args, _) if !args.is_empty())
+                            && e.is_empty() =>
+                    {
+                        item
+                    }
+                    _ => {
+                        let new_ty = LIRType::closure(&[], ty);
+                        let item = LIR::Item(d, new_ty);
+                        LIR::BulkApply(Box::new(item), vec![])
+                    }
+                }
+
+                // LIR::ClosureBuild(ty, d, vec![])
                 // LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)))
 
                 // let item_ref =
@@ -137,6 +158,11 @@ impl ClosureConvert {
                 //     LIR::BulkApply(Box::new(extern_ref), vec![])
                 // }
             }
+            ir::IR::If(c, t, e) => LIR::r#if(
+                self.convert(*c, env),
+                self.convert(*t, env),
+                self.convert(*e, env),
+            ),
             _ => todo!("{ir:?}"),
         }
     }
@@ -147,46 +173,67 @@ impl ClosureConvert {
         body: ir::IR,
         env: &im::HashMap<ir::Var, Var, FxBuildHasher>,
     ) -> LIR {
+        // dbg!(&body);
         let ret = lower_ty(&body.type_of());
         let mut body = self.convert(body, env);
+        // dbg!(&body);
+        // dbg!(vars);
         let mut free_vars_set = body.free_vars();
         for var in vars {
             free_vars_set.remove(var);
         }
-        // dbg!(&free_vars);
 
-        let free_vars: Vec<Var> = free_vars_set.iter().copied().collect();
-        let var_tys: Vec<_> = vars.iter().map(|v| v.ty).collect();
-        let closure_ty = LIRType::closure(&var_tys, ret);
-        let env_var = Var {
-            id: self.var_supply.supply(),
-            ty: LIRType::closure_env(closure_ty, free_vars.iter().map(|var| var.ty).collect()),
-        };
+        if free_vars_set.is_empty() {
+            let var_tys: Vec<_> = vars.iter().map(|v| v.ty).collect();
+            let fn_ty = LIRType::closure(&var_tys, ret);
+            let params = vars.to_vec();
+            let item = self.item_supply.supply();
+            self.items.insert(
+                item,
+                Item {
+                    id: item,
+                    params,
+                    ret_ty: ret,
+                    body,
+                },
+            );
+            LIR::Item(item, fn_ty)
+        } else {
+            // dbg!(&free_vars_set);
 
-        let subst = free_vars_set
-            .into_iter()
-            .enumerate()
-            .map(|(i, var)| {
-                let id = self.var_supply.supply();
-                let new_var = Var { id, ty: var.ty };
-                body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
-                (var, new_var)
-            })
-            .collect::<FxHashMap<_, _>>();
-        body.rename(&subst);
+            let free_vars: Vec<Var> = free_vars_set.iter().copied().collect();
+            let var_tys: Vec<_> = vars.iter().map(|v| v.ty).collect();
+            let closure_ty = LIRType::closure(&var_tys, ret);
+            let env_var = Var {
+                id: self.var_supply.supply(),
+                ty: LIRType::closure_env(closure_ty, free_vars.iter().map(|var| var.ty).collect()),
+            };
 
-        let params = [&[env_var], vars].concat();
-        let item = self.item_supply.supply();
-        self.items.insert(
-            item,
-            Item {
-                id: item,
-                params,
-                ret_ty: ret,
-                body,
-            },
-        );
-        LIR::ClosureBuild(closure_ty, item, free_vars)
+            let subst = free_vars_set
+                .into_iter()
+                .enumerate()
+                .map(|(i, var)| {
+                    let id = self.var_supply.supply();
+                    let new_var = Var { id, ty: var.ty };
+                    body = LIR::local(new_var, LIR::access(LIR::Var(env_var), i + 1), body.clone());
+                    (var, new_var)
+                })
+                .collect::<FxHashMap<_, _>>();
+            body.rename(&subst);
+
+            let params = [&[env_var], vars].concat();
+            let item = self.item_supply.supply();
+            self.items.insert(
+                item,
+                Item {
+                    id: item,
+                    params,
+                    ret_ty: ret,
+                    body,
+                },
+            );
+            LIR::ClosureBuild(closure_ty, item, free_vars)
+        }
     }
 }
 
@@ -210,7 +257,7 @@ pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
 
 fn convert(ir: ir::IR, id: ItemId, conversion: &mut ClosureConvert) -> ClosureConvertOut {
     let (params, ir) = ir.split_funs();
-    let mut var_supply = VarSupply::default();
+    let mut var_supply: VarSupply<ir::VarId> = VarSupply::default();
     let mut env = im::HashMap::with_hasher(FxBuildHasher);
 
     let id = conversion.item_supply.supply_for(id);
@@ -220,6 +267,7 @@ fn convert(ir: ir::IR, id: ItemId, conversion: &mut ClosureConvert) -> ClosureCo
             Param::Ty(_) => unreachable!("Type function encountered after monomorphization"),
             Param::Val(lower_var) => {
                 let id = var_supply.supply_for(lower_var.id);
+                // let id = var_supply.supply();
                 let var = Var {
                     id,
                     ty: lower_ty(&lower_var.ty),
@@ -252,17 +300,17 @@ fn lower_ty(ty: &IRType) -> LIRType {
         IRType::Fun(arg, ret) => {
             // dbg!(ty);
             // todo!()
-            let mut args = vec![];
-            let mut marg = *arg.clone();
+            let mut args = vec![*arg.clone()];
+            let mut marg = *ret.clone();
             while let IRType::Fun(a, r) = marg {
                 args.push(*a);
                 marg = *r;
             }
-            args.push(marg);
-
+            let ret = marg;
+            // dbg!(&args, &ret);
             LIRType::closure(
                 &args.iter().map(lower_ty).collect::<Vec<_>>(),
-                lower_ty(ret),
+                lower_ty(&ret),
             )
         }
         IRType::Var(_) | IRType::TyFun(..) => {
@@ -271,6 +319,7 @@ fn lower_ty(ty: &IRType) -> LIRType {
         IRType::Prod(r) => LIRType::Struct(lower_row(r)),
         IRType::Sum(r) => LIRType::Union(lower_row(r)),
         IRType::Particle(_) => LIRType::String,
+        IRType::Bool => LIRType::Bool,
         _ => todo!("{ty:?}"),
     }
 }

@@ -48,36 +48,47 @@ package Main =
 
     let id x : ?T -> ?T = x
 
-    let combine x y : ?T ->?U -> {?T, ?U} =
-        {x, y}
+    # let combine x y : ?T ->?U -> {?T, ?U} =
+    #     {x, y}
 
-    let f x y : num -> num -> num =
-        x + y
+    # let f x y : num -> num -> num =
+    #     x + y
    
-    let m x y : num -> num -> num =
-        x * y
+    # let m x y : num -> num -> num =
+    #     x * y
 
-    let seven :num = 7
-                 
+    # let seven :num = 7
+
+    type Status = |ok , err|
+
+    let Ok: Status = |ok|
+
+    
+    let factorial x : num -> num =
+        if x == 0 then 1 else x * factorial (x - 1)
+
     let main: num =
-        # let mul = fn x y => x * y in
-        # let the_num = seven in
-        # let seven = seven in
-        # let ten = to_num "10" in f ((m rand  4) ten) in
-        let val =  Some (new_Wrapper 10) in
-        let mapped = map val (fn x => map_wrapper x (fn data => data * 2)) in    
-        let unwrapped = unwrap_or mapped (new_Wrapper 0) in
-        extract unwrapped
-        
+        let s = Ok in
+        match s in
+            |ok| then 0,
+            |err| then 1
+
+
+
+        # let a = {x = 2, y = "3", z= 3} in a.y 
+        # let val =  Some (new_Wrapper 10) in
+        # let val = |None | in
+        # let mapped = map val (fn x => map_wrapper x (fn data => data * 2)) in    
+        # let unwrapped = unwrap_or mapped (new_Wrapper 5) in
+        # extract unwrapped                
         
         # let v = new_Wrapper 10 in
         # let mapped = map_wrapper v (fn data => data * 2) in
-        # (extract mapped) - 20
+        # (extract mapped) - 2
         # (combine (id (extract v)) (id @ok )).0
         
          
         # let val = Some (10) in
-        # let mul = fn x y => x * y in
         # let mapped = map val (fn x => x * 2) in
         # unwrap_or mapped 7
         # puts "hello world\0"
@@ -88,8 +99,7 @@ package Main =
     #     if choice then |Left l| else |Right r|
         
     
-    # let id x : ?T -> ?T = x
     # let main: |Left num, Right str| =
     #     let l = id (3) in
     #     let r = id "hi" in
-    #         choose l r true
+            # choose l r true

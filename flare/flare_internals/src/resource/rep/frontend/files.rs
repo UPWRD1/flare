@@ -13,4 +13,5 @@ pub type FileID = u64;
 pub struct FileSource {
     pub filepath: PathBuf,
     pub source: String,
+    pub id: FileID,
 }

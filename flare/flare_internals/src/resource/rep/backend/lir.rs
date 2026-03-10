@@ -19,24 +19,31 @@ pub struct Var {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum LIR {
     Var(Var),
+
     Int(i32),
     Str(Intern<String>),
     #[default]
     Unit,
     Float(OrderedFloat<f32>),
+
     ClosureBuild(LIRType, ir::ItemId, Vec<Var>),
     Apply(Box<Self>, Box<Self>),
     BulkApply(Box<Self>, Vec<Self>),
-    FuncRef(AppType),
+    // FuncRef(AppType),
     Local(Var, Box<Self>, Box<Self>),
+
     Access(Box<Self>, usize),
     Struct(Vec<Self>),
     Field(Box<Self>, usize),
+
     Case(LIRType, Box<Self>, Vec<Self>),
     Tag(LIRType, usize, Box<Self>),
+
     Item(ir::ItemId, LIRType),
     Extern(Intern<String>, LIRType),
+
     BinOp(Box<Self>, BinOp, Box<Self>),
+    If(Box<Self>, Box<Self>, Box<Self>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -84,6 +91,10 @@ impl LIR {
         Self::Tag(ty, idx, Box::new(body))
     }
 
+    pub fn r#if(cond: Self, then: Self, other: Self) -> Self {
+        Self::If(Box::new(cond), Box::new(then), Box::new(other))
+    }
+
     fn free_vars_aux(&self, free: &mut BTreeSet<Var>) {
         match self {
             Self::Var(var) => {
@@ -95,10 +106,6 @@ impl LIR {
                     free.insert(*var);
                 }
             }
-            Self::FuncRef(app_type) => match app_type {
-                AppType::LIR(lir) => lir.free_vars_aux(free),
-                AppType::Item(_, _) | AppType::Extern(_, _) => {}
-            },
             Self::Apply(fun, arg) => {
                 fun.free_vars_aux(free);
                 arg.free_vars_aux(free);
@@ -126,6 +133,11 @@ impl LIR {
                     .for_each(|branch| branch.free_vars_aux(free));
             }
             Self::Tag(_, _, body) => body.free_vars_aux(free),
+            Self::If(c, t, o) => {
+                c.free_vars_aux(free);
+                t.free_vars_aux(free);
+                o.free_vars_aux(free);
+            }
         }
     }
 
@@ -148,10 +160,6 @@ impl LIR {
             | Self::Str(_)
             | Self::Item(..)
             | Self::Extern(..) => {}
-            Self::FuncRef(app_type) => match app_type {
-                AppType::LIR(lir) => lir.rename(subst),
-                AppType::Item(_, _) | AppType::Extern(_, _) => {}
-            },
             Self::ClosureBuild(_, _, vars) => {
                 for var in vars.iter_mut() {
                     if let Some(new_var) = subst.get(var) {
@@ -182,6 +190,25 @@ impl LIR {
                 branches.iter_mut().for_each(|branch| branch.rename(subst));
             }
             Self::Tag(_, _, body) => body.rename(subst),
+            Self::If(c, t, o) => {
+                c.rename(subst);
+                t.rename(subst);
+                o.rename(subst);
+            }
+        }
+    }
+
+    pub fn get_fn_ty(&self) -> LIRType {
+        match self {
+            LIR::Apply(func, _) | LIR::BulkApply(func, _) => match func.get_fn_ty() {
+                LIRType::Closure(_, ret) => *ret,
+                LIRType::ClosureEnv(f, _) => match *f {
+                    LIRType::Closure(_, ret) => *ret,
+                    _ => panic!("Not a closure"),
+                },
+                other => panic!("Apply on non-closure: {other:?}"),
+            },
+            _ => self.type_of(),
         }
     }
 
@@ -193,13 +220,20 @@ impl LIR {
             LIR::Unit => LIRType::Unit,
             LIR::Float(_) => LIRType::Float,
             // LIR::ClosureBuild(t, _, t) => *t,
-            LIR::FuncRef(app_type) => app_type.type_of(),
             LIR::ClosureBuild(f, _, env) => {
                 let env_tys: Vec<_> = env.iter().map(|v| v.ty).collect();
                 LIRType::ClosureEnv((*f).into(), env_tys.as_slice().into())
             }
-            LIR::Apply(func, _) => func.type_of(),
-            LIR::BulkApply(func, _) => func.type_of(),
+            // LIR::Apply(func, _) => func.type_of(),
+            LIR::Apply(func, _) | LIR::BulkApply(func, _) => match func.type_of() {
+                LIRType::Closure(_, ret) => *ret,
+                LIRType::ClosureEnv(f, _) => match *f {
+                    LIRType::Closure(_, ret) => *ret,
+                    _ => panic!("Not a closure"),
+                },
+                other => panic!("Apply on non-closure: {other:?}"),
+            },
+            // LIR::BulkApply(func, _) => func.type_of(),
             LIR::Local(.., body) => body.type_of(),
             LIR::Access(closure, ty) => {
                 let t = *ty;
@@ -225,11 +259,12 @@ impl LIR {
                     panic!("Field expression is on non-struct element: {lir}")
                 }
             }
-            LIR::Case(ty, _, _) => *ty,
+            LIR::Case(_, _, t) => t.first().unwrap().type_of(),
             LIR::Tag(ty, _, _) => *ty,
 
             LIR::BinOp(left, ..) => left.type_of(),
             LIR::Item(_, ty) | LIR::Extern(_, ty) => *ty,
+            LIR::If(_, t, _) => t.type_of(),
         }
     }
 }

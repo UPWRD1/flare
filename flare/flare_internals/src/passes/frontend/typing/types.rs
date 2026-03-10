@@ -43,16 +43,13 @@ impl UnifyKey for TyUniVar {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-// pub struct TypeVar(pub Intern<String>);
 pub struct TypeVar(pub usize);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum Type {
-    // Infer,
-    Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
+    // Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
     Unifier(TyUniVar),
-    Generic(Spanned<Intern<String>>),
-    // Template(Spanned<Intern<String>>),
+
     Var(TypeVar),
     Particle(Spanned<Intern<String>>),
     #[default]
@@ -62,25 +59,21 @@ pub enum Type {
     String,
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
-    Package(Spanned<Intern<String>>),
+    // Package(Spanned<Intern<String>>),
     // Item(ItemId),
     TypeFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    TypeApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    User(Spanned<Intern<String>>, &'static [Spanned<Intern<Self>>]),
     Prod(Spanned<Intern<Row>>),
     Sum(Spanned<Intern<Row>>),
     Label(Label, Spanned<Intern<Self>>),
     Hole,
 }
-// #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-// pub struct InternType(pub Intern<Type>);
 
 impl EqUnifyValue for Spanned<Intern<Type>> {}
 
 impl Ident for Type {
     fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
         match self {
-            Self::Package(spanned) => Ok(*spanned),
+            // Self::Package(spanned) => Ok(*spanned),
             Self::Label(l, _) => Ok(l.0),
             _ => unreachable!("{:?}", self),
         }
@@ -92,16 +85,22 @@ impl Type {
         match self {
             Self::Var(v) => format!(
                 "?{}",
-                scheme.types_to_name.get(v).copied().unwrap_or_else(
-                    || Intern::from(v.0.to_string()) // panic!("Type variable {v:?} has no associated name : {scheme:?}")
-                ) // .coopied()
-                  // .uwrap_or_else(|| v.0.to_string().into())
+                scheme
+                    .types_to_name
+                    .iter()
+                    .find(|(var, _)| var == v)
+                    .map(|(v_, x)| x)
+                    .copied()
+                    .unwrap_or_else(
+                        || Intern::from(v.0.to_string()) // panic!("Type variable {v:?} has no associated name : {scheme:?}")
+                    ) // .coopied()
+                      // .uwrap_or_else(|| v.0.to_string().into())
             ),
             Self::Func(l, r) => format!("{} -> {}", l.0.render(scheme), r.0.render(scheme)),
             Self::Prod(r) => format!("{{{}}}", r.render(scheme)),
             Self::Sum(r) => format!("|{}|", r.render(scheme)),
             Self::TypeFun(l, r) => format!("[{}]{}", l.0.render(scheme), r.0.render(scheme)),
-            Self::TypeApp(l, r) => format!("{}::[{}]", r.0.render(scheme), l.0.render(scheme)),
+            // Self::TypeApp(l, r) => format!("{}::[{}]", r.0.render(scheme), l.0.render(scheme)),
             _ => format!("{self}"),
         }
     }
@@ -131,7 +130,6 @@ impl Type {
             | Self::Bool
             | Self::Unit
             | Self::Particle(_)
-            | Self::Generic(_)
             | Self::Var(_) => Ok(()),
             Self::Func(arg, ret) => {
                 arg.0.occurs_check(var).map_err(|_| *self)?;
@@ -153,13 +151,11 @@ impl Type {
                 r.0.occurs_check(var).map_err(|_| *self)
             }
 
-            Self::TypeApp(l, r) => {
-                l.0.occurs_check(var).map_err(|_| *self)?;
-                r.0.occurs_check(var).map_err(|_| *self)
-            }
-            Self::Package(_) => Ok(()),
-            Self::User(..) | Self::Hole => unreachable!("Shouldn't happen"),
-            Self::Subtable(_, _) => todo!(), // _ => todo!("{self:?}"),
+            // Self::TypeApp(l, r) => {
+            //     l.0.occurs_check(var).map_err(|_| *self)?;
+            //     r.0.occurs_check(var).map_err(|_| *self)
+            // }
+            Self::Hole => Ok(()),
         }
     }
 
@@ -215,66 +211,10 @@ impl Type {
         // TODO Replace with `Intern<Row>`
         match self {
             Self::Prod(row) | Self::Sum(row) => *row.0,
+            Self::Label(lbl, ty) => Row::single(lbl, ty),
             _ => unreachable!("expected row, found {self:?}"),
         }
     }
-
-    // pub fn collapse_apps(self) -> Self {
-    //     match self {
-    //         Self::Func(l, r) => Self::Func(
-    //             l.map(|l| l.collapse_apps().into()),
-    //             r.map(|r| r.collapse_apps().into()),
-    //         ),
-    //         Self::TypeFun(_, _) => panic!("Isolated typefun"),
-    //         Self::TypeApp(tyfun, arg) => {
-    //             if let Self::TypeFun(g, t) = *tyfun.0 {
-    //                 *subst_generic_type(t, g.0, arg.0).0
-    //             } else {
-    //                 tyfun.0.collapse_apps()
-    //             }
-    //         }
-    //         Self::Prod(r) => {
-    //             let r = r.map(|r| match *r {
-    //                 Row::Closed(closed_row) => {
-    //                     let values: Vec<_> = closed_row
-    //                         .values
-    //                         .iter()
-    //                         .map(|x| x.map(|x| x.collapse_apps().into()))
-    //                         .collect();
-
-    //                     Row::Closed(ClosedRow {
-    //                         values: values.leak(),
-    //                         ..closed_row
-    //                     })
-    //                     .into()
-    //                 }
-    //                 _ => r,
-    //             });
-    //             Self::Prod(r)
-    //         }
-    //         Self::Sum(r) => {
-    //             let r = r.map(|r| match *r {
-    //                 Row::Closed(closed_row) => {
-    //                     let values: Vec<_> = closed_row
-    //                         .values
-    //                         .iter()
-    //                         .map(|x| x.map(|x| x.collapse_apps().into()))
-    //                         .collect();
-
-    //                     Row::Closed(ClosedRow {
-    //                         values: values.leak(),
-    //                         ..closed_row
-    //                     })
-    //                     .into()
-    //                 }
-    //                 _ => r,
-    //             });
-    //             Self::Sum(r)
-    //         }
-    //         Self::Label(label, t) => Self::Label(label, t.map(|t| t.collapse_apps().into())),
-    //         _ => self,
-    //     }
-    // }
 }
 
 impl fmt::Display for Type {
@@ -284,16 +224,15 @@ impl fmt::Display for Type {
             Self::Bool => write!(f, "bool"),
             Self::String => write!(f, "str"),
             Self::Unit => write!(f, "unit"),
-            Self::Particle(p) => write!(f, "@{p}"),
+            Self::Particle(p) => write!(f, "@{}", p.0),
 
             Self::Unifier(u) => write!(f, "%var{}", u.0),
             Self::Var(v) => write!(f, "?{}", v.0),
-            Self::Func(l, r) => write!(f, "{l} -> {r}"),
-            Self::Prod(r) => write!(f, "{{{r}}}"),
-            Self::Sum(r) => write!(f, "|{r}|"),
-            Self::Label(l, t) => write!(f, "{}: {t}", l.0.0),
-            Self::TypeFun(l, r) => write!(f, "[{l}]{r}"),
-            Self::TypeApp(l, r) => write!(f, "{l} {r}"),
+            Self::Func(l, r) => write!(f, "{} -> {}", l.0, r.0),
+            Self::Prod(r) => write!(f, "{{{}}}", r.0),
+            Self::Sum(r) => write!(f, "|{}|", r.0),
+            Self::Label(l, t) => write!(f, "{}: {}", l.0.0, t.0),
+            Self::TypeFun(l, r) => write!(f, "[{}]{}", l.0, r.0),
             _ => write!(f, "{self:#?}"),
         }
     }

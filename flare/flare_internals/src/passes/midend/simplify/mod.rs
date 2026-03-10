@@ -18,7 +18,7 @@ enum Occurrence {
     /// Appears once inside a function
     OnceInFun,
     /// Appears once inside a branch
-    OnceInBranch,
+    // OnceInBranch,
     /// Appears many times
     Many,
 }
@@ -69,25 +69,6 @@ impl Occurrences {
         }
     }
 
-    
-fn in_branch(self, free: &FxHashSet<VarId>) -> Self {
-        Self {
-            vars: self
-                .vars
-                .into_iter()
-                .map(|(id, occ)| {
-                    (
-                        id,
-                        match occ {
-                            Occurrence::Once if free.contains(&id) =>  Occurrence::OnceInBranch,
-                            occ => occ,
-                        },
-                    )
-                })
-                .collect(),
-        }
-    }
-
     #[must_use]
     fn merge(mut self, other: Self) -> Self {
         for (var, occ) in other.vars {
@@ -96,9 +77,7 @@ fn in_branch(self, free: &FxHashSet<VarId>) -> Self {
                 .and_modify(|self_occ| {
                     *self_occ = match (*self_occ, occ) {
                         (Occurrence::Dead, occ) | (occ, Occurrence::Dead) => occ,
-//                         (Occurrence::Many | Occurrence::Once | Occurrence::OnceInFun  |  Occurrence::OnceInBranch, _) |
-// (_, Occurrence::Many) | (Occurrence::Once, Occurrence::Once) => Occurrence::Many,
-(_, _) => Occurrence::Many,
+                        (_, _) => Occurrence::Many,
                     };
                 })
                 .or_insert(occ);
@@ -107,83 +86,82 @@ fn in_branch(self, free: &FxHashSet<VarId>) -> Self {
     }
 }
 
-pub fn subst_ty(haystack: IR, payload: IRType) -> IR {
+pub fn subst_ty_at(haystack: IR, payload: IRType, depth: usize) -> IR {
     match haystack {
-        IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_ty(payload))),
+        IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_ty(payload.clone(),depth))),
         IR::Num(_)
         | IR::Str(_)
         | IR::Bool(_)
         | IR::Unit
         | IR::Particle(_)
-        // c IR::Tuple(_)
-         => haystack,
+       => haystack,
         IR::Fun(var, ir) => IR::fun(
-            var.map_ty(|ty| ty.subst_ty(payload.clone())),
-            subst_ty(*ir, payload),
+            var.map_ty(|ty| ty.subst_ty(payload.clone(), depth)),
+            subst_ty_at(*ir, payload, depth),
         ),
-        IR::App(fun, arg) => IR::app(subst_ty(*fun, payload.clone()), subst_ty(*arg, payload)),
+        IR::App(fun, arg) => IR::app(subst_ty_at(*fun, payload.clone(), depth), subst_ty_at(*arg, payload, depth)),
 
-IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty(*ir, payload)),
+IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_ty_at(*ir, payload, depth + 1)),
     IR::TyApp(ir, ty) => IR::ty_app(
-      subst_ty(*ir, payload.clone()),
+      subst_ty_at(*ir, payload.clone(), depth),
       match ty {
-        TyApp::Ty(ty) => TyApp::Ty(ty.subst_ty(payload)),
-        TyApp::Row(row) => TyApp::Row(row.subst_ty(payload)),
+        TyApp::Ty(ty) => TyApp::Ty(ty.subst_ty(payload, depth)),
+        TyApp::Row(row) => TyApp::Row(row.subst_ty(payload, depth)),
       },
     ),
                 IR::Local(var, defn, body) => IR::local(
-            var.map_ty(|ty| ty.subst_ty(payload.clone())),
-            subst_ty(*defn, payload.clone()),
-            subst_ty(*body, payload),
+            var.map_ty(|ty| ty.subst_ty(payload.clone(), depth)),
+            subst_ty_at(*defn, payload.clone(), depth),
+            subst_ty_at(*body, payload, depth),
         ),
         IR::Field(ir, u) => {
-                           IR::field(subst_ty(*ir, payload), u)
+                           IR::field(subst_ty_at(*ir, payload, depth), u)
     
         }
-        IR::Tag(t, u, ir) => IR::tag(t.subst_ty(payload.clone()), u, subst_ty(*ir, payload)),
+        IR::Tag(t, u, ir) => IR::tag(t.subst_ty(payload.clone(), depth), u, subst_ty_at(*ir, payload, depth)),
         IR::Tuple(elements) => {
-            // dbg!(&elements);
             IR::tuple(
                 elements
                     .into_iter()
-                    .map(|elem| subst_ty(elem, payload.clone()))
+                    .map(|elem| subst_ty_at(elem, payload.clone(),depth))
                                 )
         }
         IR::Case(t, ir, branches) => {
-            // dbg!(&t, &payload);
-            IR::case(
-                // t,
-                t.subst_ty(payload.clone()),
-                // *ir,
-                subst_ty(*ir, payload.clone()),
+           IR::case(
+                t.subst_ty(payload.clone(), depth),
+              subst_ty_at(*ir, payload.clone(),depth),
                 branches.into_iter().map(|x|
                     Branch{
-                        param: x.param.map_ty(|ty| ty.subst_ty(payload.clone())),
-                        body: subst_ty(x.body, payload.clone())
+                        param: x.param.map_ty(|ty| ty.subst_ty(payload.clone(), depth)),
+                        body: subst_ty_at(x.body, payload.clone(),depth)
                     }
                 )
             )
-
-    
-                    }
+        }
         IR::Item(t, id) => {
-            IR::Item(t.subst_ty(payload), id)
+            IR::Item(t.subst_ty(payload, depth), id)
         },
         IR::Extern(n, t) => {
-            IR::Extern(n, t.subst_ty(payload))
+            IR::Extern(n, t.subst_ty(payload, depth))
         }
        
         IR::If(ir, t, o) => {
-            IR::r#if(subst_ty(*ir, payload.clone()), subst_ty(*t, payload.clone()), subst_ty(*o, payload))
+            IR::r#if(subst_ty_at(*ir, payload.clone(),depth), subst_ty_at(*t, payload.clone(),depth), subst_ty_at(*o, payload,depth))
         },
         IR::Bin(ir, bin_op, ir1) => todo!(),
     }
 }
+pub fn subst_ty(haystack: IR, payload: IRType) -> IR {
+    subst_ty_at(haystack, payload, 0)
+}
 
+pub fn subst_row(haystack: IR, payload: Row ) -> IR {
+    subst_row_at(haystack, payload, 0)
+}
 
-pub fn subst_row(haystack: IR, payload: Row) -> IR {
+pub fn subst_row_at(haystack: IR, payload: Row, needle: usize) -> IR {
   match haystack {
-    IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_row(payload))),
+    IR::Var(var) => IR::Var(var.map_ty(|ty| ty.subst_row(payload, needle))),
     
  IR::Num(_)
         | IR::Str(_)
@@ -193,60 +171,59 @@ pub fn subst_row(haystack: IR, payload: Row) -> IR {
         // c IR::Tuple(_)
         | IR::Extern(_, _) => haystack,
     IR::Fun(var, ir) => IR::fun(
-      var.map_ty(|ty| ty.subst_row(payload.clone())),
-      subst_row(*ir, payload),
+      var.map_ty(|ty| ty.subst_row(payload.clone(), needle)),
+      subst_row_at(*ir, payload, needle),
     ),
-    IR::App(fun, arg) => IR::app(subst_row(*fun, payload.clone()), subst_row(*arg, payload)),
-    IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_row(*ir, payload)),
+    IR::App(fun, arg) => IR::app(subst_row_at(*fun, payload.clone(),needle), subst_row_at(*arg, payload, needle)),
+    IR::TyFun(kind, ir) => IR::ty_fun(kind, subst_row_at(*ir, payload, needle + 1)),
     IR::TyApp(ir, ty) => IR::ty_app(
-      subst_row(*ir, payload.clone()),
+      subst_row_at(*ir, payload.clone(), needle),
       match ty {
-        TyApp::Ty(ty) => TyApp::Ty(ty.subst_row(payload)),
-        TyApp::Row(row) => TyApp::Row(row.subst_row(payload)),
+        TyApp::Ty(ty) => TyApp::Ty(ty.subst_row(payload, needle, )),
+        TyApp::Row(row) => TyApp::Row(row.subst_row(payload, needle)),
       },
     ),
     IR::Tuple(elems) => IR::tuple(
       elems
         .into_iter()
-        .map(|elem| subst_row(elem, payload.clone())),
+        .map(|elem| subst_row_at(elem, payload.clone(), needle)),
     ),
-    IR::Field(ir, indx) => IR::field(subst_row(*ir, payload), indx),
-    IR::Tag(ty, tag, ir) => IR::tag(ty.subst_row(payload.clone()), tag, subst_row(*ir, payload)),
+    IR::Field(ir, indx) => IR::field(subst_row_at(*ir, payload, needle), indx),
+    IR::Tag(ty, tag, ir) => IR::tag(ty.subst_row(payload.clone(), needle), tag, subst_row_at(*ir, payload, needle)),
     IR::Case(ty, ir, branches) => IR::case(
-      ty.subst_row(payload.clone()),
-      subst_row(*ir, payload.clone()),
+      ty.subst_row(payload.clone(), needle),
+      subst_row_at(*ir, payload.clone(), needle),
       branches.into_iter().map(|branch| Branch {
-        param: branch.param.map_ty(|ty| ty.subst_row(payload.clone())),
-        body: subst_row(branch.body, payload.clone()),
+        param: branch.param.map_ty(|ty| ty.subst_row(payload.clone(), needle, )),
+        body: subst_row_at(branch.body, payload.clone(), needle),
       }),
     ),
     IR::Local(var, defn, body) => IR::local(
-      var.map_ty(|ty| ty.subst_row(payload.clone())),
-      subst_row(*defn, payload.clone()),
-      subst_row(*body, payload),
+      var.map_ty(|ty| ty.subst_row(payload.clone(), needle)),
+      subst_row_at(*defn, payload.clone(), needle),
+      subst_row_at(*body, payload, needle),
     ),
 
 IR::Item(t, id) => {
-            IR::Item(t.subst_row(payload), id)
+            IR::Item(t.subst_row(payload, needle), id)
         }
 
          IR::If(ir, t, o) => {
-            IR::r#if(subst_row(*ir, payload.clone()), subst_row(*t, payload.clone()), subst_row(*o, payload))
+            IR::r#if(subst_row_at(*ir, payload.clone(), needle), subst_row_at(*t, payload.clone(), needle), subst_row_at(*o, payload, needle))
         },
         IR::Bin(ir, bin_op, ir1) => todo!(),
   }
 }
 struct OccuranceAnalyzer {
     // items: &'i [IR],
-    in_branch: bool,
 }
 impl OccuranceAnalyzer {
     pub fn new() -> Self {
-        Self { in_branch: false }
+        Self {} 
     }
 
     fn occurrence_analysis(
-        &mut self,
+        &self,
         ir: &IR,
         // seen: &im::HashSet<ItemId, FxBuildHasher>,
     ) -> (FxHashSet<VarId>, Occurrences) {
@@ -321,7 +298,7 @@ impl OccuranceAnalyzer {
             IR::Case(_, scrutinee, branches) => {
                 let (mut scrutinee_free, mut scrutinee_occs) =
                     self.occurrence_analysis(scrutinee);
-                self.in_branch = true;
+                
                 for branch in branches {
                     let (mut branch_free, mut branch_occs) =
                         self.occurrence_analysis(&branch.body);
@@ -329,14 +306,13 @@ impl OccuranceAnalyzer {
 
                     branch_occs
                         .vars
-                        .entry(branch.param.id)
+                        .entry(branch.param.id).and_modify(|v| *v = Occurrence::OnceInFun)
                         .or_insert(Occurrence::Dead);
 
                     branch_occs = branch_occs.in_fun(&branch_free);
                     scrutinee_free.extend(branch_free);
                     scrutinee_occs = scrutinee_occs.merge(branch_occs);
                 }
-                self.in_branch = false;
                 (scrutinee_free, scrutinee_occs)
             }
 
@@ -394,22 +370,18 @@ struct Simplifier {
     locals_inlined: usize,
     tuples_inlined: usize,
     inline_size_threshold: usize,
-    // items: &'p [IR],
-
-    // seen_items: FxHashSet<ItemId>,
 }
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
-let ref_ir = the_ir.clone();
-let mut occ_a = OccuranceAnalyzer::new();
-let mut simplifier = Simplifier::new();
+    let occ_a = OccuranceAnalyzer::new();
     the_ir
-                .into_iter()
-        .map(|ir| {
+                .into_iter().enumerate()
+        .map(|(i, ir)| {
+            let mut simplifier = Simplifier::new();
             let mut ir = ir;
-            for _ in 0..2 {
-            let (_, occs) =
-                occ_a.occurrence_analysis(&ir);
+            for _ in 0..4 {
+                // println!("Pass {n}");
+                let (_, occs) = occ_a.occurrence_analysis(&ir);
                 simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
@@ -425,11 +397,9 @@ let mut simplifier = Simplifier::new();
 impl Simplifier {
     fn new() -> Self {
         Self {
-            // occs:,
-            // items ,
-            inline_size_threshold: 60, // GHC magic number is 60
+           inline_size_threshold: 60, // GHC magic number is 60
             subst: FxHashMap::default(),
-            ..Default::default()        }
+           ..Default::default()        }
     }
     fn with_occs(&mut self, occs: Occurrences) {
         self.occs = occs
@@ -464,8 +434,6 @@ impl Simplifier {
                 IR::Bool(b) => break self.rebuild(IR::Bool(b), in_scope, ctx),
                 IR::Unit => break self.rebuild(IR::Unit, in_scope, ctx),
                 IR::Particle(p) => break self.rebuild(IR::Particle(p), in_scope, ctx),
-                                // IR::Comment(_, r) => *r,
-
                 IR::Fun(var, body) => {
                     let body =
                         self.simplify(*body, in_scope.update(var.id, Definition::Unknown), vec![]);
@@ -514,14 +482,17 @@ impl Simplifier {
                 }
                 IR::Case(ty, scrutinee, branches) => {
                     if branches.is_empty() {
-                        break self.rebuild(*scrutinee, in_scope, ctx);
+                        panic!("Empty branches");
+                        // break self.rebuild(*scrutinee, in_scope, ctx);
                     }
+                    
                     let branches: Vec<Branch> = branches
                         .into_iter()
-                        .map(|b| self.simplify_branch(b, &in_scope))
+                        .map(|b| self.simplify_branch(b,  &in_scope))
                         .collect();
 
                     ctx.push((ContextEntry::Case(ty, branches), self.subst.clone()));
+
                     *scrutinee
                 }
                 IR::Tag(ty, idx, body) => {
@@ -539,7 +510,7 @@ impl Simplifier {
     }
 
     fn simplify_branch(&mut self, b: Branch, in_scope: &InScope) -> Branch {
-        Branch {
+       Branch {
             body: self.simplify(
                 b.body,
                 in_scope.update(b.param.id, Definition::Unknown),
@@ -550,11 +521,7 @@ impl Simplifier {
     }
 
     fn simplify_local(&mut self, var: Var, defn: IR, body: IR, ctx: &mut SimplifierContext) -> IR {
-        if let IR::Var(ref v) = defn && *v == var {
-            return body
-            
-        }
-        match self.occs.lookup_var(&var) {
+      match self.occs.lookup_var(&var) {
             Occurrence::Dead => {
                 self.locals_inlined += 1;
                 body
@@ -631,7 +598,6 @@ impl Simplifier {
                 "Encountered dead or single-use variable while determining inline viablility. This should have been handled prior.",
             ),
             Occurrence::OnceInFun => ir.is_value() && self.some_benefit(ir, in_scope, ctx),
-            Occurrence::OnceInBranch |
             Occurrence::Many => {
                 // dbg!(&ir);
                 // dbg!(ir.size());
@@ -683,9 +649,9 @@ impl Simplifier {
                     } else if let IR::Item(_, ref id) = ir {
                         let arg = self.simplify(arg, in_scope.clone(), Vec::new());
                             ir = IR::app(ir, arg);
-                                                                    } else {
+                    } else {
                         // dbg!(&ir, &arg);
-                        let arg = self.simplify(arg, in_scope.clone(), Vec::new());
+                        let arg = self.simplify(arg, in_scope.clone(),Vec::new());
                         ir = IR::app(ir, arg);
                     }
                 }
@@ -694,10 +660,11 @@ impl Simplifier {
                         self.tuples_inlined += 1;
 
                         let field = irs[idx].clone();
-                        return self.simplify(field, in_scope, ctx);
+                        ir = field;
+                        // return self.simplify(field, in_scope, ctx);
                     } else{
-                        let obj = self.simplify(ir, in_scope.clone(), Vec::new());
-                        ir = IR::field(obj, idx);
+                        // let obj = self.simplify(ir, in_scope.clone(), Vec::new());
+                        ir = IR::field(ir, idx);
                      }
                 }
                 ContextEntry::Tag(ty, idx) => ir = IR::tag(ty, idx, ir),
@@ -726,7 +693,8 @@ impl Simplifier {
                     ir = IR::ty_fun(kind, ir);
                 }
                 ContextEntry::Local(var, occ, body) => {
-                    if ir.is_trivial() {
+                    // if ir.is_trivial() {
+                    if self.some_benefit(&ir, &in_scope, &ctx) {
                         self.locals_inlined += 1;
                         self.subst.insert(var.id, SubstRng::Done(ir));
                         return self.simplify(body, in_scope, ctx);

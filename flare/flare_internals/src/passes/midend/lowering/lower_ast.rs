@@ -185,7 +185,7 @@ impl LowerSolvedEv<'_> {
                 let [left_var, right_var, goal_var] = vars;
                 let goal_len = self.goal.len();
                 let mut branches = self.goal_indices.clone().into_iter().map(|row_index| {
-                    let (i, ty, len, var, sum) = match row_index {
+                    let (i, branch_matching_ty, len, var, sum) = match row_index {
                         RowIndex::Left(i) => (
                             i,
                             self.left[i].clone().shifted(),
@@ -201,7 +201,7 @@ impl LowerSolvedEv<'_> {
                             right_sum.clone(),
                         ),
                     };
-                    let [case_var] = self.make_vars([ty]);
+                    let [case_var] = self.make_vars([branch_matching_ty]);
                     IR::branch(case_var.clone(), {
                         IR::app(
                             IR::Var(var),
@@ -431,7 +431,7 @@ impl<'source> LowerAst<'source> {
             Expr::Unit => IR::Unit,
 
             Expr::Particle(p) => IR::Particle(p.0),
-            Expr::Lambda(Typed(var, ty), body, _) => {
+            Expr::Lambda(Typed(var, ty), body) => {
                 let ir_ty = self.types.lower_ty(*ty.0);
                 let ir_var = self.var_supply.supply_for(var.0.0);
                 let ir_body = self.lower_ast(body);
@@ -488,7 +488,7 @@ impl<'source> LowerAst<'source> {
                 let param = self
                     .row_to_ev
                     .get(&id)
-                    .cloned()
+                    .copied()
                     .map(|ev| self.lookup_ev(ev))
                     .unwrap_or_else(|| {
                         unreachable!(
@@ -503,7 +503,7 @@ impl<'source> LowerAst<'source> {
                 IR::app(IR::app(concat, left), right)
             }
             Expr::Branch(left, right) => {
-                let param = self.row_to_ev.get(&id).cloned().map_or_else(
+                let param = self.row_to_ev.get(&id).copied().map_or_else(
                     || unreachable!(" Branch AST node lacks an expected evidence"),
                     |ev| self.lookup_ev(ev),
                 );
@@ -528,9 +528,14 @@ impl<'source> LowerAst<'source> {
                     let param = self
                         .row_to_ev
                         .get(&id)
-                        .cloned()
+                        .copied()
                         .map(|ev| self.lookup_ev(ev))
-                        .expect("Project AST node lacks an expected evidence");
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "Project AST node lacks an expected evidence: {id}, evs:\n{:#?}",
+                                self.row_to_ev
+                            )
+                        });
                     let direction_field = match direction {
                         Direction::Left => 2,
                         Direction::Right => 3,
@@ -540,14 +545,10 @@ impl<'source> LowerAst<'source> {
                 }
             }
             Expr::Inject(direction, body) => {
-                // dbg!(body.0);
-                // dbg!(self.row_to_ev);
-                // dbg!(id);
-
                 let param = self
                     .row_to_ev
                     .get(&id)
-                    .cloned()
+                    .copied()
                     .map(|ev| self.lookup_ev(ev))
                     .unwrap_or_else(|| {
                         panic!(
@@ -592,6 +593,24 @@ impl<'source> LowerAst<'source> {
 
                     _ => unimplemented!(),
                 }
+            }
+            Expr::Access(base, field) => {
+                let base_ir = self.lower_ast(base);
+
+                // id = ast.1 is the Access node's NodeId, which is exactly what
+                // row_to_combo was keyed on during type checking — no fragility
+                let ev = self
+                    .row_to_ev
+                    .get(&id)
+                    .copied()
+                    .unwrap_or_else(|| panic!("Access node lacks evidence: {:?}", id));
+
+                let param = self.lookup_ev(ev);
+
+                // Evidence tuple layout: (concat, branch, (prj_left, inj_left), (prj_right, inj_right))
+                // left = {field: t} singleton, so prj_left returns t directly via ⊢ Π(τ) ≈ τ
+                let prj_left = IR::field(IR::field(IR::Var(param), 2), 0);
+                IR::app(prj_left, base_ir)
             }
             _ => todo!("{ast:?}"),
         }

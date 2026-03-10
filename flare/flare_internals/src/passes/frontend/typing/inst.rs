@@ -6,7 +6,7 @@ use crate::{
         Constraint, Evidence, Provenance, Row, TyUniVar, Type, TypeScheme, TypeVar,
         rows::{RowCombination, RowUniVar, RowVar},
     },
-    resource::rep::common::{Spanned, NodeId} ,
+    resource::rep::common::{NodeId, Spanned},
 };
 
 pub struct Instantiate<'a> {
@@ -102,7 +102,6 @@ impl<'a> Instantiate<'a> {
                 | Type::String
                 | Type::Unit
                 | Type::Unifier(_)
-                | Type::Generic(_)
                 | Type::Particle(_) => *ty,
                 Type::Func(arg, ret) => {
                     let arg = self.ty(arg);
