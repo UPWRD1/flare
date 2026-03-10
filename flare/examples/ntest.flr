@@ -59,12 +59,23 @@ package Main =
 
     # let seven :num = 7
 
+    type Status = |ok , err|
+
+    let Ok: Status = |ok|
+
+    
     let factorial x : num -> num =
         if x == 0 then 1 else x * factorial (x - 1)
 
     let main: num =
-        factorial 2 + factorial 3
-         # let a = {x = 2, y = "3", z= 3} in a.y 
+        let s = Ok in
+        match s in
+            |ok| then 0,
+            |err| then 1
+
+
+
+        # let a = {x = 2, y = "3", z= 3} in a.y 
         # let val =  Some (new_Wrapper 10) in
         # let val = |None | in
         # let mapped = map val (fn x => map_wrapper x (fn data => data * 2)) in    
