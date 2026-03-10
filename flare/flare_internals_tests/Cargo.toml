@@ -1,0 +1,9 @@
+[package]
+name = "flare_internals_tests"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chumsky = "0.12.0"
+flare_internals = { path = "../flare_internals" }
+internment = "0.8.6"

@@ -1,0 +1,8 @@
+package IO =
+    extern printf: str -> unit
+    
+    type Strange[?T] = {?T}
+
+    let print s: str -> Strange[unit] =
+        let u = printf s in {u}
+    

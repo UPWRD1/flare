@@ -1,0 +1,79 @@
+fn 1(v1: |{f32,unit}|[(unit)-> {f32,unit}],v0: unit) -> {f32,unit} {
+	let v2 = v1^1 in v2
+}
+
+fn 2(v4: ||[({f32,unit})-> {f32,unit}],v3: {f32,unit}) -> {f32,unit} {
+	v3
+}
+
+fn 0(v0: {unit|{f32,unit}},v1: {f32,unit}) -> {f32,unit} {
+	case v0{#1[v1: {f32,unit}],#2[]}
+}
+---------------------
+
+
+fn 3() -> {unit|{f32,unit}} {
+	unit as {unit|{f32,unit}}@0
+}
+---------------------
+
+
+fn 4(v0: {f32,unit}) -> {unit|{f32,unit}} {
+	v0 as {unit|{f32,unit}}@1
+}
+---------------------
+
+fn 6(v5: ||[(unit)-> {unit|{f32,unit}}],v0: unit) -> {unit|{f32,unit}} {
+	#3
+}
+
+fn 7(v6: |[({f32,unit})-> {f32,unit}]|[({f32,unit})-> {unit|{f32,unit}}],v3: {f32,unit}) -> {unit|{f32,unit}} {
+	let v7 = v6^1 in #4(v7(v3))
+}
+
+fn 5(v0: {unit|{f32,unit}},v1: [({f32,unit})-> {f32,unit}]) -> {unit|{f32,unit}} {
+	case v0{#6[],#7[v1: [({f32,unit})-> {f32,unit}]]}
+}
+---------------------
+
+
+fn 8(v0: f32) -> f32 {
+	v0
+}
+---------------------
+
+fn 10(v10: |f32|[(unit)-> {f32,unit}],v9: unit) -> {f32,unit} {
+	let v11 = v10^1 in {v11,v9}
+}
+
+fn 9(v0: f32) -> {f32,unit} {
+	let v8 = #8(v0) in #10[v8: f32](unit)
+}
+---------------------
+
+
+fn 11(v0: {f32,unit}) -> f32 {
+	v0.0
+}
+---------------------
+
+fn 13(v14: |f32|[(unit)-> {f32,unit}],v13: unit) -> {f32,unit} {
+	let v15 = v14^1 in {v15,v13}
+}
+
+fn 12(v0: {f32,unit},v1: [(f32)-> f32]) -> {f32,unit} {
+	let v12 = v1(v0.0) in #13[v12: f32](v0.1)
+}
+---------------------
+
+fn 15(v16: ||[(f32)-> f32],v9: f32) -> f32 {
+	v9 * 2i
+}
+
+fn 16(v17: ||[({f32,unit})-> {f32,unit}],v8: {f32,unit}) -> {f32,unit} {
+	#12(v8,#15[])
+}
+
+fn 14() -> f32 {
+	#11(#0(#5(#4(#9(10i)),#16[]),#9(0i)))
+}

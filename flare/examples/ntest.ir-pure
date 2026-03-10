@@ -1,0 +1,80 @@
+item #0 is
+let $1: {
+  num -> str -> {num * str} *
+  TyFunc Type num -> %0 -> str -> %0 -> {num |
+      str} -> %0 *
+  {{num * str} -> num * num -> {num | str}} *
+  {{num * str} -> str * str -> {num | str}}
+} = {
+  (def [$2: num, $3: str] =>
+        {
+        $2,
+          $3
+        } ),
+    (tyfun Type =>
+        (def [$4: num -> %0, $5: str -> %0, $6: {num |
+            str}] =>
+          match $6:
+          | $7 then $4 $7,
+          | $8 then $5 $8 ) ),
+    {
+      (def [$9: {num * str}] => $9 field 0 ),
+        (def [$10: num] =>
+            (def [$11: num] =>
+              {num | str} tag $11 variant 0
+            ) $10 )
+      },
+    {
+      (def [$12: {num * str}] => $12 field 1
+          ),
+        (def [$13: str] =>
+            (def [$14: str] =>
+              {num | str} tag $14 variant 1
+            ) $13 )
+      }
+  }
+in
+  (def [$0: {num * str}] =>
+    $1 field 2 field 0 $0 )
+end item #0
+
+item #1 is
+let $1: {
+  str -> num -> {num * str} *
+  TyFunc Type str -> %0 -> num -> %0 -> {num |
+      str} -> %0 *
+  {{num * str} -> str * str -> {num | str}} *
+  {{num * str} -> num * num -> {num | str}}
+} = {
+  (def [$2: str, $3: num] =>
+        {
+        $3,
+          $2
+        } ),
+    (tyfun Type =>
+        (def [$4: str -> %0, $5: num -> %0, $6: {num |
+            str}] =>
+          match $6:
+          | $7 then $5 $7,
+          | $8 then $4 $8 ) ),
+    {
+      (def [$9: {num * str}] => $9 field 1 ),
+        (def [$10: str] =>
+            (def [$11: str] =>
+              {num | str} tag $11 variant 1
+            ) $10 )
+      },
+    {
+      (def [$12: {num * str}] => $12 field 0
+          ),
+        (def [$13: num] =>
+            (def [$14: num] =>
+              {num | str} tag $14 variant 0
+            ) $13 )
+      }
+  }
+in
+  (def [$0: {num * str}] =>
+    #0: {num * str} -> num $0
+  ) $1 field 0 john 3
+end item #1

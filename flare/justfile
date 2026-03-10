@@ -1,20 +1,36 @@
-default: run
-
+default: show
+    
 build: 
     cargo build -p flarec
 
 release: 
     cargo build --release -p flarec
 
-run:
-    cargo run -p flarec  -- -c examples/ntest.flr
+run emit='o':
+    cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.ir --emit {{emit}}
+
+show emit='o':
+    just run {{emit}}
+    bat examples/ntest.{{emit}}   
+    
+full:
+    just run
+    objdump -DS examples/ntest.o
+    clang examples/ntest.o -o examples/ntest 
+    ./examples/ntest
+    echo $?
+
+compile path:
+    cargo run -p flarec -- {{path}} -o {{path}}
 
 run-release:
-    cargo run --release -p flarec -- -c examples/ntest.flr
+    cargo run --release -p flarec -- examples/ntest.flr examples/option.flr -o examples/ntest.ir
 
 bench:
-    cargo bench -p flare_internals
-    code -r target/criterion/report/index.html
+    cargo bench --features testing -p flare_internals
+
+test: 
+    cargo test  --features testing --  --no-capture
 
 build-profile:
     cargo build --profile bench -p flarec
@@ -22,6 +38,21 @@ build-profile:
 profile:
     valgrind --tool=cachegrind /workspaces/allegro/flare/target/release/flarec -c /workspaces/allegro/flare/flare_internals/benches/bench_code/bench1.flr
 #    rm cachegrind.*
+
+bulk:
+    #!/bin/zsh
+    just build;
+    while  ./target/debug/flarec examples/ntest.flr examples/option.flr -o examples/ntest.ir; do :; done
+
+debt:
+    debtmap analyze .
+
+ 
+# -Zmiri-many-seeds=..100
+export MIRIFLAGS := " -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-many-seeds=..10"
+# export RUSTFLAGS := "-Zrandomize-layout"
+miri:
+    cargo +nightly miri run -p flarec  -- -c examples/ntest.flr
 
 reset:
     cargo clean

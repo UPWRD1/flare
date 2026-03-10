@@ -1,27 +1,95 @@
-package Main = 
-    use Math.factorial
+# package Main =
+    # extern println: str -> unit
 
-    extern println: str -> unit
+    # pub prop Functor =
+    #     fmap: Self -> (?A -> ?B) -> Functor[?B]
 
-    extern concat: str -> str -> str
-    extern display_num: num -> str
-    extern exit: num -> unit
+    # pub type Option[?T] = |Some ?T, None|
 
-    struct S =
-        d: str,
-        f: str -> num -> str
+    # impl Functor for Option[?T] =
+    #     def map self f : Option[?T] -> (?T -> ?U) -> Option[?U] = match self in
+    #             | Some x| then |Some (f x)|,
+    #             | None | then  |None|
 
-    enum Option =
-        Some { num },
-        None
+    # pub let x: infer = 3
 
-    let unwrap : Option -> num x =
-        match x 
-            | Some {n} then n
-            | None then exit (1)
+    # pub let main: infer =
+    #     let a = Some 2 in
+    #     let b = Some 3 in
+    #     a :: fmap (fn x => x * 2)
+    #         +
+    #     b :Functor: fmap (fn x => x * 3)
+package Main =
+    use Option.{Option, map, unwrap_or, Some, None}
+    # # # use Option
+    
+    extern to_num: str ->num
 
-    let main = 
-        let i = S {d = "asdf", f = fn x y => concat x (display_num y)} in
-        let en = Option.Some {3} in
-        let f = factorial (unwrap en) in
-        i.f i.d (f)
+    extern puts: str -> num
+
+    # extern display: ?T -> str
+
+    
+    type Wrapper[?X] = {data: ?X, extra: unit}
+    # type Wrapper[?T] = {data: ?T}
+
+    let new_Wrapper t : ?T -> Wrapper[?T] =
+        {data = id (t), extra = unit}
+        # {data = t}
+
+    let map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
+        let v = f(w.data) in 
+        {data = v, extra= w.extra}
+        # {data = v}
+
+    let extract w : Wrapper[?T] -> ?T =
+        w.data
+
+
+    let id x : ?T -> ?T = x
+
+    let combine x y : ?T ->?U -> {?T, ?U} =
+        {x, y}
+
+    let f x y : num -> num -> num =
+        x + y
+   
+    let m x y : num -> num -> num =
+        x * y
+
+    let seven :num = 7
+                 
+    let main: num =
+        # let mul = fn x y => x * y in
+        # let the_num = seven in
+        # let seven = seven in
+        # let ten = to_num "10" in f ((m rand  4) ten) in
+        let val =  Some (new_Wrapper 10) in
+        let mapped = map val (fn x => map_wrapper x (fn data => data * 2)) in    
+        let unwrapped = unwrap_or mapped (new_Wrapper 0) in
+        extract unwrapped
+        
+        
+        # let v = new_Wrapper 10 in
+        # let mapped = map_wrapper v (fn data => data * 2) in
+        # (extract mapped) - 20
+        # (combine (id (extract v)) (id @ok )).0
+        
+         
+        # let val = Some (10) in
+        # let mul = fn x y => x * y in
+        # let mapped = map val (fn x => x * 2) in
+        # unwrap_or mapped 7
+        # puts "hello world\0"
+        # m 3 4
+
+        
+    # let choose l r choice: ?T -> ?U -> bool -> |Left ?T, Right ?U| =
+    #     if choice then |Left l| else |Right r|
+        
+    
+    # let id x : ?T -> ?T = x
+    # let main: |Left num, Right str| =
+    #     let l = id (3) in
+    #     let r = id "hi" in
+    #         choose l r true

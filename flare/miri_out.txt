@@ -1,0 +1,573 @@
+cargo +nightly miri run -p flarec  -- -c examples/ntest.flr
+   Compiling libc v0.2.176
+   Compiling autocfg v1.5.0
+   Compiling shlex v1.3.0
+   Compiling find-msvc-tools v0.1.3
+   Compiling proc-macro2 v1.0.101
+   Compiling memchr v2.7.6
+   Compiling quote v1.0.41
+   Compiling unicode-ident v1.0.19
+   Compiling equivalent v1.0.2
+   Compiling cfg-if v1.0.3
+   Compiling typenum v1.19.0
+   Compiling allocator-api2 v0.2.21
+   Compiling cc v1.2.40
+   Compiling foldhash v0.1.5
+   Compiling bitflags v1.3.2
+   Compiling serde_core v1.0.228
+   Compiling aho-corasick v1.1.3
+   Compiling hashbrown v0.15.5
+   Compiling serde v1.0.228
+   Compiling log v0.4.28
+   Compiling regex-syntax v0.8.6
+   Compiling object v0.37.3
+   Compiling version_check v0.9.5
+   Compiling syn v2.0.106
+   Compiling bitmaps v2.1.0
+   Compiling regex-automata v0.4.11
+   Compiling num-traits v0.2.19
+   Compiling memoffset v0.6.5
+   Compiling thiserror v2.0.17
+   Compiling adler2 v2.0.1
+   Compiling hashbrown v0.16.0
+   Compiling anyhow v1.0.100
+   Compiling im v15.1.0
+   Compiling is-terminal v0.4.16
+   Compiling rand_core v0.6.4
+   Compiling gimli v0.32.3
+   Compiling concolor-query v0.3.3
+   Compiling rand_xoshiro v0.6.0
+   Compiling concolor v0.1.1
+   Compiling indexmap v2.12.0
+   Compiling miniz_oxide v0.8.9
+   Compiling sized-chunks v0.6.5
+   Compiling either v1.15.0
+   Compiling unicode-width v0.1.14
+   Compiling termcolor v1.4.1
+   Compiling rustc-demangle v0.1.26
+   Compiling yansi v1.0.1
+   Compiling regex v1.11.3
+   Compiling fixedbitset v0.5.7
+   Compiling humantime v2.3.0
+   Compiling unicode-segmentation v1.12.0
+   Compiling ariadne v0.5.1
+   Compiling ordered-float v4.6.0
+   Compiling itertools v0.14.0
+   Compiling nix v0.23.2
+   Compiling internment v0.8.6
+   Compiling ena v0.14.3
+   Compiling addr2line v0.25.1
+   Compiling qbe v2.5.1
+   Compiling tiny_pretty v0.2.1
+   Compiling env_logger v0.10.2
+   Compiling rustc-hash v2.1.1
+   Compiling pretty_env_logger v0.5.0
+   Compiling backtrace v0.3.76
+   Compiling backtrace-on-stack-overflow v0.3.0
+   Compiling psm v0.1.27
+   Compiling stacker v0.1.22
+   Compiling thiserror-impl v2.0.17
+   Compiling serde_derive v1.0.228
+   Compiling chumsky v0.11.2
+   Compiling petgraph v0.8.3
+   Compiling flare_internals v0.1.0 (/Users/lukedavis/Projects/GitHub/flare/flare/flare_internals)
+warning: unused import: `NodeId`
+  --> flare_internals/src/passes/midend/typing/rows.rs:11:22
+   |
+11 |         ast::{Label, NodeId},
+   |                      ^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `cell::OnceCell`
+  --> flare_internals/src/lib.rs:45:5
+   |
+45 |     cell::OnceCell,
+   |     ^^^^^^^^^^^^^^
+
+warning: unused import: `chumsky::span::SimpleSpan`
+  --> flare_internals/src/lib.rs:51:5
+   |
+51 | use chumsky::span::SimpleSpan;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `IRTarget`, `Typed`, `Variable`, `lir`, `monomorph`, `self`, and `self`
+  --> flare_internals/src/lib.rs:58:13
+   |
+58 |             lir,
+   |             ^^^
+59 |             lowering::{
+60 |                 self, Lowerer,
+   |                 ^^^^
+61 |                 ir::{self, IRTarget},
+   |                      ^^^^  ^^^^^^^^
+62 |             },
+63 |             monomorph, simplify,
+   |             ^^^^^^^^^
+...
+70 |             typing::{Type, Typed},
+   |                            ^^^^^
+...
+81 |                 Variable,
+   |                 ^^^^^^^^
+
+warning: a method with this name may be added to the standard library in the future
+  --> flare_internals/src/passes/backend/lir/mod.rs:37:22
+   |
+37 |                     .intersperse(Doc::text(","))
+   |                      ^^^^^^^^^^^
+   |
+   = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+   = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+   = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+   = note: `#[warn(unstable_name_collisions)]` (part of `#[warn(future_incompatible)]`) on by default
+help: add `#![feature(iter_intersperse)]` to the crate attributes to enable `std::iter::Iterator::intersperse`
+  --> flare_internals/src/lib.rs:2:1
+   |
+ 2 + #![feature(iter_intersperse)]
+   |
+
+warning: a method with this name may be added to the standard library in the future
+   --> flare_internals/src/passes/backend/lir/mod.rs:221:26
+    |
+221 |                         .intersperse(Doc::text(", "))
+    |                          ^^^^^^^^^^^
+    |
+    = warning: once this associated item is added to the standard library, the ambiguity may cause an error or change in behavior!
+    = note: for more information, see issue #48919 <https://github.com/rust-lang/rust/issues/48919>
+    = help: call with fully qualified syntax `itertools::Itertools::intersperse(...)` to keep using the current method
+help: add `#![feature(iter_intersperse)]` to the crate attributes to enable `std::iter::Iterator::intersperse`
+   --> flare_internals/src/lib.rs:2:1
+    |
+  2 + #![feature(iter_intersperse)]
+    |
+
+warning: unused variable: `rhs`
+  --> flare_internals/src/passes/backend/analyze/usage.rs:40:20
+   |
+40 |     fn both(&self, rhs: &Self) -> Self {
+   |                    ^^^ help: if this is intentional, prefix it with an underscore: `_rhs`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `rhs`
+  --> flare_internals/src/passes/backend/analyze/usage.rs:44:24
+   |
+44 |     fn lower_or(&self, rhs: &Self) -> Self {
+   |                        ^^^ help: if this is intentional, prefix it with an underscore: `_rhs`
+
+warning: unused variable: `t`
+   --> flare_internals/src/passes/backend/lir/mod.rs:215:27
+    |
+215 |             Self::Closure(t, item_id, vars) => Doc::text("closure")
+    |                           ^ help: if this is intentional, prefix it with an underscore: `_t`
+
+warning: unused variable: `ir`
+   --> flare_internals/src/passes/backend/lir/mod.rs:225:25
+    |
+225 |             Self::Apply(ir, ir1) => todo!(),
+    |                         ^^ help: if this is intentional, prefix it with an underscore: `_ir`
+
+warning: unused variable: `ir1`
+   --> flare_internals/src/passes/backend/lir/mod.rs:225:29
+    |
+225 |             Self::Apply(ir, ir1) => todo!(),
+    |                             ^^^ help: if this is intentional, prefix it with an underscore: `_ir1`
+
+warning: unused variable: `var`
+   --> flare_internals/src/passes/backend/lir/mod.rs:226:25
+    |
+226 |             Self::Local(var, ir, ir1) => todo!(),
+    |                         ^^^ help: if this is intentional, prefix it with an underscore: `_var`
+
+warning: unused variable: `ir`
+   --> flare_internals/src/passes/backend/lir/mod.rs:226:30
+    |
+226 |             Self::Local(var, ir, ir1) => todo!(),
+    |                              ^^ help: if this is intentional, prefix it with an underscore: `_ir`
+
+warning: unused variable: `ir1`
+   --> flare_internals/src/passes/backend/lir/mod.rs:226:34
+    |
+226 |             Self::Local(var, ir, ir1) => todo!(),
+    |                                  ^^^ help: if this is intentional, prefix it with an underscore: `_ir1`
+
+warning: unused variable: `ir`
+   --> flare_internals/src/passes/backend/lir/mod.rs:227:26
+    |
+227 |             Self::Access(ir, _) => todo!(),
+    |                          ^^ help: if this is intentional, prefix it with an underscore: `_ir`
+
+warning: unused variable: `kind`
+  --> flare_internals/src/passes/backend/monomorph/mod.rs:98:23
+   |
+98 |             IR::TyFun(kind, _) => Some(ir.clone()),
+   |                       ^^^^ help: if this is intentional, prefix it with an underscore: `_kind`
+
+warning: unused variable: `a`
+   --> flare_internals/src/passes/backend/monomorph/mod.rs:118:33
+    |
+118 |                 IR::TyApp(body, a) => {
+    |                                 ^ help: if this is intentional, prefix it with an underscore: `_a`
+
+warning: unused variable: `ir`
+   --> flare_internals/src/passes/backend/monomorph/mod.rs:120:33
+    |
+120 |                     if let Some(ir) = self.probe(&body) {
+    |                                 ^^ help: if this is intentional, prefix it with an underscore: `_ir`
+
+warning: unused variable: `t`
+   --> flare_internals/src/passes/midend/resolution.rs:223:36
+    |
+223 |                 ItemKind::Type(.., t) => {
+    |                                    ^ help: if this is intentional, prefix it with an underscore: `_t`
+
+warning: unused variable: `t`
+  --> flare_internals/src/passes/midend/typechecker.rs:54:39
+   |
+54 |                 ItemKind::Type(_n, _, t) => {
+   |                                       ^ help: if this is intentional, prefix it with an underscore: `_t`
+
+warning: unreachable pattern
+   --> flare_internals/src/passes/midend/typing/unify.rs:436:29
+    |
+436 | ...                   _ => unreachable!("Invalid providence"),
+    |                       ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> flare_internals/src/passes/midend/typing/unify.rs:436:29
+    |
+382 | ...                   Provenance::UnexpectedFun(node_id) => (
+    |                       ---------------------------------- matches some of the same values
+...
+390 | ...                   Provenance::AppExpectedFun(node_id) => (
+    |                       ----------------------------------- matches some of the same values
+...
+398 | ...                   Provenance::ExpectedUnify(l_id, r_id) => {
+    |                       ------------------------------------- matches some of the same values
+...
+412 | ...                   Provenance::ConditionIsBool(c_id) => {
+    |                       --------------------------------- matches some of the same values
+...
+436 | ...                   _ => unreachable!("Invalid providence"),
+    |                       ^ ...and 1 other patterns collectively make this unreachable
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `id`
+   --> flare_internals/src/passes/midend/typing/mod.rs:387:13
+    |
+387 |         let id = ast.id();
+    |             ^^ help: if this is intentional, prefix it with an underscore: `_id`
+
+warning: unused variable: `default_span`
+   --> flare_internals/src/lib.rs:180:13
+    |
+180 |         let default_span = Type::Infer.to_default_span();
+    |             ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_default_span`
+
+warning: struct `Init` is never constructed
+  --> flare_internals/src/lib.rs:91:8
+   |
+91 | struct Init;
+   |        ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: trait `CardinalOps` is never used
+ --> flare_internals/src/passes/backend/analyze/usage.rs:1:7
+  |
+1 | trait CardinalOps {
+  |       ^^^^^^^^^^^
+
+warning: enum `Demand` is never used
+ --> flare_internals/src/passes/backend/analyze/usage.rs:7:6
+  |
+7 | enum Demand {
+  |      ^^^^^^
+
+warning: enum `Multiplicity` is never used
+  --> flare_internals/src/passes/backend/analyze/usage.rs:34:6
+   |
+34 | enum Multiplicity {
+   |      ^^^^^^^^^^^^
+
+warning: enum `Usage` is never used
+  --> flare_internals/src/passes/backend/analyze/usage.rs:50:6
+   |
+50 | enum Usage {
+   |      ^^^^^
+
+warning: methods `mu` and `mul` are never used
+  --> flare_internals/src/passes/backend/analyze/usage.rs:56:8
+   |
+55 | impl Usage {
+   | ---------- methods in this implementation
+56 |     fn mu(&self) -> usize {
+   |        ^^
+...
+63 |     fn mul(&self) -> impl CardinalOps {
+   |        ^^^
+
+warning: field `saturated_fun_count` is never read
+  --> flare_internals/src/passes/backend/monomorph/mod.rs:82:5
+   |
+79 | struct Monomorpher {
+   |        ----------- field in this struct
+...
+82 |     saturated_fun_count: usize,
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: method `did_work` is never used
+  --> flare_internals/src/passes/backend/monomorph/mod.rs:92:8
+   |
+84 | impl Monomorpher {
+   | ---------------- method in this implementation
+...
+92 |     fn did_work(&self) -> bool {
+   |        ^^^^^^^^
+
+warning: field `id` is never read
+  --> flare_internals/src/passes/midend/typing/inst.rs:13:5
+   |
+12 | pub struct Instantiate<'a> {
+   |            ----------- field in this struct
+13 |     id: NodeId,
+   |     ^^
+
+warning: `flare_internals` (lib) generated 32 warnings (run `cargo fix --lib -p flare_internals` to apply 20 suggestions)
+   Compiling flarec v0.1.0 (/Users/lukedavis/Projects/GitHub/flare/flare/flarec)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 25.55s
+     Running `/Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/bin/cargo-miri runner target/miri/aarch64-apple-darwin/debug/flarec -c examples/ntest.flr`
+warning: unused import: `lir::LIRTarget`
+ --> flarec/src/main.rs:8:23
+  |
+8 |     passes::backend::{lir::LIRTarget, lowering::ir::IRTarget, target::Target},
+  |                       ^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+Trying seed: 0
+Trying seed: 2
+Trying seed: 7
+Trying seed: 5
+Trying seed: 1
+Trying seed: 6
+Trying seed: 8
+Trying seed: 3
+Trying seed: 9
+Trying seed: 4
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked extract : {data: ?0} -> ?0
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked map_wrapper : {data: ?1} -> ?1 -> ?2 -> {data: ?2}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked new_Wrapper : ?3 -> {data: ?3}
+Checked Some : ?4 -> |None: unit, Some: ?4|
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Checked unwrap_or : |None: unit, Some: ?4| -> ?4 -> ?4
+Brrrrrrrr!
+Your code was too cool for flarec!
+
+flarec encountered a fatal, internal compiler error (ICE) during compilation.
+This is a bug within flarec.
+This may be caused by a bug in your code, or an issue with your environment.
+
+Please file an issue here:
+	https://github.com/UPWRD1/flare/issues/new/choose
+
+Error details:
+ICE at flare_internals/src/passes/midend/typing/unify.rs:52
+	not yet implemented: Spanned(Generic(Spanned("T", 730..731)), 50..52)
+
+Checked Some : ?5 -> |None: unit, Some: ?5|
+Checked Some : ?5 -> |None: unit, Some: ?5|
+Checked Some : ?5 -> |None: unit, Some: ?5|
+Checked Some : ?5 -> |None: unit, Some: ?5|
+Checked Some : ?5 -> |None: unit, Some: ?5|
+Checked Some : ?5 -> |None: unit, Some: ?5|
+Checked Some : ?5 -> |None: unit, Some: ?5|
+Checked unwrap_or : |None: unit, Some: ?5| -> ?5 -> ?5
+Checked Some : ?5 -> |None: unit, Some: ?5|
+Checked None : |None: unit, Some: ?6|
+Checked None : |None: unit, Some: ?6|
+Checked None : |None: unit, Some: ?6|
+Checked None : |None: unit, Some: ?6|
+stack backtrace:
+Checked None : |None: unit, Some: ?6|
+Checked None : |None: unit, Some: ?6|
+Checked None : |None: unit, Some: ?6|
+Checked None : |None: unit, Some: ?6|
+Checked None : |None: unit, Some: ?6|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+Checked map : |None: unit, Some: ?7| -> ?7 -> ?8 -> |None: unit, Some: ?8|
+   0: panic_hook::{closure#0}
+             at flarec/src/main.rs:52:25
+   1: <std::boxed::Box<dyn for<'a, 'b> std::ops::Fn(&'a std::panic::PanicHookInfo<'b>) + std::marker::Send + std::marker::Sync> as std::ops::Fn<(&std::panic::PanicHookInfo<'_>,)>>::call
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/boxed.rs:2220:9
+   2: std::panicking::panic_with_hook
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:833:13
+   3: std::panicking::panic_handler::{closure#0}
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:698:13
+   4: std::sys::backtrace::__rust_end_short_backtrace::<{closure@std::panicking::panic_handler::{closure#0}}, !>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:182:18
+   5: std::panicking::panic_handler
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:689:5
+   6: std::rt::panic_fmt
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/panicking.rs:80:14
+   7: flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_ty
+             at flare_internals/src/passes/midend/typing/unify.rs:52:18
+   8: flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}
+             at flare_internals/src/passes/midend/typing/unify.rs:62:27
+   9: std::iter::adapters::map::map_fold::<&flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, (), {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}, {closure@std::iter::Iterator::for_each::call<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, {closure@std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>::extend_trusted<std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>::{closure#0}}>::{closure#0}}>::{closure#0}
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:88:28
+  10: <std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>> as std::iter::Iterator>::fold::<(), {closure@std::iter::adapters::map::map_fold<&flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, (), {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}, {closure@std::iter::Iterator::for_each::call<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, {closure@std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>::extend_trusted<std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>::{closure#0}}>::{closure#0}}>::{closure#0}}>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/slice/iter/macros.rs:279:27
+  11: <std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}> as std::iter::Iterator>::fold::<(), {closure@std::iter::Iterator::for_each::call<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, {closure@std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>::extend_trusted<std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>::{closure#0}}>::{closure#0}}>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:128:9
+  12: <std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}> as std::iter::Iterator>::for_each::<{closure@std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>::extend_trusted<std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>::{closure#0}}>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:832:9
+  13: std::vec::Vec::<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>::extend_trusted::<std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs:3937:17
+  14: <std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>> as std::vec::spec_extend::SpecExtend<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>>::spec_extend
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/spec_extend.rs:27:9
+  15: <std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>> as std::vec::spec_from_iter_nested::SpecFromIterNested<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>>::from_iter
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/spec_from_iter_nested.rs:60:9
+  16: <std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>> as std::vec::spec_from_iter::SpecFromIter<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>, std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>>::from_iter
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/spec_from_iter.rs:33:9
+  17: <std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>> as std::iter::FromIterator<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>>::from_iter::<std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs:3801:9
+  18: <std::iter::Map<std::slice::Iter<'_, flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row::{closure#0}}> as std::iter::Iterator>::collect::<std::vec::Vec<flare_internals::resource::rep::Spanned<internment::intern::Intern<flare_internals::passes::midend::typing::Type>>>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2035:9
+  19: flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_closed_row
+             at flare_internals/src/passes/midend/typing/unify.rs:59:21
+  20: flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_row::{closure#0}
+             at flare_internals/src/passes/midend/typing/unify.rs:76:48
+  21: flare_internals::resource::rep::Spanned::<internment::intern::Intern<flare_internals::passes::midend::typing::Row>>::map::<internment::intern::Intern<flare_internals::passes::midend::typing::Row>, {closure@flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_row::{closure#0}}>
+             at flare_internals/src/resource/rep/mod.rs:63:17
+  22: flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::normalize_row
+             at flare_internals/src/passes/midend/typing/unify.rs:69:9
+  23: flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::unify_row_comb
+             at flare_internals/src/passes/midend/typing/unify.rs:285:20
+  24: flare_internals::passes::midend::typing::unify::<impl flare_internals::passes::midend::typing::Solver<'_>>::unification
+             at flare_internals/src/passes/midend/typing/unify.rs:371:60
+  25: flare_internals::passes::midend::typing::Solver::<'_>::type_check_logic
+             at flare_internals/src/passes/midend/typing/mod.rs:400:12
+  26: flare_internals::passes::midend::typing::Solver::<'_>::check_with_items
+             at flare_internals/src/passes/midend/typing/mod.rs:378:9
+  27: flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}
+             at flare_internals/src/passes/midend/typechecker.rs:298:25
+  28: std::iter::adapters::map::map_try_fold::<'_, (flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>), std::result::Result<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), flare_internals::resource::errors::CompilerErr>, (), std::ops::ControlFlow<std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}, {closure@<std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>> as std::iter::Iterator>::try_fold<(), {closure@std::iter::Iterator::try_for_each::call<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>, fn((flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)) -> std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)> {std::ops::ControlFlow::<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>::Break}>::{closure#0}}, std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>::{closure#0}}>::{closure#0}
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:95:28
+  29: <std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)> as std::iter::Iterator>::try_fold::<(), {closure@std::iter::adapters::map::map_try_fold<'_, (flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>), std::result::Result<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), flare_internals::resource::errors::CompilerErr>, (), std::ops::ControlFlow<std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}, {closure@<std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>> as std::iter::Iterator>::try_fold<(), {closure@std::iter::Iterator::try_for_each::call<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>, fn((flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)) -> std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)> {std::ops::ControlFlow::<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>::Break}>::{closure#0}}, std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>::{closure#0}}>::{closure#0}}, std::ops::ControlFlow<std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/into_iter.rs:357:25
+  30: <std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}> as std::iter::Iterator>::try_fold::<(), {closure@<std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>> as std::iter::Iterator>::try_fold<(), {closure@std::iter::Iterator::try_for_each::call<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>, fn((flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)) -> std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)> {std::ops::ControlFlow::<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>::Break}>::{closure#0}}, std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>::{closure#0}}, std::ops::ControlFlow<std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/map.rs:121:9
+  31: <std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>> as std::iter::Iterator>::try_fold::<(), {closure@std::iter::Iterator::try_for_each::call<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>, fn((flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)) -> std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)> {std::ops::ControlFlow::<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>::Break}>::{closure#0}}, std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/mod.rs:191:9
+  32: <std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>> as std::iter::Iterator>::try_for_each::<fn((flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)) -> std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)> {std::ops::ControlFlow::<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>::Break}, std::ops::ControlFlow<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2495:9
+  33: <std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>> as std::iter::Iterator>::next
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/mod.rs:174:9
+  34: std::vec::Vec::<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>::extend_desugared::<std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs:3905:35
+  35: <std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)> as std::vec::spec_extend::SpecExtend<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>>>>::spec_extend
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/spec_extend.rs:18:9
+  36: <std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)> as std::vec::spec_from_iter_nested::SpecFromIterNested<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>>>>::from_iter
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/spec_from_iter_nested.rs:41:9
+  37: std::vec::in_place_collect::<impl std::vec::spec_from_iter::SpecFromIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>>> for std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>::from_iter
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/in_place_collect.rs:245:9
+  38: <std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)> as std::iter::FromIterator<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>::from_iter::<std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/alloc/src/vec/mod.rs:3801:9
+  39: <std::iter::adapters::GenericShunt<'_, std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>> as std::iter::Iterator>::collect::<std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2035:9
+  40: <std::result::Result<std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>, flare_internals::resource::errors::CompilerErr> as std::iter::FromIterator<std::result::Result<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), flare_internals::resource::errors::CompilerErr>>>::from_iter::<std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>>::{closure#0}
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs:2156:49
+  41: std::iter::adapters::try_process::<std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>, (flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), std::result::Result<std::convert::Infallible, flare_internals::resource::errors::CompilerErr>, {closure@<std::result::Result<std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>, flare_internals::resource::errors::CompilerErr> as std::iter::FromIterator<std::result::Result<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), flare_internals::resource::errors::CompilerErr>>>::from_iter<std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>>::{closure#0}}, std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/adapters/mod.rs:160:17
+  42: <std::result::Result<std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>, flare_internals::resource::errors::CompilerErr> as std::iter::FromIterator<std::result::Result<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput), flare_internals::resource::errors::CompilerErr>>>::from_iter::<std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/result.rs:2156:9
+  43: <std::iter::Map<std::vec::IntoIter<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypeScheme, &flare_internals::resource::rep::entry::Item<flare_internals::resource::rep::ast::Untyped>)>, {closure@flare_internals::passes::midend::typechecker::Typechecker::check_items::{closure#1}}> as std::iter::Iterator>::collect::<std::result::Result<std::vec::Vec<(flare_internals::resource::rep::ast::ItemId, flare_internals::passes::midend::typing::TypesOutput)>, flare_internals::resource::errors::CompilerErr>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/iter/traits/iterator.rs:2035:9
+  44: flare_internals::passes::midend::typechecker::Typechecker::check_items
+             at flare_internals/src/passes/midend/typechecker.rs:292:9
+  45: flare_internals::passes::midend::typechecker::Typechecker::check
+             at flare_internals/src/passes/midend/typechecker.rs:79:19
+  46: flare_internals::Context::<flare_internals::passes::backend::lowering::ir::IRTarget>::compile_program
+             at flare_internals/src/lib.rs:202:31
+  47: main
+             at flarec/src/main.rs:73:23
+Checked main : num
+  48: <fn() -> std::result::Result<(), flare_internals::resource::errors::CompilerErr> as std::ops::FnOnce<()>>::call_once - shim(fn() -> std::result::Result<(), flare_internals::resource::errors::CompilerErr>)
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:250:5
+Checked main : num
+  49: std::sys::backtrace::__rust_begin_short_backtrace::<fn() -> std::result::Result<(), flare_internals::resource::errors::CompilerErr>, std::result::Result<(), flare_internals::resource::errors::CompilerErr>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/sys/backtrace.rs:166:18
+  50: std::rt::lang_start::<std::result::Result<(), flare_internals::resource::errors::CompilerErr>>::{closure#0}
+             at Checked main : num
+Checked main : num
+/Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/rt.rs:206:18
+ Checked main : num
+ 51Checked main : num
+: std::ops::function::impls::<impl std::ops::FnOnce<()> for &dyn std::ops::Fn() -> i32 + std::marker::Sync + std::panic::RefUnwindSafe>::call_once
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/core/src/ops/function.rs:287:13
+Checked main : num
+  52: std::panicking::catch_unwind::do_call::<&dyn std::ops::Fn() -> i32 + std::marker::Sync + std::panic::RefUnwindSafe, i32>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:581:40
+  53: std::panicking::catch_unwind::<i32, &dyn std::ops::Fn() -> i32 + std::marker::Sync + std::panic::RefUnwindSafe>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:544:19
+  54: std::panic::catch_unwind::<&dyn std::ops::Fn() -> i32 + std::marker::Sync + std::panic::RefUnwindSafe, i32>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panic.rs:359:14
+  55: std::rt::lang_start_internal::{closure#0}
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/rt.rs:175:24
+  56: std::panicking::catch_unwind::do_call::<{closure@std::rt::lang_start_internal::{closure#0}}, isize>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:581:40
+  57: std::panicking::catch_unwind::<isize, {closure@std::rt::lang_start_internal::{closure#0}}>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panicking.rs:544:19
+  58: std::panic::catch_unwind::<{closure@std::rt::lang_start_internal::{closure#0}}, isize>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/panic.rs:359:14
+  59: std::rt::lang_start_internal
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/rt.rs:171:5
+  60: std::rt::lang_start::<std::result::Result<(), flare_internals::resource::errors::CompilerErr>>
+             at /Users/lukedavis/.rustup/toolchains/nightly-aarch64-apple-darwin/lib/rustlib/src/rust/library/std/src/rt.rs:205:5
+
+flarec will now panic. Goodbye.
+FAILING SEED: 9
+error: Recipe `miri` failed on line 40 with exit code 101

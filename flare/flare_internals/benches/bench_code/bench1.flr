@@ -1,22 +1,25 @@
 package Main = 
 
-	let add_two x = 
-		x + 2
+	extern ex_concat: str -> str -> str
+	
+	struct Data =
+		f1: num,
+		f2: str
 
-	let add_three x = 
+	
+	let add_three x : num -> num = 
 		x + 3
 
-	let mult x y =
+	let mult x y : ?T -> ?T =
 		x * y
 
-	let cube x = x * x * x
+	let cube x : ?T -> ?T = x * x * x
 
-	let subtract x y =
-		x - y
+	let concat l r : str -> str -> str =
+		ex_concat l r
 
 
-
-	let main = 
-		let a = 3 in
-			let b = 2 in
-				subtract a b
+	let main x : ?T = 
+		let a = Data { f1 = cube 3, f2 = "cat" } in
+			let b = Data { f1 = add_three 2, f2 = "con" } in
+				Data {f1 = mult(a.f1 b.f1), f2 = concat(a.f2 b.f2)}

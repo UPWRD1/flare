@@ -1,0 +1,123 @@
+use crate::resource::errors::CompResult;
+
+// use chumsky::input::ValueInput;
+use internment::Intern;
+use rustc_hash::FxHashSet;
+
+// use rkyv::with::{ArchiveWith, DeserializeWith, With};
+// use rkyv::{Archive, Deserialize, Serialize};
+// use rkyv_with::{ArchiveWith, DeserializeWith};
+// use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum QualifierFragment {
+    Root,
+    // #[with(InternedString)]
+    Package(Intern<String>),
+    Type(Intern<String>),
+    Func(Intern<String>),
+    Method(Intern<String>),
+    Variant(Intern<String>),
+    Field(Intern<String>),
+    Wildcard(Intern<String>),
+    Dummy(&'static str),
+}
+
+
+use crate::resource::rep::{
+    common::Spanned,
+    frontend::ast::{Expr, Variable},
+    common::Ident,
+};
+
+impl QualifierFragment {
+    pub fn name(&self) -> &Intern<String> {
+        match self {
+            Self::Root => Box::leak(Box::new(Intern::from_ref("ROOT"))),
+            Self::Package(n)
+            | Self::Type(n)
+            | Self::Func(n)
+            | Self::Method(n)
+            | Self::Variant(n)
+            | Self::Field(n)
+            | Self::Wildcard(n) => n,
+            Self::Dummy(_) => unreachable!("Should not be used in production"),
+        }
+    }
+
+    pub fn is(&self, rhs: &Self) -> bool {
+        self.name() == rhs.name()
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn from_expr<V: Variable>(
+        expr: &Spanned<Intern<Expr<V>>>,
+    ) -> CompResult<FxHashSet<Vec<QualifierFragment>>> {
+        struct CheckFieldAccess<'rec, V: Variable> {
+            f: &'rec dyn Fn(
+                &'rec Self,
+                &'rec Spanned<Intern<Expr<V>>>,
+                &[QualifierFragment],
+                &mut FxHashSet<Vec<QualifierFragment>>,
+            ) -> CompResult<Vec<QualifierFragment>>,
+        }
+        let mut paths = FxHashSet::default();
+        let cfa = CheckFieldAccess {
+            f: &|cfa: &CheckFieldAccess<'_, V>,
+                 e: &Spanned<Intern<Expr<V>>>,
+                 accum: &[QualifierFragment],
+                 paths: &mut FxHashSet<Vec<QualifierFragment>>|
+             -> CompResult<Vec<QualifierFragment>> {
+                match &*e.0 {
+                    Expr::FieldAccess(l, r) => {
+                        let accum = if accum.is_empty() {
+                            [(Self::Package(l.ident()?.0))].to_vec()
+                        } else {
+                            [accum, &[(Self::Wildcard(l.ident()?.0))]].concat()
+                        };
+
+                        (cfa.f)(cfa, r, &accum, paths)
+                        //self.graph.node_weight(n).cloned()
+                    }
+                    Expr::Concat(l, r) => {
+                        (cfa.f)(cfa, l, accum, paths)?;
+                        (cfa.f)(cfa, r, accum, paths)?;
+                        // paths.insert(l_path);
+                        // paths.insert(r_path);
+                        Ok(accum.to_vec())
+                    }
+
+                    Expr::Label(_, v) => {
+                        let accum = [accum, &[(Self::Wildcard(v.ident()?.0))]].concat();
+                        paths.insert(accum.clone());
+                        Ok(accum.to_vec())
+                    }
+
+                    _ => {
+                        let accum = [accum, &[(Self::Wildcard(e.ident()?.0))]].concat();
+                        paths.insert(accum.clone());
+                        Ok(accum.to_vec())
+                    }
+                }
+            },
+        };
+        (cfa.f)(&cfa, expr, &[], &mut paths)?;
+        // dbg!(&paths);
+        Ok(paths)
+    }
+}
+impl std::fmt::Display for QualifierFragment {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Root => write!(f, "Root"),
+            Self::Package(n) => write!(f, "Package {n}"),
+            Self::Type(n) => write!(f, "Type {n}"),
+            Self::Func(n) => write!(f, "Function {n}"),
+            Self::Method(n) => write!(f, "Method {n}"),
+            Self::Field(n) => write!(f, "Field {n}"),
+            Self::Variant(n) => write!(f, "Variant {n}"),
+            Self::Wildcard(n) => write!(f, "{n}"),
+            Self::Dummy(n) => write!(f, "{n}"),
+        }
+    }
+}

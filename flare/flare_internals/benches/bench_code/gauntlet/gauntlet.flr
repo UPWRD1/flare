@@ -1,0 +1,54 @@
+package Main =
+	# The Gauntlet
+	# This little piece of hell is specifically designed to be as messed-up as
+	# possible, for the purposes of putting the parser, environment builder, and
+	# typechecker through their paces.
+	# 
+	# It does not forgive.
+	# It does not forget.
+	extern num_string: num -> string
+
+	struct Elephant =
+		weight: num,
+
+	struct Giraffe =
+		height_cm: num,
+
+	struct Chimp =
+		iq: num
+
+	enum AnimalKind =
+		Elephant{Elephant, num},
+		Giraffe{Giraffe},
+		Chimp{Chimp}
+
+	struct Animal =
+		kind: AnimalKind,
+		name: str,
+		hungry: bool,
+
+	let id x : ?T -> ?T = x
+
+	struct Iter[?T] =
+		data: ?T,
+		index: num,
+			
+	let main =
+		let zoo = {
+			Animal {
+ 				kind = AnimalKind.Chimp { Chimp { iq = 140 } },
+				name = "Bob",
+				hungry = true
+			},
+			Animal {
+		 		kind = AnimalKind.Giraffe {Giraffe { height_cm = 6000 } },
+		 		name = "Gerry",
+		 		hungry = false
+		 	},
+		} in
+		match zoo.0.kind 
+			| Chimp{c} then c.iq,
+			| Giraffe{g} then g.height_cm,
+			| Elephant{e, age} then e.weight + age
+		
+	

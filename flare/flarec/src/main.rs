@@ -1,77 +1,178 @@
-//#![warn(clippy::pedantic)]
-//#![deny(elided_lifetimes_in_paths)]
+// Copyright 2025 Luke Davis
 
-use std::{env, io::Write, path::PathBuf};
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
 
+//        http://www.apache.org/licenses/LICENSE-2.0
+
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+#![allow(clippy::upper_case_acronyms)]
+use std::{fs::File, io::Write, panic, path::PathBuf, time::Instant};
+
+use clap::{Parser, ValueEnum, crate_description, crate_version};
 use flare_internals::{
-    Context, compile_program, convert_path_to_id,
-    resource::errors::{CompResult, ReportableError},
+    Context,
+    passes::backend::target::{
+        Target, c::C, irtarget::IRTarget, lirtarget::LIRTarget, native::Native,
+    },
+    resource::errors::CompResult,
 };
 fn enable_loggin() {
-    unsafe {
-        if cfg!(debug_assertions) {
-            std::env::set_var("RUST_LOG", "trace");
-            pretty_env_logger::formatted_builder()
-                .filter_level(log::LevelFilter::Info)
-                //.format_module_path(false)
-                .format(|f, r| writeln!(f, "{}", r.args()))
-                .init();
-        } else {
-            std::env::set_var("RUST_LOG", "off");
-        }
+    if cfg!(debug_assertions) {
+        pretty_env_logger::formatted_builder()
+            // .filter_level(log::LevelFilter::Error)
+            .filter_level(log::LevelFilter::Info)
+            .target(pretty_env_logger::env_logger::Target::Stdout)
+            //.format_module_path(false)
+            .format(|f, r| writeln!(f, "{}", r.args(),))
+            .init();
     }
 }
 
+fn panic_hook() {
+    panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info.location().unwrap();
+        let file = location.file();
+        let line = location.line();
+
+        // The payload can be either &str or String
+        let payload = panic_info.payload();
+        let message = if let Some(s) = payload.downcast_ref::<&str>() {
+            s
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            s
+        } else {
+            "Unknown panic type"
+        };
+
+        eprintln!("Brrrrrrrr!");
+        eprintln!("Your code was too cool for flarec!\n");
+        eprintln!("flarec encountered a fatal, internal compiler error (ICE) during compilation.");
+        eprintln!("This is a bug within flarec.");
+        eprintln!("This may be caused by a bug in your code, or an issue with your environment.\n");
+        eprintln!("Please file an issue here:");
+        eprintln!("\thttps://github.com/UPWRD1/flare/issues/new/choose");
+        eprintln!("\nError details:");
+        eprintln!("ICE at {}:{}", file, line);
+        eprintln!("\t{message}\n");
+
+        // Custom message format
+
+        // Optionally, print a backtrace programmatically (requires Rust 1.65+)
+        let backtrace = std::backtrace::Backtrace::capture();
+        eprintln!("stack backtrace:\n{}", backtrace);
+        eprintln!("flarec will now panic. Goodbye.");
+    }));
+}
+
+#[derive(Parser)]
+#[command(name = "flarec")]
+#[command(version = crate_version!())]
+#[command(about = crate_description!(), long_about = None)]
+struct Cli {
+    input_files: Vec<PathBuf>,
+
+    #[arg(short = 'o', long = "output")]
+    output_file: PathBuf,
+
+    #[arg(short = 'e', long = "emit", default_value_t = EmitOptions::default(), value_enum)]
+    emit: EmitOptions,
+}
+
+#[derive(Copy, Clone, ValueEnum, Default)]
+enum EmitOptions {
+    LIR,
+    IR,
+    C,
+    #[default]
+    O,
+}
+
+macro_rules! make_target {
+    ($target:tt, $cli:ident) => {{
+        let files = $cli.input_files;
+        let target = $target;
+        let ctx = Context::new(files, target, []);
+        let filectx = ctx.filectx.clone();
+        let now: Instant = Instant::now();
+        ctx.parse()
+            .and_then(|ctx| ctx.build())
+            .and_then(|ctx| ctx.resolve())
+            .and_then(|ctx| ctx.typecheck())
+            .and_then(|ctx| ctx.lower())
+            .and_then(|ctx| ctx.simplify())
+            .and_then(|ctx| ctx.monomorph())
+            .and_then(|ctx| ctx.reduce())
+            .and_then(|ctx| ctx.convert())
+            .and_then(|ctx| ctx.generate())
+            .and_then(|ctx| ctx.finish())
+            .and_then(|output| {
+                let elapsed = now.elapsed();
+                println!("Compiled  in {elapsed:.2?}",);
+                let f = $cli.output_file.with_extension(target.ext());
+                let mut f = File::create(f).unwrap();
+                f.write_all(&output)?;
+
+                Ok(())
+            })
+            .inspect_err(|e| {
+                e.report(&filectx);
+                std::process::exit(1)
+            })
+    }};
+}
+
 fn main() -> CompResult<()> {
-    const VERSION: &str = "0.0.1";
-    let prog_args: Vec<String> = env::args().collect();
     enable_loggin();
+    panic_hook();
 
-    match prog_args.len() {
-        3 => match prog_args[1].as_str() {
-            "-c" | "--compile" => {
-                let filename: PathBuf = PathBuf::from(&prog_args[2]).canonicalize()?;
-                let id = convert_path_to_id(&filename);
+    let cli = Cli::parse();
 
-                let ctx = Context::new(&filename, id);
-                match compile_program(&ctx, id) {
-                    //.inspect_err(|e| e.report()); //compile_typecheck(&mut root::Context { env: Environment::new() }, &filename).inspect_err(|e| {e.report(); exit(1)}).unwrap();
-                    //fs::write(format!("{}.ssa", &filename.display()), code).expect("Unable to write file");
-                    Ok((_code, elapsed)) => {
-                        println!("Compiled {} in {elapsed:.2?}", filename.display());
-                        Ok(())
-                    }
+    // unsafe { backtrace_on_stack_overflow::enable() };
+    match cli.emit {
+        EmitOptions::IR => {
+            let files = cli.input_files;
+            let target = IRTarget;
+            let ctx = Context::new(files, target, []);
+            let filectx = ctx.filectx.clone();
+            let now: Instant = Instant::now();
+            ctx.parse()
+                .and_then(|ctx| ctx.build())
+                .and_then(|ctx| ctx.resolve())
+                .and_then(|ctx| ctx.typecheck())
+                .and_then(|ctx| ctx.lower())
+                .and_then(|ctx| ctx.simplify())
+                .and_then(|ctx| ctx.monomorph())
+                .and_then(|ctx| ctx.reduce())
+                .and_then(|output| {
+                    let ir = output.op.ir;
 
-                    Err(e) => {
-                        e.report(&ctx);
-                        std::process::exit(1)
-                    }
-                }
-            }
+                    let output = ir
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, x)| format!("item #{i}: is\n{x}\nend item #{i}"))
+                        .collect::<Vec<String>>()
+                        .join("\n\n");
+                    let elapsed = now.elapsed();
+                    println!("Compiled  in {elapsed:.2?}",);
+                    let f = cli.output_file.with_extension(target.ext());
+                    let mut f = File::create(f).unwrap();
+                    f.write_all(output.as_bytes())?;
 
-            &_ => todo!(),
-        },
-        2 => match prog_args[1].as_str() {
-            "--help" | "-h" => {
-                println!("Flare v{VERSION}");
-                Ok(())
-            }
-            "--generate" | "-g" => {
-                use bnf::Grammar;
-
-                let input = include_str!("/workspaces/allegro/flare/grammar.bnf");
-                let grammar: Grammar = input.parse().unwrap();
-                let sentence = grammar.generate();
-                match sentence {
-                    Ok(s) => println!("random sentence: {}", s),
-                    Err(e) => println!("something went wrong: {}!", e),
-                }
-                Ok(())
-            }
-            &_ => todo!(),
-        },
-        _ => {
-            panic!("Invalid length of arguments!")
+                    Ok(())
+                })
+                .inspect_err(|e| {
+                    e.report(&filectx);
+                    std::process::exit(1)
+                })
         }
+        EmitOptions::LIR => make_target!(LIRTarget, cli),
+        EmitOptions::C => make_target!(C, cli),
+        EmitOptions::O => make_target!(Native, cli),
     }
 }

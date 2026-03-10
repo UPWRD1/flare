@@ -1,70 +1,353 @@
-#[warn(clippy::pedantic)]
+// Copyright 2025 Luke Davis
 
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+
+//        http://www.apache.org/licenses/LICENSE-2.0
+
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+
+#[forbid(
+    unused_unsafe,
+    clippy::fallible_impl_from,
+    // clippy::undocumented_unsafe_blocks
+)]
+#[deny(
+    // clippy::pedantic,
+    // clippy::nursery,
+    clippy::perf,
+    clippy::correctness,
+    clippy::suspicious,
+    clippy::complexity,
+    clippy::style,
+    clippy::branches_sharing_code,
+    clippy::use_self,
+    clippy::box_collection,
+    clippy::boxed_local,
+    clippy::redundant_allocation,
+    clippy::deref_by_slicing,
+    clippy::cloned_instead_of_copied,
+    clippy::used_underscore_binding,
+    clippy::unwrap_in_result,
+    unused_allocation,
+    clippy::ptr_arg,
+    clippy::needless_pass_by_ref_mut,
+    clippy::needless_pass_by_value,
+    // clippy::min_ident_chars,
+    )]
+#[warn(
+    clippy::large_stack_frames,
+    // clippy::panic,
+    clippy::dbg_macro,
+    clippy::unwrap_used,
+    // clippy::restriction
+)]
+#[allow(
+    // warnings,
+    unused_variables,
+    clippy::must_use_candidate,
+    clippy::return_self_not_must_use,
+    clippy::type_complexity,
+    clippy::diverging_sub_expression,
+    clippy::missing_panics_doc,
+    unstable_name_collisions
+)]
 pub mod passes;
 pub mod resource;
 
+use core::iter::Iterator;
 use std::{
-    fs::File,
     hash::{Hash, Hasher},
-    io::Read,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
 };
 
-use rayon::prelude::*;
+use petgraph::graph::NodeIndex;
 use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
     passes::{
+        backend::{
+            lir::{ClosureConvertOut, closure_convert},
+            target::{Generator, Target},
+        },
+        frontend::{
+            environment::Environment,
+            parser,
+            resolution::Resolver,
+            typechecker::Typechecker,
+            typing::{ItemSource, Type, TypesOutput},
+        },
         //backend::{flatten::Flattener, gen::Generator},
-        midend::environment::Environment,
-        parser,
+        midend::{lowering::Lowerer, monomorph, reduce, simplify},
     },
     resource::{
-        errors::{CompResult, CompilerErr, ErrorCollection},
-        rep::{files::{FileID, FileSource}, ast::{Package, Program}},
+        errors::{CompResult, CompilerErr},
+        rep::{
+            frontend::{
+                ast::{
+                    ItemId,
+                    Package,
+                    Program,
+                    Untyped, // Untyped
+                },
+                files::{FileID, FileSource},
+            },
+            midend::ir::IR,
+        },
     },
 };
 
-//use crate::root::resource::tk::{Tk, Token};
-#[derive(Debug, Clone)]
-pub struct Context {
-    pub filectx: Arc<Mutex<FxHashMap<FileID, FileSource>>>,
+// #[derive(Debug)]
+pub struct Init;
+
+pub struct Parse {
+    program: Program<Untyped>,
 }
 
-impl Context {
-    pub fn new(src_path: &Path, id: FileID) -> Self {
-        let mut src_text = String::new();
-        let mut src = File::open(src_path).unwrap();
-        src.read_to_string(&mut src_text).unwrap();
-        let source = FileSource {
-            filename: src_path.to_path_buf(),
-            src_text,
-        };
-        Context {
-            filectx: Mutex::from(vec![(id, source)].into_iter().collect::<FxHashMap<_, _>>())
-                .into(),
+pub struct Build {
+    env: Environment,
+}
+
+pub struct Resolve {
+    order: Vec<NodeIndex>,
+    env: Environment,
+}
+pub struct Typecheck {
+    items: Vec<(ItemId, TypesOutput)>,
+    source: ItemSource,
+}
+pub struct Lower {
+    pub ir: Vec<IR>,
+}
+
+pub struct Simplify {
+    pub ir: Vec<IR>,
+}
+
+pub struct Reduce {
+    pub ir: Vec<IR>,
+}
+
+pub struct Monomorph {
+    pub ir: Vec<IR>,
+}
+
+pub struct Convert {
+    converted: Vec<ClosureConvertOut>,
+}
+
+pub struct Generate<T: Target> {
+    output: T::Output,
+}
+
+pub trait Operation {}
+impl Operation for Init {}
+impl Operation for Parse {}
+impl Operation for Build {}
+impl Operation for Resolve {}
+impl Operation for Typecheck {}
+impl Operation for Lower {}
+impl Operation for Simplify {}
+impl Operation for Reduce {}
+impl Operation for Monomorph {}
+
+pub type FileCtx = FxHashMap<FileID, FileSource>;
+
+// pub type CtxResult<const N: usize, T, O> = Result<Context<N, T, O>, CtxErr>;
+
+/// The context/state machine for compiling a Flare bundle.
+pub struct Context<const N: usize, T, O> {
+    pub filectx: FileCtx,
+    pub target: T,
+    pub intrinsics: [(&'static str, &'static [Untyped], Type); N],
+    pub op: O,
+}
+
+impl<const N: usize, T: Target> Context<N, T, Init> {
+    pub fn new(
+        src_paths: Vec<PathBuf>,
+        target: T,
+        intrinsics: [(&'static str, &'static [Untyped], Type); N],
+    ) -> Self {
+        let filectx = src_paths
+            .into_iter()
+            .map(|filepath| {
+                let id = convert_path_to_id(&filepath);
+
+                let src_text = std::fs::read_to_string(&filepath).unwrap();
+
+                let source = FileSource {
+                    filepath,
+                    source: src_text,
+                };
+                (id, source)
+            })
+            .collect();
+        Self {
+            filectx,
+            target,
+            intrinsics,
+            op: Init,
         }
+    }
+
+    fn parse_file(&self, id: FileID) -> CompResult<Vec<Package<Untyped>>> {
+        parser::parse(&self.filectx, id)
+    }
+
+    pub fn parse(self) -> CompResult<Context<N, T, Parse>> {
+        let mut processed: Vec<(Vec<Package<Untyped>>, FileID)> = vec![];
+        for id in self.filectx.keys() {
+            let pack = self.parse_file(*id)?;
+            processed.push((pack, *id))
+        }
+
+        let v: Vec<_> = processed
+            .into_iter()
+            .flat_map(|(packages, id)| {
+                packages
+                    .into_iter()
+                    .map(|p| (p, id))
+                    .collect::<Vec<(Package<_>, FileID)>>()
+            })
+            .collect::<Vec<_>>();
+
+        let program = Program { packages: v };
+        Ok(Context {
+            op: Parse { program },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
     }
 }
 
-pub fn parse_file(ctx: &Context, id: FileID) -> CompResult<(Package, String)> {
-    let mut src_string = String::new();
+impl<const N: usize, T: Target> Context<N, T, Parse> {
+    pub fn build(self) -> CompResult<Context<N, T, Build>> {
+        let env = Environment::build(&self.op.program)?;
+        Ok(Context {
+            op: Build { env },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
 
-    let mut src = File::open(
-        &ctx.filectx
-            .clone()
-            .lock()
-            .unwrap()
-            .get(&id)
-            .unwrap()
-            .filename,
-    )?;
-    src.read_to_string(&mut src_string)?;
-    let res = parser::parse(&src_string, id)?; //TODO: handle errors properly
+impl<const N: usize, T: Target> Context<N, T, Build> {
+    pub fn resolve(self) -> CompResult<Context<N, T, Resolve>> {
+        let mut resolver = Resolver::new(self.op.env, self.intrinsics);
+        let order = resolver.build()?;
+        let env = resolver.finish()?;
+        Ok(Context {
+            op: Resolve { order, env },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
 
-    Ok((res, src_string))
+impl<const N: usize, T: Target> Context<N, T, Resolve> {
+    pub fn typecheck(self) -> CompResult<Context<N, T, Typecheck>> {
+        let tc = Typechecker::new(self.op.order.leak(), self.op.env);
+        let (items, source) = tc.check()?;
+        Ok(Context {
+            op: Typecheck { items, source },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+
+impl<const N: usize, T: Target> Context<N, T, Typecheck> {
+    pub fn lower(self) -> CompResult<Context<N, T, Lower>> {
+        let lowerer = Lowerer::new();
+        let ir = lowerer.lower(self.op.source, &self.op.items);
+        Ok(Context {
+            op: Lower { ir },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+
+impl<const N: usize, T: Target> Context<N, T, Lower> {
+    pub fn simplify(self) -> CompResult<Context<N, T, Simplify>> {
+        let ir = simplify::simplify(self.op.ir);
+        Ok(Context {
+            op: Simplify { ir },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+
+impl<const N: usize, T: Target> Context<N, T, Simplify> {
+    pub fn monomorph(self) -> CompResult<Context<N, T, Monomorph>> {
+        let ir = monomorph::monomorph(self.op.ir);
+        // Sanity check
+        // debug_assert!(ir.iter().all(|ir| matches!(ir.type_of(), _)));
+        // let ir = self.op.ir;
+        Ok(Context {
+            op: Monomorph { ir },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+
+impl<const N: usize, T: Target> Context<N, T, Monomorph> {
+    pub fn reduce(self) -> CompResult<Context<N, T, Reduce>> {
+        let ir = reduce::reduce(self.op.ir);
+        // let ir = self.op.ir;
+        Ok(Context {
+            op: Reduce { ir },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+impl<const N: usize, T: Target> Context<N, T, Reduce> {
+    pub fn convert(self) -> CompResult<Context<N, T, Convert>> {
+        let converted = closure_convert(self.op.ir);
+        Ok(Context {
+            op: Convert { converted },
+            filectx: self.filectx,
+            target: self.target,
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+
+impl<const N: usize, T: Target> Context<N, T, Convert> {
+    pub fn generate(self) -> CompResult<Context<N, T, Generate<T>>> {
+        let g = Generator::new(self.target.clone(), self.op.converted);
+
+        let output = g.generate();
+        Ok(Context {
+            op: Generate { output },
+            filectx: self.filectx,
+            target: self.target.clone(),
+            intrinsics: self.intrinsics,
+        })
+    }
+}
+
+impl<const N: usize, T: Target> Context<N, T, Generate<T>> {
+    pub fn finish(self) -> CompResult<Vec<u8>> {
+        Ok((self.op.output).into())
+    }
 }
 
 pub fn convert_path_to_id(path: &Path) -> FileID {
@@ -73,123 +356,3 @@ pub fn convert_path_to_id(path: &Path) -> FileID {
     //path.canonicalize().unwrap().hash(&mut hasher);
     hasher.finish()
 }
-
-pub fn parse_program(ctx: &Context, id: FileID) -> CompResult<Program> {
-    let context = ctx.filectx.lock().unwrap();
-
-    let src_path = &context.get(&id).unwrap().filename;
-    let path = src_path.canonicalize().unwrap();
-    let parent_dir = path.parent().unwrap();
-    let dir_contents = std::fs::read_dir(parent_dir)?
-        .par_bridge()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "flr"))
-        .map(|x| {
-            let mut src_text = String::new();
-
-            let mut src = File::open(x.path()).unwrap();
-            src.read_to_string(&mut src_text).unwrap();
-            FileSource {
-                filename: x.path(),
-                src_text,
-            }
-        })
-        .collect::<Vec<_>>();
-    drop(context);
-
-    let processed: Vec<Result<(Package, PathBuf, String), CompilerErr>> = dir_contents
-        .iter()
-        .map(|entry| {
-            let converted_id = convert_path_to_id(&entry.filename);
-            let mut file_context = ctx.filectx.lock().unwrap();
-            file_context.insert(converted_id, entry.clone());
-            drop(file_context);
-            let (pack, str) = parse_file(ctx, converted_id)?;
-            Ok((pack, entry.filename.clone(), str))
-        })
-        .collect();
-    let (v, errors): (Vec<_>, Vec<_>) = processed.into_iter().partition(|x| x.is_ok());
-    let v: Vec<_> = v.into_iter().map(Result::unwrap).collect();
-    let errors: Vec<_> = errors.into_iter().map(Result::unwrap_err).collect();
-
-    if errors.is_empty() {
-        Ok(Program { packages: v })
-    } else {
-        Err(ErrorCollection::new(errors).into())
-    }
-}
-
-pub fn compile_program(ctx: &Context, id: FileID) -> CompResult<(Program, Duration)> {
-    let now: Instant = Instant::now();
-
-    let program = parse_program(ctx, id)?;
-    //dbg!(program.clone());
-    //dbg!(program.clone());
-    let e = Environment::build(program.clone())?;
-    //dbg!(&e);
-    e.check()?;
-    //dbg!(&e);
-    let elapsed = now.elapsed();
-
-    Ok((program, elapsed))
-}
-
-// pub fn compile_typecheck(ctx: &mut Context, filename: &std::path::Path) -> CompResult<String> {
-// todo!()
-// let mut p = Program {
-//     modules: vec![],
-//     dependencies: HashSet::new(),
-// };
-
-// let root_ast = parse_file(ctx, filename.clone())?;
-// p.modules.push(root_ast.clone());
-
-// match root_ast {
-//     Cst::Module { name: _, body } => {
-//         for c in body {
-//             match c {
-//                 Cst::WithClause { include } => {
-//                     let parent_path = PathBuf::from_iter(
-//                         filename
-//                             .canonicalize()?
-//                             .components()
-//                             .clone()
-//                             .into_iter()
-//                             .take(filename.canonicalize()?.components().count() - 1)
-//                             .collect::<Vec<std::path::Component>>()
-//                             .iter()
-//                             .map(|x| x.as_os_str()),
-//                     );
-//                     let include_path =
-//                         parent_path.join(format!("{}.flr", include.get_symbol_name().unwrap()));
-
-//                     let include_ast = parse_file(ctx, include_path)?;
-//                     p.modules.push(include_ast.clone());
-//                 }
-//                 _ => {}
-//             }
-//         }
-//     }
-//     _ => panic!("Should be a module"),
-// }
-
-// //println!("{:#?}", p.clone());
-
-// ctx.env.build(p.clone())?;
-// //dbg!(ctx.env.clone());
-
-// // let mut tc = Typechecker::new(ctx.env.clone());
-// // let res = tc.check()?;
-// // dbg!(res.clone());
-
-// // let mut flattener = Flattener::new(res.clone());
-// // let flat = flattener.flatten();
-// // let main_func: FunctionTableEntry = flat.items.get(&quantifier!(Root, Func("main"), End)).cloned().unwrap().into();
-// // dbg!(&main_func);
-
-// //let mut g = Generator::new(res);
-// //let code = g.generate().unwrap();
-// //println!("Output: \n{}", code);
-// //todo!();
-// Ok("".to_string())
-// }

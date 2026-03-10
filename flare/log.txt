@@ -1,0 +1,21 @@
+RowUniVar: created new key: RowUniVar(0)
+RowUniVar: created new key: RowUniVar(1)
+Updated variable RowUniVar(0) to VarValue { parent: RowUniVar(0), value: Some(Closed(ClosedRow { fields: [Label(Spanned("name", 1071..1075)), Label(Spanned("age", 1082..1085))], values: [String, Num] })), rank: 0 }
+Updated variable RowUniVar(1) to VarValue { parent: RowUniVar(1), value: Some(Closed(ClosedRow { fields: [Label(Spanned("name", 1071..1075))], values: [String] })), rank: 0 }
+TypeUniVar: created new key: TyUniVar(0)
+RowUniVar: created new key: RowUniVar(0)
+RowUniVar: created new key: RowUniVar(1)
+RowUniVar: created new key: RowUniVar(2)
+TypeUniVar: created new key: TyUniVar(1)
+TypeUniVar: created new key: TyUniVar(2)
+Updated variable RowUniVar(0) to VarValue { parent: RowUniVar(0), value: Some(Closed(ClosedRow { fields: [Label(Spanned("name", 1396..1401))], values: [String] })), rank: 0 }
+Updated variable RowUniVar(1) to VarValue { parent: RowUniVar(1), value: Some(Closed(ClosedRow { fields: [Label(Spanned("age", 1409..1414))], values: [String] })), rank: 0 }
+Updated variable RowUniVar(2) to VarValue { parent: RowUniVar(2), value: Some(Closed(ClosedRow { fields: [Label(Spanned("age", 1409..1414)), Label(Spanned("name", 1396..1401))], values: [String, String] })), rank: 0 }
+unify(key_a=TyUniVar(1), key_b=TyUniVar(2))
+Updated variable TyUniVar(1) to VarValue { parent: TyUniVar(2), value: None, rank: 0 }
+Updated variable TyUniVar(2) to VarValue { parent: TyUniVar(2), value: None, rank: 1 }
+unify(key_a=TyUniVar(0), key_b=TyUniVar(2))
+Updated variable TyUniVar(0) to VarValue { parent: TyUniVar(2), value: None, rank: 0 }
+Updated variable TyUniVar(2) to VarValue { parent: TyUniVar(2), value: None, rank: 1 }
+Updated variable TyUniVar(2) to VarValue { parent: TyUniVar(2), value: Some(String), rank: 1 }
+Compiled /Users/lukedavis/Projects/GitHub/flare/flare/examples/ntest.flr in 5.60ms
