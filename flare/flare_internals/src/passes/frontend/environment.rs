@@ -1,25 +1,20 @@
 use internment::Intern;
 // use petgraph::Graph;
-use petgraph::{
-    dot::Config,
-    graph::{DiGraph, EdgeReference, NodeIndex},
-    visit::EdgeRef as _,
-};
+use radix_trie::{Trie, TrieCommon};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
-
 use std::hash::RandomState;
 
 use crate::resource::{
-    errors::{self, CompResult, DynamicErr},
+    errors::{CompResult, DynamicErr},
     rep::{
         // concretetypes::{EnumVariant, Ty},
         common::{HasSpan, Ident, Spanned, Syntax},
         frontend::{
-            ast::Untyped,
+            ast::{ItemId, Untyped},
             cst::{CstExpr, Definition, ImplDef, Program, UntypedCst},
             csttypes::CstType,
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
-            quantifier::QualifierFragment,
+            quantifier::{FullQualifier, QualifierFragment},
         },
     },
 };
@@ -33,32 +28,76 @@ use crate::resource::{
 /// real reason to clone the environment.
 #[non_exhaustive]
 pub struct Environment<S: Syntax> {
-    pub graph: DiGraph<Item<S>, QualifierFragment>,
-    pub root: NodeIndex,
+    // pub graph: DiGraph<Item<S>, QualifierFragment>,
+    pub trie: Trie<FullQualifier, ItemId>,
+    // pub root: NodeIndex,
+    pub items: FxHashMap<ItemId, Item<S>>,
 }
 
-impl Environment<UntypedCst> {
+pub struct EnvironmentBuilder<S: Syntax> {
+    current_id: usize,
+    // pub graph: DiGraph<Item<S>, QualifierFragment>,
+    pub trie: Trie<FullQualifier, ItemId>,
+    // pub qual_to_items: FxHashMap<Vec<QualifierFragment>, ItemId>,
+    pub items: FxHashMap<ItemId, Item<S>>,
+}
+
+impl Default for EnvironmentBuilder<UntypedCst> {
+    fn default() -> Self {
+        Self {
+            current_id: Default::default(),
+            trie: Default::default(),
+            items: Default::default(),
+            // qual_to_items: Default::default(),
+        }
+    }
+}
+
+impl EnvironmentBuilder<UntypedCst> {
+    fn add_node(&mut self, path: &[QualifierFragment], item: Item<UntypedCst>) -> ItemId {
+        let id = self.current_id;
+        let itemid = ItemId(id);
+        self.trie.insert(path.to_vec().into(), itemid);
+        self.items.insert(itemid, item);
+        self.current_id += 1;
+        itemid
+    }
+
+    fn add_import_edge(
+        &mut self,
+        importer_path: &[QualifierFragment],
+        mut importee_path: Vec<QualifierFragment>,
+        imported_item_id: ItemId,
+    ) {
+        if importee_path
+            .iter()
+            .any(|x| matches!(x, QualifierFragment::Root))
+        {
+            importee_path.remove(0);
+        };
+        let new_path = [importer_path, &importee_path].concat();
+        self.trie.insert(new_path.to_vec().into(), imported_item_id);
+    }
     /// Build the environment from a given `Program`
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(program: &Program<UntypedCst>) -> CompResult<Self> {
+    pub fn build(program: &Program<UntypedCst>) -> CompResult<Environment<UntypedCst>> {
         // use ItemKind::*;
-        let mut graph = DiGraph::new();
-        let mut current_node = graph.add_node(Item::new(ItemKind::Root));
+        let mut me = Self::default();
+
+        let root_path = [QualifierFragment::Root].as_slice();
+        me.add_node(root_path, Item::new(ItemKind::Root));
+
         let num_packages = program.packages.len();
-        let mut me = Self {
-            graph,
-            root: current_node,
-        };
         let mut package_to_imports: FxHashMap<
-            Spanned<QualifierFragment>,
+            Spanned<Vec<QualifierFragment>>,
             FxHashSet<Spanned<Intern<CstExpr<Untyped>>>>,
         > = FxHashMap::with_capacity_and_hasher(num_packages, FxBuildHasher);
 
         let mut package_to_exports: FxHashMap<
             QualifierFragment,
-            FxHashSet<(QualifierFragment, NodeIndex)>,
+            FxHashSet<(QualifierFragment, ItemId)>,
         > = FxHashMap::with_capacity_and_hasher(num_packages, FxBuildHasher);
 
         // Start building each package's contents
@@ -73,26 +112,20 @@ impl Environment<UntypedCst> {
                 id: package.1,
             }
                 as PackageEntry<UntypedCst>));
-            let package_quant = QualifierFragment::Package(package_name.0);
-
-            let p_id = me.add(current_node, package_quant, package_entry);
-
-            let old_current = current_node;
-            current_node = p_id;
+            let package_qual = QualifierFragment::Package(package_name.0);
+            let package_path = [root_path, &[package_qual]].concat();
+            let p_id = me.add_node(&package_path, package_entry);
 
             for item in &package.0.items {
                 let mut item_nodeindex: NodeIndex = NodeIndex::new(0);
-                let qual: Option<QualifierFragment>;
-                match item.def {
+                let f: Option<(Item<UntypedCst>, QualifierFragment)> = match item.def {
                     Definition::Import(import_item) => {
-                        // dbg!(import_item);
-                        qual = None;
                         imports.insert(import_item);
+                        None
                     }
                     Definition::Type(name, generics, t) => {
                         let qfrag = QualifierFragment::Type(name.ident()?.0);
 
-                        qual = Some(qfrag);
                         let t = if generics.is_empty() {
                             t
                         } else {
@@ -103,44 +136,42 @@ impl Environment<UntypedCst> {
                             new_t
                         };
                         let entry = Item::new(ItemKind::Type(name, generics, t));
-                        item_nodeindex = me.add(current_node, qfrag, entry);
+                        Some((entry, qfrag))
                     }
                     Definition::Let(name, body, sig) => {
                         let qfrag = QualifierFragment::Func(name.0);
-                        qual = Some(qfrag);
                         let entry = Item::new(ItemKind::Function(FunctionItem { name, sig, body }));
-                        item_nodeindex = me.add(current_node, qfrag, entry);
+                        Some((entry, qfrag))
                     }
                     Definition::Extern(name, args, sig) => {
                         let qfrag = QualifierFragment::Func(name.0);
-                        qual = Some(qfrag);
                         let entry = Item::new(ItemKind::Extern {
                             //parent: current_parent.clone(),
                             name,
                             args,
                             sig,
                         });
-                        item_nodeindex = me.add(current_node, qfrag, entry);
+                        Some((entry, qfrag))
                     }
                     Definition::ImplDef(ImplDef { the_ty, methods }) => {
-                        qual = None;
-                        me.build_impl_def(package_quant, the_ty, methods)?;
+                        me.build_impl_def(package_qual, the_ty, methods)?;
+                        None
+                    }
+                };
+                if let Some((entry, qual)) = f {
+                    let item_path = [root_path, &[qual]].concat();
+                    let id = me.add_node(&item_path, entry);
+                    if item.is_pub {
+                        exports.insert((qual, id));
                     }
                 }
-                if let Some(qual) = qual
-                    && item.is_pub
-                {
-                    exports.insert((qual, item_nodeindex));
-                }
             }
-            current_node = old_current;
-            let name = Spanned(package_quant, package_name.1);
-            package_to_imports.insert(name, imports);
-            package_to_exports.insert(name.0, exports);
+            package_to_imports.insert(Spanned(package_path.clone(), package_name.1), imports);
+            package_to_exports.insert(package_qual, exports);
         }
 
         let new_package_to_imports: FxHashMap<
-            Spanned<QualifierFragment>,
+            Spanned<Vec<QualifierFragment>>,
             FxHashSet<Vec<QualifierFragment>>,
         > = package_to_imports
             .into_iter()
@@ -156,25 +187,52 @@ impl Environment<UntypedCst> {
             })
             .collect::<CompResult<_>>()?;
 
-        for (importing_package_qual, imports) in new_package_to_imports {
-            let importing_package = me.get(&[importing_package_qual.0][..]).map_err(|_| {
-                errors::not_defined(importing_package_qual.0, &importing_package_qual.1)
-            })?;
+        for (importer_package_qual, imports) in new_package_to_imports {
+            // let importing_package = me.qual_to_items.get(&importer_package_qual.0).ok_or_else(|| {
+            //     errors::not_defined(importer_package_qual.0.last().unwrap(), &importer_package_qual.1)
+            // })?;
 
-            for import_path in imports {
-                let import = me.trace_import_path(&import_path, &package_to_exports);
-
-                me.graph.update_edge(
-                    importing_package,
-                    import,
-                    *import_path.last().expect("Import path should not be empty"),
-                );
+            for importee_path in imports {
+                dbg!(&importee_path);
+                let importee = me.trace_import_path(&importee_path, &package_to_exports);
+                me.add_import_edge(&importer_package_qual.0, importee_path, importee);
             }
         }
-
-        Ok(me)
+        let env = Environment {
+            trie: me.trie,
+            items: me.items,
+        };
+        Ok(env)
     }
 
+    fn trace_import_path(
+        &self,
+        path: &[QualifierFragment],
+        package_to_exports: &FxHashMap<QualifierFragment, FxHashSet<(QualifierFragment, ItemId)>>,
+    ) -> ItemId {
+        path.windows(2)
+            .map(|path| {
+                let [left, right] = path else {
+                    panic!("Path is invalid")
+                };
+
+                if let QualifierFragment::Package(_) = left {
+                    if let Some(exports) = package_to_exports.get(left) {
+                        if let Some(n) = exports.iter().find(|x| x.0.is(right)) {
+                            n.1
+                        } else {
+                            panic!("import not found, {left}.{right}")
+                        }
+                    } else {
+                        panic!("Package has no exports")
+                    }
+                } else {
+                    panic!("Import path should be a package or subpackage")
+                }
+            })
+            .next_back()
+            .expect("Path was empty")
+    }
     /// Builds an impl definition
     /// # Errors
     /// On invalid names.
@@ -213,53 +271,54 @@ impl Environment<UntypedCst> {
 }
 
 impl<S: Syntax> Environment<S> {
-    pub fn from_graph_and_root(
-        graph: DiGraph<Item<S>, QualifierFragment>,
-        root: NodeIndex,
+    pub fn from_trie_and_items(
+        trie: Trie<FullQualifier, ItemId>,
+        items: FxHashMap<ItemId, Item<S>>,
     ) -> Self {
-        Self { graph, root }
+        Self { trie, items }
     }
 
-    /// Add an `item` to the environment as a child of a `parent_node`, accessible via a `qualifier`. Returns the `NodeIndex` of the newly-created child.
-    /// # Panics
-    /// Panics if the internal graph is full.
-    /// Panics if the root node doesn't exist.
-    ///
-    /// # Examples
-    /// ```rust
-    /// let env: Environment::new();
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert!(env.graph.contains_edge(env.root, foo))
-    /// ```
-    pub fn add(
-        &mut self,
-        parent_node: NodeIndex,
-        qualifier: QualifierFragment,
-        item: Item<S>,
-    ) -> NodeIndex {
-        let child_idx = self.graph.add_node(item);
-        self.graph.add_edge(parent_node, child_idx, qualifier);
-        child_idx
-    }
+    // / Add an `item` to the environment as a child of a `parent_node`, accessible via a `qualifier`. Returns the `NodeIndex` of the newly-created child.
+    // / # Panics
+    // / Panics if the internal graph is full.
+    // / Panics if the root node doesn't exist.
+    // /
+    // / # Examples
+    // / ```rust
+    // / let env: Environment::new();
+    // / let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
+    // / assert!(env.graph.contains_edge(env.root, foo))
+    // / ```
+    // pub fn add(
+    //     &mut self,
+    //     parent_node: NodeIndex,
+    //     qualifier: QualifierFragment,
+    //     item: Item<S>,
+    // ) -> NodeIndex {
+    //     let child_idx = self.graph.add_node(item);
+    //     self.graph.add_edge(parent_node, child_idx, qualifier);
+    //     child_idx
+    // }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     #[deprecated]
     pub fn debug(&self) {
-        let render =
-            |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
-        let dot = petgraph::dot::Dot::with_attr_getters(
-            &self.graph,
-            &[
-                Config::EdgeNoLabel,
-                Config::NodeNoLabel,
-                Config::RankDir(petgraph::dot::RankDir::LR),
-            ],
-            // &|_, _| String::new(),
-            &render,
-            &|_, _| String::new(),
-        );
-        dbg!(dot);
+        // let render =
+        //     |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
+        // let dot = petgraph::dot::Dot::with_attr_getters(
+        //     &self.graph,
+        //     &[
+        //         Config::EdgeNoLabel,
+        //         Config::NodeNoLabel,
+        //         Config::RankDir(petgraph::dot::RankDir::LR),
+        //     ],
+        //     // &|_, _| String::new(),
+        //     &render,
+        //     &|_, _| String::new(),
+        // );
+        // dbg!(dot);
     }
+
     #[inline]
     /// Get the item value of an index.
     /// # Examples
@@ -267,42 +326,10 @@ impl<S: Syntax> Environment<S> {
     /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
     /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
     /// ```
-    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<S>> {
-        self.graph
-            .node_weight(idx)
+    pub fn value(&self, idx: &ItemId) -> CompResult<&Item<S>> {
+        self.items
+            .get(idx)
             .ok_or_else(|| unreachable!("Bad node index: {:?}", idx))
-    }
-
-    fn trace_import_path(
-        &self,
-        path: &[QualifierFragment],
-        package_to_exports: &FxHashMap<
-            QualifierFragment,
-            FxHashSet<(QualifierFragment, NodeIndex)>,
-        >,
-    ) -> NodeIndex {
-        path.windows(2)
-            .map(|path| {
-                let [left, right] = path else {
-                    panic!("Path is invalid")
-                };
-
-                if let QualifierFragment::Package(_) = left {
-                    if let Some(exports) = package_to_exports.get(left) {
-                        if let Some(n) = exports.iter().find(|x| x.0.is(right)) {
-                            n.1
-                        } else {
-                            panic!("import not found, {left}.{right}")
-                        }
-                    } else {
-                        panic!("Package has no exports")
-                    }
-                } else {
-                    panic!("Import path should be a package or subpackage")
-                }
-            })
-            .next_back()
-            .expect("Path was empty")
     }
 
     #[inline]
@@ -310,86 +337,29 @@ impl<S: Syntax> Environment<S> {
         &self,
         frag: &QualifierFragment,
         packctx: &QualifierFragment,
-    ) -> CompResult<NodeIndex> {
+    ) -> CompResult<ItemId> {
         let err = || DynamicErr::new(format!("{} does not exist in {}", frag, packctx));
-        let paths = self.search_for_edge(frag);
-        for path in &paths {
-            // dbg!(path);
-            // if path.first().ok_or_else(err)?.is(packctx) {
-            if path.first().ok_or_else(err)?.is(packctx) {
-                return self.get(path);
-            }
+        let subtrie = self.trie.subtrie(packctx);
+        if let Some(subtrie) = subtrie {
+            let v = subtrie
+                .children()
+                .find(|c| c.key().unwrap() == frag)
+                .map(|c| c.value())
+                .or_else(|| {
+                    subtrie
+                        .children()
+                        .filter_map(|s| self.get_children(frag, s.key()).ok())
+                        .next()
+                        .unwrap()
+                });
+            Ok(dbg!(v))
+        } else {
+            return Err(err);
         }
-        Err(err().into())
     }
 
-    /// Internal helper function for `get_node_and_children`
-    fn raw_get_node_and_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .collect();
-        Ok((parent, children))
-    }
-
-    #[inline]
-    pub fn raw_get_node_and_children_indexes(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<(NodeIndex, Vec<NodeIndex>)> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .map(|edge| edge.target())
-            .collect();
-        Ok((parent, children))
-    }
-
-    #[inline]
-    pub fn get_node_and_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<(&Item<S>, Vec<(&QualifierFragment, &Item<S>)>)> {
-        let (node, children) = self.raw_get_node_and_children(frag, packctx)?;
-        let node_w = self.value(node)?;
-
-        Ok((
-            node_w,
-            children
-                .iter()
-                .map(|edge| {
-                    (
-                        edge.weight(),
-                        // # SAFETY: `self.value()` returns none only if the node
-                        // doesn't exist. We know the node exists because we
-                        // are iterating over the children of the parent.
-                        unsafe { self.value(edge.target()).unwrap_unchecked() },
-                    )
-                })
-                .collect(),
-        ))
-    }
-
-    /// Internal helper function for `get_children()`
-    fn raw_get_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<Vec<EdgeReference<'_, QualifierFragment>>> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .collect();
-        Ok(children)
+    fn raw_get_children(&self, frag: &QualifierFragment, packctx: &QualifierFragment) {
+        self.trie.subtrie(packctx).unwrap_or_default().get()
     }
 
     #[inline]

@@ -77,7 +77,7 @@ use crate::{
             target::{Generator, Target},
         },
         frontend::{
-            environment::Environment,
+            environment::{Environment, EnvironmentBuilder},
             parser,
             resolution::Resolver,
             typechecker::Typechecker,
@@ -208,7 +208,7 @@ pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
 }
 
 pub fn build(parse: Parse) -> CompResult<Build> {
-    let env = Environment::<UntypedCst>::build(&parse.program)?;
+    let env = EnvironmentBuilder::<UntypedCst>::build(&parse.program)?;
     Ok(Build { env })
 }
 

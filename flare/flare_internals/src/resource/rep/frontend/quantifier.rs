@@ -8,7 +8,25 @@ use crate::resource::{
 
 // use chumsky::input::ValueInput;
 use internment::Intern;
+use radix_trie::TrieKey;
 use rustc_hash::FxHashSet;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FullQualifier(Vec<QualifierFragment>);
+impl TrieKey for FullQualifier {
+    fn encode_bytes(&self) -> Vec<u8> {
+        self.0
+            .iter()
+            .flat_map(|q| q.name().to_string().into_bytes())
+            .collect()
+    }
+}
+
+impl From<Vec<QualifierFragment>> for FullQualifier {
+    fn from(value: Vec<QualifierFragment>) -> Self {
+        Self(value)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QualifierFragment {

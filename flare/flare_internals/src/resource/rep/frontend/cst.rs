@@ -78,8 +78,7 @@ where
 
     Hole(V),
 
-    Item(ItemId, Kind),
-
+    // Item(ItemId, Kind),
     Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Project(Direction, Spanned<Intern<Self>>),
 
