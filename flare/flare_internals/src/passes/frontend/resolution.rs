@@ -1,6 +1,9 @@
 use std::collections::BTreeSet;
 
-use chumsky::span::{SimpleSpan, Span};
+use chumsky::{
+    pratt,
+    span::{SimpleSpan, Span},
+};
 use internment::Intern;
 use petgraph::{
     algo::toposort,
@@ -14,6 +17,7 @@ type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 use crate::{
     passes::frontend::{
         environment::Environment,
+        matchmatrix::{self, DecisionTree},
         typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeScheme, TypeVar},
     },
     resource::{
@@ -508,19 +512,25 @@ impl Resolver {
                 expr.convert(Expr::If(cond, then, otherwise))
             }
             CstExpr::Match(matchee, branches) => {
-                let matchee = self.analyze_expr(matchee, vars);
+                // let matchee = self.analyze_expr(matchee, vars);
+                // let base_expr = matchee.convert(CstExpr::Let(
+                //     Untyped(matchee.convert("%matchee".to_string())),
+                //     matchee,
+                //     expr,
+                // ));
+                let (patterns, actions): (Vec<_>, Vec<_>) =
+                    branches.iter().map(|b| (b.pat, b.body)).unzip();
+                let patterns: Vec<_> = patterns.iter().map(|p| *p.0).collect();
+                dbg!(&patterns);
 
-                let branches: Vec<_> = branches
-                    .iter()
-                    .map(|b| self.resolve_branch(*b, vars))
-                    .collect();
-                assert!(!branches.is_empty());
-                let branches = branches
-                    .into_iter()
-                    .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
-                    .expect("Branches was empty; match has no arms");
+                let decision_tree = matchmatrix::compile(
+                    &matchmatrix::Occ::Base("%matchee".to_string()),
+                    &patterns,
+                );
+                decision_tree.print(0);
+                self.translate_decision_tree(matchee, decision_tree)
 
-                expr.convert(Expr::Call(branches, matchee))
+                // expr.convert(Expr::Call(branches, matchee))
             }
             CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
             CstExpr::Let(id, body, and_in) => self.resolve_let(expr, id, body, and_in, vars),
@@ -539,6 +549,7 @@ impl Resolver {
     fn resolve_let(
         &mut self,
         expr: Spanned<Intern<CstExpr<Untyped>>>,
+        // id: Spanned<Intern<Pattern<Untyped>>>,
         id: Untyped,
         body: Spanned<Intern<CstExpr<Untyped>>>,
         and_in: Spanned<Intern<CstExpr<Untyped>>>,
@@ -589,152 +600,25 @@ impl Resolver {
             let id = r.ident().unwrap();
             expr.convert(Expr::Access(l, Label(id)))
         }
-    } // fn resolve_field_access(
-    //     &mut self,
-    //     expr: Spanned<Intern<CstExpr<Untyped>>>,
-    //     vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-    // ) -> Spanned<Intern<Expr<Untyped>>> {
-    //     let CstExpr::FieldAccess(l, r) = *expr.0 else {
-    //         panic!("Not a field access")
-    //     };
-    //     let l = self.analyze_expr(l, vars);
-    //     if let Expr::Item(_, _) = *l.0 {
-    //         self.resolve_name_expr(r)
-    //     } else if let Expr::Ident(n) = *l.0 {
-    //         if let Some((_variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
-    //             let projection: Spanned<Intern<Expr<Untyped>>> = {
-    //                 let combo = *val;
-    //                 let id = r.ident().expect("Expression should be nameable");
-    //                 {
-    //                     dbg!(val);
-    //                     let ex = combo.convert(Expr::Project(Direction::Right, combo));
+    }
 
-    //                     combo.convert(Expr::Unlabel(ex, Label(id)))
-    //                 }
-    //             };
-    //             expr.convert(projection.0)
-    //         } else {
-    //             todo!()
-    //         }
-    //     } else if let Expr::Unlabel(_combo, _labell) = *l.0 {
-    //         self.resolve_name_expr(r)
-    //     } else {
-    //         dbg!(l);
-    //         let ex = l.convert(Expr::Project(Direction::Right, l));
-
-    //         let id = r.ident().expect("Expression should be nameable");
-    //         l.convert(Expr::Unlabel(ex, Label(id)))
-    //     }
-    // }
-
-    fn resolve_branch(
-        &mut self,
-        b: MatchArm<Untyped>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+    fn translate_decision_tree(
+        &self,
+        matchee: Spanned<Intern<CstExpr<Untyped>>>,
+        tree: DecisionTree,
     ) -> Spanned<Intern<Expr<Untyped>>> {
-        // The branch becomes: λparam. <lets> in body
-        // `param` is the lambda binder that receives the matchee at the call site.
-        let param = Untyped(b.pat.convert("%match_arg%".to_string()));
-        let branch_arg: Spanned<Intern<Expr<Untyped>>> = b.pat.convert(Expr::Ident(param));
-
-        let bindings = self.compile_pattern(b.pat, branch_arg);
-        // dbg!(&bindings);
-        // Extend vars with user-visible bindings so analyze_expr can resolve them.
-        // Each maps the binder name -> its destructured value expression.
-        let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<Expr<Untyped>>>)> = vars.to_vec();
-        for binding in &bindings {
-            // dbg!(binding);
-            if binding.user_visible {
-                branch_vars.push((binding.binder.0.0, binding.value));
-            }
+        match tree {
+            DecisionTree::Fail => todo!(),
+            DecisionTree::Leaf(_) => todo!(),
+            DecisionTree::Switch {
+                occ,
+                cases,
+                default,
+            } => todo!(),
         }
-        // dbg!(&bindings);
-
-        let body = self.analyze_expr(b.body, &branch_vars);
-        // dbg!(body);
-        // Fold bindings into nested lets around the body.
-        // Reversing means the first binding (outermost destructor) ends up outermost.
-        //   bindings = [b0, b1, b2], body = B
-        //   → Let(b0, v0, Let(b1, v1, Let(b2, v2, B)))
-        let wrapped = bindings.into_iter().rev().fold(body, |acc, binding| {
-            let span = acc.1;
-            Spanned(
-                Intern::new(Expr::Let(binding.binder, binding.value, acc)),
-                span,
-            )
-        });
-
-        let span = b.pat.1;
-        let expr = Expr::Lambda(param, wrapped);
-        // dbg!(expr);
-        Spanned(expr.into(), span)
+        todo!()
     }
 
-    /// Recursively compile a pattern into a flat sequence of let-bindings,
-    /// threading the current scrutinee expression down through nested constructors.
-    fn compile_pattern(
-        &mut self,
-        p: Spanned<Intern<Pattern<Untyped>>>,
-        branch_arg: Spanned<Intern<Expr<Untyped>>>,
-    ) -> Vec<Binding> {
-        match *p.0 {
-            // Wildcard: consume scrutinee, emit nothing.
-            // The lambda parameter stays unbound in the body — type is τ → R.
-            // Pattern::Wildcard => vec![Binding {
-            //     binder: Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string())),
-            //     value: scrutinee,
-            //     user_visible: false,
-            // }],
-            Pattern::Wildcard => vec![],
-
-            // Var: bind the scrutinee directly under the variable name.
-            //   λparam. let v = param in body
-            Pattern::Var(v) => vec![Binding {
-                binder: v,
-                value: branch_arg,
-                user_visible: true,
-            }],
-
-            // Unit: irrefutable, no value to extract.
-            Pattern::Unit => vec![],
-            // Pattern::Unit => vec![Binding {
-            //     binder: Untyped(p.convert("%inaccessible".to_string())),
-            //     value: p.convert(Expr::Unit),
-            //     user_visible: false,
-            // }],
-
-            // // Nullary constructor Ctor(A, Unit):
-            // //   The scrutinee is a sum type with a label; unlabeling constrains
-            // //   the type to `{A: ()}` without producing a user-visible binding.
-            // //   λparam. let %inaccessible% = unlabel(param, A) in body
-            // Pattern::Ctor(label, inner_pat) if *inner_pat.0 == Pattern::Unit => {
-            //     // let inner_val = scrutinee.convert::<Expr<Untyped>>(Expr::Unit);
-            //     let inner_val = scrutinee.convert(Expr::Unlabel(scrutinee, label));
-            //     let inacc = Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string()));
-            //     // vec![]
-
-            //     vec![Binding {
-            //         binder: inacc,
-            //         value: inner_val,
-            //         user_visible: false,
-            //     }]
-            // }
-
-            // Unary constructor Ctor(A, inner):
-            //   Unlabel the scrutinee to expose the inner value, then recurse.
-            //   λparam. let <inner bindings of unlabel(param, A)> in body
-            Pattern::Ctor(label, inner_pat) => {
-                let inner_val: Spanned<Intern<Expr<Untyped>>> =
-                    branch_arg.convert(Expr::Unlabel(branch_arg, label));
-                self.compile_pattern(inner_pat, inner_val)
-            }
-
-            Pattern::Number(_) => todo!(),
-            Pattern::String(_) => todo!(),
-            Pattern::Bool(_) => todo!(),
-            _ => todo!(),
-        }
-    }
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     // #[deprecated]
     /// Pretty-print GraphViz for the internal state of the dependancy graph.

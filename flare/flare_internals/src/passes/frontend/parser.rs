@@ -479,8 +479,8 @@ where
                     .then(
                         
                     pattern
-                                                        .then_ignore(just(Token::Then))
-                            .then(expr.clone())
+                        .then_ignore(just(Token::Then))
+                        .then(expr.clone())
 .map(|(pat, body)| {MatchArm{pat, body}})                            .separated_by(just(Token::Comma))
                             // .repeated()
                             .allow_trailing()
@@ -848,6 +848,7 @@ fn destructure_pattern_parser<'src, I>(
 ) -> impl Parser<'src, I, Spanned<Intern<Pattern<Untyped>>>, extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
 > where I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize,FileID>> + ValueInput<'src> {
 
+let rnum = select_ref! { Token::Num(n) => *n }.map_with(|v, e| Spanned(Pattern::Number(OrderedFloat::from(v as f64)).into(), e.span()));
 let rname = select_ref! { Token::Ident(x) => *x };
 
     let raw_ident =
@@ -855,35 +856,57 @@ let rname = select_ref! { Token::Ident(x) => *x };
 
     recursive(|pat| {
         choice((
-            just(Token::LBrace)
-                .ignore_then(
+//             just(Token::LBrace)
+//                 .ignore_then(
                     
-choice((
-                    raw_ident.then(pat.clone())
+// choice((
+//                     raw_ident.then(pat.clone())
+//                         .map(|(label, term)| 
+//                             (ast::Label(label), term)
+//                         ),
+                    
+//                     raw_ident.map(|label| {
+//                         (ast::Label(label), label.convert(Pattern::Any))
+                    
+//                     })
+//                                 )) .separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
+//                 .then_ignore(just(Token::RBrace))
+//                 .map_with(|fields, e|{
+//                     let fields = fields
+//                         .leak();
+//                 Spanned(Pattern::Record { fields, open: false }.into(), e.span())
+//             }),
+
+                just(Token::LBrace)
+                .ignore_then(
+raw_ident.then_ignore(just(Token::Eq)).then(pat.clone())
                         .map(|(label, term)| 
                             (ast::Label(label), term)
-                        ),
-                    
-                    raw_ident.map(|label| {
-                        (ast::Label(label), label.convert(Pattern::Wildcard))
-                    
-                    })
-                                )) .separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
+                        ).separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
                 .then_ignore(just(Token::RBrace))
                 .map_with(|fields, e|{
                     let fields = fields
                         .leak();
-                Spanned(Pattern::Record { fields, open: false }.into(), e.span())
+                Spanned(Pattern::Record{ fields,open:false}.into(), e.span())
             }),
-            just(Token::Pipe)
+just(Token::LBrace)
+                .ignore_then(
+pat.clone()
+                        .separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
+                .then_ignore(just(Token::RBrace))
+                .map_with(|fields, e|{
+                    let fields = fields
+                        .leak();
+                Spanned(Pattern::Tuple(fields).into(), e.span())
+            }),            just(Token::Pipe)
                 .ignore_then(choice((
                     raw_ident.then(pat.clone())
                         .map(|(label, term)| 
-                            Pattern::Ctor(ast::Label(label), term)
+                            Pattern::Variant(ast::Label(label), term)
                         ),
                     
                     raw_ident.map(|label| {
-                        Pattern::Ctor(ast::Label(label), label.convert(Pattern::Unit))
+                        Pattern::Variant(ast::Label(label), label.convert(Pattern::Any))
                     
                     })
                         
@@ -894,6 +917,7 @@ choice((
              just(Token::At)
                 .ignore_then(raw_ident)
                 .map_with(|id, e| Spanned(Intern::from(Pattern::Particle(id)), e.span())),
+            rnum,
 
             raw_ident
                 .map_with(|x, e| Spanned(Pattern::Var(Untyped(x)).into(), e.span()))
