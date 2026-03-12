@@ -22,7 +22,7 @@ pub struct Resolver {
     pub dag: DiGraph<usize, ()>,
 }
 impl Resolver {
-    pub fn new(env: Environment<UntypedCst>) -> Self {
+    pub fn new() -> Self {
         Self {
             current_dag_node: None,
             dag: DiGraph::new(),
