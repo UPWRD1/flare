@@ -3,25 +3,22 @@ use std::{
     hash::Hash,
 };
 
-use crate::{
-    passes::frontend::typing::TypeScheme,
-    resource::{
-        errors::{CompResult, DynamicErr},
-        rep::common::{HasSpan, Ident, Spanned, Syntax, Variable},
-    },
+use crate::resource::{
+    errors::CompResult,
+    rep::common::{HasSpan, Ident, Spanned, Syntax, Variable},
 };
 
 use chumsky::span::SimpleSpan;
 use internment::Intern;
-use ordered_float::OrderedFloat;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UntypedAst;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Type;
+
 impl Syntax for UntypedAst {
     type Expr = Spanned<Intern<Expr<Self::Variable>>>;
-    // type Type = Spanned<Intern<Type>>;
-    type Type = TypeScheme;
+    type Type = Spanned<Intern<Type>>;
     type Variable = Untyped;
     type Name = Spanned<Intern<String>>;
 }
@@ -174,49 +171,6 @@ pub trait Named<V: Variable>: std::fmt::Debug {
             None => todo!("Cannot get name, {self:?}"),
             // None => DynamicErr::new(format!("Cannot get name of {:?}", self))
             // .label("here", self.to_owned()),
-        }
-    }
-}
-impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
-    fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>> {
-        match *self.0 {
-            Expr::Ident(_) => Some(*self),
-            // Expr::Access(expr) => expr.name().ok(),
-            Expr::Call(func, _) => func.name().ok(),
-            _ => None,
-        }
-    }
-}
-
-impl<V: Variable> Spanned<Intern<Expr<V>>> {
-    pub fn id(&self) -> SimpleSpan<usize, u64> {
-        self.1
-    }
-}
-
-impl<V: Variable> Expr<V> {
-    pub fn get_num(&self, span: SimpleSpan<usize, u64>) -> CompResult<OrderedFloat<f32>> {
-        match self {
-            Self::Number(n) => Ok(*n),
-            _ => Err(DynamicErr::new("Not a number").label("here", span).into()),
-        }
-    }
-
-    pub fn inject_call_start(
-        self,
-        arg: Spanned<Intern<Self>>,
-        span: SimpleSpan<usize, u64>,
-    ) -> Spanned<Intern<Self>> {
-        match self {
-            Self::Call(l, r) => Spanned(
-                Intern::from(Self::Call(l.0.inject_call_start(arg, span), r)),
-                span,
-            ),
-            Self::Ident(_n) => Spanned(
-                Intern::from(Self::Call(Spanned(Intern::from(self), span), arg)),
-                span,
-            ),
-            _ => panic!(),
         }
     }
 }

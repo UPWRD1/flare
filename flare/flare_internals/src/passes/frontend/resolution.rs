@@ -2,18 +2,12 @@ use internment::Intern;
 use petgraph::graph::NodeIndex;
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
-use crate::{
-    passes::frontend::environment::Environment,
-    resource::{
-        errors::CompResult,
-        rep::{
-            common::Spanned,
-            frontend::{
-                ast::{Untyped, UntypedAst},
-                cst::{CstExpr, UntypedCst},
-                entry::FunctionItem,
-            },
-        },
+use crate::resource::rep::{
+    common::Spanned,
+    frontend::{
+        ast::Untyped,
+        cst::{CstExpr, UntypedCst},
+        entry::FunctionItem,
     },
 };
 
@@ -29,7 +23,7 @@ impl Resolver {
         }
     }
 
-    pub fn analyze(mut self) -> CompResult<(Environment<UntypedAst>, Vec<NodeIndex>)> {
+    pub fn analyze(mut self) {
         self.analyze_func(loop {}, loop {});
         // let g = self
         //     .env

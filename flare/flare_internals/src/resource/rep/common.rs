@@ -1,7 +1,4 @@
-use crate::resource::{
-    errors::CompResult,
-    rep::frontend::{ast::Expr, files::FileID},
-};
+use crate::resource::{errors::CompResult, rep::frontend::ast::Expr};
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use std::{
@@ -15,7 +12,8 @@ pub trait Variable:
 }
 pub trait Syntax: Debug + Copy + 'static {
     type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static;
-    type Type: Clone + Debug + PartialEq + Eq + Hash + 'static;
+    type Type: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static;
+
     type Variable: Variable + Copy;
     type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Ident;
 }
@@ -41,7 +39,7 @@ impl Ident for Spanned<Intern<String>> {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Spanned<T>(pub T, pub SimpleSpan<usize, FileID>);
+pub struct Spanned<T>(pub T, pub SimpleSpan<usize, u64>);
 
 impl<T: PartialEq> PartialEq for Spanned<T> {
     fn eq(&self, other: &Self) -> bool {

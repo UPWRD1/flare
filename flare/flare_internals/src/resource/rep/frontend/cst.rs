@@ -7,7 +7,6 @@ use crate::resource::{
         frontend::{
             ast::{BinOp, Direction, ItemId, Kind, Label, Untyped},
             csttypes::CstType,
-            files::FileID,
         },
     },
 };
@@ -137,7 +136,7 @@ pub struct ImportItem<V: Variable> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImplDef<S: Syntax> {
     pub the_ty: S::Name,
-    pub methods: &'static [(S::Name, S::Expr, S::Type)],
+    pub methods: &'static [(S::Name, S::Expr)],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -162,7 +161,7 @@ pub struct Package<S: Syntax> {
 
 #[derive(Debug, PartialEq)]
 pub struct Program<S: Syntax> {
-    pub packages: Vec<(Package<S>, FileID)>,
+    pub packages: Vec<Package<S>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
