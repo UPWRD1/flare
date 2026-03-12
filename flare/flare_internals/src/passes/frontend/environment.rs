@@ -1,5 +1,3 @@
-use crate::resource::errors::CompResult;
-
 #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
 /// the  parser, and the index of the root.
@@ -15,7 +13,7 @@ impl Environment {
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build<T>(_: &T) -> CompResult<Self> {
+    pub fn build<T>(_: &T) {
         loop {}
     }
 }

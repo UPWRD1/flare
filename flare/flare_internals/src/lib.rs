@@ -1,7 +1,7 @@
 pub mod passes;
 pub mod resource;
 
-use crate::{passes::frontend::resolution::Resolver, resource::errors::CompResult};
+use crate::passes::frontend::resolution::Resolver;
 
 pub struct Resolve {}
 pub struct Typecheck {}
@@ -17,7 +17,7 @@ pub struct Context<T, O> {
     pub op: O,
 }
 
-pub fn resolve() -> CompResult<Resolve> {
+pub fn resolve() -> Result<Resolve, ()> {
     let resolver = Resolver::new();
     resolver.analyze();
     Ok(Resolve {})

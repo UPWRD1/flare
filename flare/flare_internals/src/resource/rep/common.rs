@@ -1,4 +1,4 @@
-use crate::resource::{errors::CompResult, rep::frontend::ast::Expr};
+
 use chumsky::span::SimpleSpan;
 use internment::Intern;
 use std::{
@@ -19,23 +19,19 @@ pub trait Syntax: Debug + Copy + 'static {
 }
 
 pub trait Ident {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>>;
+    fn ident(&self);
 }
 
 pub trait HasSpan {
-    fn span(&self) -> SimpleSpan<usize, u64>;
+    fn span(&self);
 }
 
 impl<T> HasSpan for Spanned<Intern<T>> {
-    fn span(&self) -> SimpleSpan<usize, u64> {
-        self.1
-    }
+    fn span(&self) {}
 }
 
 impl Ident for Spanned<Intern<String>> {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        Ok(*self)
-    }
+    fn ident(&self) {}
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -91,25 +87,3 @@ impl<T> From<(T, SimpleSpan<usize, u64>)> for Spanned<T> {
     }
 }
 pub type NodeId = SimpleSpan<usize, u64>;
-/// Trait for entities that have Names. Implementing this trait is preferred
-/// over a custom name implementation. Currently the only major type that
-/// implements its own name getter is `QualifierFragment`, since it doesn't
-/// carry span information (since it is statically created within the compiler)
-pub trait Named<V: Variable>: std::fmt::Debug {
-    // #[clippy::deny()]
-    /// Internal get_name that returns a name or `None`. Users should implement this function, but shouldn't call it.
-    fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>>;
-
-    fn name(&self) -> CompResult<Spanned<Intern<Expr<V>>>>
-// where
-        // Self: std::fmt::Debug,
-    {
-        let n = self.get_name();
-        match n {
-            Some(d) => Ok(d),
-            None => todo!("Cannot get name, {self:?}"),
-            // None => DynamicErr::new(format!("Cannot get name of {:?}", self))
-            // .label("here", self.to_owned()),
-        }
-    }
-}

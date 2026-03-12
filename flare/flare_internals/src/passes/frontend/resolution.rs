@@ -4,7 +4,6 @@ type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 use crate::resource::rep::{
     common::{Spanned, Syntax},
     frontend::{
-        ast::Untyped,
         cst::{CstExpr, UntypedCst},
         // entry::FunctionItem,
     },
@@ -51,7 +50,7 @@ impl Resolver {
     }
 
     #[allow(unused_variables)]
-    fn analyze_expr(&mut self) -> Spanned<Intern<CstExpr<Untyped>>> {
+    fn analyze_expr(&mut self) -> Spanned<Intern<CstExpr>> {
         loop {}
     }
 }
