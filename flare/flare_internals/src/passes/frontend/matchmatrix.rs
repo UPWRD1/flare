@@ -182,6 +182,12 @@ pub enum DecisionTree {
         cases: Vec<(SigElem, Self)>,
         default: Option<Box<Self>>,
     },
+    IfEq {
+        occ: Occ,
+        lit: SigElem,
+        then: Box<Self>,
+        else_: Box<Self>,
+    },
 }
 
 impl DecisionTree {
@@ -205,6 +211,19 @@ impl DecisionTree {
                     println!("{pad}  | _ =>");
                     def.print(indent + 2);
                 }
+            }
+            Self::IfEq {
+                occ,
+                lit,
+                then,
+                else_,
+            } => {
+                println!("{pad}if {occ:?} == {}", lit.print());
+                println!("{pad}  then ");
+                then.print(indent + 2);
+
+                println!("{pad}  else");
+                else_.print(indent + 2);
             } // println!("{pad}test")
         }
     }
@@ -378,9 +397,6 @@ fn has_refutable(ps: &[Pattern<Untyped>]) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Compile `ps` (one per arm, 0-indexed) into a `DecisionTree`.
-///
-/// `arities` maps each type-constructor name to the number of data
-/// constructors it has (used to detect exhaustiveness).
 pub fn compile(base: &Occ, ps: &[Pattern<Untyped>]) -> DecisionTree {
     let initial = preprocess(base, ps, |i| i);
     compile_matrix(initial)
@@ -407,32 +423,50 @@ fn compile_matrix(matrix: Matrix) -> DecisionTree {
     let first_col = matrix.column(0);
     let signature = collect_signature(&first_col);
     let occ = matrix.header[0].clone();
-
-    // Build one branch per constructor in the signature.
-    let cases: Vec<(SigElem, DecisionTree)> = {
-        let mut v: Vec<_> = signature
-            .iter()
-            .map(|c| {
-                let sub = specialise(&matrix, move |p| admits(c, p));
-                (*c, compile_matrix(sub))
-            })
-            .collect();
-        // Sort for deterministic output.
-        v.sort_by(|(a, _), (b, _)| a.cmp(b));
-        v
-    };
-
-    // Add a default arm when the signature does not cover the type.
-    let default = {
+    let default_tree = {
         let sub = specialise(&matrix, Pattern::is_wildcard);
-        Some(Box::new(compile_matrix(sub)))
-        // None
+        if sub.is_empty() {
+            DecisionTree::Fail
+        } else {
+            compile_matrix(sub)
+        }
     };
 
-    DecisionTree::Switch {
-        occ,
-        cases,
-        default,
+    // Split signature by kind
+    let labels: Vec<_> = signature
+        .iter()
+        .filter(|s| matches!(s, SigElem::Label(_)))
+        .collect();
+
+    let lits: Vec<_> = signature
+        .iter()
+        .filter(|s| matches!(s, SigElem::Num(_) | SigElem::String(_)))
+        .collect();
+
+    if !lits.is_empty() {
+        // Fold literals into a chain of IfEq, innermost else = default
+        lits.iter().rfold(default_tree, |else_branch, lit| {
+            let sub = specialise(&matrix, |p| admits(lit, p));
+            DecisionTree::IfEq {
+                occ: occ.clone(),
+                lit: *lit.clone(),
+                then: Box::new(compile_matrix(sub)),
+                else_: Box::new(else_branch),
+            }
+        })
+    } else {
+        // Pure enum switch — existing logic
+        DecisionTree::Switch {
+            occ,
+            cases: labels
+                .into_iter()
+                .map(|l| {
+                    let sub = specialise(&matrix, |p| admits(l, p));
+                    (*l, compile_matrix(sub))
+                })
+                .collect(),
+            default: Some(Box::new(default_tree)),
+        }
     }
 }
 

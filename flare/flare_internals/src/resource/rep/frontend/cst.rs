@@ -97,7 +97,6 @@ where
     Sub(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Comparison(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
 
-    // Access(Spanned<Intern<Self>>),
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     FieldAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Myself,

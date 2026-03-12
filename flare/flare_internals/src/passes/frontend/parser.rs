@@ -856,49 +856,18 @@ let rname = select_ref! { Token::Ident(x) => *x };
 
     recursive(|pat| {
         choice((
-//             just(Token::LBrace)
-//                 .ignore_then(
-                    
-// choice((
-//                     raw_ident.then(pat.clone())
-//                         .map(|(label, term)| 
-//                             (ast::Label(label), term)
-//                         ),
-                    
-//                     raw_ident.map(|label| {
-//                         (ast::Label(label), label.convert(Pattern::Any))
-                    
-//                     })
-//                                 )) .separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
-//                 .then_ignore(just(Token::RBrace))
-//                 .map_with(|fields, e|{
-//                     let fields = fields
-//                         .leak();
-//                 Spanned(Pattern::Record { fields, open: false }.into(), e.span())
-//             }),
-
-                just(Token::LBrace)
-                .ignore_then(
-raw_ident.then_ignore(just(Token::Eq)).then(pat.clone())
-                        .map(|(label, term)| 
-                            (ast::Label(label), term)
-                        ).separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
-                .then_ignore(just(Token::RBrace))
-                .map_with(|fields, e|{
-                    let fields = fields
-                        .leak();
-                Spanned(Pattern::Record{ fields,open:false}.into(), e.span())
-            }),
 just(Token::LBrace)
                 .ignore_then(
 pat.clone()
-                        .separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
+    
+                        .separated_by(just(Token::Comma)).at_least(1).collect::<Vec<_>>()               )
                 .then_ignore(just(Token::RBrace))
                 .map_with(|fields, e|{
                     let fields = fields
                         .leak();
                 Spanned(Pattern::Tuple(fields).into(), e.span())
-            }),            just(Token::Pipe)
+            }),
+        just(Token::Pipe)
                 .ignore_then(choice((
                     raw_ident.then(pat.clone())
                         .map(|(label, term)| 
@@ -914,6 +883,18 @@ pat.clone()
                 .then_ignore(just(Token::Pipe))
                 .map_with(|term, e| Spanned(term.into(), e.span())), 
 
+just(Token::LBrace)
+                .ignore_then(
+raw_ident.then_ignore(just(Token::Eq)).then(pat.clone())
+                        .map(|(label, term)| 
+                            (ast::Label(label), term)
+                        ).separated_by(just(Token::Comma)).collect::<Vec<_>>()               )
+                .then_ignore(just(Token::RBrace))
+                .map_with(|fields, e|{
+                    let fields = fields
+                        .leak();
+                Spanned(Pattern::Record{ fields,open:false}.into(), e.span())
+            }),
              just(Token::At)
                 .ignore_then(raw_ident)
                 .map_with(|id, e| Spanned(Intern::from(Pattern::Particle(id)), e.span())),

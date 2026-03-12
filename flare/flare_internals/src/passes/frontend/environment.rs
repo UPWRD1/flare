@@ -2,7 +2,8 @@ use internment::Intern;
 // use petgraph::Graph;
 use petgraph::{
     dot::Config,
-    graph::{DiGraph, EdgeReference, NodeIndex},
+    graph::{EdgeReference, NodeIndex},
+    prelude::DiGraph,
     visit::EdgeRef as _,
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
@@ -214,9 +215,10 @@ impl Environment<UntypedCst> {
 
 impl<S: Syntax> Environment<S> {
     pub fn from_graph_and_root(
-        graph: DiGraph<Item<S>, QualifierFragment>,
+        graph: impl Into<DiGraph<Item<S>, QualifierFragment>>,
         root: NodeIndex,
     ) -> Self {
+        let graph = graph.into();
         Self { graph, root }
     }
 
