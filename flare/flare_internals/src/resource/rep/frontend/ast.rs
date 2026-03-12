@@ -5,23 +5,14 @@ use std::{
 
 use crate::resource::{
     errors::CompResult,
-    rep::common::{HasSpan, Ident, Spanned, Syntax, Variable},
+    rep::common::{HasSpan, Ident, Spanned, Variable},
 };
 
 use chumsky::span::SimpleSpan;
 use internment::Intern;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct UntypedAst;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Type;
-
-impl Syntax for UntypedAst {
-    type Expr = Spanned<Intern<Expr<Self::Variable>>>;
-    type Type = Spanned<Intern<Type>>;
-    type Variable = Untyped;
-    type Name = Spanned<Intern<String>>;
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 #[repr(transparent)]

@@ -1,7 +1,4 @@
-use crate::resource::{
-    errors::CompResult,
-    rep::frontend::cst::{Program, UntypedCst},
-};
+use crate::resource::errors::CompResult;
 
 #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
@@ -18,7 +15,7 @@ impl Environment {
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(_: &Program<UntypedCst>) -> CompResult<Self> {
+    pub fn build<T>(_: &T) -> CompResult<Self> {
         loop {}
     }
 }

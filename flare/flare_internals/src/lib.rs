@@ -1,11 +1,7 @@
 pub mod passes;
 pub mod resource;
-use rustc_hash::FxHashMap;
 
-use crate::{
-    passes::frontend::resolution::Resolver,
-    resource::errors::{CompResult, CompilerErr},
-};
+use crate::{passes::frontend::resolution::Resolver, resource::errors::CompResult};
 
 pub struct Resolve {}
 pub struct Typecheck {}
