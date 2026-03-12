@@ -1,9 +1,6 @@
 use std::collections::BTreeSet;
 
-use chumsky::{
-    pratt,
-    span::{SimpleSpan, Span},
-};
+use chumsky::span::SimpleSpan;
 use internment::Intern;
 use petgraph::{
     algo::toposort,
@@ -18,7 +15,7 @@ use crate::{
     passes::frontend::{
         environment::Environment,
         matchmatrix::{self, DecisionTree},
-        typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeScheme, TypeVar},
+        typing::{Evidence, RowVar, TypeScheme, TypeVar},
     },
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
@@ -54,7 +51,7 @@ pub struct Resolver {
     // new_env: Environment<UntypedAst>
     current_parent: QualifierFragment,
     current_dag_node: Option<NodeIndex>,
-    pub dag: DiGraph<DagIdx, ()>,
+    pub dag: DiGraph<usize, ()>,
     main_dag_idx: Option<NodeIndex>,
     errors: Vec<CompilerErr>,
 }
@@ -69,97 +66,6 @@ pub struct TypeFixer {
     // seen_row_vars: FxHashMap<NodeId, RowVar>,
     // inside_type_fun: TyappState,
 }
-
-impl TypeFixer {
-    fn new_type_var(&mut self) -> TypeVar {
-        let v = TypeVar(self.type_var_count);
-        // let v = TypeVar(n);
-        self.type_var_count += 1;
-        v
-    }
-
-    fn helper(&mut self, t: Spanned<Intern<CstType>>) -> Spanned<Intern<Type>> {
-        match *t.0 {
-            CstType::Generic(n) => {
-                // println!("Generic {}", n.0);
-                let v = if let Some((v, _)) =
-                    self.types_to_name.iter().find(|(_, name)| ***name == *n.0)
-                {
-                    // println!("Loaded {v:?}");
-                    *v
-                } else {
-                    let v = self.new_type_var();
-                    self.types_to_name.push((v, n.0));
-                    self.unbound_types.insert(v);
-                    // println!("Created {v:?}");
-                    v
-                };
-
-                t.convert(Type::Var(v))
-            }
-
-            CstType::Func(l, r) => {
-                let l = self.helper(l);
-                let r = self.helper(r);
-                t.convert(Type::Func(l, r))
-            }
-
-            CstType::Prod(row) => t.convert(Type::Prod(
-                t.convert(Row::Closed(ClosedRow {
-                    fields: row.fields,
-                    values: row
-                        .values
-                        .iter()
-                        .map(|value_ty| self.helper(*value_ty))
-                        .collect::<Vec<_>>()
-                        .leak(),
-                })),
-            )),
-            CstType::Sum(row) => t.convert(Type::Sum(
-                t.convert(Row::Closed(ClosedRow {
-                    fields: row.fields,
-                    values: row
-                        .values
-                        .iter()
-                        .map(|value_ty| self.helper(*value_ty))
-                        .collect::<Vec<_>>()
-                        .leak(),
-                })),
-            )),
-            CstType::Label(l, t) => t.convert(Type::Label(l, self.helper(t))),
-            CstType::User(t, g) => {
-                unreachable!("Encountered user type {}[{g:?}] after resolution", t.0)
-            }
-
-            CstType::GenericApp(l, r) => {
-                // Should have been reduced by analyze_type; attempt recovery
-                // let reduced = self.analyze_type(t); // re-run beta reduction
-                // self.helper(reduced, f)
-                panic!()
-                // let r = self.convert_type(r);
-
-                // t.convert(Type::TypeApp(l, r))
-            }
-            CstType::GenericFun(l, r) => {
-                // panic!("Should have been resolved");
-                // let l = self.helper(l);
-                self.helper(r)
-
-                // t.convert(Type::TypeFun(l, r))
-            }
-            CstType::Particle(p) => t.convert(Type::Particle(p)),
-            CstType::Unit => t.convert(Type::Unit),
-            CstType::Num => t.convert(Type::Num),
-            CstType::Bool => t.convert(Type::Bool),
-            CstType::String => t.convert(Type::String),
-            CstType::Hole => t.convert(Type::Hole),
-        }
-        // dbg!(o)
-    }
-}
-
-type DagIdx = usize;
-
 /// A single destructuring step produced by pattern compilation.
 #[derive(Debug)]
 struct Binding {
@@ -288,31 +194,12 @@ impl Resolver {
         )
     }
 
-    fn convert_func(&mut self, the_func: FunctionItem<UntypedCst>) -> FunctionItem<UntypedAst> {
-        // me.generic_scope.clear()
-        // dbg!(the_func.sig);
-        let sig = self.convert_type(the_func.sig, Kind::Func);
-        // dbg!(sig.ty);
-        let body = self.convert_expr(the_func.body);
-        // me.generic_scope.clear();
-        FunctionItem {
-            sig,
-            body,
-            name: the_func.name,
-        }
+    fn convert_func(&mut self, _: FunctionItem<UntypedCst>) -> FunctionItem<UntypedAst> {
+        loop {}
     }
 
-    fn extract_generics(&self, t: Spanned<Intern<CstType>>, kind: Kind) -> TypeScheme {
-        let mut f = TypeFixer::default();
-        let ty = f.helper(t);
-        TypeScheme {
-            unbound_types: f.unbound_types,
-            unbound_rows: f.unbound_rows,
-            evidence: f.evidence,
-            ty,
-            types_to_name: f.types_to_name,
-            kind,
-        }
+    fn extract_generics(&self, _: Spanned<Intern<CstType>>, _: Kind) -> TypeScheme {
+        loop {}
     }
 
     fn convert_type(&mut self, t: Spanned<Intern<CstType>>, kind: Kind) -> TypeScheme {
