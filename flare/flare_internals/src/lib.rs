@@ -1,7 +1,7 @@
 pub mod passes;
 pub mod resource;
 
-use crate::passes::frontend::resolution::Resolver;
+use crate::passes::frontend::resolution::{Container, Inspector};
 
 pub struct Resolve {}
 pub struct Typecheck {}
@@ -18,7 +18,7 @@ pub struct Context<T, O> {
 }
 
 pub fn resolve() -> Result<Resolve, ()> {
-    let resolver = Resolver::new();
-    resolver.analyze();
+    let resolver = Inspector {};
+    resolver.inspect_container(Container { f1: (), f2: () });
     Ok(Resolve {})
 }
