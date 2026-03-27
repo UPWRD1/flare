@@ -11,10 +11,7 @@ use crate::{
     },
     resource::{
         errors::CompResult,
-        rep::{
-            common::{Ident, Spanned},
-            frontend::ast::Label,
-        },
+        rep::{common::Spanned, frontend::ast::Label},
     },
 };
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -70,16 +67,6 @@ pub enum Type {
 
 impl EqUnifyValue for Spanned<Intern<Type>> {}
 
-impl Ident for Type {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        match self {
-            // Self::Package(spanned) => Ok(*spanned),
-            Self::Label(l, _) => Ok(l.0),
-            _ => unreachable!("{:?}", self),
-        }
-    }
-}
-
 impl Type {
     pub fn render(&self, scheme: &TypeScheme) -> String {
         match self {
@@ -103,17 +90,6 @@ impl Type {
             // Self::TypeApp(l, r) => format!("{}::[{}]", r.0.render(scheme), l.0.render(scheme)),
             _ => format!("{self}"),
         }
-    }
-
-    pub fn to_default_span(self) -> Spanned<Intern<Self>> {
-        Spanned(
-            Intern::from(self),
-            SimpleSpan {
-                start: 0,
-                end: 0,
-                context: 0,
-            },
-        )
     }
 
     pub fn occurs_check(&self, var: TyUniVar) -> Result<(), Self> {

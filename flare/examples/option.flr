@@ -1,23 +1,23 @@
-package Option = 
-    pub type Option[?T] = |Some ?T, None|
-    
-    pub let Some x : ?T -> Option[?T] = |Some x|
+Option = {
+    type Option[?T] = |Some ?T, None|
 
-    pub let None:  Option[?T] = |None|
+    Some x : ?T -> Option[?T] = |Some x|
 
-    pub let unwrap_or option default : Option[?T] -> ?T -> ?T =
-        match option in
-            |Some x1| then x1,
-            |None| then default
+    None:  Option[?T] = |None|
+
+    unwrap_or option default : Option[?T] -> ?T -> ?T =
+        match option
+            as |Some x1| then x1
+            as |None| then default
           
-    pub let is_some x : Option[?T] -> bool =
-        match x in
-            | Some _v| then true,
-            | None | then false
+    is_some x : Option[?T] -> bool =
+        match x 
+            as | Some _v| then true
+            as | None | then false
 
-    pub let map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
-            match o in
+    map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
+            match o 
                 # |Some v| then Some (f(v)), #this is ok
-                |Some v| then let v = f(v) in |Some v|,                   
-                |None| then None,
-
+                as |Some v| then let v = f(v) in |Some v|                  
+                as |None| then None
+}

@@ -532,7 +532,7 @@ impl<'source> LowerAst<'source> {
                         .map(|ev| self.lookup_ev(ev))
                         .unwrap_or_else(|| {
                             panic!(
-                                "Project AST node lacks an expected evidence: {id}, evs:\n{:#?}",
+                                "Project AST node lacks an expected evidence: {id:?}, evs:\n{:#?}",
                                 self.row_to_ev
                             )
                         });

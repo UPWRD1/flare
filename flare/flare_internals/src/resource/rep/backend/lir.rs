@@ -126,7 +126,7 @@ impl LIR {
                 l.free_vars_aux(free);
                 r.free_vars_aux(free);
             }
-            Self::Case(ty, scrutinee, branches) => {
+            Self::Case(_, scrutinee, branches) => {
                 scrutinee.free_vars_aux(free);
                 branches
                     .iter()

@@ -467,15 +467,15 @@ impl IR {
             }
             IR::Fun(_, ir) => vec![*ir],
             IR::App(l, r) => vec![*l, *r],
-            IR::TyFun(kind, ir) => vec![*ir],
-            IR::TyApp(ir, ty_app) => vec![*ir],
-            IR::Local(var, ir, ir1) => vec![*ir, *ir1],
+            IR::TyFun(_, ir) => vec![*ir],
+            IR::TyApp(ir, _) => vec![*ir],
+            IR::Local(_, ir, ir1) => vec![*ir, *ir1],
             IR::If(ir, ir1, ir2) => vec![*ir, *ir1, *ir2],
-            IR::Bin(ir, bin_op, ir1) => vec![*ir, *ir1],
+            IR::Bin(ir, _, ir1) => vec![*ir, *ir1],
             IR::Tuple(irs) => irs,
             IR::Field(ir, _) => vec![*ir],
-            IR::Tag(irtype, _, ir) => vec![*ir],
-            IR::Case(irtype, ir, branchs) => vec![*ir]
+            IR::Tag(_, _, ir) => vec![*ir],
+            IR::Case(_, ir, branchs) => vec![*ir]
                 .into_iter()
                 .chain(branchs.into_iter().map(|b| b.body))
                 .collect(),

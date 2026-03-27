@@ -1,47 +1,60 @@
-use crate::resource::{
-    errors::CompResult,
-    rep::frontend::{ast::Expr, files::FileID},
-};
-use chumsky::span::SimpleSpan;
+use crate::resource::rep::frontend::files::FileID;
 use internment::Intern;
 use std::{
     fmt::{Debug, Display},
     hash::{self, Hash},
+    ops::Range,
 };
 
 pub trait Variable:
-    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Ident + Display
+    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Display
 {
 }
 pub trait Syntax: Debug + Copy + 'static {
     type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static;
     type Type: Clone + Debug + PartialEq + Eq + Hash + 'static;
     type Variable: Variable + Copy;
-    type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Ident;
+    type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Display;
 }
 
-pub trait Ident {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>>;
-}
+// pub trait Ident {
+// fn ident(&self) -> CompResult<Spanned<Intern<String>>>;
+// }
 
 pub trait HasSpan {
-    fn span(&self) -> SimpleSpan<usize, u64>;
+    fn span(&self) -> FlareSpan;
 }
 
 impl<T> HasSpan for Spanned<Intern<T>> {
-    fn span(&self) -> SimpleSpan<usize, u64> {
+    fn span(&self) -> FlareSpan {
         self.1
     }
 }
 
-impl Ident for Spanned<Intern<String>> {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        Ok(*self)
+// impl Ident for Spanned<Intern<String>> {
+// fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
+// Ok(*self)
+// }
+// }
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FlareSpan(pub usize, pub usize, pub FileID);
+
+impl FlareSpan {
+    pub fn into_range(self) -> Range<usize> {
+        self.0..self.1
+    }
+    pub fn union(self, rhs: Self) -> Self {
+        if self.2 == rhs.2 {
+            Self(self.0.max(rhs.0), self.1.max(rhs.1), self.2)
+        } else {
+            panic!("Incompatible ids")
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Spanned<T>(pub T, pub SimpleSpan<usize, FileID>);
+pub struct Spanned<T>(pub T, pub FlareSpan);
 
 impl<T: PartialEq> PartialEq for Spanned<T> {
     fn eq(&self, other: &Self) -> bool {
@@ -87,31 +100,15 @@ impl<T> Spanned<T> {
     }
 }
 
-impl<T> From<(T, SimpleSpan<usize, u64>)> for Spanned<T> {
-    fn from(value: (T, SimpleSpan<usize, u64>)) -> Self {
+impl<T> From<(T, FlareSpan)> for Spanned<T> {
+    fn from(value: (T, FlareSpan)) -> Self {
         Self(value.0, value.1)
     }
 }
-pub type NodeId = SimpleSpan<usize, u64>;
-/// Trait for entities that have Names. Implementing this trait is preferred
-/// over a custom name implementation. Currently the only major type that
-/// implements its own name getter is `QualifierFragment`, since it doesn't
-/// carry span information (since it is statically created within the compiler)
-pub trait Named<V: Variable>: std::fmt::Debug {
-    // #[clippy::deny()]
-    /// Internal get_name that returns a name or `None`. Users should implement this function, but shouldn't call it.
-    fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>>;
+pub type NodeId = FlareSpan;
 
-    fn name(&self) -> CompResult<Spanned<Intern<Expr<V>>>>
-// where
-        // Self: std::fmt::Debug,
-    {
-        let n = self.get_name();
-        match n {
-            Some(d) => Ok(d),
-            None => todo!("Cannot get name, {self:?}"),
-            // None => DynamicErr::new(format!("Cannot get name of {:?}", self))
-            // .label("here", self.to_owned()),
-        }
+impl Display for Spanned<Intern<String>> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }

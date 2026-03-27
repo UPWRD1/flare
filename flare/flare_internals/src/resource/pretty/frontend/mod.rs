@@ -93,10 +93,10 @@ impl Render for Spanned<Intern<Type>> {
                 .render()
                 .append(Doc::space().append(Doc::text("->").append(Doc::space())))
                 .append(r.render()),
-            Type::TypeFun(spanned, spanned1) => todo!(),
+            Type::TypeFun(_, _) => todo!(),
             Type::Prod(r) => r.render().braces(),
             Type::Sum(r) => Doc::text("|").render(r).text("|"),
-            Type::Label(label, spanned) => todo!(),
+            Type::Label(_, _) => todo!(),
             Type::Hole => todo!(),
         }
     }

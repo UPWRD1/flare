@@ -1,14 +1,11 @@
 use internment::Intern;
 
-use crate::resource::{
-    errors::CompResult,
-    rep::{
-        common::{Ident, Spanned, Syntax, Variable},
-        frontend::{
-            ast::{BinOp, Direction, ItemId, Kind, Label, Untyped},
-            csttypes::CstType,
-            files::FileID,
-        },
+use crate::resource::rep::{
+    common::{Spanned, Syntax, Variable},
+    frontend::{
+        ast::{BinOp, ItemId, Kind, Label, Untyped},
+        csttypes::CstType,
+        files::FileID,
     },
 };
 
@@ -44,9 +41,9 @@ pub enum Pattern<V: Variable> {
     // Tuple pattern: matches fixed-size products
     Tuple(&'static [Spanned<Intern<Self>>]),
 
-    // As pattern: matches and binds to variable
-    // x as Some(y) matches Some variant, binds whole to x, inner to y
-    As(V, Spanned<Intern<Self>>),
+    // At pattern: matches and binds to variable
+    // x @ Some(y) matches Some variant, binds whole to x, inner to y
+    At(V, Spanned<Intern<Self>>),
 
     // Or pattern: matches if any sub-pattern matches
     // Some(0) | None matches either
@@ -64,12 +61,19 @@ pub struct MatchArm<V: Variable> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+pub enum Macro<V>
+where
+    V: Variable,
+{
+    Use(Spanned<Intern<CstExpr<V>>>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CstExpr<V>
 where
     V: Variable,
 {
     Ident(V),
-    // Param(V),
     Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Bool(bool),
@@ -80,11 +84,10 @@ where
 
     Item(ItemId, Kind),
 
-    Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Project(Direction, Spanned<Intern<Self>>),
-
-    Inject(Direction, Spanned<Intern<Self>>),
-    Branch(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    ProductConstructor {
+        macros: Intern<[Macro<V>]>,
+        fields: Intern<[V]>,
+    },
 
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
@@ -98,7 +101,7 @@ where
     Comparison(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
 
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    FieldAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    FieldAccess(Spanned<Intern<Self>>, Label),
     Myself,
     MethodAccess {
         obj: Spanned<Intern<Self>>,
@@ -120,15 +123,6 @@ where
     ),
 }
 
-impl<V: Variable> Ident for Spanned<Intern<CstExpr<V>>> {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        match *self.0 {
-            CstExpr::Ident(v) => v.ident(),
-            _ => panic!("Cannot Ident: {self:?}"),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub struct ImportItem<V: Variable> {
     pub items: Vec<Spanned<Intern<CstExpr<V>>>>,
@@ -148,21 +142,27 @@ pub enum Definition<S: Syntax> {
     Extern(S::Name, &'static [S::Variable], S::Type),
     ImplDef(ImplDef<S>),
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Visibility {
+    Public,
+    Private,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemDefinition<S: Syntax> {
     pub def: Definition<S>,
-    pub is_pub: bool,
+    pub vis: Visibility,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Package<S: Syntax> {
-    pub name: S::Name,
+pub struct ProductRow<S: Syntax> {
     pub items: Vec<ItemDefinition<S>>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Program<S: Syntax> {
-    pub packages: Vec<(Package<S>, FileID)>,
+    pub packages: Vec<(ProductRow<S>, FileID)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

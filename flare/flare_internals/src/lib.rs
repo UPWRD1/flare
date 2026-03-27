@@ -34,7 +34,6 @@
     clippy::redundant_allocation,
     clippy::deref_by_slicing,
     clippy::cloned_instead_of_copied,
-    clippy::unwrap_in_result,
     unused_allocation,
     clippy::ptr_arg,
     clippy::needless_pass_by_ref_mut,
@@ -42,6 +41,7 @@
     // clippy::min_ident_chars,
     )]
 #[warn(
+clippy::unwrap_in_result,
     clippy::large_stack_frames,
     // clippy::panic,
     clippy::dbg_macro,
@@ -95,7 +95,7 @@ use crate::{
                     UntypedAst,
                     // Untyped
                 },
-                cst::{Package, Program, UntypedCst},
+                cst::{ProductRow, Program, UntypedCst},
                 files::{FileID, FileSource},
             },
             midend::ir::IR,
@@ -182,12 +182,13 @@ pub fn make_filectx(src_paths: &[PathBuf]) -> FileCtx {
         .collect()
 }
 
-fn parse_file(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
-    parser::parse(file)
+fn parse_file(file: &FileSource) -> CompResult<Vec<ProductRow<UntypedCst>>> {
+    parser::parse(file);
+    todo!()
 }
 
 pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
-    let mut processed: Vec<(Vec<Package<UntypedCst>>, FileID)> = vec![];
+    let mut processed: Vec<(Vec<ProductRow<UntypedCst>>, FileID)> = vec![];
     for (id, file) in filectx {
         let pack = parse_file(file)?;
         processed.push((pack, *id))
@@ -199,7 +200,7 @@ pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
             packages
                 .into_iter()
                 .map(|p| (p, id))
-                .collect::<Vec<(Package<_>, FileID)>>()
+                .collect::<Vec<(ProductRow<_>, FileID)>>()
         })
         .collect::<Vec<_>>();
 

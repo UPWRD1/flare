@@ -7,7 +7,7 @@ use crate::{
     passes::frontend::typing::TypeScheme,
     resource::{
         errors::{CompResult, DynamicErr},
-        rep::common::{HasSpan, Ident, Spanned, Syntax, Variable},
+        rep::common::{FlareSpan, HasSpan, Spanned, Syntax, Variable},
     },
 };
 
@@ -33,14 +33,8 @@ pub struct Untyped(pub Spanned<Intern<String>>);
 impl Variable for Untyped {}
 
 impl HasSpan for Untyped {
-    fn span(&self) -> SimpleSpan<usize, u64> {
+    fn span(&self) -> FlareSpan {
         self.0.1
-    }
-}
-
-impl Ident for Untyped {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        Ok(self.0)
     }
 }
 
@@ -170,34 +164,7 @@ impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
 }
 
 impl<V: Variable> Spanned<Intern<Expr<V>>> {
-    pub fn id(&self) -> SimpleSpan<usize, u64> {
+    pub fn id(&self) -> FlareSpan {
         self.1
-    }
-}
-
-impl<V: Variable> Expr<V> {
-    pub fn get_num(&self, span: SimpleSpan<usize, u64>) -> CompResult<OrderedFloat<f32>> {
-        match self {
-            Self::Number(n) => Ok(*n),
-            _ => Err(DynamicErr::new("Not a number").label("here", span).into()),
-        }
-    }
-
-    pub fn inject_call_start(
-        self,
-        arg: Spanned<Intern<Self>>,
-        span: SimpleSpan<usize, u64>,
-    ) -> Spanned<Intern<Self>> {
-        match self {
-            Self::Call(l, r) => Spanned(
-                Intern::from(Self::Call(l.0.inject_call_start(arg, span), r)),
-                span,
-            ),
-            Self::Ident(_n) => Spanned(
-                Intern::from(Self::Call(Spanned(Intern::from(self), span), arg)),
-                span,
-            ),
-            _ => panic!(),
-        }
     }
 }

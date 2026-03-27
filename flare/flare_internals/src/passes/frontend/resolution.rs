@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 
-use chumsky::span::{SimpleSpan, Span};
 use internment::Intern;
 use itertools::Itertools;
 use petgraph::{
@@ -22,12 +21,12 @@ use crate::{
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
-            common::{Ident, NodeId, Spanned},
+            common::{FlareSpan, NodeId, Spanned},
             frontend::{
                 ast::{BinOp, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
                 cst::{CstExpr, MatchArm, Pattern, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
-                entry::{FunctionItem, Item, ItemKind, PackageEntry},
+                entry::{FunctionItem, Item, ItemKind},
                 quantifier::QualifierFragment,
             },
         },
@@ -183,11 +182,11 @@ impl Resolver {
 
     pub fn analyze(mut self) -> CompResult<(Environment<UntypedAst>, Vec<NodeIndex>)> {
         let err_no_main = DynamicErr::new("Could not find a main function")
-            .label("not found in any packages", SimpleSpan::default());
+            .label("not found in any packages", FlareSpan::default());
 
         let g = self.env.graph.clone();
         let stable_g =
-            StableDiGraph::from(g).map(|idx, item| self.analyze_item(idx, item), |idx, e| *e);
+            StableDiGraph::from(g).map_owned(|idx, item| self.analyze_item(idx, &item), |idx, e| e);
 
         let reachable: FxHashSet<NodeIndex> =
             Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
@@ -211,14 +210,14 @@ impl Resolver {
             },
             |_, e| Some(e),
         );
-        self.debug();
-        self.env.debug();
+        // self.debug();
+        // self.env.debug();
         dbg!(&sorted);
         sorted.reverse();
 
         if self.errors.is_empty() {
             let env = Environment::from_graph_and_root(g, self.env.root);
-            env.debug();
+            // env.debug();
             Ok((env, sorted))
         } else {
             Err(ErrorCollection::new(self.errors).into())
@@ -245,9 +244,6 @@ impl Resolver {
             .get_parent(node_idx)
             .unwrap_or(QualifierFragment::Root);
         match item.kind {
-            ItemKind::Package(PackageEntry { name, id }) => {
-                Item::new(ItemKind::Package(PackageEntry { name, id }))
-            }
             ItemKind::Function(f) => {
                 // dbg!(f.sig);
                 if *f.name.0 == "main" {
@@ -338,9 +334,9 @@ impl Resolver {
                 t.modify(CstType::Label(l, new_t))
             }
             CstType::User(name, instanced_generics) => {
-                let the_item = self.resolve_name_type(&name);
+                let the_item = self.resolve_name_type((name.0).to_string());
 
-                if let Ok(item_id) = the_item {
+                if let Some(item_id) = the_item {
                     // self.dag_add(item_id);
                     let the_item = self
                         .env
@@ -367,7 +363,7 @@ impl Resolver {
                         panic!("not a type")
                     }
                 } else {
-                    let err = errors::not_defined(name.0, &name.1);
+                    let err = errors::not_defined(name);
                     self.errors.push(err);
                     name.convert(CstType::Hole)
                 }
@@ -441,36 +437,33 @@ impl Resolver {
 
         match *expr.0 {
             CstExpr::Ident(u) => {
-                if let Some((_, defn)) = vars
-                    .iter()
-                    .rev()
-                    .find(|n| u.ident().is_ok_and(|name| n.0 == name.0))
-                {
+                if let Some((_, defn)) = vars.iter().rev().find(|n| n.0 == u.0.0) {
                     *defn
                 } else {
                     // dbg!(expr);
-                    self.resolve_name_expr(expr)
+                    self.resolve_name(u.0)
                 }
             }
-            CstExpr::Concat(l, r) => {
-                let l = self.analyze_expr(l, vars);
-                let r = self.analyze_expr(r, vars);
-                expr.modify(CstExpr::Concat(l, r))
-            }
-            CstExpr::Project(direction, ex) => {
-                let ex = self.analyze_expr(ex, vars);
-                expr.modify(CstExpr::Project(direction, ex))
-            }
-            CstExpr::Inject(direction, ex) => {
-                let ex = self.analyze_expr(ex, vars);
-                expr.modify(CstExpr::Inject(direction, ex))
-            }
-            CstExpr::Branch(l, r) => {
-                let l = self.analyze_expr(l, vars);
-                let r = self.analyze_expr(r, vars);
+            CstExpr::ProductConstructor { macros, fields } => todo!(),
+            // CstExpr::Concat(l, r) => {
+            //     let l = self.analyze_expr(l, vars);
+            //     let r = self.analyze_expr(r, vars);
+            //     expr.modify(CstExpr::Concat(l, r))
+            // }
+            // CstExpr::Project(direction, ex) => {
+            //     let ex = self.analyze_expr(ex, vars);
+            //     expr.modify(CstExpr::Project(direction, ex))
+            // }
+            // CstExpr::Inject(direction, ex) => {
+            //     let ex = self.analyze_expr(ex, vars);
+            //     expr.modify(CstExpr::Inject(direction, ex))
+            // }
+            // CstExpr::Branch(l, r) => {
+            //     let l = self.analyze_expr(l, vars);
+            //     let r = self.analyze_expr(r, vars);
 
-                expr.modify(CstExpr::Branch(l, r))
-            }
+            //     expr.modify(CstExpr::Branch(l, r))
+            // }
             CstExpr::Label(l, v) => {
                 let v = self.analyze_expr(v, vars);
                 expr.modify(CstExpr::Label(l, v))
@@ -611,16 +604,13 @@ impl Resolver {
                     self.compile_pattern(*p, inner_val)
                 })
                 .collect(),
-            Pattern::As(_, spanned) => todo!(),
+            Pattern::At(_, spanned) => todo!(),
             Pattern::Or(patterns) => todo!(),
             Pattern::Guard(spanned, spanned1) => todo!(),
         }
     }
     fn convert(&mut self, item: &Item<UntypedCst>) -> Item<UntypedAst> {
         match item.kind {
-            ItemKind::Package(PackageEntry { name, id }) => {
-                Item::new(ItemKind::Package(PackageEntry { name, id }))
-            }
             ItemKind::Function(f) => {
                 let f = self.convert_func(f);
 
@@ -651,25 +641,7 @@ impl Resolver {
 
         match *expr.0 {
             CstExpr::Ident(u) => expr.convert(Expr::Ident(u)),
-            CstExpr::Concat(l, r) => {
-                let l = self.convert_expr(l);
-                let r = self.convert_expr(r);
-                expr.convert(Expr::Concat(l, r))
-            }
-            CstExpr::Project(direction, ex) => {
-                let ex = self.convert_expr(ex);
-                expr.convert(Expr::Project(direction, ex))
-            }
-            CstExpr::Inject(direction, ex) => {
-                let ex = self.convert_expr(ex);
-                expr.convert(Expr::Inject(direction, ex))
-            }
-            CstExpr::Branch(l, r) => {
-                let l = self.convert_expr(l);
-                let r = self.convert_expr(r);
-
-                expr.convert(Expr::Branch(l, r))
-            }
+            CstExpr::ProductConstructor { macros, fields } => todo!(),
             CstExpr::Label(l, v) => {
                 // dbg!(vars);
                 // dbg!(expr);
@@ -719,8 +691,7 @@ impl Resolver {
             }
             CstExpr::FieldAccess(l, r) => {
                 let l = self.convert_expr(l);
-                let r = r.ident().unwrap();
-                expr.convert(Expr::Access(l, Label(r)))
+                expr.convert(Expr::Access(l, r))
             }
             CstExpr::If(cond, then, otherwise) => {
                 let cond = self.convert_expr(cond);
@@ -791,16 +762,7 @@ impl Resolver {
         body: Spanned<Intern<CstExpr<Untyped>>>,
         vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
     ) -> Spanned<Intern<CstExpr<Untyped>>> {
-        let new_vars = &[
-            vars,
-            &[(
-                arg.0.0,
-                arg.ident()
-                    .expect("Expected expression to be namable")
-                    .convert(CstExpr::Ident(arg)),
-            )],
-        ]
-        .concat();
+        let new_vars = &[vars, &[(arg.0.0, arg.0.convert(CstExpr::Ident(arg)))]].concat();
         let body = self.analyze_expr(body, new_vars);
         // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
         expr.convert(CstExpr::Lambda(arg, body))
@@ -816,7 +778,7 @@ impl Resolver {
         };
         let l = self.analyze_expr(l, vars);
         if let CstExpr::Item(_, _) = *l.0 {
-            self.resolve_name_expr(r)
+            self.resolve_name(r.0)
         } else {
             expr.convert(CstExpr::FieldAccess(l, r))
         }
@@ -917,12 +879,7 @@ impl Resolver {
         let render = |_, (_, v): (_, &usize)| {
             format!(
                 "label = \"{}\"",
-                self.env
-                    .value(NodeIndex::from(*v as u32))
-                    .unwrap()
-                    .ident()
-                    .unwrap()
-                    .0
+                self.env.value(NodeIndex::from(*v as u32)).unwrap().ident()
             )
         };
         let dot = petgraph::dot::Dot::with_attr_getters(
@@ -952,56 +909,33 @@ impl Resolver {
         }
     }
 
-    fn search_masterenv(
-        &mut self,
-        q: &QualifierFragment,
-        s: &SimpleSpan<usize, u64>,
-    ) -> CompResult<ItemId> {
+    fn search_masterenv(&mut self, q: &QualifierFragment) -> Option<ItemId> {
         let search = self.env.get_from_context(q, &self.current_parent);
-        search.map_or_else(
-            |_| Err(errors::not_defined(q, s)),
-            |node| {
-                // if !matches!(q, QualifierFragment::Type(_)) {
-                self.dag_add(node.index());
-                // }
-                Ok(ItemId(node.index()))
-            },
-        )
+        search.map(|node| {
+            // if !matches!(q, QualifierFragment::Type(_)) {
+            self.dag_add(node.index());
+            // }
+            ItemId(node.index())
+        })
     }
 
-    fn resolve_name_expr(
-        &mut self,
-        expr: Spanned<Intern<CstExpr<Untyped>>>,
-    ) -> Spanned<Intern<CstExpr<Untyped>>> {
-        let name = expr.ident().expect("Expression should be nameable");
-        // self.env.debug();
-
-        if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name.0), &expr.1) {
-            expr.convert(CstExpr::Item(e, Kind::Func))
-        } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &expr.1) {
-            expr.convert(CstExpr::Item(e, Kind::Ty))
-        } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Package(name.0), &expr.1) {
-            expr.convert(CstExpr::Item(e, Kind::Package))
+    fn resolve_name(&mut self, name: Spanned<Intern<String>>) -> Spanned<Intern<CstExpr<Untyped>>> {
+        if let Some(e) = self.search_masterenv(&QualifierFragment::Func(name.to_string())) {
+            name.convert(CstExpr::Item(e, Kind::Func))
+        } else if let Some(e) = self.search_masterenv(&QualifierFragment::Type(name.to_string())) {
+            name.convert(CstExpr::Item(e, Kind::Ty))
+        } else if let Some(e) = self.search_masterenv(&QualifierFragment::Package(name.to_string()))
+        {
+            name.convert(CstExpr::Item(e, Kind::Package))
         } else {
-            let err = errors::not_defined(QualifierFragment::Wildcard(name.0), &expr.1);
+            let err = errors::not_defined(name);
             self.errors.push(err);
-            expr.convert(CstExpr::Hole(Untyped(name)))
+            name.convert(CstExpr::Hole(Untyped(name)))
         }
     }
 
-    fn resolve_name_type(&mut self, name: &impl Ident) -> CompResult<ItemId> {
-        let name = name.ident()?;
-
-        self.search_masterenv(&QualifierFragment::Type(name.0), &name.1)
-            .map_or_else(
-                |_| {
-                    Err(errors::not_defined(
-                        QualifierFragment::Wildcard(name.0),
-                        &name.1,
-                    ))
-                },
-                Ok,
-            )
+    fn resolve_name_type(&mut self, name: String) -> Option<ItemId> {
+        self.search_masterenv(&QualifierFragment::Type(name))
     }
 }
 

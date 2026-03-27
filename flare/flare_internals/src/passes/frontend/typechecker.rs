@@ -8,12 +8,9 @@ use crate::{
     },
     resource::{
         errors::{CompResult, DynamicErr, ErrorCollection},
-        rep::{
-            common::Ident,
-            frontend::{
-                ast::{Expr, ItemId, UntypedAst},
-                entry::{FunctionItem, ItemKind},
-            },
+        rep::frontend::{
+            ast::{Expr, ItemId, UntypedAst},
+            entry::{FunctionItem, ItemKind},
         },
     },
 };
@@ -36,7 +33,11 @@ impl Typechecker {
 
     pub fn check(mut self) -> CompResult<(Vec<(ItemId, TypesOutput)>, ItemSource)> {
         for item_idx in self.item_order {
-            let item = self.env.value(*item_idx)?.clone();
+            let item = self
+                .env
+                .value(*item_idx)
+                .expect("Item should exist")
+                .clone();
             match item.kind {
                 ItemKind::Function(f) => {
                     // dbg!(f.sig);
@@ -48,10 +49,6 @@ impl Typechecker {
                 }
                 ItemKind::Extern { name, sig, .. } => {
                     self.context.insert(ItemId(item_idx.index()), sig.clone());
-                }
-                ItemKind::Package(_) => {
-                    let scheme = TypeScheme::default();
-                    self.context.insert(ItemId(item_idx.index()), scheme);
                 }
                 _ => unreachable!("{:?}", item.kind),
             }
@@ -102,15 +99,7 @@ impl Typechecker {
                         // println!("Checking {} : {}", f.name.0, scheme.ty.0);
                         Solver::check_with_items(&self.context, f.body, scheme).map_err(|e| {
                             if let Some(e) = e.downcast_ref::<DynamicErr>() {
-                                e.clone()
-                                    .label(
-                                        "in this let-definition",
-                                        f.name
-                                            .ident()
-                                            .expect("Function should have a valid name")
-                                            .1,
-                                    )
-                                    .into()
+                                e.clone().label("in this let-definition", f.name.1).into()
                             } else {
                                 e
                             }
