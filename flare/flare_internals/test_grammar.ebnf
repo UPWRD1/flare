@@ -1,0 +1,74 @@
+
+/* A program is a list of expressions */
+program       = expr+
+
+extern        = "extern" str_lit? ID ":" type
+
+use           = "use" expr
+
+/* Pratt parsing should be used here, this is written in recursive-descent style*/
+expr          = bin_expr
+bin_expr      = sandwich
+
+sandwich      = sandwich
+				| access ":" ID ":" access
+				| access "::" access
+
+access        = product
+				| product "." product
+
+/*product: left(9) */
+product       = sum
+				| sum "*" sum 
+				| sum "/" sum
+
+/* sum: left(8) */
+sum           = apply
+				| apply "+" apply
+				| apply "-" apply
+
+/* apply: left(10) */
+apply         = term term
+
+term          = atom 
+				| "fn" ID* "=" expr 
+/*Lambda expression*/
+
+atom          = num 
+				| str_lit
+				| "true" 
+				| "false" 
+				| constructor
+				| "let" ID "=" expr "in" expr
+				| "if" expr "then" expr "else" expr
+				| "match" expr "as" match_arm+
+
+match_arm     = pattern "then" expr
+
+pattern       = constructor 
+				| atom 
+                /* variable / constant */
+
+constructor   = "{" (expr ",")* expr  "}" 
+				| "{" (ID "=" expr ("," | "\n"))+ "}" 
+				| "|" ID expr "|" 
+         
+
+ID            = (
+					[a-z] | 
+					[A-Z] | 
+					"_" 
+					 
+					)+
+
+num           = "-"? [0-9]+ ("." [0-9]+)?
+str_lit       = "\"" ([a-z] | [A-Z] | [0-9]
+				)* "\""
+
+ty_list       = type ("," | "\n") (ty_list | type)
+type          = ID ("[" ty_list "]")?
+				| type "-" type 
+				| "{" ty_list "}" 
+				| "{" (ID "=" type ("," | "\n"))+ "}" 
+				| "?" ID 
+				| expr

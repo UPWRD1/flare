@@ -3,7 +3,7 @@ use itertools::Itertools;
 use ordered_float::OrderedFloat;
 
 use crate::resource::rep::{
-    common::Variable,
+    common::{Spanned, Variable},
     frontend::{
         ast::{Label, Untyped},
         cst::{CstExpr, Pattern},
@@ -24,20 +24,16 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Occ {
     /// Root variable.
-    Base(String),
+    Base,
     /// i-th projection of an occurrence.
-    Proj(Box<Self>, usize),
+    Proj(Box<Self>, Label),
     /// Unwrap the payload of a constructor at an occurrence.
-    Unwrap(Box<Self>),
+    Unwrap(Box<Self>, Label),
 }
 
 impl Occ {
-    pub fn base(name: impl Into<String>) -> Self {
-        Self::Base(name.into())
-    }
-
-    pub fn default_occ() -> Self {
-        Self::Base("unknown".to_string())
+    pub fn base(name: Spanned<Intern<CstExpr<Untyped>>>) -> Self {
+        Self::Base
     }
 }
 
@@ -169,17 +165,39 @@ impl Matrix {
 // Decision tree
 // ---------------------------------------------------------------------------
 
+// #[derive(Debug, Clone)]
+// pub enum DecisionTree {
+//     /// No arm matched — this branch is unreachable / non-exhaustive.
+//     Fail,
+//     /// Fire arm `i`.
+//     Leaf(usize),
+//     /// Test `occ`; branch on constructor tag; fall back to `default` if no
+//     /// case matches (i.e. signature is incomplete).
+//     Switch {
+//         occ: Occ,
+//         cases: Vec<(SigElem, Self)>,
+//         default: Option<Box<Self>>,
+//     },
+//     IfEq {
+//         occ: Occ,
+//         lit: SigElem,
+//         then: Box<Self>,
+//         else_: Box<Self>,
+//     },
+// }
+
+pub enum Lit {
+    Number,
+}
+
 #[derive(Debug, Clone)]
 pub enum DecisionTree {
-    /// No arm matched — this branch is unreachable / non-exhaustive.
     Fail,
-    /// Fire arm `i`.
     Leaf(usize),
-    /// Test `occ`; branch on constructor tag; fall back to `default` if no
-    /// case matches (i.e. signature is incomplete).
+
     Switch {
         occ: Occ,
-        cases: Vec<(SigElem, Self)>,
+        cases: Vec<(Label, Self)>,
         default: Option<Box<Self>>,
     },
     IfEq {
@@ -204,7 +222,7 @@ impl DecisionTree {
             } => {
                 println!("{pad}Switch({occ:?})");
                 for (ctor, sub) in cases {
-                    println!("{pad}  | {} =>", ctor.print());
+                    println!("{pad}  | {} =>", ctor.0.0);
                     sub.print(indent + 2);
                 }
                 if let Some(def) = default {
@@ -224,7 +242,7 @@ impl DecisionTree {
 
                 println!("{pad}  else");
                 else_.print(indent + 2);
-            } // println!("{pad}test")
+            }
         }
     }
 }
@@ -235,10 +253,11 @@ fn occurrences_of(p: &Pattern<Untyped>, base: &Occ) -> Vec<(Occ, Pattern<Untyped
             .iter()
             .enumerate()
             .map(|(i, sub_p)| {
-                let occ = Occ::Proj(Box::new(base.clone()), i);
+                let occ = Occ::Proj(Box::new(base.clone()), Label(sub_p.convert(i.to_string())));
                 (occ, *sub_p.0)
             })
             .collect(),
+        // Pattern::Record { fields, open }
         _ => vec![(base.clone(), *p)],
     }
 } // ---------------------------------------------------------------------------
@@ -302,7 +321,9 @@ fn specialise(matrix: &Matrix, pred: impl Fn(&Pattern<Untyped>) -> bool) -> Matr
         }
     }
 
-    let occ = Occ::Unwrap(Box::new(matrix.header[0].clone()));
+    // let occ = Occ::Unwrap(Box::new(matrix.header[0].clone()));
+
+    let occ = matrix.header[0].clone();
 
     // Re-run preprocessing on the unwrapped payloads.
     let idx_snapshot = indices.clone();
@@ -323,6 +344,53 @@ fn specialise(matrix: &Matrix, pred: impl Fn(&Pattern<Untyped>) -> bool) -> Matr
     m2
 }
 
+fn specialise_label(matrix: &Matrix, label: Label) -> Matrix {
+    let mut patterns: Vec<Pattern<_>> = Vec::new();
+    let mut indices: Vec<usize> = Vec::new();
+    let mut remainders: Vec<Vec<Pattern<_>>> = Vec::new();
+
+    for (row, idx) in &matrix.rows {
+        let head = &row[0];
+        if matches!(head, Pattern::Variant(label, _)) {
+            let unwrapped = unwrap_payload(*head);
+            patterns.push(unwrapped);
+            indices.push(*idx);
+            remainders.push(row[1..].to_vec());
+        }
+    }
+
+    let occ = Occ::Unwrap(Box::new(matrix.header[0].clone()), label);
+
+    // let occ = matrix.header[0].clone();
+
+    // Re-run preprocessing on the unwrapped payloads.
+    let idx_snapshot = indices.clone();
+    let mut m2 = preprocess(&occ, &patterns, move |i| idx_snapshot[i]);
+
+    // Append the tail columns from the original header.
+    for h in &matrix.header[1..] {
+        m2.header.push(h.clone());
+    }
+
+    // Append the remainder columns to each row.
+    for (i, (row, _)) in m2.rows.iter_mut().enumerate() {
+        if let Some(rem) = remainders.get(i) {
+            row.extend_from_slice(rem);
+        }
+    }
+
+    m2
+}
+fn specialise_default(matrix: &Matrix) -> Matrix {
+    let header = matrix.header[1..].to_vec();
+    let mut m = Matrix::new(header);
+    for (row, idx) in &matrix.rows {
+        if row[0].is_wildcard() {
+            m.rows.push((row[1..].to_vec(), *idx));
+        }
+    }
+    m
+}
 /// Unwrap the payload of a constructor pattern.
 /// Sets `ty_out` to the payload's type on the first call.
 fn unwrap_payload(p: Pattern<Untyped>) -> Pattern<Untyped> {
@@ -357,10 +425,18 @@ fn admits(c: &SigElem, p: &Pattern<Untyped>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+fn admits_label(c: &Label, p: &Pattern<Untyped>) -> bool {
+    match &p {
+        Pattern::Variant(c2, _) => c == c2,
+        Pattern::Any | Pattern::Var(_) => true,
+        _ => false,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SigElem {
     Label(Label),
-    Num(OrderedFloat<f64>),
+    Num(OrderedFloat<f32>),
     String(Intern<String>),
 }
 
@@ -397,13 +473,13 @@ fn has_refutable(ps: &[Pattern<Untyped>]) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Compile `ps` (one per arm, 0-indexed) into a `DecisionTree`.
-pub fn compile(base: &Occ, ps: &[Pattern<Untyped>]) -> DecisionTree {
-    let initial = preprocess(base, ps, |i| i);
+pub fn compile(ps: &[Pattern<Untyped>]) -> DecisionTree {
+    let initial = preprocess(&Occ::Base, ps, |i| i);
     compile_matrix(initial)
 }
 
 fn compile_matrix(matrix: Matrix) -> DecisionTree {
-    println!("{}", matrix.print());
+    // println!("{}", matrix.print());
     // Base case 1: no rows → no match.
     if matrix.is_empty() {
         return DecisionTree::Fail;
@@ -435,7 +511,10 @@ fn compile_matrix(matrix: Matrix) -> DecisionTree {
     // Split signature by kind
     let labels: Vec<_> = signature
         .iter()
-        .filter(|s| matches!(s, SigElem::Label(_)))
+        .filter_map(|s| match s {
+            SigElem::Label(l) => Some(l),
+            _ => None,
+        })
         .collect();
 
     let lits: Vec<_> = signature
@@ -449,19 +528,47 @@ fn compile_matrix(matrix: Matrix) -> DecisionTree {
             let sub = specialise(&matrix, |p| admits(lit, p));
             DecisionTree::IfEq {
                 occ: occ.clone(),
-                lit: *lit.clone(),
+                lit: **lit,
                 then: Box::new(compile_matrix(sub)),
                 else_: Box::new(else_branch),
             }
         })
     } else {
+        // For each constructor, specialise and wrap in Unlabel
+        // let cases = labels
+        //     .iter()
+        //     .map(|lbl| {
+        //         let sub = specialise(&matrix, |p| matches!(p, Pattern::Variant(lbl, _)));
+        //         // The payload occ is what specialise_ctor produces as its header[0]
+        //         // — an Unwrap(occ). Wrap the sub-tree in an Unlabel node.
+        //         // let payload_occ = Occ::Unwrap(Box::new(occ.clone()), **lbl);
+        //         let inner = compile_matrix(sub);
+        //         (**lbl, inner)
+        //     })
+        //     .collect();
+
+        // let default = {
+        //     let sub = specialise_default(&matrix);
+        //     if sub.is_empty() {
+        //         Some(Box::new(DecisionTree::Fail))
+        //     } else {
+        //         Some(Box::new(compile_matrix(sub)))
+        //     }
+        // };
+
+        // DecisionTree::Switch {
+        //     occ,
+        //     cases,
+        //     default,
+        // }
+
         // Pure enum switch — existing logic
         DecisionTree::Switch {
             occ,
             cases: labels
                 .into_iter()
                 .map(|l| {
-                    let sub = specialise(&matrix, |p| admits(l, p));
+                    let sub = specialise_label(&matrix, *l);
                     (*l, compile_matrix(sub))
                 })
                 .collect(),

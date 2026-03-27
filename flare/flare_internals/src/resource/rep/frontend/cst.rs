@@ -21,7 +21,7 @@ pub enum Pattern<V: Variable> {
     Var(V),
 
     // Literal patterns: match exact values
-    Number(ordered_float::OrderedFloat<f64>),
+    Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Particle(Spanned<Intern<String>>),
     Bool(bool),

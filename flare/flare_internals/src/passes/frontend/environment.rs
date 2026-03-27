@@ -1,9 +1,10 @@
+use anyhow::anyhow;
 use internment::Intern;
 // use petgraph::Graph;
 use petgraph::{
     dot::Config,
-    graph::{EdgeReference, NodeIndex},
-    prelude::DiGraph,
+    prelude::StableDiGraph,
+    stable_graph::{EdgeReference, NodeIndex},
     visit::EdgeRef as _,
 };
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
@@ -34,7 +35,7 @@ use crate::resource::{
 /// real reason to clone the environment.
 #[non_exhaustive]
 pub struct Environment<S: Syntax> {
-    pub graph: DiGraph<Item<S>, QualifierFragment>,
+    pub graph: StableDiGraph<Item<S>, QualifierFragment>,
     pub root: NodeIndex,
 }
 
@@ -45,7 +46,7 @@ impl Environment<UntypedCst> {
     ///
     pub fn build(program: &Program<UntypedCst>) -> CompResult<Self> {
         // use ItemKind::*;
-        let mut graph = DiGraph::new();
+        let mut graph = StableDiGraph::new();
         let mut current_node = graph.add_node(Item::new(ItemKind::Root));
         let num_packages = program.packages.len();
         let mut me = Self {
@@ -215,7 +216,7 @@ impl Environment<UntypedCst> {
 
 impl<S: Syntax> Environment<S> {
     pub fn from_graph_and_root(
-        graph: impl Into<DiGraph<Item<S>, QualifierFragment>>,
+        graph: impl Into<StableDiGraph<Item<S>, QualifierFragment>>,
         root: NodeIndex,
     ) -> Self {
         let graph = graph.into();
@@ -272,7 +273,7 @@ impl<S: Syntax> Environment<S> {
     pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<S>> {
         self.graph
             .node_weight(idx)
-            .ok_or_else(|| unreachable!("Bad node index: {:?}", idx))
+            .ok_or_else(|| panic!("Bad node index: {:?}", idx))
     }
 
     fn trace_import_path(
@@ -440,9 +441,10 @@ impl<S: Syntax> Environment<S> {
     ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'fragment, S> {
         let edges = self
             .graph
-            .edge_references()
-            .filter(move |x| x.weight() == (frag));
-        edges.map(|x| x.target())
+            .edge_indices()
+            .filter(move |x| self.graph.edge_weight(*x).unwrap() == (frag));
+
+        edges.map(|x| self.graph.edge_endpoints(x).unwrap().1)
     }
 
     /// Optionally returns a vector of the possible paths to an item fragment.

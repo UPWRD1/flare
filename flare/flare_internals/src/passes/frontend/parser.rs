@@ -848,7 +848,7 @@ fn destructure_pattern_parser<'src, I>(
 ) -> impl Parser<'src, I, Spanned<Intern<Pattern<Untyped>>>, extra::Full<Rich<'src, Token, SimpleSpan<usize, FileID>>, (), ()>,
 > where I: BorrowInput<'src, Token = Token, Span = SimpleSpan<usize,FileID>> + ValueInput<'src> {
 
-let rnum = select_ref! { Token::Num(n) => *n }.map_with(|v, e| Spanned(Pattern::Number(OrderedFloat::from(v as f64)).into(), e.span()));
+let rnum = select_ref! { Token::Num(n) => *n }.map_with(|v, e| Spanned(Pattern::Number(OrderedFloat::from(v )).into(), e.span()));
 let rname = select_ref! { Token::Ident(x) => *x };
 
     let raw_ident =
@@ -954,40 +954,41 @@ fn make_input(
     toks.map(eoi, |ts| (&ts.0, &ts.1))
 }
 
-/// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
-    let input: &'static str = file.source.clone().leak();
-    let tokens: Vec<Spanned<Token>> = match lexer(file.id).parse(input).into_result() {
-        Ok(tokens) => tokens,
-        Err(errs) => {
-            return Err(ErrorCollection::new(
-                errs.into_iter()
-                    .map(|x| parse_failure(&x, file.id).into())
-                    .collect(),
-            )
-            .into());
-        }
-    };
+ /// Public parsing function. Produces a parse tree from a source string.
+ pub fn parse(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
+     let input: &'static str = file.source.clone().leak();
+     let tokens: Vec<Spanned<Token>> = match lexer(file.id).parse(input).into_result() {
+         Ok(tokens) => tokens,
+         Err(errs) => {
+             return Err(ErrorCollection::new(
+                 errs.into_iter()
+                     .map(|x| parse_failure(&x, file.id).into())
+                     .collect(),
+             )
+             .into());
+         }
+     };
 
-    let packg: Result<Vec<Package<UntypedCst>>, CompilerErr> = match parser(&make_input)
-        .parse(make_input(
-            SimpleSpan::new(file.id, 0..input.len()),
-            tokens.leak(),
-        ))
-        .into_result()
-    {
-        Ok(p) => Ok(p),
-        Err(e) => {
-            let errs = ErrorCollection::new(
-                e.iter()
-                    .map(|e| parse_failure(e, file.id).into())
-                    .collect::<Vec<CompilerErr>>(),
-            );
-            Err(errs.into())
-        }
-    };
-    packg
-}
+     let packg: Result<Vec<Package<UntypedCst>>, CompilerErr> = match parser(&make_input)
+         .parse(make_input(
+             SimpleSpan::new(file.id, 0..input.len()),
+             tokens.leak(),
+         ))
+         .into_result()
+     {
+         Ok(p) => Ok(p),
+         Err(e) => {
+             let errs = ErrorCollection::new(
+                 e.iter()
+                     .map(|e| parse_failure(e, file.id).into())
+                     .collect::<Vec<CompilerErr>>(),
+             );
+             Err(errs.into())
+         }
+     };
+     packg
+ }
+
 
 #[cfg(test)]
 mod tests {

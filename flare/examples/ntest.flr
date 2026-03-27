@@ -89,14 +89,18 @@ package Main =
       #      {_, 1} then 1,
       #      {3, 2} then 3
 
-    # let unwrap_weird option : Option[num] -> num =
-    #     match option in
-    #         |Some 0| then 100,
-    #         |Some 1| then 101,
-    #         |Some x| then x,
-    #         |None| then 2
+    let unwrap_weird option : Option[num] -> num =
+        match option in
+            |Some 0| then 100,
+            |Some 1| then 101,
+            |Some x| then x,
+            |None| then 2
 
-    let main: num = (fn g => (fn x => g (fn v => x x v)) (fn x => g (fn v => x x v))) (fn f => fn x => if x then (if x - 1 then x * f (x - 1) else 1) else 1) 5                
+    let main: num =
+     # matcher 3
+     #
+     unwrap_weird Some(1)
+        # (fn g => (fn x => g (fn v => x x v)) (fn x => g (fn v => x x v))) (fn f => fn x => if x then (if x - 1 then x * f (x - 1) else 1) else 1) 5                
 
 
 
