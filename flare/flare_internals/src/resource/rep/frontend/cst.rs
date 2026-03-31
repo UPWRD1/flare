@@ -138,7 +138,6 @@ pub struct ImplDef<S: Syntax> {
 pub enum Definition<S: Syntax> {
     Import(S::Expr),
     Type(S::Name, &'static [S::Type], S::Type),
-    Let(S::Name, S::Expr, S::Type),
     Extern(S::Name, &'static [S::Variable], S::Type),
     ImplDef(ImplDef<S>),
 }

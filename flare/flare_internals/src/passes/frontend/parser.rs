@@ -2,7 +2,7 @@ use crate::resource::{
     errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
     rep::frontend::{
         ast::Untyped,
-        cst::{CstExpr, ProductRow, UntypedCst},
+        cst::{CstExpr, Definition, ProductRow, UntypedCst},
         csttypes::{CstClosedRow, CstType},
         files::{FileID, FileSource},
     },
@@ -18,10 +18,14 @@ use tree_sitter::{InputEdit, Language, Parser, Point, Tree};
 
 fn translate_tree_sitter(tree: &Tree) -> ProductRow<UntypedCst> {
     let mut cursor = tree.walk();
+    let definitions: Vec<Definition<UntypedCst>> = vec![];
+
     for expr in tree.root_node().children(&mut cursor) {
         match expr.kind() {
-            "source_file" => todo!(),
-            anythingelse => panic!("{anythingelse}"),
+            "source_file" => panic!("Encountered non-root source_file node"),
+            "field_assignment" => {}
+
+            anythingelse => panic!("Unknown/invalid node: {anythingelse}"),
         }
     }
     todo!()
