@@ -9,7 +9,7 @@ use crate::{
         },
     },
 };
-use chumsky::input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput};
+use chumsky::{input::{BorrowInput, MapExtra, SliceInput, StrInput, ValueInput}, pratt::prefix};
 use chumsky::pratt::{Operator, infix, left, right};
 use chumsky::prelude::*;
 use internment::Intern;
@@ -65,6 +65,7 @@ enum Token {
     LParen,
     RParen,
     Question,
+    Bang,
 
     And,
     Def,
@@ -132,6 +133,7 @@ impl std::fmt::Display for Token {
             Self::FatArrow => write!(f, "=>"),
             Self::Arrow => write!(f, "->"),
             Self::Question => write!(f, "?"),
+            Self::Bang => write!(f, "!"),
 
             Self::Comma => write!(f, ","),
             Self::Pipe => write!(f, "|"),
@@ -261,6 +263,7 @@ where
             just(",").to(Token::Comma),
             just("|").to(Token::Pipe),
             just("?").to(Token::Question),
+            just("!").to(Token::Bang),
             just("::").to(Token::DoubleColon),
             just(":").to(Token::Colon),
             
@@ -801,7 +804,7 @@ raw_ident
                             .clone()
                             .delimited_by(just(Token::LBracket), just(Token::RBracket))
                             .or_not(),
-                    )
+                   )
                     .clone()
                     .map_with(|(name, generics), e| {
                         Spanned(Intern::from(CstType::User(name, generics.unwrap_or_default().leak())), e.span())
@@ -818,13 +821,20 @@ raw_ident
                 sum,
                 grouping,
             ));
-
+            
             // Apply pratt parser for arrows at this level
-            atom.pratt(vec![infix(
-                right(9),
-                just(Token::Arrow),
-                |x: Spanned<Intern<CstType>>, _, y, e| Spanned(Intern::from(CstType::Func(x, y)), e.span()),
-            )])
+            atom.pratt((
+                infix(
+                    right(9),
+                    just(Token::Arrow),
+                    |x: Spanned<Intern<CstType>>, _, y, e| Spanned(Intern::from(CstType::Func(x, y)), e.span()),
+                ),
+                prefix(
+                    10,
+                    just(Token::Bang),
+                    |_, x: Spanned<Intern<CstType>>,  e|
+Spanned(Intern::from(CstType::Volatile(x)), e.span())                ),
+            ))
         },
     )
     .boxed()
@@ -925,8 +935,7 @@ fn parse_failure(
     err: &Rich<'_, impl std::fmt::Display, impl AnnotateRange>,
     fid: FileID,
 ) -> DynamicErr {
-    // eprintln!("{}\n{}", err.reason(), err.found().unwrap());
-    DynamicErr::new(err.reason().to_string())
+        DynamicErr::new(err.reason().to_string())
         .label(
             err.found().map_or_else(
                 || "end of input".to_string(),
@@ -963,7 +972,7 @@ pub fn parse(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
             .into());
         }
     };
-
+dbg!(&tokens);
     let packg: Result<Vec<Package<UntypedCst>>, CompilerErr> = match parser(&make_input)
         .parse(make_input(
             SimpleSpan::new(file.id, 0..input.len()),

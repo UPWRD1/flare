@@ -310,6 +310,7 @@ fn lower_ty(ty: &IRType) -> LIRType {
         IRType::Sum(r) => LIRType::Union(lower_row(r)),
         IRType::Particle(_) => LIRType::String,
         IRType::Bool => LIRType::Bool,
+        IRType::Volatile(v) => lower_ty(v),
         _ => todo!("{ty:?}"),
     }
 }

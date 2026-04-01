@@ -71,6 +71,10 @@ impl IRType {
             IRType::Volatile(t) => t.is_scalar(),
         }
     }
+
+    pub fn is_volatile(&self) -> bool {
+        matches!(self, Self::Volatile(_))
+    }
 }
 
 impl IRType {

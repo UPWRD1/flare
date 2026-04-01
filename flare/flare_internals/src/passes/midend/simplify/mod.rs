@@ -21,6 +21,9 @@ enum Occurrence {
     // OnceInBranch,
     /// Appears many times
     Many,
+
+    /// Is volatile
+    Volatile,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -326,7 +329,9 @@ impl OccuranceAnalyzer {
                 //     self.occurrence_analysis(&self.items[id.0 as usize], &seen)
                 // }
             }
-            IR::Extern(_, _) => (Default::default(), Default::default()),
+            IR::Extern(_, t) => (Default::default(), if t.is_volatile() {
+                Occurrence::Volatile,
+            }else {Default::default()} ),
             // _ => todo!("{ir:?}"),
         }
     }

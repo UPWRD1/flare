@@ -14,6 +14,8 @@ pub enum CstType {
     String,
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
+    Volatile(Spanned<Intern<Self>>),
+
     // Package(Spanned<Intern<String>>),
     // Item(ItemId),
     GenericFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),

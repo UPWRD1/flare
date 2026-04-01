@@ -59,6 +59,8 @@ pub enum Type {
     String,
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
+    Volatile(Spanned<Intern<Self>>),
+
     // Package(Spanned<Intern<String>>),
     // Item(ItemId),
     TypeFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -150,7 +152,7 @@ impl Type {
                 l.0.occurs_check(var).map_err(|_| *self)?;
                 r.0.occurs_check(var).map_err(|_| *self)
             }
-
+            Self::Volatile(v) => v.0.occurs_check(var).map_err(|_| *self),
             // Self::TypeApp(l, r) => {
             //     l.0.occurs_check(var).map_err(|_| *self)?;
             //     r.0.occurs_check(var).map_err(|_| *self)

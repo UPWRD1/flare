@@ -73,6 +73,7 @@ impl Render for Spanned<Intern<Type>> {
             Type::Sum(r) => Doc::text("|").render(r).text("|"),
             Type::Label(label, spanned) => todo!(),
             Type::Hole => todo!(),
+            Type::Volatile(v) => Doc::text("!").render(v),
         }
     }
 }

@@ -133,8 +133,7 @@ impl Typechecker {
                             ))
                         });
 
-                        Solver::check_with_items(&self.context, funcs, scheme)
-                            .expect("Inference should succeed")
+                        Solver::check_with_items(&self.context, funcs, scheme)?
                     }
 
                     _ => unreachable!(),

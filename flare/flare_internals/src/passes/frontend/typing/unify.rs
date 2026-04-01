@@ -53,6 +53,7 @@ impl Solver<'_> {
             Type::Prod(row) => ty.modify(Type::Prod(self.normalize_row(row))),
             Type::Sum(row) => ty.modify(Type::Sum(self.normalize_row(row))),
             Type::TypeFun(v, r) => self.normalize_ty(r),
+            Type::Volatile(v) => ty.modify(Type::Volatile(self.normalize_ty(v))),
             _ => todo!("{ty:?}"),
         }
     }
@@ -151,6 +152,7 @@ impl Solver<'_> {
                 })),
                 row,
             ),
+            (Type::Volatile(l), Type::Volatile(r)) => self.unify_ty_ty(l, r),
 
             (_, _) => {
                 dbg!(left, right);
