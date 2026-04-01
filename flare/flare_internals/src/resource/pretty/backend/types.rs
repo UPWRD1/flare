@@ -38,6 +38,7 @@ impl Render for LIRType {
                     .text("|"),
                 )
                 .render(*c),
+            Self::Extern(t) => Doc::text("extern").space().render(*t),
             Self::Struct(v) => Doc::list(
                 v.iter()
                     .map(|el| el.render())

@@ -231,6 +231,14 @@ impl LIR {
                     LIRType::Closure(_, ret) => *ret,
                     _ => panic!("Not a closure"),
                 },
+                LIRType::Extern(t) => match *t {
+                    LIRType::Closure(_, ret) => *ret,
+                    LIRType::ClosureEnv(f, _) => match *f {
+                        LIRType::Closure(_, ret) => *ret,
+                        _ => panic!("Not a closure"),
+                    },
+                    _ => panic!("Not a closure"),
+                },
                 other => panic!("Apply on non-closure: {other:?}"),
             },
             // LIR::BulkApply(func, _) => func.type_of(),

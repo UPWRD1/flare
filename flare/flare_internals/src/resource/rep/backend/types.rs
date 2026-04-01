@@ -11,6 +11,7 @@ pub enum LIRType {
     Union(Intern<[Self]>),
     Closure(Intern<[Self]>, Intern<Self>),
     ClosureEnv(Intern<Self>, Intern<[Self]>),
+    Extern(Intern<Self>),
 }
 
 impl LIRType {
@@ -68,6 +69,8 @@ impl LIRType {
         if let Self::Closure(args, ret) = self {
             (args.to_vec(), *ret)
         } else if let Self::ClosureEnv(t, _) = self {
+            t.destructure_closure()
+        } else if let Self::Extern(t) = self {
             t.destructure_closure()
         } else {
             panic!("Not a closure: {self:?}")

@@ -148,16 +148,7 @@ impl ClosureConvert {
                 //     LIR::BulkApply(Box::new(item_ref), vec![])
                 // }
             }
-            ir::IR::Extern(n, t) => {
-                LIR::Extern(n, lower_ty(&t))
-                // LIR::FuncRef(AppType::Extern(n, lower_ty(&t)))
-                // let extern_ref = LIR::FuncRef(AppType::Extern(n, lower_ty(&t)));
-                // if self.is_in_app {
-                //     extern_ref
-                // } else {
-                //     LIR::BulkApply(Box::new(extern_ref), vec![])
-                // }
-            }
+            ir::IR::Extern(n, t) => LIR::Extern(n, LIRType::Extern(lower_ty(&t).into())),
             ir::IR::If(c, t, e) => LIR::r#if(
                 self.convert(*c, env),
                 self.convert(*t, env),
@@ -277,10 +268,9 @@ fn convert(ir: ir::IR, id: ItemId, conversion: &mut ClosureConvert) -> ClosureCo
             }
         })
         .collect();
-    let ret_ty = lower_ty(&ir.type_of());
-    // dbg!(ret_ty);
+    // let ret_ty = lower_ty(&ir.type_of());
     let body = conversion.convert(ir, &env);
-    // let ret_ty = body.type_of();
+    let ret_ty = body.type_of();
     ClosureConvertOut {
         item: Item {
             id,

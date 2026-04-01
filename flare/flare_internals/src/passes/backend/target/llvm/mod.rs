@@ -1,4 +1,7 @@
-use std::cell::RefCell;
+use std::{
+    cell::RefCell,
+    hash::{Hash, Hasher},
+};
 
 use inkwell::{
     AddressSpace,
@@ -14,11 +17,12 @@ use inkwell::{
     types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::{
         AggregateValueEnum, AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue,
-        BasicValueEnum, FloatValue, FunctionValue, PointerValue,
+        BasicValueEnum, FunctionValue, PointerValue,
     },
 };
+use internment::Intern;
 use itertools::Itertools;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{
     passes::backend::{lir::ClosureConvertOut, target::Target as FlareTarget},
@@ -98,11 +102,13 @@ impl LLVMTypeConvert for LIRType {
         let ty: &dyn AnyType = match self {
             Self::Int => &context.context.i32_type(),
             Self::Bool => &context.context.bool_type(),
-            Self::Float => &context.context.f32_type(),
-            Self::String => todo!(),
+            // Self::Float => &context.context.f32_type(),
+            Self::Float => &context.context.i32_type(),
+            Self::String => &context.context.ptr_type(AddressSpace::default()),
             Self::Unit => &context.context.i8_type(),
             Self::Struct(_) | Self::Union(_) => panic!(), //&context.context.ptr_type(AddressSpace::default()),
             Self::Closure(intern, intern1) => &context.context.ptr_type(AddressSpace::default()),
+            Self::Extern(t) => &t.convert(context) as &dyn AnyType,
 
             Self::ClosureEnv(intern, intern1) => panic!(), // &context.context.ptr_type(AddressSpace::default()),
         };
@@ -324,11 +330,26 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 }
             }
             LIR::Int(i) => self.context.i32_type().const_int(i as u64, false).into(),
-            LIR::Str(s) => self.context.const_string(s.as_bytes(), false).into(),
+            LIR::Str(s) => {
+                let mut hash = FxHasher::default();
+                s.hash(&mut hash);
+                let name = hash.finish().to_string();
+                let ptr = self
+                    .builder
+                    .build_global_string_ptr(&s, &name)
+                    .unwrap()
+                    .as_pointer_value();
+                ptr.into()
+            }
             LIR::Unit => self.context.i8_type().const_int(0u64, false).into(),
             LIR::Float(f) => {
-                let float_type = self.context.f32_type();
-                float_type.const_float(f.0 as f64).into()
+                // let float_type = self.context.f32_type();
+                // float_type.const_float(f.0 as f64).into()
+
+                self.context
+                    .i32_type()
+                    .const_int(f.trunc() as u64, false)
+                    .into()
             }
             LIR::ClosureBuild(fun_ty, id, ref vars) => {
                 let name = Self::make_func_name(&id);
@@ -482,7 +503,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                     .as_basic_value_enum()
             }
 
-            LIR::Extern(intern, lirtype) => todo!(),
+            LIR::Extern(name, lirtype) => self.codegen_extern(name, lirtype),
             LIR::BinOp(left, bin_op, right) => self.codegen_binop(*left, bin_op, *right),
             LIR::If(c, t, o) => {
                 let cond_value = self.codegen_ir(*c, None).into_int_value();
@@ -922,14 +943,39 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         arg_f: impl Fn(T) -> BasicValueEnum<'ir>,
     ) -> BasicValueEnum<'ir> {
         let fun_ty = fun.get_fn_ty();
-        let (fun_ptr, the_fun_ty, args, passmode) =
-            if let LIRType::ClosureEnv(fpointer_ty, _) = fun_ty {
-                self.handle_closure_app(fun, arg_lirs, arg_f, fun_ty, fpointer_ty)
-            } else {
-                self.handle_normal_app(fun, arg_lirs, arg_f, fun_ty)
-            };
+        dbg!(fun_ty);
 
-        self.make_call(fun_ptr, the_fun_ty, args, &passmode)
+        if let LIRType::ClosureEnv(fpointer_ty, _) = fun_ty {
+            let (fun_ptr, the_fun_ty, args, passmode) =
+                self.handle_closure_app(fun, arg_lirs, arg_f, fun_ty, fpointer_ty);
+
+            self.make_call(fun_ptr, the_fun_ty, args, &passmode)
+        } else if let LIRType::Extern(inner_ty) = fun_ty {
+            println!("Here!");
+            let inner_fun_ptr = {
+                let (outer_fun_ptr, outer_fun_ty, outer_args, outer_passmode) = self
+                    .handle_normal_app(
+                        fun,
+                        vec![],
+                        |_: LIR| unreachable!("Shouldn't happen"),
+                        fun_ty,
+                    );
+
+                self.make_call(outer_fun_ptr, outer_fun_ty, outer_args, &outer_passmode)
+                    .into_pointer_value()
+            };
+            {
+                let (inner_arg_tys, inner_ret) = inner_ty.destructure_closure();
+                let (inner_fun_ty, passmode) = self.make_func_type(inner_ret, &inner_arg_tys);
+                let args = arg_lirs.into_iter().map(arg_f).collect_vec();
+                self.make_call(inner_fun_ptr, inner_fun_ty, args, &passmode)
+            }
+        } else {
+            let (fun_ptr, the_fun_ty, args, passmode) =
+                self.handle_normal_app(fun, arg_lirs, arg_f, fun_ty);
+
+            self.make_call(fun_ptr, the_fun_ty, args, &passmode)
+        }
     }
 
     fn handle_closure_app<T>(
@@ -1060,6 +1106,17 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         }
     }
 
+    fn codegen_extern(&self, name: Intern<String>, fun_ty: LIRType) -> BasicValueEnum<'ir> {
+        // dbg!(fun_ty);
+        let (arg_tys, ret) = fun_ty.destructure_closure();
+        let (ty, _) = self.make_func_type(ret, &arg_tys);
+        let func_value = self.module.add_function(&name, ty, Some(Linkage::External));
+        func_value
+            .as_global_value()
+            .as_pointer_value()
+            .as_basic_value_enum()
+    }
+
     fn generate_main_func(&self, flare_entry_id: &ItemId) -> AnyValueEnum<'ir> {
         let name = "main";
         let (ty, passmode) = self.make_func_type(LIRType::Int, &[]);
@@ -1075,16 +1132,23 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             .builder
             .build_call(flare_entry_fn, &[], "calltmp")
             .expect("LLVM failed to build call expression");
-        let call_val = call.try_as_basic_value().basic();
-        let cast = self.builder.build_float_to_signed_int(
-            call_val.map(|v| v.into_float_value()).unwrap(),
-            LIRType::Int.convert(self).into_int_type(),
-            "conversion",
-        );
+        let call_val = call.try_as_basic_value().basic().unwrap();
+        let final_val = if call_val.is_float_value() {
+            self.builder
+                .build_float_to_signed_int(
+                    call_val.into_float_value(),
+                    LIRType::Int.convert(self).into_int_type(),
+                    "conversion",
+                )
+                .unwrap()
+                .as_basic_value_enum()
+        } else {
+            call_val
+        };
 
         let ret = self
             .builder
-            .build_return(cast.as_ref().map(|v| v as &dyn BasicValue).ok())
+            .build_return(Some(&final_val as &dyn BasicValue))
             .unwrap();
 
         if !fn_val.verify(true) {
@@ -1156,10 +1220,10 @@ impl FlareTarget for LLVM {
         // Then run a pipeline using Clang-style pass pipeline strings
         let options = PassBuilderOptions::create();
 
-        llvm_ctx
-            .module
-            .run_passes("default<O2>", &llvm_ctx.machine, options)
-            .unwrap();
+        // llvm_ctx
+        //     .module
+        //     .run_passes("default<O2>", &llvm_ctx.machine, options)
+        //     .unwrap();
 
         let bit = llvm_ctx.module.write_bitcode_to_memory();
         // let o = bit.create_object_file().unwrap();
