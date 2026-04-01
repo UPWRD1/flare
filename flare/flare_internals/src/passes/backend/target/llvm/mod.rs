@@ -943,41 +943,15 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         arg_f: impl Fn(T) -> BasicValueEnum<'ir>,
     ) -> BasicValueEnum<'ir> {
         let fun_ty = fun.get_fn_ty();
-        dbg!(fun_ty);
-
-        if let LIRType::ClosureEnv(fpointer_ty, _) = fun_ty {
-            let (fun_ptr, the_fun_ty, args, passmode) =
-                self.handle_closure_app(fun, arg_lirs, arg_f, fun_ty, fpointer_ty);
-
-            self.make_call(fun_ptr, the_fun_ty, args, &passmode)
-        } else if let LIRType::Extern(inner_ty) = fun_ty {
-            println!("Here!");
-            let inner_fun_ptr = {
-                let (outer_fun_ptr, outer_fun_ty, outer_args, outer_passmode) = self
-                    .handle_normal_app(
-                        fun,
-                        vec![],
-                        |_: LIR| unreachable!("Shouldn't happen"),
-                        fun_ty,
-                    );
-
-                self.make_call(outer_fun_ptr, outer_fun_ty, outer_args, &outer_passmode)
-                    .into_pointer_value()
+        let (fun_ptr, the_fun_ty, args, passmode) =
+            if let LIRType::ClosureEnv(fpointer_ty, _) = fun_ty {
+                self.handle_closure_app(fun, arg_lirs, arg_f, fun_ty, fpointer_ty)
+            } else {
+                self.handle_normal_app(fun, arg_lirs, arg_f, fun_ty)
             };
-            {
-                let (inner_arg_tys, inner_ret) = inner_ty.destructure_closure();
-                let (inner_fun_ty, passmode) = self.make_func_type(inner_ret, &inner_arg_tys);
-                let args = arg_lirs.into_iter().map(arg_f).collect_vec();
-                self.make_call(inner_fun_ptr, inner_fun_ty, args, &passmode)
-            }
-        } else {
-            let (fun_ptr, the_fun_ty, args, passmode) =
-                self.handle_normal_app(fun, arg_lirs, arg_f, fun_ty);
 
-            self.make_call(fun_ptr, the_fun_ty, args, &passmode)
-        }
+        self.make_call(fun_ptr, the_fun_ty, args, &passmode)
     }
-
     fn handle_closure_app<T>(
         &self,
         closure: LIR,
