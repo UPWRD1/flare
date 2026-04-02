@@ -1,4 +1,4 @@
-default: show
+default: llvm
     
 build: 
     cargo build -p flarec
@@ -14,13 +14,14 @@ show emit='llvm':
     bat examples/ntest.{{emit}}   
     
 full:
-    cargo run -p flarec  -- examples/ntest.flr examples/option.flr -o examples/ntest.bc --emit llvm
-    llc -filetype=obj examples/ntest.bc -o examples/ntest.o
-    objdump -DS examples/ntest.o
-    clang examples/ntest.o -o examples/ntest 
-    ./examples/ntest
-    echo $?
+    cargo run -p flarec  -- examples/ntest.flr examples/option.flr examples/c.flr -o examples/ntest.bc --emit
 
+llvm:
+    cargo run -p flarec  -- examples/ntest.flr examples/option.flr examples/c.flr -o examples/ntest --emit 'llvm'
+    clang -c stdlib/c_lib.c -Wall -o stdlib/c_lib.o
+    clang examples/ntest.bc stdlib/c_lib.o -fsanitize=address -Wall -o ntest
+    ./ntest
+     
 compile path:
     cargo run -p flarec -- {{path}} -o {{path}}
 

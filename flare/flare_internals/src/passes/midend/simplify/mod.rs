@@ -540,7 +540,7 @@ impl Simplifier {
 
     fn simplify_local(&mut self, var: Var, defn: IR, body: IR, ctx: &mut SimplifierContext) -> IR {let occ = 
 self.occs.lookup_var(&var) ;
-dbg!(&occ);
+// dbg!(&occ);
        match occ {
             Occurrence::Dead => {
                 self.locals_inlined += 1;

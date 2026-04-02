@@ -73,6 +73,7 @@ impl LIRType {
         } else if let Self::Extern(t) = self {
             t.destructure_closure()
         } else {
+            // (vec![], self)
             panic!("Not a closure: {self:?}")
         }
     }

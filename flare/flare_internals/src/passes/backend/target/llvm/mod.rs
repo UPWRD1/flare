@@ -94,25 +94,33 @@ fn make_target_machine() -> TargetMachine {
 }
 
 pub trait LLVMTypeConvert {
-    fn convert<'ctx: 'ir, 'ir>(&self, context: &LLVMContext<'ctx>) -> BasicTypeEnum<'ir>;
+    fn convert<'ctx: 'ir, 'ir>(&self, context: &LLVMContext<'ctx>) -> Option<BasicTypeEnum<'ir>>;
 }
 
 impl LLVMTypeConvert for LIRType {
-    fn convert<'ctx: 'ir, 'ir>(&self, context: &LLVMContext<'ctx>) -> BasicTypeEnum<'ir> {
-        let ty: &dyn AnyType = match self {
-            Self::Int => &context.context.i32_type(),
-            Self::Bool => &context.context.bool_type(),
-            // Self::Float => &context.context.f32_type(),
-            Self::Float => &context.context.i32_type(),
-            Self::String => &context.context.ptr_type(AddressSpace::default()),
-            Self::Unit => &context.context.i8_type(),
-            Self::Struct(_) | Self::Union(_) => panic!(), //&context.context.ptr_type(AddressSpace::default()),
-            Self::Closure(intern, intern1) => &context.context.ptr_type(AddressSpace::default()),
-            Self::Extern(t) => &t.convert(context) as &dyn AnyType,
+    fn convert<'ctx: 'ir, 'ir>(&self, context: &LLVMContext<'ctx>) -> Option<BasicTypeEnum<'ir>> {
+        match self {
+            Self::Unit => None,
+            Self::Extern(t) => t.convert(context),
+            t => BasicTypeEnum::try_from({
+                let t: &dyn AnyType = match t {
+                    Self::Int => &context.context.i32_type(),
+                    Self::Bool => &context.context.bool_type(),
+                    // Self::Float => &context.context.f32_type(),
+                    Self::Float => &context.context.i32_type(),
+                    Self::String => &context.context.ptr_type(AddressSpace::default()),
+                    Self::Struct(_) | Self::Union(_) => panic!(), //&context.context.ptr_type(AddressSpace::default()),
+                    Self::Closure(intern, intern1) => {
+                        &context.context.ptr_type(AddressSpace::default())
+                    }
 
-            Self::ClosureEnv(intern, intern1) => panic!(), // &context.context.ptr_type(AddressSpace::default()),
-        };
-        BasicTypeEnum::try_from(ty.as_any_type_enum()).unwrap()
+                    Self::ClosureEnv(intern, intern1) => panic!(), // &context.context.ptr_type(AddressSpace::default()),
+                    _ => unreachable!("Should have been caught"),
+                };
+                t.as_any_type_enum()
+            })
+            .ok(),
+        }
     }
 }
 
@@ -129,7 +137,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         match ty {
             LIRType::Union(variants) => variants
                 .iter()
-                .map(|v| self.convert_aggregate_ty(*v))
+                .filter_map(|v| self.convert_aggregate_ty(*v))
                 .collect(),
             _ => panic!("Not a union {ty:?}"),
         }
@@ -140,65 +148,71 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             let the_variant = variants[idx];
             let variant_ty = self.convert_aggregate_ty(the_variant);
 
-            self.context
-                .struct_type(&[self.context.i8_type().into(), variant_ty], true)
-                .into()
+            let field_types = if let Some(variant_ty) = variant_ty {
+                vec![self.context.i8_type().into(), variant_ty]
+            } else {
+                vec![self.context.i8_type().into()]
+            };
+
+            self.context.struct_type(&field_types, true).into()
         } else {
             panic!("Not a union: {ty:?}")
         }
     }
 
-    fn convert_aggregate_ty(&self, ty: LIRType) -> BasicTypeEnum<'ir> {
+    fn convert_aggregate_ty(&self, ty: LIRType) -> Option<BasicTypeEnum<'ir>> {
         match ty {
-            LIRType::Struct(fields) => self
-                .context
-                .struct_type(
-                    fields
-                        .iter()
-                        .map(|f| self.convert_aggregate_ty(*f))
-                        .collect_vec()
-                        .as_slice(),
-                    false,
-                )
-                .into(),
+            LIRType::Struct(fields) => Some(
+                self.context
+                    .struct_type(
+                        fields
+                            .iter()
+                            .filter_map(|f| self.convert_aggregate_ty(*f))
+                            .collect_vec()
+                            .as_slice(),
+                        false,
+                    )
+                    .into(),
+            ),
             LIRType::ClosureEnv(..) => self.convert_aggregate_ty(ty.closure_to_struct_rep()),
             LIRType::Union(variants) => {
                 let max_variant_size_bytes = self
                     .create_union_variants(ty)
                     .iter()
                     .map(|t| (self.get_ty_size(*t) / 8) as u32)
-                    .max()
-                    .unwrap();
+                    .max()?;
 
-                self.context
-                    .struct_type(
-                        &[
-                            self.context.i8_type().as_basic_type_enum(),
-                            self.context
-                                .i8_type()
-                                .array_type(max_variant_size_bytes)
-                                .as_basic_type_enum(),
-                        ],
-                        true,
-                    )
-                    .into()
+                Some(
+                    self.context
+                        .struct_type(
+                            &[
+                                self.context.i8_type().as_basic_type_enum(),
+                                self.context
+                                    .i8_type()
+                                    .array_type(max_variant_size_bytes)
+                                    .as_basic_type_enum(),
+                            ],
+                            true,
+                        )
+                        .into(),
+                )
             }
             // LIRType::Closure(_, ret) => self.convert_struct_ty(*ret),
             _ => ty.convert(self),
         }
     }
+
     fn make_func_type(&self, ret: LIRType, args: &[LIRType]) -> (FunctionType<'ir>, PassMode<'ir>) {
+        let mut args = args
+            .iter()
+            .filter_map(|arg| self.convert_aggregate_ty(*arg))
+            .map(BasicMetadataTypeEnum::from)
+            .collect_vec();
+
         if ret.is_alloca() {
-            let sret_pointer = ret.convert(self);
-            let sret_ty = self.convert_aggregate_ty(ret);
+            let sret_pointer = ret.convert(self).unwrap();
+            let sret_ty = self.convert_aggregate_ty(ret).unwrap();
             let void_ty = self.context.void_type();
-            let mut args = args
-                .iter()
-                .map(|arg| {
-                    let bty = self.convert_aggregate_ty(*arg);
-                    BasicMetadataTypeEnum::from(bty)
-                })
-                .collect_vec();
             args.insert(
                 0,
                 BasicMetadataTypeEnum::PointerType(sret_pointer.into_pointer_type()),
@@ -206,22 +220,10 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             // dbg!(ret);
             (void_ty.fn_type(&args, false), PassMode::Sret(sret_ty))
         } else {
-            let ret_ty = self.convert_aggregate_ty(ret);
+            let ret_ty = self.convert_aggregate_ty(ret).unwrap();
 
             // dbg!(ret, ret_ty);
-            (
-                ret_ty.fn_type(
-                    &args
-                        .iter()
-                        .map(|arg| {
-                            let bty = self.convert_aggregate_ty(*arg);
-                            BasicMetadataTypeEnum::from(bty)
-                        })
-                        .collect_vec(),
-                    false,
-                ),
-                PassMode::Normal,
-            )
+            (ret_ty.fn_type(&args, false), PassMode::Normal)
         }
     }
 
@@ -355,7 +357,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 let name = Self::make_func_name(&id);
                 let closure_ty = ir.get_fn_ty();
 
-                let closure_struct_ty = self.convert_aggregate_ty(closure_ty);
+                let closure_struct_ty = self.convert_aggregate_ty(closure_ty).unwrap();
                 if closure_ty.is_alloca() {
                     // dbg!(closure_ty);
                     // dbg!(closure_struct_ty);
@@ -377,9 +379,11 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                         .build_store(function_field, item_fn)
                         .expect("Could not store closure func");
 
-                    let env_struct_ty = self.convert_aggregate_ty(
-                        closure_ty.closure_to_struct_rep().into_struct_fields()[1],
-                    );
+                    let env_struct_ty = self
+                        .convert_aggregate_ty(
+                            closure_ty.closure_to_struct_rep().into_struct_fields()[1],
+                        )
+                        .unwrap();
 
                     for (idx, var) in vars.iter().enumerate() {
                         let val = self
@@ -424,9 +428,11 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                         .as_global_value()
                         .as_pointer_value()
                         .as_basic_value_enum();
-                    let env_struct_ty = self.convert_aggregate_ty(
-                        closure_ty.closure_to_struct_rep().into_struct_fields()[1],
-                    );
+                    let env_struct_ty = self
+                        .convert_aggregate_ty(
+                            closure_ty.closure_to_struct_rep().into_struct_fields()[1],
+                        )
+                        .unwrap();
                     let env_vals = vars
                         .iter()
                         .enumerate()
@@ -475,7 +481,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 let v = if var.ty.is_alloca() {
                     let local_slot = self
                         .builder
-                        .build_alloca(self.convert_aggregate_ty(var.ty), "local_alloca")
+                        .build_alloca(self.convert_aggregate_ty(var.ty).unwrap(), "local_alloca")
                         .expect("Could not alloca for local");
                     self.codegen_ir(*def, Some(local_slot))
                 } else {
@@ -549,7 +555,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         idx: usize,
         body: &LIR,
     ) -> BasicValueEnum<'ir> {
-        let union_ty = self.convert_aggregate_ty(ty);
+        let union_ty = self.convert_aggregate_ty(ty).unwrap();
         if ty.is_alloca() {
             let union_ptr = self.build_alloca(union_ty, out_slot);
             let variant_instance_ty = self.create_variant_instance(ty, idx);
@@ -608,9 +614,9 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         if let LIR::Case(ty, scrutinee, branches) = ir {
             let the_func = self.current_func.borrow().unwrap();
             let scrutinee_ty = scrutinee.type_of();
-            let union_ty = self.convert_aggregate_ty(scrutinee_ty);
+            let union_ty = self.convert_aggregate_ty(scrutinee_ty).unwrap();
             let scrutinee_bv = self.codegen_ir(*scrutinee.clone(), None);
-            let ret_ty = self.convert_aggregate_ty(ty);
+            let ret_ty = self.convert_aggregate_ty(ty).unwrap();
 
             let merge_block = self.context.append_basic_block(the_func, "case_merge");
             // dbg!(scrutinee_bv);
@@ -763,8 +769,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 let fn_gep = self
                     .builder
                     .build_struct_gep(
-                        // self.context.ptr_type(AddressSpace::default()),
-                        self.convert_aggregate_ty(obj_ty), // actual struct type
+                        self.convert_aggregate_ty(obj_ty).unwrap(), // actual struct type
                         obj_ptr,
                         0,
                         "gep_closure_func",
@@ -782,12 +787,12 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 let env_ty = obj_ty.into_struct_fields().into_iter().nth(1).unwrap();
 
                 let field_ty = env_ty.into_struct_fields().into_iter().nth(idx).unwrap();
-                let env_ty = self.convert_aggregate_ty(env_ty);
-                // dbg!(field_ty);
+                let env_ty = self.convert_aggregate_ty(env_ty).unwrap();
+
                 let env_gep = self
                     .builder
                     .build_struct_gep(
-                        self.convert_aggregate_ty(obj_ty),
+                        self.convert_aggregate_ty(obj_ty).unwrap(),
                         obj_ptr,
                         1u32,
                         "gep_closure_env",
@@ -800,7 +805,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
                 self.builder
                     .build_load(
-                        self.convert_aggregate_ty(field_ty),
+                        self.convert_aggregate_ty(field_ty).unwrap(),
                         capt_gep,
                         "load_closure_capt",
                     )
@@ -828,7 +833,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
     fn codegen_struct(&self, ir: LIR, out_slot: Option<PointerValue<'ctx>>) -> BasicValueEnum<'ir> {
         let struct_lirty = ir.type_of();
-        let struct_ty = self.convert_aggregate_ty(struct_lirty);
+        let struct_ty = self.convert_aggregate_ty(struct_lirty).unwrap();
         if let LIR::Struct(fields) = ir {
             if struct_lirty.is_alloca() {
                 // dbg!(&ir.type_of());
@@ -868,7 +873,10 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
     fn codegen_field(&self, obj: &LIR, idx: usize) -> BasicValueEnum<'ir> {
         // dbg!(&obj);
-        let struct_ty = self.convert_aggregate_ty(obj.type_of()).into_struct_type();
+        let struct_ty = self
+            .convert_aggregate_ty(obj.type_of())
+            .unwrap()
+            .into_struct_type();
         let obj = self.codegen_ir(obj.clone(), None);
         if obj.is_pointer_value() {
             let obj = obj.into_pointer_value();
@@ -976,7 +984,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         if closure_ty.is_alloca() {
             let closure_and_env_pointer = self.codegen_ir(closure, None).into_pointer_value();
 
-            let closure_struct_ty = self.convert_aggregate_ty(closure_ty);
+            let closure_struct_ty = self.convert_aggregate_ty(closure_ty).unwrap();
 
             let fun_gep = self
                 .builder
@@ -1115,7 +1123,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             self.builder
                 .build_float_to_signed_int(
                     call_val.into_float_value(),
-                    LIRType::Int.convert(self).into_int_type(),
+                    LIRType::Int.convert(self).unwrap().into_int_type(),
                     "conversion",
                 )
                 .unwrap()
