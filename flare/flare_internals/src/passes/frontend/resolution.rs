@@ -126,7 +126,7 @@ impl TypeFixer {
             CstType::User(t, g) => {
                 unreachable!("Encountered user type {}[{g:?}] after resolution", t.0)
             }
-
+            CstType::Volatile(v) => t.convert(Type::Volatile(self.helper(v))),
             CstType::GenericApp(l, r) => {
                 // Should have been reduced by analyze_type; attempt recovery
                 // let reduced = self.analyze_type(t); // re-run beta reduction
@@ -394,6 +394,10 @@ impl Resolver {
                     panic!("Not a generic function")
                     // t.modify(Type::TypeApp(l, r))
                 }
+            }
+            CstType::Volatile(v) => {
+                let v = self.analyze_type(v);
+                t.convert(CstType::Volatile(v))
             }
             CstType::GenericFun(l, r) => {
                 let l = self.analyze_type(l);
@@ -802,7 +806,14 @@ impl Resolver {
         // self.env.debug();
 
         if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name.0), &expr.1) {
-            expr.convert(Expr::Item(e, Kind::Func))
+            if let Ok(Item {
+                kind: ItemKind::Extern { .. },
+            }) = self.env.value(NodeIndex::from(e.0 as u32))
+            {
+                expr.convert(Expr::Item(e, Kind::Extern(name.0)))
+            } else {
+                expr.convert(Expr::Item(e, Kind::Func))
+            }
         } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &expr.1) {
             expr.convert(Expr::Item(e, Kind::Ty))
         } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Package(name.0), &expr.1) {

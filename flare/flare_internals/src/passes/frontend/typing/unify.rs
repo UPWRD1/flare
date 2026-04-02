@@ -53,6 +53,7 @@ impl Solver<'_> {
             Type::Prod(row) => ty.modify(Type::Prod(self.normalize_row(row))),
             Type::Sum(row) => ty.modify(Type::Sum(self.normalize_row(row))),
             Type::TypeFun(v, r) => self.normalize_ty(r),
+            Type::Volatile(v) => ty.modify(Type::Volatile(self.normalize_ty(v))),
             _ => todo!("{ty:?}"),
         }
     }
@@ -97,6 +98,16 @@ impl Solver<'_> {
             (Type::Particle(p), Type::Particle(q)) if p == q => Ok(()),
 
             (Type::Var(a), Type::Var(b)) if a.0 == b.0 => Ok(()),
+
+            (lhs_t, Type::Func(unit, rhs_t)) if matches!(*unit.0, Type::Unit) => {
+                self.unify_ty_ty(left, rhs_t).map_err(|kind| match kind {
+                    UnificationError::TypeNotEqual(a_ret, b_ret) => {
+                        UnificationError::TypeNotEqual(left, right.modify(Type::Func(unit, rhs_t)))
+                    }
+                    kind => kind,
+                })
+            }
+
             (Type::Func(a_arg, a_ret), Type::Func(b_arg, b_ret)) => {
                 self.unify_ty_ty(a_arg, b_arg)?;
                 self.unify_ty_ty(a_ret, b_ret).map_err(|kind| match kind {
@@ -107,6 +118,7 @@ impl Solver<'_> {
                     kind => kind,
                 })
             }
+
             (Type::Unifier(a), Type::Unifier(b)) => self
                 .tables
                 .unification_table
@@ -151,6 +163,9 @@ impl Solver<'_> {
                 })),
                 row,
             ),
+            (Type::Volatile(l), Type::Volatile(r)) => self.unify_ty_ty(l, r),
+
+            (nv, Type::Volatile(v)) => Ok(()),
 
             (_, _) => {
                 dbg!(left, right);

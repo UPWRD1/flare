@@ -287,7 +287,7 @@ impl<S: Syntax> Environment<S> {
                     panic!("Path is invalid")
                 };
 
-                if let QualifierFragment::Package(_) = left {
+                if let QualifierFragment::Package(name) = left {
                     if let Some(exports) = package_to_exports.get(left) {
                         if let Some(n) = exports.iter().find(|x| x.0.is(right)) {
                             n.1
@@ -295,7 +295,7 @@ impl<S: Syntax> Environment<S> {
                             panic!("import not found, {left}.{right}")
                         }
                     } else {
-                        panic!("Package has no exports")
+                        panic!("Package {name} has no exports")
                     }
                 } else {
                     panic!("Import path should be a package or subpackage")

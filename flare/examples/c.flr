@@ -1,0 +1,41 @@
+package C =
+    # I/O
+extern shim_printf         : str -> !num
+extern shim_printf_str     : str -> !num
+
+extern shim_fprintf        : num -> str -> !num
+
+# Input (returns a buffer handle, 0 = EOF)
+extern shim_getline        : num -> !num           # no args
+extern shim_fgetline       : num -> !num
+
+# Buffer ops
+extern shim_buf_to_str : num -> !str
+extern shim_buffer_length    : num -> !num
+extern shim_free_buffer      : num -> !unit
+
+# Memory
+extern shim_malloc         : num -> !num
+extern shim_free_buffer    : num -> unit
+
+# Files
+extern shim_fopen          : str -> str -> !num
+extern shim_fclose         : num -> !num
+extern shim_fwrite         : num -> str -> num -> !num
+extern shim_feof           : num -> !num
+
+# Standard handles
+extern shim_stdin          :  !num
+extern shim_stdout         : !num
+extern shim_stderr         : !num
+
+pub let puts s : str -> !num =
+    shim_printf s
+
+pub let get_line : unit -> !str =
+    with File.open("file.txt") as f:
+    
+    let stdin_h = shim_stdin in
+    let buf_h = shim_getline stdin_h in
+    let s = shim_buf_to_str(buf_h)
+   in s

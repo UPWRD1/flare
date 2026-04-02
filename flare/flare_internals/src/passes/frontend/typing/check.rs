@@ -56,7 +56,7 @@ impl Solver<'_> {
                     constraints.push(Constraint::TypeEqual(
                         Provenance::UnexpectedFun(id),
                         the_ty,
-                        the_ty.modify(Type::Func(arg, ret)),
+                        arg.modify(Type::Func(arg, ret)),
                     ));
 
                     (arg, ret)

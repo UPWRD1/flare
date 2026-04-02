@@ -110,8 +110,8 @@ impl<'a> Instantiate<'a> {
                 }
                 Type::Prod(row) => Type::Prod(self.row(row)),
                 Type::Sum(row) => Type::Sum(self.row(row)),
-                Type::Label(label, ty) => Type::Label(label, ty),
-
+                Type::Label(label, ty) => Type::Label(label, self.ty(ty)),
+                Type::Volatile(v) => Type::Volatile(self.ty(v)),
                 _ => todo!("{:?}", ty),
             }
             .into()
