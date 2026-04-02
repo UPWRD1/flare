@@ -69,7 +69,8 @@ package Main =
         if x == 0 then 1 else x * factorial (x - 1)
 
     let main: !num =
-         puts "Hello World\n"    
+         let _ = puts "Hello World"in
+         puts "Goodbye"
         # let a = {x = 2, y = "3", z= 3} in a.y 
         # let val =  Some (new_Wrapper 10) in
         # let val = |None | in

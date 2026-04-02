@@ -1,4 +1,7 @@
 item #0: is
-[extern_puts](
-"Hello World\n")
+let $0:num! = [extern_puts](
+  "Hello World\n")
+in
+  [extern_puts](
+  "Goodbye")
 end item #0

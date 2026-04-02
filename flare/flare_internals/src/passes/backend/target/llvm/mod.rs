@@ -1084,7 +1084,11 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         // dbg!(fun_ty);
         let (arg_tys, ret) = fun_ty.destructure_closure();
         let (ty, _) = self.make_func_type(ret, &arg_tys);
-        let func_value = self.module.add_function(&name, ty, Some(Linkage::External));
+        let func_value = if let Some(f) = self.module.get_function(&name) {
+            f
+        } else {
+            self.module.add_function(&name, ty, Some(Linkage::External))
+        };
         func_value
             .as_global_value()
             .as_pointer_value()

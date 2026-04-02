@@ -184,8 +184,8 @@ impl IR {
 
             Self::Fun(arg, body) => IRType::fun(arg.ty.clone(), body.type_of()),
 
-            Self::App(fun, arg) => {
-                if let IRType::Fun(fun_arg_ty, ret_ty) = fun.type_of() {
+            Self::App(fun, arg) => match fun.type_of() {
+                IRType::Fun(fun_arg_ty, ret_ty) => {
                     if arg.type_of() != *fun_arg_ty {
                         unreachable!(
                             "Function applied to wrong argument type. Expected {}, found {}\n fun: {}\narg: {}",
@@ -196,12 +196,31 @@ impl IR {
                         );
                     }
                     *ret_ty
-                } else if let Self::Item(t, _) = &**fun {
-                    t.clone().into_ret_ty()
-                } else {
-                    unreachable!("IR used non-function type as a function: {fun}")
                 }
-            }
+                IRType::Volatile(t) => {
+                    if let IRType::Fun(fun_arg_ty, ret_ty) = *t {
+                        if arg.type_of() != *fun_arg_ty {
+                            unreachable!(
+                                "Function applied to wrong argument type. Expected {}, found {}\n fun: {}\narg: {}",
+                                fun_arg_ty,
+                                arg.type_of(),
+                                fun,
+                                arg
+                            );
+                        }
+                        *ret_ty
+                    } else {
+                        unreachable!("IR used non-function type as a function: {fun}")
+                    }
+                }
+                _ => {
+                    if let Self::Item(t, _) = &**fun {
+                        t.clone().into_ret_ty()
+                    } else {
+                        unreachable!("IR used non-function type as a function: {fun}")
+                    }
+                }
+            },
 
             // These should all be numbers
             Self::Bin(l, op, r) => Self::type_of_binop(l, *op, r),
@@ -393,6 +412,9 @@ impl IR {
     }
 
     pub fn is_trivial(&self) -> bool {
+        if self.type_of().is_volatile() {
+            return false;
+        }
         match self {
             Self::Var(_)
             | Self::Num(_)

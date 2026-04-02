@@ -73,7 +73,16 @@ impl IRType {
     }
 
     pub fn is_volatile(&self) -> bool {
-        matches!(self, Self::Volatile(_))
+        match self {
+            Self::Volatile(_) => true,
+            Self::Fun(_, t) => t.is_volatile(),
+            Self::TyFun(_, t) => t.is_volatile(),
+            Self::Prod(r) | Self::Sum(r) => match r {
+                Row::Open(type_var) => todo!(),
+                Row::Closed(irtypes) => irtypes.iter().any(|c| c.is_volatile()),
+            },
+            _ => false,
+        }
     }
 }
 

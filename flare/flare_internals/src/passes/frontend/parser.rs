@@ -972,7 +972,7 @@ pub fn parse(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
             .into());
         }
     };
-dbg!(&tokens);
+// dbg!(&tokens);
     let packg: Result<Vec<Package<UntypedCst>>, CompilerErr> = match parser(&make_input)
         .parse(make_input(
             SimpleSpan::new(file.id, 0..input.len()),

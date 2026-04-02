@@ -149,6 +149,9 @@ impl Solver<'_> {
                 .substitute_row(row)
                 .map(Type::Sum)
                 .map(|t| the_ty.convert(t)),
+            Type::Volatile(v) => self
+                .substitute_ty(v)
+                .map(|t| the_ty.convert(Type::Volatile(t))),
 
             _ => todo!("{the_ty:?}"),
         }

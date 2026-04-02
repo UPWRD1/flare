@@ -22,8 +22,7 @@ enum Occurrence {
     /// Appears many times
     Many,
 
-    /// Is volatile
-    Volatile,
+    Volatile
 }
 
 #[derive(Default, Debug, Clone)]
@@ -35,6 +34,15 @@ impl Occurrences {
     fn with_var_once(var: VarId) -> Self {
         let mut vars = FxHashMap::default();
         vars.insert(var, Occurrence::Once);
+        Self { vars }
+        // Self {
+        // vars: FxHashMap::from_iter([(v, Occurrence::Once)]),
+        // }
+    }
+
+fn with_volatile(var: VarId) -> Self {
+        let mut vars = FxHashMap::default();
+        vars.insert(var, Occurrence::Volatile);
         Self { vars }
         // Self {
         // vars: FxHashMap::from_iter([(v, Occurrence::Once)]),
@@ -80,6 +88,8 @@ impl Occurrences {
                 .and_modify(|self_occ| {
                     *self_occ = match (*self_occ, occ) {
                         (Occurrence::Dead, occ) | (occ, Occurrence::Dead) => occ,
+
+(Occurrence::Volatile, occ) | (occ, Occurrence::Volatile) => Occurrence::Volatile,
                         (_, _) => Occurrence::Many,
                     };
                 })
@@ -232,9 +242,13 @@ impl OccuranceAnalyzer {
     ) -> (FxHashSet<VarId>, Occurrences) {
         match ir {
             IR::Var(var) => {
-                let mut free = FxHashSet::default();
+let mut free = FxHashSet::default();
                 free.insert(var.id);
-                (free, Occurrences::with_var_once(var.id))
+                if var.ty.is_volatile() {
+                             (free, Occurrences::with_volatile(var.id))
+                } else {
+ (free, Occurrences::with_var_once(var.id))
+                }
             }
             IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
                 (FxHashSet::default(), Occurrences::default())
@@ -251,7 +265,7 @@ impl OccuranceAnalyzer {
             IR::Fun(var, ir) => {
                 let (mut free, mut occs) = self.occurrence_analysis(ir);
                 free.remove(&var.id);
-                occs.vars.entry(var.id).or_insert(Occurrence::Dead);
+                occs.vars.entry(var.id).or_insert( if var.ty.is_volatile() {Occurrence::Volatile } else {Occurrence::Dead});
                 let occs = occs.in_fun(&free);
                 (free, occs)
             }
@@ -264,12 +278,12 @@ impl OccuranceAnalyzer {
             }
             IR::TyFun(_, ir) | IR::TyApp(ir, _) | IR::Field(ir, _) | IR::Tag(_, _, ir) => self.occurrence_analysis(ir),
             IR::Local(var, defn, body) => {
-                let (mut free, mut occs) = self.occurrence_analysis(body);
+                let (mut body_free, mut body_occs) = self.occurrence_analysis(body);
                 let (defn_free, defn_occs) = self.occurrence_analysis(defn);
-                free.extend(defn_free);
-                free.remove(&var.id);
-                occs.vars.entry(var.id).or_insert(Occurrence::Dead);
-                (free, defn_occs.merge(occs))
+                body_free.extend(defn_free);
+                body_free.remove(&var.id);
+                body_occs.vars.entry(var.id).or_insert(if var.ty.is_volatile() {Occurrence::Volatile } else {Occurrence::Dead});
+                (body_free, defn_occs.merge(body_occs))
             }
             IR::If(c, t, o) => {
                 let (mut free, mut occs) = self.occurrence_analysis(c);
@@ -329,9 +343,8 @@ impl OccuranceAnalyzer {
                 //     self.occurrence_analysis(&self.items[id.0 as usize], &seen)
                 // }
             }
-            IR::Extern(_, t) => (Default::default(), if t.is_volatile() {
-                Occurrence::Volatile,
-            }else {Default::default()} ),
+            IR::Extern(_, t) => (Default::default(),
+                            Default::default() ),
             // _ => todo!("{ir:?}"),
         }
     }
@@ -525,23 +538,26 @@ impl Simplifier {
         }
     }
 
-    fn simplify_local(&mut self, var: Var, defn: IR, body: IR, ctx: &mut SimplifierContext) -> IR {
-      match self.occs.lookup_var(&var) {
+    fn simplify_local(&mut self, var: Var, defn: IR, body: IR, ctx: &mut SimplifierContext) -> IR {let occ = 
+self.occs.lookup_var(&var) ;
+dbg!(&occ);
+       match occ {
             Occurrence::Dead => {
                 self.locals_inlined += 1;
                 body
             }
-            Occurrence::Once => {
+            Occurrence::Once  => {
                 self.locals_inlined += 1;
                 let subst = self.subst.clone();
                 self.subst.insert(var.id, SubstRng::Suspend(defn, subst));
                 body
             }
-            occ => {
+            occ  => {
                 ctx.push((ContextEntry::Local(var, occ, body), self.subst.clone()));
                 defn
             }
-        }
+
+                    }
     }
 
     fn simplify_var(
@@ -598,23 +614,25 @@ impl Simplifier {
         in_scope: &InScope,
         ctx: &SimplifierContext,
     ) -> bool {
-        match occ {
+       
+               match occ {
             Occurrence::Dead | Occurrence::Once => unreachable!(
                 "Encountered dead or single-use variable while determining inline viablility. This should have been handled prior.",
             ),
-            Occurrence::OnceInFun => ir.is_value() && self.some_benefit(ir, in_scope, ctx),
+            Occurrence::Volatile => false,
+          Occurrence::OnceInFun => ir.is_value() && self.some_benefit(ir, in_scope, ctx),
             Occurrence::Many => {
                 // dbg!(&ir);
-                // dbg!(ir.size());
+               // dbg!(ir.size());
                 let small_enough = ir.size() <= self.inline_size_threshold   ;
                 ir.is_value() && small_enough && self.some_benefit(ir, in_scope, ctx)
             }
-        }
+                }
+                
     }
 
     fn some_benefit(&self, ir: &IR, in_scope: &InScope, ctx: &SimplifierContext) -> bool {
         let (params, _) = ir.clone().split_funs();
-
         let args = ctx
             .iter()
             .rev()
@@ -698,8 +716,11 @@ impl Simplifier {
                     ir = IR::ty_fun(kind, ir);
                 }
                 ContextEntry::Local(var, occ, body) => {
-                    // if ir.is_trivial() {
-                    if self.some_benefit(&ir, &in_scope, &ctx) {
+                    if let Occurrence::Volatile = occ {
+                        ir = IR::local(var, ir, body);
+                        continue;
+                    }
+                   if self.some_benefit(&ir, &in_scope, &ctx) {
                         self.locals_inlined += 1;
                         self.subst.insert(var.id, SubstRng::Done(ir));
                         return self.simplify(body, in_scope, ctx);
