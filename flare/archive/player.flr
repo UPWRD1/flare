@@ -1,9 +1,0 @@
-struct Player =
-	name: str,
-	level: int,
-	hp: int
-
-def Player
-	in new: (self, name: str) -> Player = Player {name: name, level: 0, hp: 10}
-	
-	in level_up: (self) -> Player = Player {name: self.name, level: self.level + 1, hp: self.hp}
