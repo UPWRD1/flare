@@ -95,7 +95,7 @@ use crate::{
                     UntypedAst,
                     // Untyped
                 },
-                cst::{ProductRow, Program, UntypedCst},
+                cst::{Package, UntypedCst},
                 files::{FileID, FileSource},
             },
             midend::ir::IR,
@@ -107,7 +107,7 @@ use crate::{
 pub struct Init;
 
 pub struct Parse {
-    program: Program<UntypedCst>,
+    program: Package<UntypedCst>,
 }
 
 pub struct Build {
@@ -182,30 +182,30 @@ pub fn make_filectx(src_paths: &[PathBuf]) -> FileCtx {
         .collect()
 }
 
-fn parse_file(file: &FileSource) -> CompResult<Vec<ProductRow<UntypedCst>>> {
+fn parse_file(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
     parser::parse(file);
     todo!()
 }
 
 pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
-    let mut processed: Vec<(Vec<ProductRow<UntypedCst>>, FileID)> = vec![];
+    let mut processed: Vec<(Vec<Package<UntypedCst>>, FileID)> = vec![];
     for (id, file) in filectx {
         let pack = parse_file(file)?;
         processed.push((pack, *id))
     }
+    todo!()
+    // let v: Vec<_> = processed
+    //     .into_iter()
+    //     .flat_map(|(packages, id)| {
+    //         packages
+    //             .into_iter()
+    //             .map(|p| (p, id))
+    //             .collect::<Vec<(ProductRow<_>, FileID)>>()
+    //     })
+    //     .collect::<Vec<_>>();
 
-    let v: Vec<_> = processed
-        .into_iter()
-        .flat_map(|(packages, id)| {
-            packages
-                .into_iter()
-                .map(|p| (p, id))
-                .collect::<Vec<(ProductRow<_>, FileID)>>()
-        })
-        .collect::<Vec<_>>();
-
-    let program = Program { packages: v };
-    Ok(Parse { program })
+    // let program = Package { packages: v };
+    // Ok(Parse { program })
 }
 
 pub fn build(parse: Parse) -> CompResult<Build> {

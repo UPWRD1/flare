@@ -20,7 +20,7 @@ pub struct Item<S: Syntax> {
     pub kind: ItemKind<S>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ItemKind<S: Syntax> {
     Root,
     Filename(Intern<String>),
@@ -45,7 +45,7 @@ impl<S: Syntax> Item<S> {
     }
 
     pub fn ident(&self) -> String {
-        match self.kind {
+        match &self.kind {
             ItemKind::Root => String::from("ROOT"),
             ItemKind::Function(FunctionItem { name, .. }) => name.to_string(),
             ItemKind::Extern { name, .. } => name.to_string(),

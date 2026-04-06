@@ -163,7 +163,7 @@ type DagIdx = usize;
 struct Binding {
     binder: Untyped,
     /// The RHS: some destructuring of the scrutinee (e.g. Unlabel, or the scrutinee itself)
-    value: Spanned<Intern<CstExpr<Untyped>>>,
+    value: Spanned<Intern<CstExpr<UntypedCst>>>,
     /// Whether this binding is user-visible (goes into `vars` for name resolution)
     /// or just exists to constrain the type (e.g. inaccessible for nullary ctors)
     user_visible: bool,

@@ -1,21 +1,21 @@
 use internment::Intern;
+use rustc_hash::FxHashMap;
 
 use crate::resource::rep::{
-    common::{Spanned, Syntax, Variable},
+    common::{Spanned, Syntax},
     frontend::{
         ast::{BinOp, ItemId, Kind, Label, Untyped},
         csttypes::CstType,
-        files::FileID,
     },
 };
 
 /// Type representing a Pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum Pattern<V: Variable> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Pattern<S: Syntax> {
     Any,
 
     // Variable pattern: matches anything, binds to variable
-    Var(V),
+    Var(S::Variable),
 
     // Literal patterns: match exact values
     Number(ordered_float::OrderedFloat<f32>),
@@ -43,56 +43,54 @@ pub enum Pattern<V: Variable> {
 
     // At pattern: matches and binds to variable
     // x @ Some(y) matches Some variant, binds whole to x, inner to y
-    At(V, Spanned<Intern<Self>>),
+    At(S::Variable, Spanned<Intern<Self>>),
 
     // Or pattern: matches if any sub-pattern matches
     // Some(0) | None matches either
-    Or(&'static [Pattern<V>]),
+    Or(&'static [Pattern<S>]),
 
     // Guard pattern: pattern with boolean condition
     // x when x > 0
-    Guard(Spanned<Intern<Self>>, Spanned<Intern<CstExpr<V>>>),
+    Guard(Spanned<Intern<Self>>, Spanned<Intern<CstExpr<S>>>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MatchArm<V: Variable> {
-    pub pat: Spanned<Intern<Pattern<V>>>,
-    pub body: Spanned<Intern<CstExpr<V>>>,
+pub struct MatchArm<S: Syntax> {
+    pub pat: Spanned<Intern<Pattern<S>>>,
+    pub body: Spanned<Intern<CstExpr<S>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
-pub enum Macro<V>
-where
-    V: Variable,
-{
-    Use(Spanned<Intern<CstExpr<V>>>),
-}
-
+/// One field_assignment at the top level or inside a fielded_constructor.
+/// All three surface forms collapse here.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum CstExpr<V>
-where
-    V: Variable,
-{
-    Ident(V),
+pub struct FieldDef<S: Syntax> {
+    pub name: S::Name,
+    pub params: Vec<S::Name>, // non-empty = syntactic function sugar
+    pub ty: Option<S::Type>,  // the annotation, if present
+    pub value: Option<Spanned<Intern<CstExpr<S>>>>, // absent = abstract / extern decl
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CstExpr<S: Syntax> {
+    Ident(S::Variable),
     Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Bool(bool),
     Unit,
     Particle(Spanned<Intern<String>>),
 
-    Hole(V),
+    Hole(S::Variable),
 
     Item(ItemId, Kind),
 
     ProductConstructor {
-        macros: Intern<[Macro<V>]>,
-        fields: Intern<[V]>,
+        fields: Intern<[FieldDef<S>]>,
     },
 
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
 
-    Pat(Spanned<Pattern<V>>),
+    Pat(Spanned<Pattern<S>>),
 
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -113,10 +111,10 @@ where
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
     ),
-    Match(Spanned<Intern<Self>>, &'static [MatchArm<V>]),
-    Lambda(V, Spanned<Intern<Self>>),
+    Match(Spanned<Intern<Self>>, &'static [MatchArm<S>]),
+    Lambda(S::Variable, Spanned<Intern<Self>>),
     Let(
-        V,
+        S::Variable,
         // Spanned<Intern<Pattern<V>>>,
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
@@ -124,8 +122,8 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ImportItem<V: Variable> {
-    pub items: Vec<Spanned<Intern<CstExpr<V>>>>,
+pub struct ImportItem<S: Syntax> {
+    pub items: Vec<Spanned<Intern<CstExpr<S>>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -134,12 +132,14 @@ pub struct ImplDef<S: Syntax> {
     pub methods: &'static [(S::Name, S::Expr, S::Type)],
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Definition<S: Syntax> {
-    Import(S::Expr),
+#[derive(Debug, Clone, PartialEq)]
+pub enum Macro<S: Syntax> {
+    Import(S),
     Type(S::Name, &'static [S::Type], S::Type),
     Extern(S::Name, &'static [S::Variable], S::Type),
     ImplDef(ImplDef<S>),
+    Name(S::Name),
+    Pub(&'static Self),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,27 +148,21 @@ pub enum Visibility {
     Private,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ItemDefinition<S: Syntax> {
-    pub def: Definition<S>,
-    pub vis: Visibility,
+#[derive(Debug)]
+pub struct Package<S: Syntax> {
+    pub macros: FxHashMap<CstExpr<S>, Vec<Macro<S>>>,
+    pub root_node: FieldDef<S>,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct ProductRow<S: Syntax> {
-    pub items: Vec<ItemDefinition<S>>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Program<S: Syntax> {
-    pub packages: Vec<(ProductRow<S>, FileID)>,
+pub struct PackageCollection<S: Syntax> {
+    pub packages: Vec<Package<S>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UntypedCst;
 
 impl Syntax for UntypedCst {
-    type Expr = Spanned<Intern<CstExpr<Self::Variable>>>;
+    type Expr = Spanned<Intern<CstExpr<UntypedCst>>>;
     type Type = Spanned<Intern<CstType>>;
     type Variable = Untyped;
     type Name = Spanned<Intern<String>>;

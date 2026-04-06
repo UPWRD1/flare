@@ -7,14 +7,14 @@ use std::{
 };
 
 pub trait Variable:
-    Clone + PartialEq + Debug + Eq + Hash + Copy + Sync + Send + 'static + Display
+    Clone + Copy + PartialEq + Debug + Eq + Hash + Sync + Send + 'static + Display
 {
 }
-pub trait Syntax: Debug + Copy + 'static {
-    type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static;
-    type Type: Clone + Debug + PartialEq + Eq + Hash + 'static;
-    type Variable: Variable + Copy;
-    type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + 'static + Display;
+pub trait Syntax: Debug + Copy + PartialEq + Eq + Hash + Send + Sync + 'static {
+    type Expr: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
+    type Type: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
+    type Variable: Variable;
+    type Name: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static + Display;
 }
 
 // pub trait Ident {
@@ -23,12 +23,6 @@ pub trait Syntax: Debug + Copy + 'static {
 
 pub trait HasSpan {
     fn span(&self) -> FlareSpan;
-}
-
-impl<T> HasSpan for Spanned<Intern<T>> {
-    fn span(&self) -> FlareSpan {
-        self.1
-    }
 }
 
 // impl Ident for Spanned<Intern<String>> {
@@ -50,6 +44,10 @@ impl FlareSpan {
         } else {
             panic!("Incompatible ids")
         }
+    }
+
+    pub fn with<T>(self, val: T) -> Spanned<T> {
+        Spanned(val, self)
     }
 }
 
@@ -95,8 +93,11 @@ impl<T> Spanned<T> {
         Spanned(value.into(), self.1)
     }
 
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
-        Spanned((f)(self.0), self.1)
+    pub fn map<U, V>(self, f: impl FnOnce(T) -> U) -> Spanned<V>
+    where
+        U: Into<V>,
+    {
+        Spanned(((f)(self.0)).into(), self.1)
     }
 }
 
@@ -105,7 +106,12 @@ impl<T> From<(T, FlareSpan)> for Spanned<T> {
         Self(value.0, value.1)
     }
 }
-pub type NodeId = FlareSpan;
+
+impl<T> HasSpan for Spanned<T> {
+    fn span(&self) -> FlareSpan {
+        self.1
+    }
+}
 
 impl Display for Spanned<Intern<String>> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

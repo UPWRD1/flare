@@ -2,11 +2,11 @@ use internment::Intern;
 
 use crate::resource::rep::{common::Spanned, frontend::ast::Label};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum CstType {
-    Generic(Spanned<Intern<String>>),
+    Generic(Spanned<String>),
 
-    Particle(Spanned<Intern<String>>),
+    Particle(Spanned<String>),
     #[default]
     Unit,
     Num,

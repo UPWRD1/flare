@@ -3,10 +3,10 @@ use itertools::Itertools;
 use ordered_float::OrderedFloat;
 
 use crate::resource::rep::{
-    common::{Spanned, Variable},
+    common::{Spanned, Syntax, Variable},
     frontend::{
-        ast::{Label, Untyped},
-        cst::{CstExpr, Pattern},
+        ast::Label,
+        cst::{CstExpr, Pattern, UntypedCst},
     },
 };
 
@@ -32,7 +32,7 @@ pub enum Occ {
 }
 
 impl Occ {
-    pub fn base(name: Spanned<Intern<CstExpr<Untyped>>>) -> Self {
+    pub fn base(name: Spanned<Box<CstExpr<UntypedCst>>>) -> Self {
         Self::Base
     }
 }
@@ -41,7 +41,7 @@ impl Occ {
 // Patterns
 // ---------------------------------------------------------------------------
 
-impl<V: Variable> Pattern<V> {
+impl<S: Syntax> Pattern<S> {
     pub fn wildcard() -> Self {
         Self::Any
     }
@@ -93,7 +93,7 @@ pub struct Matrix {
     /// Column headers — one occurrence per column.
     pub header: Vec<Occ>,
     /// Each row is `(patterns, arm_index)`.
-    pub rows: Vec<(Vec<Pattern<Untyped>>, usize)>,
+    pub rows: Vec<(Vec<Pattern<UntypedCst>>, usize)>,
 }
 
 impl Matrix {
@@ -113,7 +113,7 @@ impl Matrix {
     }
 
     /// Borrow the i-th row's pattern slice.
-    pub fn row_pats(&self, i: usize) -> &[Pattern<Untyped>] {
+    pub fn row_pats(&self, i: usize) -> &[Pattern<UntypedCst>] {
         &self.rows[i].0
     }
 
@@ -129,11 +129,11 @@ impl Matrix {
     }
 
     /// Return the index of the first column whose patterns satisfy `pred`.
-    pub fn find_first_column(&self, pred: impl Fn(&[Pattern<Untyped>]) -> bool) -> usize {
+    pub fn find_first_column(&self, pred: impl Fn(&[Pattern<UntypedCst>]) -> bool) -> usize {
         for i in 0..self.num_cols() {
             let col: Vec<&_> = self.rows.iter().map(|(r, _)| &r[i]).collect();
             // Re-use pred with owned slice — collect to owned for simplicity.
-            let owned: Vec<_> = col.into_iter().copied().collect();
+            let owned: Vec<_> = col.into_iter().cloned().collect();
             if pred(&owned) {
                 return i;
             }
@@ -142,7 +142,7 @@ impl Matrix {
     }
 
     /// All patterns in column `col`.
-    pub fn column(&self, col: usize) -> Vec<Pattern<Untyped>> {
+    pub fn column(&self, col: usize) -> Vec<Pattern<UntypedCst>> {
         self.rows.iter().map(|(r, _)| r[col]).collect()
     }
 
@@ -247,7 +247,7 @@ impl DecisionTree {
     }
 }
 
-fn occurrences_of(p: &Pattern<Untyped>, base: &Occ) -> Vec<(Occ, Pattern<Untyped>)> {
+fn occurrences_of(p: &Pattern<UntypedCst>, base: &Occ) -> Vec<(Occ, Pattern<UntypedCst>)> {
     match &p {
         Pattern::Tuple(sub_ps) => sub_ps
             .iter()
@@ -268,7 +268,7 @@ fn occurrences_of(p: &Pattern<Untyped>, base: &Occ) -> Vec<(Occ, Pattern<Untyped
 /// into their projections, then assemble a `Matrix`.
 ///
 /// `res` maps a row index (0-based) to its arm index.
-pub fn preprocess(base: &Occ, ps: &[Pattern<Untyped>], res: impl Fn(usize) -> usize) -> Matrix {
+pub fn preprocess(base: &Occ, ps: &[Pattern<UntypedCst>], res: impl Fn(usize) -> usize) -> Matrix {
     // Build the header (ordered, deduplicated list of occurrences).
     let mut seen: Vec<Occ> = Vec::new();
     let mut header: Vec<Occ> = Vec::new();
@@ -306,7 +306,7 @@ pub fn preprocess(base: &Occ, ps: &[Pattern<Untyped>], res: impl Fn(usize) -> us
 /// Strip the first column from every row whose head pattern satisfies
 /// `pred`, unwrap the payload (if any), and re-preprocess the result.
 /// The remaining columns are reattached afterwards.
-fn specialise(matrix: &Matrix, pred: impl Fn(&Pattern<Untyped>) -> bool) -> Matrix {
+fn specialise(matrix: &Matrix, pred: impl Fn(&Pattern<UntypedCst>) -> bool) -> Matrix {
     let mut patterns: Vec<Pattern<_>> = Vec::new();
     let mut indices: Vec<usize> = Vec::new();
     let mut remainders: Vec<Vec<Pattern<_>>> = Vec::new();
@@ -393,7 +393,7 @@ fn specialise_default(matrix: &Matrix) -> Matrix {
 }
 /// Unwrap the payload of a constructor pattern.
 /// Sets `ty_out` to the payload's type on the first call.
-fn unwrap_payload(p: Pattern<Untyped>) -> Pattern<Untyped> {
+fn unwrap_payload(p: Pattern<UntypedCst>) -> Pattern<UntypedCst> {
     match p {
         Pattern::Variant(_, inner) => *inner.0,
         Pattern::Number(_) | Pattern::String(_) | Pattern::Bool(_) | Pattern::Particle(_) => {
@@ -409,7 +409,7 @@ fn unwrap_payload(p: Pattern<Untyped>) -> Pattern<Untyped> {
 
 /// Does pattern `p` admit constructor `c`?  
 /// (Wildcards / variables admit everything.)
-fn admits(c: &SigElem, p: &Pattern<Untyped>) -> bool {
+fn admits(c: &SigElem, p: &Pattern<UntypedCst>) -> bool {
     match c {
         SigElem::Label(c) => match &p {
             Pattern::Variant(c2, _) => c == c2,
@@ -425,7 +425,7 @@ fn admits(c: &SigElem, p: &Pattern<Untyped>) -> bool {
     }
 }
 
-fn admits_label(c: &Label, p: &Pattern<Untyped>) -> bool {
+fn admits_label(c: &Label, p: &Pattern<UntypedCst>) -> bool {
     match &p {
         Pattern::Variant(c2, _) => c == c2,
         Pattern::Any | Pattern::Var(_) => true,
@@ -451,7 +451,7 @@ impl SigElem {
 }
 
 /// Collect every constructor name mentioned in a column.
-fn collect_signature(ps: &[Pattern<Untyped>]) -> HashSet<SigElem> {
+fn collect_signature(ps: &[Pattern<UntypedCst>]) -> HashSet<SigElem> {
     ps.iter()
         .filter_map(|p| match &p {
             Pattern::Variant(c, p) => Some(SigElem::Label(*c)),
@@ -464,7 +464,7 @@ fn collect_signature(ps: &[Pattern<Untyped>]) -> HashSet<SigElem> {
 }
 
 /// True iff any pattern in the slice is refutable.
-fn has_refutable(ps: &[Pattern<Untyped>]) -> bool {
+fn has_refutable(ps: &[Pattern<UntypedCst>]) -> bool {
     ps.iter().any(|p| p.is_refutable())
 }
 
@@ -473,7 +473,7 @@ fn has_refutable(ps: &[Pattern<Untyped>]) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Compile `ps` (one per arm, 0-indexed) into a `DecisionTree`.
-pub fn compile(ps: &[Pattern<Untyped>]) -> DecisionTree {
+pub fn compile(ps: &[Pattern<UntypedCst>]) -> DecisionTree {
     let initial = preprocess(&Occ::Base, ps, |i| i);
     compile_matrix(initial)
 }
@@ -577,11 +577,11 @@ fn compile_matrix(matrix: Matrix) -> DecisionTree {
     }
 }
 
-struct PatMatrix<const Occs: usize, const Acts: usize>([[Pattern<Untyped>; Acts]; Occs]);
+struct PatMatrix<const Occs: usize, const Acts: usize>([[Pattern<UntypedCst>; Acts]; Occs]);
 
-struct MatchCompiler<const Occs: usize, const Acts: usize, V: Variable> {
-    occs: [CstExpr<V>; Occs],
-    actions: [CstExpr<V>; Acts],
+struct MatchCompiler<const Occs: usize, const Acts: usize, S: Syntax> {
+    occs: [CstExpr<S>; Occs],
+    actions: [CstExpr<S>; Acts],
     matrix: PatMatrix<Occs, Acts>,
 }
 // ---------------------------------------------------------------------------
@@ -592,11 +592,11 @@ struct MatchCompiler<const Occs: usize, const Acts: usize, V: Variable> {
 mod tests {
     use super::*;
 
-    // fn cons(name: &str) -> Pattern<Untyped> {
+    // fn cons(name: &str) -> Pattern<UntypedCst> {
     //     Pattern::Variant(name.to_string(), None)
     // }
 
-    // fn cons_payload(name: &str, payload: Pattern<Untyped>) -> Pattern<_> {
+    // fn cons_payload(name: &str, payload: Pattern<UntypedCst>) -> Pattern<_> {
     //     Pattern::Variant(name.to_string(), Some(Box::new(payload)))
     // }
 

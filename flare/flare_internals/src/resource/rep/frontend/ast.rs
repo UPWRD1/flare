@@ -26,7 +26,7 @@ impl Syntax for UntypedAst {
     type Name = Spanned<Intern<String>>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Untyped(pub Spanned<Intern<String>>);
 
@@ -86,7 +86,7 @@ pub enum Kind {
 
 /// Type representing an Expression.
 /// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Expr<V>
 where
     V: Variable,
