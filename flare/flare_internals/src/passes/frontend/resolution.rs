@@ -21,7 +21,7 @@ use crate::{
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
-            common::{FlareSpan, NodeId, Spanned},
+            common::{FlareSpan, Spanned, Syntax, Variable},
             frontend::{
                 ast::{BinOp, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
                 cst::{CstExpr, MatchArm, Pattern, UntypedCst},
@@ -34,7 +34,7 @@ use crate::{
 };
 
 /// The name resolution engine.
-/// Once the environment is built from the parser, the `Resolver` takes ownership
+// Once the environment is built from the parser, the `Resolver` takes ownership
 /// of the graph.
 ///
 /// The engine works in a two-pass system. First, each `Item` is analyzed
@@ -64,7 +64,7 @@ pub struct TypeFixer {
     pub types_to_name: Vec<(TypeVar, Intern<String>)>,
     evidence: Vec<Evidence>,
     type_var_count: usize,
-    // seen_row_vars: FxHashMap<NodeId, RowVar>,
+    // seen_row_vars: FxHashMap<FlareSpan, RowVar>,
     // inside_type_fun: TyappState,
 }
 
@@ -430,9 +430,9 @@ impl Resolver {
     #[allow(unused_variables)]
     fn analyze_expr(
         &mut self,
-        expr: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
-    ) -> Spanned<Intern<CstExpr<Untyped>>> {
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+    ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         // dbg!(&expr);
 
         match *expr.0 {
@@ -444,7 +444,7 @@ impl Resolver {
                     self.resolve_name(u.0)
                 }
             }
-            CstExpr::ProductConstructor { macros, fields } => todo!(),
+            CstExpr::ProductConstructor { fields } => todo!(),
             // CstExpr::Concat(l, r) => {
             //     let l = self.analyze_expr(l, vars);
             //     let r = self.analyze_expr(r, vars);
@@ -544,19 +544,19 @@ impl Resolver {
 
     fn resolve_branch(
         &mut self,
-        b: MatchArm<Untyped>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
-    ) -> MatchArm<Untyped> {
+        b: MatchArm<UntypedCst>,
+        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+    ) -> MatchArm<UntypedCst> {
         // The branch becomes: λparam. <lets> in body
         // `param` is the lambda binder that receives the matchee at the call site.
         let param = Untyped(b.pat.convert("%match_arg%".to_string()));
-        let branch_arg: Spanned<Intern<CstExpr<Untyped>>> = b.pat.convert(CstExpr::Ident(param));
+        let branch_arg: Spanned<Intern<CstExpr<UntypedCst>>> = b.pat.convert(CstExpr::Ident(param));
 
         let bindings = self.compile_pattern(b.pat, branch_arg);
         // dbg!(&bindings);
         // Extend vars with user-visible bindings so analyze_expr can resolve them.
         // Each maps the binder name -> its destructured value expression.
-        let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)> =
+        let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)> =
             vars.to_vec();
         for binding in &bindings {
             // dbg!(binding);
@@ -574,8 +574,8 @@ impl Resolver {
     /// threading the current scrutinee expression down through nested constructors.
     fn compile_pattern(
         &mut self,
-        p: Spanned<Intern<Pattern<Untyped>>>,
-        branch_arg: Spanned<Intern<CstExpr<Untyped>>>,
+        p: Spanned<Intern<Pattern<UntypedCst>>>,
+        branch_arg: Spanned<Intern<CstExpr<UntypedCst>>>,
     ) -> Vec<Binding> {
         match *p.0 {
             Pattern::Any => vec![],
@@ -586,7 +586,7 @@ impl Resolver {
             }],
             Pattern::Unit => vec![],
             Pattern::Variant(label, inner_pat) => {
-                let inner_val: Spanned<Intern<CstExpr<Untyped>>> =
+                let inner_val: Spanned<Intern<CstExpr<UntypedCst>>> =
                     branch_arg.convert(CstExpr::Unlabel(branch_arg, label));
                 self.compile_pattern(inner_pat, inner_val)
             }
@@ -635,13 +635,13 @@ impl Resolver {
     #[allow(unused_variables)]
     fn convert_expr(
         &mut self,
-        expr: Spanned<Intern<CstExpr<Untyped>>>,
-    ) -> Spanned<Intern<Expr<Untyped>>> {
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+    ) -> Spanned<Intern<Expr<<UntypedCst as Syntax>::Variable>>> {
         // dbg!(&expr);
 
         match *expr.0 {
             CstExpr::Ident(u) => expr.convert(Expr::Ident(u)),
-            CstExpr::ProductConstructor { macros, fields } => todo!(),
+            CstExpr::ProductConstructor { fields } => todo!(),
             CstExpr::Label(l, v) => {
                 // dbg!(vars);
                 // dbg!(expr);
@@ -702,7 +702,8 @@ impl Resolver {
             CstExpr::Match(matchee, branches) => {
                 // let matchee = self.convert_expr(matchee, vars);
                 // let base_expr = matchee.convert(CstExpr::Let(
-                //     Untyped(matchee.convert("%matchee".to_string())),
+                //     UntypedCst
+                // (matchee.convert("%matchee".to_string())),
                 //     matchee,
                 //     expr,
                 // ));
@@ -740,13 +741,12 @@ impl Resolver {
 
     fn resolve_let(
         &mut self,
-        expr: Spanned<Intern<CstExpr<Untyped>>>,
-        // id: Spanned<Intern<Pattern<Untyped>>>,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         id: Untyped,
-        body: Spanned<Intern<CstExpr<Untyped>>>,
-        and_in: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
-    ) -> Spanned<Intern<CstExpr<Untyped>>> {
+        body: Spanned<Intern<CstExpr<UntypedCst>>>,
+        and_in: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+    ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         let body = self.analyze_expr(body, vars);
 
         let new_vars = [vars, &[(id.0.0, body)]].concat();
@@ -757,11 +757,11 @@ impl Resolver {
 
     fn resolve_lambda(
         &mut self,
-        expr: Spanned<Intern<CstExpr<Untyped>>>,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         arg: Untyped,
-        body: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
-    ) -> Spanned<Intern<CstExpr<Untyped>>> {
+        body: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+    ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         let new_vars = &[vars, &[(arg.0.0, arg.0.convert(CstExpr::Ident(arg)))]].concat();
         let body = self.analyze_expr(body, new_vars);
         // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
@@ -770,9 +770,9 @@ impl Resolver {
 
     fn resolve_field_access(
         &mut self,
-        expr: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
-    ) -> Spanned<Intern<CstExpr<Untyped>>> {
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+    ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {
             panic!("Not a field access")
         };
@@ -787,7 +787,7 @@ impl Resolver {
     fn translate_dtree_occ(
         &mut self,
         occ: Occ,
-        matchee: Spanned<Intern<CstExpr<Untyped>>>,
+        matchee: Spanned<Intern<CstExpr<UntypedCst>>>,
     ) -> Spanned<Intern<Expr<Untyped>>> {
         match occ {
             Occ::Base => self.convert_expr(matchee),
@@ -805,7 +805,7 @@ impl Resolver {
     fn translate_sigelem(
         &self,
         sigelem: SigElem,
-        matchee_span: NodeId,
+        matchee_span: FlareSpan,
     ) -> Spanned<Intern<Expr<Untyped>>> {
         match sigelem {
             SigElem::Label(label) => unimplemented!("use translate_sigelem_pat"),
@@ -816,10 +816,10 @@ impl Resolver {
 
     fn translate_decision_tree(
         &mut self,
-        matchee: Spanned<Intern<CstExpr<Untyped>>>,
+        matchee: Spanned<Intern<CstExpr<UntypedCst>>>,
         tree: DecisionTree,
 
-        actions: &Vec<Spanned<Intern<CstExpr<Untyped>>>>,
+        actions: &Vec<Spanned<Intern<CstExpr<UntypedCst>>>>,
     ) -> Spanned<Intern<Expr<Untyped>>> {
         match tree {
             DecisionTree::Fail => todo!(),
@@ -919,7 +919,10 @@ impl Resolver {
         })
     }
 
-    fn resolve_name(&mut self, name: Spanned<Intern<String>>) -> Spanned<Intern<CstExpr<Untyped>>> {
+    fn resolve_name(
+        &mut self,
+        name: Spanned<Intern<String>>,
+    ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         if let Some(e) = self.search_masterenv(&QualifierFragment::Func(name.to_string())) {
             name.convert(CstExpr::Item(e, Kind::Func))
         } else if let Some(e) = self.search_masterenv(&QualifierFragment::Type(name.to_string())) {

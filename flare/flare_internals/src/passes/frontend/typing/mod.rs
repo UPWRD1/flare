@@ -22,7 +22,7 @@ use crate::{
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
-            common::{FlareSpan, HasSpan, NodeId, Spanned, Variable},
+            common::{FlareSpan, HasSpan, Spanned, Variable},
             frontend::ast::{Expr, ItemId, Kind, Label, Untyped},
         },
     },
@@ -63,20 +63,20 @@ pub enum Evidence {
 #[derive(Debug, Clone, Copy)]
 pub enum Provenance {
     // A non function type encountered a Fun ast node, causing a type mismatch.
-    UnexpectedFun(NodeId),
+    UnexpectedFun(FlareSpan),
     // An application has an ast node in function position that does not have a function type.
-    AppExpectedFun(NodeId),
+    AppExpectedFun(FlareSpan),
     // Constraint produced by subsumption.
-    ExpectedUnify(NodeId, NodeId),
+    ExpectedUnify(FlareSpan, FlareSpan),
 
-    ExpectedCombine(NodeId, NodeId),
+    ExpectedCombine(FlareSpan, FlareSpan),
 
-    ConditionIsBool(NodeId),
-    FieldAccess(NodeId, Label),
+    ConditionIsBool(FlareSpan),
+    FieldAccess(FlareSpan, Label),
 }
 
 impl Provenance {
-    fn id(&self) -> NodeId {
+    fn id(&self) -> FlareSpan {
         match self {
             Self::UnexpectedFun(node_id)
             | Self::AppExpectedFun(node_id)
@@ -188,10 +188,10 @@ impl TypeScheme {
 pub struct TypeInferOut {
     pub ast: Spanned<Intern<Expr<Typed>>>,
     pub scheme: TypeScheme,
-    pub errors: FxHashMap<NodeId, CompilerErr>,
-    pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
-    pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+    pub errors: FxHashMap<FlareSpan, CompilerErr>,
+    pub row_to_ev: FxHashMap<FlareSpan, Evidence>,
+    pub branch_to_ret_ty: FxHashMap<FlareSpan, Spanned<Intern<Type>>>,
+    pub item_wrappers: FxHashMap<FlareSpan, ItemWrapper>,
 }
 
 impl TypeInferOut {
@@ -211,10 +211,10 @@ impl TypeInferOut {
 pub struct TypesOutput {
     pub typed_ast: Spanned<Intern<Expr<Typed>>>,
     pub scheme: TypeScheme,
-    pub errors: FxHashMap<NodeId, CompilerErr>,
-    pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
-    pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+    pub errors: FxHashMap<FlareSpan, CompilerErr>,
+    pub row_to_ev: FxHashMap<FlareSpan, Evidence>,
+    pub branch_to_ret_ty: FxHashMap<FlareSpan, Spanned<Intern<Type>>>,
+    pub item_wrappers: FxHashMap<FlareSpan, ItemWrapper>,
 }
 
 #[derive(Debug, Clone)]
@@ -256,17 +256,17 @@ struct SolverTables {
     row_unification_table: InPlaceUnificationTable<RowUniVar>,
 
     partial_row_combs: BTreeSet<RowCombination>,
-    row_to_combo: FxHashMap<NodeId, RowCombination>,
-    branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
+    row_to_combo: FxHashMap<FlareSpan, RowCombination>,
+    branch_to_ret_ty: FxHashMap<FlareSpan, Spanned<Intern<Type>>>,
 
     subst_unifiers_to_tyvars: FxHashMap<TyUniVar, TypeVar>,
     next_tyvar: usize,
     subst_unifiers_to_rowvars: FxHashMap<RowUniVar, RowVar>,
     next_rowvar: usize,
 
-    item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+    item_wrappers: FxHashMap<FlareSpan, ItemWrapper>,
 
-    errors: FxHashMap<NodeId, CompilerErr>,
+    errors: FxHashMap<FlareSpan, CompilerErr>,
 }
 
 impl<'env> Solver<'env> {
@@ -280,9 +280,9 @@ impl<'env> Solver<'env> {
 
     fn fresh_row_combination(
         &mut self,
-        l_id: NodeId,
-        r_id: NodeId,
-        goal_id: NodeId,
+        l_id: FlareSpan,
+        r_id: FlareSpan,
+        goal_id: FlareSpan,
     ) -> RowCombination {
         RowCombination {
             left: Spanned(Row::Unifier(self.fresh_row_var()).into(), l_id),

@@ -9,7 +9,7 @@ use crate::{
         midend::lowering::{ItemSource, lower_types::LowerTypes},
     },
     resource::rep::{
-        common::{NodeId, Spanned},
+        common::{FlareSpan, Spanned},
         frontend::ast::{self, Direction, Expr},
         midend::{
             ir::{IR, ItemId, Var, VarId},
@@ -80,9 +80,9 @@ pub struct LowerAst<'source> {
     types: LowerTypes,
     ev_to_var: FxHashMap<Evidence, Var>,
     pub solved: Vec<(Var, IR)>,
-    row_to_ev: &'source FxHashMap<NodeId, Evidence>,
-    branch_to_ret_ty: &'source FxHashMap<NodeId, Spanned<Intern<typing::Type>>>,
-    item_wrappers: &'source FxHashMap<NodeId, ItemWrapper>,
+    row_to_ev: &'source FxHashMap<FlareSpan, Evidence>,
+    branch_to_ret_ty: &'source FxHashMap<FlareSpan, Spanned<Intern<typing::Type>>>,
+    item_wrappers: &'source FxHashMap<FlareSpan, ItemWrapper>,
     item_source: &'source ItemSource,
     item_supply: &'source mut ItemSupply<ast::ItemId>,
 }
@@ -320,9 +320,9 @@ impl<'source> LowerAst<'source> {
         var_supply: VarSupply<Intern<String>>,
         types: LowerTypes,
         ev_to_var: FxHashMap<Evidence, Var>,
-        row_to_ev: &'source FxHashMap<NodeId, Evidence>,
-        branch_to_ret_ty: &'source FxHashMap<NodeId, Spanned<Intern<typing::Type>>>,
-        item_wrappers: &'source FxHashMap<NodeId, ItemWrapper>,
+        row_to_ev: &'source FxHashMap<FlareSpan, Evidence>,
+        branch_to_ret_ty: &'source FxHashMap<FlareSpan, Spanned<Intern<typing::Type>>>,
+        item_wrappers: &'source FxHashMap<FlareSpan, ItemWrapper>,
         item_source: &'source ItemSource,
         item_supply: &'source mut ItemSupply<ast::ItemId>,
     ) -> Self {
@@ -597,7 +597,7 @@ impl<'source> LowerAst<'source> {
             Expr::Access(base, field) => {
                 let base_ir = self.lower_ast(base);
 
-                // id = ast.1 is the Access node's NodeId, which is exactly what
+                // id = ast.1 is the Access node's FlareSpan, which is exactly what
                 // row_to_combo was keyed on during type checking — no fragility
                 let ev = self
                     .row_to_ev
