@@ -1,6 +1,6 @@
 mod helper {
     use chumsky::prelude::*;
-    use flare_internals::resource::rep::common::{NodeId, Spanned};
+    use flare_internals::resource::rep::common::{FlareSpan, Spanned};
     use internment::Intern;
     pub struct SpanGenerator {
         next: usize,
@@ -9,9 +9,9 @@ mod helper {
         pub fn new() -> Self {
             Self { next: 0 }
         }
-        pub fn fresh(&mut self) -> NodeId {
+        pub fn fresh(&mut self) -> FlareSpan {
             // self.next += 1;
-            SimpleSpan::new(0u64, self.next..self.next)
+            FlareSpan(self.next, self.next, 0u64)
         }
 
         pub fn with<T>(&mut self, item: T) -> Spanned<Intern<T>>

@@ -12,6 +12,8 @@ use crate::resource::rep::{
 /// Type representing a Pattern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Pattern<S: Syntax> {
+    Hole(S::Variable),
+
     Any,
 
     // Variable pattern: matches anything, binds to variable
@@ -52,6 +54,32 @@ pub enum Pattern<S: Syntax> {
     // Guard pattern: pattern with boolean condition
     // x when x > 0
     Guard(Spanned<Intern<Self>>, Spanned<Intern<CstExpr<S>>>),
+}
+impl<S: Syntax> Pattern<S> {
+    pub fn bindings(&self) -> Vec<S::Variable> {
+        fn bindings<S: Syntax>(p: &Pattern<S>, vars: &mut Vec<S::Variable>) {
+            match p {
+                Pattern::Hole(_) | Pattern::Any => return,
+                Pattern::Var(v) => vars.push(*v),
+                Pattern::Number(_)
+                | Pattern::String(_)
+                | Pattern::Particle(_)
+                | Pattern::Bool(_)
+                | Pattern::Unit => return,
+                Pattern::Variant(_, subpat) => bindings(&subpat.0, vars),
+                Pattern::Record { fields, open } => {
+                    fields.iter().for_each(|(_, f)| bindings(&f.0, vars))
+                }
+                Pattern::Tuple(fields) => fields.iter().for_each(|f| bindings(&f.0, vars)),
+                Pattern::At(v, _) => vars.push(*v),
+                Pattern::Or(patterns) => todo!(),
+                Pattern::Guard(spanned, spanned1) => todo!(),
+            }
+        }
+        let mut v = vec![];
+        bindings(self, &mut v);
+        v
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -114,8 +142,8 @@ pub enum CstExpr<S: Syntax> {
     Match(Spanned<Intern<Self>>, &'static [MatchArm<S>]),
     Lambda(S::Variable, Spanned<Intern<Self>>),
     Let(
-        S::Variable,
-        // Spanned<Intern<Pattern<V>>>,
+        // S::Variable,
+        Spanned<Intern<Pattern<S>>>,
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
     ),

@@ -21,7 +21,7 @@ use crate::{
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
-            common::{FlareSpan, Spanned, Syntax, Variable},
+            common::{FlareSpan, Spanned, Syntax},
             frontend::{
                 ast::{BinOp, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
                 cst::{CstExpr, MatchArm, Pattern, UntypedCst},
@@ -523,7 +523,7 @@ impl Resolver {
 
                 let branches: Vec<_> = branches
                     .iter()
-                    .map(|b| self.resolve_branch(*b, vars))
+                    .map(|b| self.resolve_branch(b.pat, b.body, vars))
                     .collect();
                 assert!(!branches.is_empty());
                 expr.modify(CstExpr::Match(matchee, branches.leak()))
@@ -544,15 +544,16 @@ impl Resolver {
 
     fn resolve_branch(
         &mut self,
-        b: MatchArm<UntypedCst>,
+        pat: Spanned<Intern<Pattern<UntypedCst>>>,
+        body: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
     ) -> MatchArm<UntypedCst> {
         // The branch becomes: λparam. <lets> in body
         // `param` is the lambda binder that receives the matchee at the call site.
-        let param = Untyped(b.pat.convert("%match_arg%".to_string()));
-        let branch_arg: Spanned<Intern<CstExpr<UntypedCst>>> = b.pat.convert(CstExpr::Ident(param));
+        let param = Untyped(pat.convert("%match_arg%".to_string()));
+        let branch_arg: Spanned<Intern<CstExpr<UntypedCst>>> = pat.convert(CstExpr::Ident(param));
 
-        let bindings = self.compile_pattern(b.pat, branch_arg);
+        let bindings = self.compile_pattern(pat, branch_arg);
         // dbg!(&bindings);
         // Extend vars with user-visible bindings so analyze_expr can resolve them.
         // Each maps the binder name -> its destructured value expression.
@@ -566,8 +567,8 @@ impl Resolver {
         }
         // dbg!(&bindings);
 
-        let body = self.analyze_expr(b.body, &branch_vars);
-        MatchArm { pat: b.pat, body }
+        let body = self.analyze_expr(body, &branch_vars);
+        MatchArm { pat, body }
     }
 
     /// Recursively compile a pattern into a flat sequence of let-bindings,
@@ -578,6 +579,7 @@ impl Resolver {
         branch_arg: Spanned<Intern<CstExpr<UntypedCst>>>,
     ) -> Vec<Binding> {
         match *p.0 {
+            Pattern::Hole(_) => vec![],
             Pattern::Any => vec![],
             Pattern::Var(v) => vec![Binding {
                 binder: v,
@@ -722,10 +724,15 @@ impl Resolver {
                 let body = self.convert_expr(body);
                 expr.convert(Expr::Lambda(arg, body))
             }
-            CstExpr::Let(id, body, and_in) => {
-                let body = self.convert_expr(body);
-                let and_in = self.convert_expr(and_in);
-                expr.convert(Expr::Let(id, body, and_in))
+            CstExpr::Let(pat, body, and_in) => {
+                let (patterns, actions) = (vec![pat], vec![and_in]);
+                let patterns: Vec<_> = patterns.iter().map(|p| *p.0).collect();
+
+                let decision_tree = matchmatrix::compile(&patterns);
+                decision_tree.print(0);
+                let t = self.translate_decision_tree(body, decision_tree, &actions);
+                println!("{t}");
+                t
             }
             CstExpr::Number(n) => expr.convert(Expr::Number(n)),
             CstExpr::String(s) => expr.convert(Expr::String(s)),
@@ -742,17 +749,14 @@ impl Resolver {
     fn resolve_let(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
-        id: Untyped,
+        pat: Spanned<Intern<Pattern<UntypedCst>>>,
+        def: Spanned<Intern<CstExpr<UntypedCst>>>,
         body: Spanned<Intern<CstExpr<UntypedCst>>>,
-        and_in: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
     ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
-        let body = self.analyze_expr(body, vars);
-
-        let new_vars = [vars, &[(id.0.0, body)]].concat();
-        let and_in = self.analyze_expr(and_in, &new_vars);
-        // let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
-        expr.modify(CstExpr::Let(id, body, and_in))
+        let def = self.analyze_expr(def, vars);
+        let MatchArm { pat, body } = self.resolve_branch(pat, body, vars);
+        expr.modify(CstExpr::Let(pat, def, body))
     }
 
     fn resolve_lambda(

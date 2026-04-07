@@ -32,7 +32,8 @@ pub enum Occ {
 }
 
 impl Occ {
-    pub fn base(name: Spanned<Box<CstExpr<UntypedCst>>>) -> Self {
+    pub fn base(name: &Spanned<Box<CstExpr<UntypedCst>>>) -> Self {
+        let _ = name;
         Self::Base
     }
 }
@@ -133,7 +134,7 @@ impl Matrix {
         for i in 0..self.num_cols() {
             let col: Vec<&_> = self.rows.iter().map(|(r, _)| &r[i]).collect();
             // Re-use pred with owned slice — collect to owned for simplicity.
-            let owned: Vec<_> = col.into_iter().cloned().collect();
+            let owned: Vec<_> = col.into_iter().copied().collect();
             if pred(&owned) {
                 return i;
             }

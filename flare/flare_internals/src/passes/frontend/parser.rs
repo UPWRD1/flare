@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, num::NonZero};
+use std::{cell::RefCell, marker::PhantomData, num::NonZero};
 
 use crate::resource::{
     errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
@@ -234,7 +234,7 @@ pub struct Translate<'src> {
     defs: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>>,
     _phantom: PhantomData<Node<'src>>,
     ids: &'src LangIds, // shared, constructed once per process
-    errors: FxHashMap<FlareSpan, String>,
+    errors: RefCell<FxHashMap<FlareSpan, String>>,
 }
 
 impl<'src> Translate<'src> {
@@ -244,7 +244,7 @@ impl<'src> Translate<'src> {
             defs: Default::default(),
             _phantom: PhantomData,
             ids,
-            errors: FxHashMap::default(),
+            errors: RefCell::default(),
         }
     }
 
@@ -278,25 +278,26 @@ impl<'src> Translate<'src> {
         FlareSpan(node.start_byte(), node.end_byte(), self.file.id)
     }
 
-    fn get_field(&self, node: &Node<'src>, fk: FK) -> Node<'src> {
-        node.child_by_field_id(self.ids.f(fk)).unwrap()
+    fn get_field(&self, node: &Node<'src>, fk: FK) -> Option<Node<'src>> {
+        node.child_by_field_id(self.ids.f(fk))
     }
 
     fn get_children_by(&self, node: Node<'src>, fk: FK) -> Vec<Node<'src>> {
         let mut cur = node.walk();
-        let params = node
-            .children_by_field_id(NonZero::new(self.ids.f(fk)).unwrap(), &mut cur)
+
+        node.children_by_field_id(NonZero::new(self.ids.f(fk)).unwrap(), &mut cur)
             // .map(|n| self.intern(n))
-            .collect::<Vec<_>>();
-        params
+            .collect::<Vec<_>>()
     }
 
     fn get_child(&self, node: Node<'src>, fk: FK) -> Option<Node<'src>> {
         node.child_by_field_id(self.ids.f(fk))
     }
 
-    fn error(&mut self, node: Node<'src>, msg: impl ToString) {
-        self.errors.insert(self.span(node), msg.to_string());
+    fn error(&self, node: Node<'src>, msg: &(impl ToString + ?Sized)) {
+        self.errors
+            .borrow_mut()
+            .insert(self.span(node), msg.to_string());
     }
 
     fn translate_module(&mut self, root: Node<'src>) -> Vec<Package<UntypedCst>> {
@@ -325,27 +326,27 @@ impl<'src> Translate<'src> {
             match k {
                 // ── Control flow ─────────────────────────────────────────────────
                 k if k == self.ids.k(NK::LetExpression) => self.lower_let(node),
-                k if k == self.ids.k(NK::IfExpression) => self.lower_if(node),
-                k if k == self.ids.k(NK::MatchExpression) => self.lower_match(node),
+                // k if k == self.ids.k(NK::IfExpression) => self.lower_if(node),
+                // k if k == self.ids.k(NK::MatchExpression) => self.lower_match(node),
 
-                // ── Abstraction / application ─────────────────────────────────────
-                k if k == self.ids.k(NK::Lambda) => self.lower_lambda(node),
-                k if k == self.ids.k(NK::CallExpression) => self.lower_call(node),
+                // // ── Abstraction / application ─────────────────────────────────────
+                // k if k == self.ids.k(NK::Lambda) => self.lower_lambda(node),
+                // k if k == self.ids.k(NK::CallExpression) => self.lower_call(node),
 
-                // ── Row / nominal dispatch ────────────────────────────────────────
-                k if k == self.ids.k(NK::PropAccess) => self.lower_prop_access(node),
-                k if k == self.ids.k(NK::FieldAccess) => self.lower_field_access(node),
+                // // ── Row / nominal dispatch ────────────────────────────────────────
+                // k if k == self.ids.k(NK::PropAccess) => self.lower_prop_access(node),
+                // k if k == self.ids.k(NK::FieldAccess) => self.lower_field_access(node),
 
-                // ── Binary ops ───────────────────────────────────────────────────
-                k if k == self.ids.k(NK::MulExpression) => self.lower_binop(node, BinOp::Mul),
-                k if k == self.ids.k(NK::DivExpression) => self.lower_binop(node, BinOp::Div),
-                k if k == self.ids.k(NK::AddExpression) => self.lower_binop(node, BinOp::Add),
-                k if k == self.ids.k(NK::SubExpression) => self.lower_binop(node, BinOp::Sub),
-                k if k == self.ids.k(NK::CmpExpression) => self.lower_cmp(node),
+                // // ── Binary ops ───────────────────────────────────────────────────
+                // k if k == self.ids.k(NK::MulExpression) => self.lower_binop(node, BinOp::Mul),
+                // k if k == self.ids.k(NK::DivExpression) => self.lower_binop(node, BinOp::Div),
+                // k if k == self.ids.k(NK::AddExpression) => self.lower_binop(node, BinOp::Add),
+                // k if k == self.ids.k(NK::SubExpression) => self.lower_binop(node, BinOp::Sub),
+                // k if k == self.ids.k(NK::CmpExpression) => self.lower_cmp(node),
 
                 // ── Constructors ─────────────────────────────────────────────────
-                k if k == self.ids.k(NK::FieldedConstructor) => self.lower_record(node),
-                k if k == self.ids.k(NK::SumConstructor) => self.lower_variant(node),
+                // k if k == self.ids.k(NK::FieldedConstructor) => self.lower_record(node),
+                // k if k == self.ids.k(NK::SumConstructor) => self.lower_variant(node),
 
                 // ── Transparent wrapper ───────────────────────────────────────────
                 k if k == self.ids.k(NK::ParenthesizedExpression) => {
@@ -355,15 +356,15 @@ impl<'src> Translate<'src> {
                 }
 
                 // ── Primaries ────────────────────────────────────────────────────
-                k if k == self.ids.k(NK::Identifier) => CstExpr::Ident(self.name(&node)),
-                k if k == self.ids.k(NK::Path) => self.lower_path(node),
+                k if k == self.ids.k(NK::Identifier) => CstExpr::Ident(Untyped(self.name(&node))),
+                // k if k == self.ids.k(NK::Path) => self.lower_path(node),
                 k if k == self.ids.k(NK::Number) => {
                     let text = self.raw_name(&node);
                     match text.parse::<f32>() {
                         Ok(v) => CstExpr::Number(OrderedFloat::from(v)),
                         Err(_) => {
                             self.error(node, "malformed number literal");
-                            CstExpr::Hole(text)
+                            CstExpr::Hole(Untyped(self.si(node, |_| text.to_string())))
                         }
                     }
                 }
@@ -376,7 +377,7 @@ impl<'src> Translate<'src> {
                         node,
                         &format!("unexpected node '{}' in expression position", node.kind()),
                     );
-                    CstExpr::Hole(self.name(&node))
+                    CstExpr::Hole(Untyped(self.name(&node)))
                 }
             }
         })
@@ -433,8 +434,8 @@ impl<'src> Translate<'src> {
         self.si(node, |node| {
             let k = node.kind_id();
             match k {
-                k if k == self.ids.k(NK::PrimitiveType) => self.lower_primitive_type(node),
-                k if k == self.ids.k(NK::UserType) => self.lower_user_type(node),
+                k if k == self.ids.k(NK::PrimitiveType) => self.lower_primitive_type(&node),
+                k if k == self.ids.k(NK::UserType) => self.lower_user_type(&node),
                 k if k == self.ids.k(NK::GenericType) => {
                     // ?a — the identifier is the only named child
                     CstType::Generic(
@@ -448,25 +449,33 @@ impl<'src> Translate<'src> {
                         self.lower_type(node.child_by_field_id(self.ids.f(FK::Return)).unwrap());
                     CstType::Func(param, result)
                 }
-                k if k == self.k_product_type => self.lower_product_type(node),
-                k if k == self.k_sum_type => self.lower_sum_type(node),
-                k if k == self.k_self_type => CstType::SelfType,
-                k if k == self.k_grouped_type => {
-                    // transparent paren — unwrap
-                    self.lower_type(node.named_child(0).unwrap()).node
-                }
+                // k if k == self.k_product_type => self.lower_product_type(node),
+                // k if k == self.k_sum_type => self.lower_sum_type(node),
+                // k if k == self.k_self_type => CstType::SelfType,
+                // k if k == self.k_grouped_type => {
+                //     // transparent paren — unwrap
+                //     self.lower_type(node.named_child(0).unwrap()).node
+                // }
                 _ => {
                     self.error(node, "unexpected type node");
-                    Type::SelfType
+                    CstType::Hole
                 }
             }
         })
     }
 
+    fn lower_primitive_type(&self, node: &Node<'src>) -> CstType {
+        let t = self.name(node);
+        dbg!(t);
+        todo!()
+    }
+
+    fn lower_user_type(&self, node: &Node<'src>) -> CstType {
+        todo!()
+    }
+
     fn lower_let(&self, node: Node<'_>) -> CstExpr<UntypedCst> {
-        let pattern = self
-            .lower_pattern(self.get_child(node, FK::Pattern))
-            .unwrap();
+        let pattern = self.lower_pattern(self.get_child(node, FK::Pattern).unwrap());
         let value = self.lower_expr(self.get_child(node, FK::Value).unwrap());
         let body = self.lower_expr(self.get_child(node, FK::Value).unwrap());
         CstExpr::Let(pattern, value, body)
@@ -476,45 +485,46 @@ impl<'src> Translate<'src> {
         self.si(node, |node| {
             let k = node.kind_id();
             match k {
-                k if k == self.k_pattern_variable => {
-                    Pattern::Variable(self.intern(node.named_child(0).unwrap()))
+                k if k == self.ids.k(NK::PatternVariable) => {
+                    Pattern::Var(Untyped(self.name(&node.named_child(0).unwrap())))
                 }
-                k if k == self.k_pattern_product => self.lower_pattern_product(node),
-                k if k == self.k_pattern_variant => {
-                    let tag = self.intern(node.child_by_field_id(self.f_variant_name).unwrap());
+                k if k == self.ids.k(NK::PatternProduct) => self.lower_pattern_product(node),
+                k if k == self.ids.k(NK::PatternVariant) => {
+                    let tag = self.get_field(&node, FK::VariantName).unwrap();
                     let payload = node
                         .named_children(&mut node.walk())
                         // skip the variant_name child, take the rest as payload
                         .nth(1)
-                        .map(|n| Box::new(self.lower_pattern(n)));
-                    Pattern::Variant { tag, payload }
+                        .map(|n| self.lower_pattern(n));
+                    todo!()
+                    // Pattern::Variant { tag, payload }
                 }
-                k if k == self.k_pattern_path => {
-                    // pattern "." terminal — two named children
-                    let lhs = self.lower_pattern(node.named_child(0).unwrap());
-                    let rhs = self.lower_pattern(node.named_child(1).unwrap());
-                    Pattern::Path(Box::new(lhs), Box::new(rhs))
-                }
-                k if k == self.k_pattern_alias => {
-                    let pat = self.lower_pattern(node.named_child(0).unwrap());
-                    let name = self.intern(node.named_child(1).unwrap());
-                    Pattern::Alias {
-                        pattern: Box::new(pat),
-                        name,
-                    }
-                }
-                k if k == self.k_pattern_atom => {
-                    let inner = node.named_child(0).unwrap();
-                    if inner.kind_id() == self.k_number {
-                        let v = inner.utf8_text(self.src).unwrap().parse().unwrap();
-                        Pattern::Atom(Atom::Num(v))
-                    } else {
-                        Pattern::Atom(Atom::Str(self.extract_string(inner)))
-                    }
-                }
+                // k if k == self.k_pattern_path => {
+                //     // pattern "." terminal — two named children
+                //     let lhs = self.lower_pattern(node.named_child(0).unwrap());
+                //     let rhs = self.lower_pattern(node.named_child(1).unwrap());
+                //     Pattern::Path(Box::new(lhs), Box::new(rhs))
+                // }
+                // k if k == self.k_pattern_alias => {
+                //     let pat = self.lower_pattern(node.named_child(0).unwrap());
+                //     let name = self.intern(node.named_child(1).unwrap());
+                //     Pattern::Alias {
+                //         pattern: Box::new(pat),
+                //         name,
+                //     }
+                // }
+                // k if k == self.k_pattern_atom => {
+                //     let inner = node.named_child(0).unwrap();
+                //     if inner.kind_id() == self.k_number {
+                //         let v = inner.utf8_text(self.src).unwrap().parse().unwrap();
+                //         Pattern::Atom(Atom::Num(v))
+                //     } else {
+                //         Pattern::Atom(Atom::Str(self.extract_string(inner)))
+                //     }
+                // }
                 _ => {
                     self.error(node, "unexpected pattern node");
-                    Pattern::Variable(Name::DUMMY)
+                    Pattern::Hole(Untyped(self.name(&node)))
                 }
             }
         })
@@ -530,11 +540,12 @@ impl<'src> Translate<'src> {
                 // _pattern_product_elem has one named child: the pattern itself
                 self.lower_pattern(elem.named_child(0).unwrap())
             })
-            .collect();
-        Pattern::Record {
-            fields: pats,
-            open: false,
-        }
+            .collect::<Vec<_>>();
+        todo!()
+        // Pattern::Record {
+        // fields: pats,
+        // open: false,
+        // }
     }
 }
 
