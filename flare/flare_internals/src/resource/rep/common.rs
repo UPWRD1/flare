@@ -13,6 +13,7 @@ pub trait Variable:
 pub trait Syntax: Debug + Copy + PartialEq + Eq + Hash + Send + Sync + 'static {
     type Expr: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
     type Type: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
+    type Pattern: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
     type Variable: Variable;
     type Name: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static + Display;
 }
@@ -31,8 +32,14 @@ pub trait HasSpan {
 // }
 // }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FlareSpan(pub usize, pub usize, pub FileID);
+
+impl Debug for FlareSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#{}[{}..{}]", self.2, self.0, self.1)
+    }
+}
 
 impl FlareSpan {
     pub fn into_range(self) -> Range<usize> {
@@ -51,8 +58,15 @@ impl FlareSpan {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct Spanned<T>(pub T, pub FlareSpan);
+
+impl<T: Debug> Debug for Spanned<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.0)
+        // f.debug_tuple("").field(&self.0).field(&self.1).finish()
+    }
+}
 
 impl<T: PartialEq> PartialEq for Spanned<T> {
     fn eq(&self, other: &Self) -> bool {

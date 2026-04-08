@@ -6,6 +6,7 @@ use crate::resource::rep::{
     frontend::{
         ast::{BinOp, ItemId, Kind, Label, Untyped},
         csttypes::CstType,
+        files::FileID,
     },
 };
 
@@ -59,13 +60,13 @@ impl<S: Syntax> Pattern<S> {
     pub fn bindings(&self) -> Vec<S::Variable> {
         fn bindings<S: Syntax>(p: &Pattern<S>, vars: &mut Vec<S::Variable>) {
             match p {
-                Pattern::Hole(_) | Pattern::Any => return,
+                Pattern::Hole(_) | Pattern::Any => (),
                 Pattern::Var(v) => vars.push(*v),
                 Pattern::Number(_)
                 | Pattern::String(_)
                 | Pattern::Particle(_)
                 | Pattern::Bool(_)
-                | Pattern::Unit => return,
+                | Pattern::Unit => (),
                 Pattern::Variant(_, subpat) => bindings(&subpat.0, vars),
                 Pattern::Record { fields, open } => {
                     fields.iter().for_each(|(_, f)| bindings(&f.0, vars))
@@ -90,11 +91,11 @@ pub struct MatchArm<S: Syntax> {
 
 /// One field_assignment at the top level or inside a fielded_constructor.
 /// All three surface forms collapse here.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FieldDef<S: Syntax> {
     pub name: S::Name,
-    pub params: Vec<S::Name>, // non-empty = syntactic function sugar
-    pub ty: Option<S::Type>,  // the annotation, if present
+    // pub params: Intern<[S::Name]>, // non-empty = syntactic function sugar
+    pub ty: Option<S::Type>, // the annotation, if present
     pub value: Option<Spanned<Intern<CstExpr<S>>>>, // absent = abstract / extern decl
 }
 
@@ -119,7 +120,6 @@ pub enum CstExpr<S: Syntax> {
     Unlabel(Spanned<Intern<Self>>, Label),
 
     Pat(Spanned<Pattern<S>>),
-
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -162,8 +162,8 @@ pub struct ImplDef<S: Syntax> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Macro<S: Syntax> {
-    Import(S),
-    Type(S::Name, &'static [S::Type], S::Type),
+    Import(S::Pattern),
+    Type(S::Type, S::Type),
     Extern(S::Name, &'static [S::Variable], S::Type),
     ImplDef(ImplDef<S>),
     Name(S::Name),
@@ -182,16 +182,25 @@ pub struct Package<S: Syntax> {
     pub root_node: FieldDef<S>,
 }
 
+#[derive(Default, Debug)]
 pub struct PackageCollection<S: Syntax> {
-    pub packages: Vec<Package<S>>,
+    pub packages: Vec<(Package<S>, FileID)>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+impl<S: Syntax> PackageCollection<S> {
+    pub fn merge(mut self, rhs: Self) -> Self {
+        self.packages.extend(rhs.packages);
+        self
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UntypedCst;
 
 impl Syntax for UntypedCst {
     type Expr = Spanned<Intern<CstExpr<UntypedCst>>>;
     type Type = Spanned<Intern<CstType>>;
+    type Pattern = Spanned<Intern<Pattern<UntypedCst>>>;
     type Variable = Untyped;
     type Name = Spanned<Intern<String>>;
 }

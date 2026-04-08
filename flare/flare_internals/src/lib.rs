@@ -95,7 +95,7 @@ use crate::{
                     UntypedAst,
                     // Untyped
                 },
-                cst::{Package, UntypedCst},
+                cst::{Package, PackageCollection, UntypedCst},
                 files::{FileID, FileSource},
             },
             midend::ir::IR,
@@ -107,7 +107,7 @@ use crate::{
 pub struct Init;
 
 pub struct Parse {
-    program: Package<UntypedCst>,
+    program: PackageCollection<UntypedCst>,
 }
 
 pub struct Build {
@@ -167,9 +167,9 @@ pub struct Context<T, O> {
 pub fn make_filectx(src_paths: &[PathBuf]) -> FileCtx {
     src_paths
         .iter()
-        .map(|filepath| {
-            let id = convert_path_to_id(filepath);
-
+        .enumerate()
+        .map(|(id, filepath)| {
+            let id = id as u64;
             let src_text = std::fs::read_to_string(filepath).unwrap();
 
             let source = FileSource {
@@ -182,30 +182,18 @@ pub fn make_filectx(src_paths: &[PathBuf]) -> FileCtx {
         .collect()
 }
 
-fn parse_file(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
-    parser::parse(file);
-    todo!()
+fn parse_file(file: &FileSource) -> CompResult<PackageCollection<UntypedCst>> {
+    parser::parse(file)
 }
 
 pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
-    let mut processed: Vec<(Vec<Package<UntypedCst>>, FileID)> = vec![];
-    for (id, file) in filectx {
-        let pack = parse_file(file)?;
-        processed.push((pack, *id))
+    let mut program = PackageCollection::default();
+    for file in filectx.values() {
+        let collection = parse_file(file)?;
+        program = program.merge(collection)
     }
-    todo!()
-    // let v: Vec<_> = processed
-    //     .into_iter()
-    //     .flat_map(|(packages, id)| {
-    //         packages
-    //             .into_iter()
-    //             .map(|p| (p, id))
-    //             .collect::<Vec<(ProductRow<_>, FileID)>>()
-    //     })
-    //     .collect::<Vec<_>>();
 
-    // let program = Package { packages: v };
-    // Ok(Parse { program })
+    Ok(Parse { program })
 }
 
 pub fn build(parse: Parse) -> CompResult<Build> {
@@ -262,11 +250,4 @@ pub fn generate<T: Target>(converted: Convert, target: T) -> CompResult<T::Outpu
     let g = Generator::new(target, converted.cc);
     let output = g.generate();
     Ok(output)
-}
-
-fn convert_path_to_id(path: &Path) -> FileID {
-    let mut hasher = FxHasher::default();
-    path.hash(&mut hasher);
-    //path.canonicalize().unwrap().hash(&mut hasher);
-    hasher.finish()
 }

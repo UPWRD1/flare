@@ -20,8 +20,8 @@ pub struct UntypedAst;
 
 impl Syntax for UntypedAst {
     type Expr = Spanned<Intern<Expr<Self::Variable>>>;
-    // type Type = Spanned<Intern<Type>>;
     type Type = TypeScheme;
+    type Pattern = ();
     type Variable = Untyped;
     type Name = Spanned<Intern<String>>;
 }

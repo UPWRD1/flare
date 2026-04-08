@@ -1,25 +1,26 @@
-use std::{cell::RefCell, marker::PhantomData, num::NonZero};
+use std::{marker::PhantomData, num::NonZero};
 
 use crate::resource::{
     errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
     rep::{
-        common::{FlareSpan, Spanned},
+        common::{FlareSpan, Spanned, Syntax},
         frontend::{
-            ast::{BinOp, Untyped},
-            cst::{CstExpr, FieldDef, Macro, Package, PackageCollection, Pattern, UntypedCst},
+            ast::{BinOp, Label, Untyped},
+            cst::{
+                CstExpr, FieldDef, Macro, MatchArm, Package, PackageCollection, Pattern, UntypedCst,
+            },
             csttypes::CstType,
             files::FileSource,
         },
     },
 };
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use internment::Intern;
-// use lasso::{Interner, Rodeo};
 use ordered_float::OrderedFloat;
 
-use tree_sitter::{InputEdit, Language, Node, Parser, Point, Tree};
+use tree_sitter::{Language, Node, Parser, Tree};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
@@ -82,38 +83,35 @@ pub enum FK {
     Name,
     Arg,
     Value,
+    Body,
+    Expr,
     Type,
-    FunctionField,
-    ValField,
     Parameter,
     Return,
-    Body,
     Condition,
     Consequence,
     Alternative,
     Pattern,
-    Function,
-    Argument,
-    Object,
-    Field,
-    Callee,
     Func,
+    Field,
+    Macro,
+    Assignment,
+    Callee,
     Left,
     Right,
     Operator,
-    VariantName,
-    VariantData,
+    Generics,
+    Data,
     Import,
     Implementor,
     Spec,
     TheType,
     Sigil,
-    FieldName,
-    FieldTy,
+    VariantName,
     // sentinel
     COUNT,
 }
-
+#[derive(Debug)]
 pub struct LangIds {
     kinds: [u16; NK::COUNT as usize],
     fields: [u16; FK::COUNT as usize],
@@ -183,48 +181,46 @@ impl LangIds {
                     .into();
             };
         }
+        // dbg!(lang.field_id_for_name("function_field"));
 
         f!(Name, "name");
         f!(Arg, "arg");
-        f!(Value, "value");
         f!(Type, "type");
-        f!(FunctionField, "function_field");
-        f!(ValField, "val_field");
-        f!(Parameter, "parameter");
+        f!(Expr, "expr");
+        // f!(FunctionField, "function_field");
+        // f!(ValField, "val_field");
         f!(Body, "body");
+        f!(Value, "value");
+        f!(Parameter, "parameter");
+        f!(Return, "return");
         f!(Condition, "condition");
         f!(Consequence, "consequence");
         f!(Alternative, "alternative");
         f!(Pattern, "pattern");
-        f!(Function, "function");
-        f!(Argument, "argument");
-        f!(Object, "object");
         f!(Field, "field");
         f!(Callee, "callee");
         f!(Func, "func");
         f!(Left, "left");
         f!(Right, "right");
         f!(Operator, "operator");
-        f!(VariantName, "variant_name");
-        f!(VariantData, "variant_data");
+        f!(Generics, "generics");
+        f!(Data, "data");
         f!(Import, "import");
         f!(Implementor, "implementor");
         f!(Spec, "spec");
         f!(TheType, "the_type");
         f!(Sigil, "sigil");
-        f!(FieldName, "field_name");
-        f!(FieldTy, "field_ty");
-
+        f!(VariantName, "variant_name");
         Self { kinds, fields }
     }
 
     #[inline(always)]
-    pub fn k(&self, nk: NK) -> u16 {
+    pub const fn k(&self, nk: NK) -> u16 {
         self.kinds[nk as usize]
     }
 
     #[inline(always)]
-    pub fn f(&self, fk: FK) -> u16 {
+    pub const fn f(&self, fk: FK) -> u16 {
         self.fields[fk as usize]
     }
 }
@@ -234,7 +230,8 @@ pub struct Translate<'src> {
     defs: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>>,
     _phantom: PhantomData<Node<'src>>,
     ids: &'src LangIds, // shared, constructed once per process
-    errors: RefCell<FxHashMap<FlareSpan, String>>,
+    errors: FxHashMap<FlareSpan, String>,
+    current_path: Vec<<UntypedCst as Syntax>::Name>,
 }
 
 impl<'src> Translate<'src> {
@@ -244,7 +241,8 @@ impl<'src> Translate<'src> {
             defs: Default::default(),
             _phantom: PhantomData,
             ids,
-            errors: RefCell::default(),
+            errors: FxHashMap::default(),
+            current_path: Vec::new(),
         }
     }
 
@@ -253,17 +251,19 @@ impl<'src> Translate<'src> {
     }
 
     fn name(&self, node: &Node<'src>) -> Spanned<Intern<String>> {
-        self.si(*node, |node| {
+        let name = {
             node.utf8_text(self.file.source.as_bytes())
                 .unwrap()
                 .to_string()
-        })
+        };
+
+        self.si(*node, |_| name)
     }
 
-    /// Helper: wrap a node's lowered value in its span
-    fn s<T>(&self, node: Node, f: impl FnOnce(Node) -> T) -> Spanned<T> {
-        Spanned(f(node), self.span(node))
-    }
+    // /// Helper: wrap a node's lowered value in its span
+    // fn s<T>(&self, node: Node, f: impl FnOnce(Node) -> T) -> Spanned<T> {
+    //     Spanned(f(node), self.span(node))
+    // }
 
     /// Helper: wrap a node's lowered value in its span
     fn si<T: Sync + Send + std::hash::Hash + Eq>(
@@ -284,7 +284,6 @@ impl<'src> Translate<'src> {
 
     fn get_children_by(&self, node: Node<'src>, fk: FK) -> Vec<Node<'src>> {
         let mut cur = node.walk();
-
         node.children_by_field_id(NonZero::new(self.ids.f(fk)).unwrap(), &mut cur)
             // .map(|n| self.intern(n))
             .collect::<Vec<_>>()
@@ -294,10 +293,9 @@ impl<'src> Translate<'src> {
         node.child_by_field_id(self.ids.f(fk))
     }
 
-    fn error(&self, node: Node<'src>, msg: &(impl ToString + ?Sized)) {
-        self.errors
-            .borrow_mut()
-            .insert(self.span(node), msg.to_string());
+    fn error(&mut self, node: Node<'src>, msg: &(impl ToString + ?Sized)) {
+        let span = self.span(node);
+        self.errors.insert(span, msg.to_string());
     }
 
     fn translate_module(&mut self, root: Node<'src>) -> Vec<Package<UntypedCst>> {
@@ -305,33 +303,28 @@ impl<'src> Translate<'src> {
         root.named_children(&mut cursor)
             .filter(|n| n.kind_id() == self.ids.k(NK::FieldAssignment))
             .map(|n| {
-                let def = self.lower_expr(n);
+                let def = self.translate_field_assignment(n);
 
                 Package {
                     macros: std::mem::take(&mut self.defs),
-                    root_node: FieldDef {
-                        name: FlareSpan::default().with(String::from("$ROOT").into()),
-                        params: vec![],
-                        ty: None,
-                        value: Some(def),
-                    },
+                    root_node: def,
                 }
             })
             .collect()
     }
 
-    fn lower_expr(&self, node: Node<'src>) -> Spanned<Intern<CstExpr<UntypedCst>>> {
-        self.si(node, |node| {
+    fn lower_expr(&mut self, node: Node<'src>) -> Spanned<Intern<CstExpr<UntypedCst>>> {
+        let expr = {
             let k = node.kind_id();
             match k {
                 // ── Control flow ─────────────────────────────────────────────────
                 k if k == self.ids.k(NK::LetExpression) => self.lower_let(node),
-                // k if k == self.ids.k(NK::IfExpression) => self.lower_if(node),
-                // k if k == self.ids.k(NK::MatchExpression) => self.lower_match(node),
+                k if k == self.ids.k(NK::IfExpression) => self.lower_if(node),
+                k if k == self.ids.k(NK::MatchExpression) => self.lower_match(node),
 
                 // // ── Abstraction / application ─────────────────────────────────────
                 // k if k == self.ids.k(NK::Lambda) => self.lower_lambda(node),
-                // k if k == self.ids.k(NK::CallExpression) => self.lower_call(node),
+                k if k == self.ids.k(NK::CallExpression) => self.lower_call(node),
 
                 // // ── Row / nominal dispatch ────────────────────────────────────────
                 // k if k == self.ids.k(NK::PropAccess) => self.lower_prop_access(node),
@@ -345,7 +338,7 @@ impl<'src> Translate<'src> {
                 // k if k == self.ids.k(NK::CmpExpression) => self.lower_cmp(node),
 
                 // ── Constructors ─────────────────────────────────────────────────
-                // k if k == self.ids.k(NK::FieldedConstructor) => self.lower_record(node),
+                k if k == self.ids.k(NK::FieldedConstructor) => self.lower_record(node),
                 // k if k == self.ids.k(NK::SumConstructor) => self.lower_variant(node),
 
                 // ── Transparent wrapper ───────────────────────────────────────────
@@ -380,30 +373,61 @@ impl<'src> Translate<'src> {
                     CstExpr::Hole(Untyped(self.name(&node)))
                 }
             }
-        })
+        };
+        self.si(node, |_| expr)
     }
 
-    fn translate_field_assignment(&self, node: Node<'src>) -> FieldDef<UntypedCst> {
+    fn lower_record(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+        let mut cursor = node.walk();
+        let children = node.children(&mut cursor);
+        // dbg!(&children);
+        let fields: Vec<FieldDef<UntypedCst>> = children
+            .into_iter()
+            .filter_map(|child| {
+                if !child.is_named() {
+                    return None;
+                }
+                // dbg!(child.to_sexp());
+                let k = child.kind_id();
+                match k {
+                    k if k == self.ids.k(NK::FieldAssignment) => {
+                        Some(self.translate_field_assignment(child))
+                    }
+                    k if k == self.ids.k(NK::UseMacro) => {
+                        self.add_use_macro(child);
+                        None
+                    }
+                    k if k == self.ids.k(NK::TypeMacro) => {
+                        self.add_type_macro(child);
+                        None
+                    }
+                    _ => {
+                        println!("extra: {}", child.to_sexp());
+                        None
+                    }
+                }
+            })
+            .collect();
+
+        CstExpr::ProductConstructor {
+            fields: fields.as_slice().into(),
+        }
+    }
+
+    fn translate_field_assignment(&mut self, node: Node<'src>) -> FieldDef<UntypedCst> {
         // Determine name and params from the two structural variants
-        let (name, params) = if let Some(ff) = node.child_by_field_id(self.ids.f(FK::FunctionField))
-        {
-            // function_field: the sub-fields 'name' and 'arg' are on ff itself
-            let name_node = self.get_child(ff, FK::Name).unwrap();
-            let name = self.name(&name_node);
-            let params = self.get_children_by(ff, FK::Arg);
-            (name, params)
-        } else {
-            // val_field: it's just a bare identifier
-            let vf = self.get_child(node, FK::ValField).unwrap();
-            let vf = self.name(&vf);
-            (vf, vec![])
+        let (name, params) = {
+            let name = self.get_child(node, FK::Name).unwrap();
+            let args = self.get_children_by(node, FK::Arg);
+            (self.name(&name), args)
         };
+        self.current_path.push(name);
 
         let ty = self
-            .get_child(node, FK::FieldTy)
+            .get_child(node, FK::Type)
             .map(|node| self.lower_type(node));
         let value = self
-            .get_child(node, FK::Value)
+            .get_child(node, FK::Expr)
             .map(|node| self.lower_expr(node));
 
         // Desugar function sugar immediately
@@ -424,18 +448,54 @@ impl<'src> Translate<'src> {
 
         FieldDef {
             name,
-            params: vec![],
+            // params: (&[]).into(),
             ty,
             value,
         }
     }
 
-    fn lower_type(&self, node: Node<'src>) -> Spanned<Intern<CstType>> {
-        self.si(node, |node| {
+    fn collapse_current_path(&self) -> CstExpr<UntypedCst> {
+        let first = *self.current_path.last().unwrap();
+        let init = first.convert(CstExpr::Ident(Untyped(first)));
+        let expr = self
+            .current_path
+            .iter()
+            .fold(init, |l, r| r.convert(CstExpr::FieldAccess(l, Label(*r))));
+        // dbg!(expr);
+        *expr.0
+    }
+
+    fn add_use_macro(&mut self, node: Node<'src>) {
+        let path = self.collapse_current_path();
+        let import_node = self.get_field(&node, FK::Import).unwrap();
+        let expr = self.lower_pattern(import_node);
+        let the_macro = Macro::Import(expr);
+        self.defs
+            .entry(path)
+            .and_modify(|v| v.push(the_macro.clone()))
+            .or_insert(vec![the_macro]);
+    }
+
+    fn add_type_macro(&mut self, node: Node<'src>) {
+        let path = self.collapse_current_path();
+        let key_ty_node = self.get_field(&node, FK::Name).unwrap();
+        let key_ty = self.lower_type(key_ty_node);
+
+        let defn_ty_node = self.get_field(&node, FK::TheType).unwrap();
+        let defn_ty = self.lower_type(defn_ty_node);
+        let the_macro = Macro::Type(key_ty, defn_ty);
+        self.defs
+            .entry(path)
+            .and_modify(|v| v.push(the_macro.clone()))
+            .or_insert(vec![the_macro]);
+    }
+
+    fn lower_type(&mut self, node: Node<'src>) -> Spanned<Intern<CstType>> {
+        let ty = {
             let k = node.kind_id();
             match k {
                 k if k == self.ids.k(NK::PrimitiveType) => self.lower_primitive_type(&node),
-                k if k == self.ids.k(NK::UserType) => self.lower_user_type(&node),
+                k if k == self.ids.k(NK::UserType) => self.lower_user_type(node),
                 k if k == self.ids.k(NK::GenericType) => {
                     // ?a — the identifier is the only named child
                     CstType::Generic(
@@ -461,28 +521,70 @@ impl<'src> Translate<'src> {
                     CstType::Hole
                 }
             }
-        })
+        };
+        self.si(node, |node| ty)
     }
 
     fn lower_primitive_type(&self, node: &Node<'src>) -> CstType {
-        let t = self.name(node);
-        dbg!(t);
-        todo!()
+        let t = self.raw_name(node);
+        match t {
+            "num" => CstType::Num,
+            "bool" => CstType::Bool,
+            "str" => CstType::String,
+            "unit" => CstType::Unit,
+            _ => panic!("Invalid primitive type: {t}"),
+        }
     }
 
-    fn lower_user_type(&self, node: &Node<'src>) -> CstType {
-        todo!()
+    fn lower_user_type(&mut self, node: Node<'src>) -> CstType {
+        let name_node = self.get_child(node, FK::Name).unwrap();
+        let name = self.name(&name_node);
+        let generics: Vec<_> = self
+            .get_children_by(node, FK::Generics)
+            .into_iter()
+            .map(|node| self.lower_type(node))
+            .collect();
+        let generics: &[Spanned<Intern<CstType>>] = generics.leak();
+        CstType::User(name, generics)
     }
 
-    fn lower_let(&self, node: Node<'_>) -> CstExpr<UntypedCst> {
+    fn lower_let(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
         let pattern = self.lower_pattern(self.get_child(node, FK::Pattern).unwrap());
         let value = self.lower_expr(self.get_child(node, FK::Value).unwrap());
         let body = self.lower_expr(self.get_child(node, FK::Value).unwrap());
         CstExpr::Let(pattern, value, body)
     }
 
-    fn lower_pattern(&self, node: Node<'src>) -> Spanned<Intern<Pattern<UntypedCst>>> {
-        self.si(node, |node| {
+    fn lower_if(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+        let cond = self.lower_expr(self.get_child(node, FK::Condition).unwrap());
+        let cons = self.lower_expr(self.get_child(node, FK::Consequence).unwrap());
+        let altr = self.lower_expr(self.get_child(node, FK::Alternative).unwrap());
+        CstExpr::If(cond, cons, altr)
+    }
+
+    fn lower_match(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+        let matchee = self.lower_expr(self.get_child(node, FK::Value).unwrap());
+        let patterns = self.get_children_by(node, FK::Pattern);
+        let exprs = self.get_children_by(node, FK::Expr);
+        let arms: Vec<_> = patterns
+            .into_iter()
+            .zip(exprs)
+            .map(|(pat_node, expr_node)| {
+                let pat = self.lower_pattern(pat_node);
+                let body = self.lower_expr(expr_node);
+                MatchArm { pat, body }
+            })
+            .collect();
+
+        CstExpr::Match(matchee, arms.leak())
+    }
+    fn lower_call(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+        let func = self.lower_expr(node.child_by_field_id(self.ids.f(FK::Func)).unwrap());
+        let arg = self.lower_expr(node.child_by_field_id(self.ids.f(FK::Expr)).unwrap());
+        CstExpr::Call(func, arg)
+    }
+    fn lower_pattern(&mut self, node: Node<'src>) -> Spanned<Intern<Pattern<UntypedCst>>> {
+        let pat = {
             let k = node.kind_id();
             match k {
                 k if k == self.ids.k(NK::PatternVariable) => {
@@ -491,12 +593,16 @@ impl<'src> Translate<'src> {
                 k if k == self.ids.k(NK::PatternProduct) => self.lower_pattern_product(node),
                 k if k == self.ids.k(NK::PatternVariant) => {
                     let tag = self.get_field(&node, FK::VariantName).unwrap();
+                    let name = self.name(&tag);
+                    let label = Label(name);
                     let payload = node
                         .named_children(&mut node.walk())
                         // skip the variant_name child, take the rest as payload
                         .nth(1)
-                        .map(|n| self.lower_pattern(n));
-                    todo!()
+                        .map(|n| self.lower_pattern(n))
+                        .unwrap_or(self.si(node, |_| Pattern::Unit));
+                    Pattern::Variant(label, payload)
+
                     // Pattern::Variant { tag, payload }
                 }
                 // k if k == self.k_pattern_path => {
@@ -527,10 +633,11 @@ impl<'src> Translate<'src> {
                     Pattern::Hole(Untyped(self.name(&node)))
                 }
             }
-        })
+        };
+        self.si(node, |_| pat)
     }
 
-    fn lower_pattern_product(&self, node: Node<'src>) -> Pattern<UntypedCst> {
+    fn lower_pattern_product(&mut self, node: Node<'src>) -> Pattern<UntypedCst> {
         // { p1, p2 } — named children are _pattern_product_elem,
         // each of which wraps exactly one pattern
         let mut cursor = node.walk();
@@ -553,14 +660,20 @@ fn translate_tree_sitter(tree: &Tree, file: &FileSource) -> PackageCollection<Un
     let root = tree.root_node();
     let ids = LangIds::new(&tree_sitter::Language::new(tree_sitter_flare::LANGUAGE));
     let mut lowerer = Translate::new(&ids, file);
-    let packages = lowerer.translate_module(root);
+    let packages = lowerer
+        .translate_module(root)
+        .into_iter()
+        .map(|p| (p, file.id))
+        .collect();
     PackageCollection { packages }
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
-pub fn parse(file: &FileSource) -> Result<PackageCollection<UntypedCst>, anyhow::Error> {
+pub fn parse(file: &FileSource) -> CompResult<PackageCollection<UntypedCst>> {
     let mut parser = Parser::new();
-    parser.set_language(&tree_sitter_flare::LANGUAGE.into())?;
+    parser
+        .set_language(&tree_sitter_flare::LANGUAGE.into())
+        .unwrap();
     let tree = parser.parse(&file.source, None).unwrap();
     Ok(translate_tree_sitter(&tree, file))
 }

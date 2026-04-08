@@ -755,7 +755,7 @@ impl Resolver {
         vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
     ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         let def = self.analyze_expr(def, vars);
-        let MatchArm { pat, body } = self.resolve_branch(pat, body, vars);
+        let MatchArm { pat, body: body } = self.resolve_branch(pat, body, vars);
         expr.modify(CstExpr::Let(pat, def, body))
     }
 

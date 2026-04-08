@@ -9,15 +9,18 @@ Option = {
         match option
             as |Some x1| then x1
             as |None| then default
+        end
           
     is_some x : Option[?T] -> bool =
         match x 
             as | Some _v| then true
             as | None | then false
+        end
 
     map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
             match o 
                 # |Some v| then Some (f(v)), #this is ok
                 as |Some v| then let v = f(v) in |Some v|                  
                 as |None| then None
+            end
 }

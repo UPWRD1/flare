@@ -1,48 +1,52 @@
-Main = {
-    use Option.{Option, map, unwrap_or, Some, None}
+# Main = {
+#     use Option.{Option, map, unwrap_or, Some, None}
         
-    extern to_num: str ->num
+#     extern to_num: str ->num
 
-    extern puts: str -> num
+#     extern puts: str -> num
     
-    type Wrapper[?X] = {data: ?X, extra: unit}
+#     type Wrapper[?X] = {data: ?X, extra: unit}
     
-    new_Wrapper t : ?T -> Wrapper[?T] =
-        {data = id (t), extra = unit}
+#     new_Wrapper t : ?T -> Wrapper[?T] =
+#         {data = id (t), extra = unit}
         
-    map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
-        let v = f(w.data) in 
-        {data = v, extra= w.extra}
+#     map_wrapper w f : Wrapper[?T] -> (?T -> ?U) -> Wrapper[?U] =
+#         let v = f(w.data) in 
+#         {data = v, extra= w.extra}
         
-    extract w : Wrapper[?T] -> ?T =
-        w.data
+#     extract w : Wrapper[?T] -> ?T =
+#         w.data
 
 
-    id x : ?T -> ?T = x
+#     id x : ?T -> ?T = x
 
    
-    type Status = |ok , err|
+#     type Status = |ok , err|
 
-    Ok: Status = |ok|
+#     Ok: Status = |ok|
 
     
-    factorial x : num -> num =
-        if x == 0 then 1 else x * factorial (x - 1)
+#     factorial x : num -> num =
+#         if x == 0 then 1 else x * factorial (x - 1)
 
- matcher y: num -> num =
-  let x = {|Some y|, |None|} in
-      match x in
-          {|None|, _x} then 0,
-          {_x, |None|} then 1,
-          {|Some 3|, |Some y|} then 3
-    
-    let unwrap_weird option : Option[num] -> num =
-        match option in
-            |Some 0| then 100,
-            |Some 1| then 101,
-            |Some x| then x,
-            |None| then 2
+#  matcher y: num -> num =
+#   let x = {|Some y|, |None|} in
+#       match x in
+#           {|None|, _x} then 0,
+#           {_x, |None|} then 1,
+#           {|Some 3|, |Some y|} then 3
+          
+#     let unwrap_weird option : Option[num] -> num =
+#         match option in
+#             |Some 0| then 100,
+#             |Some 1| then 101,
+#             |Some x| then x,
+#             |None| then 2
 
-    main: num =
-        unwrap_weird Some(1)
-} 
+#     main: num =
+#         unwrap_weird Some(1)
+# }
+Main = {
+    use Option
+    main: num = 0
+}

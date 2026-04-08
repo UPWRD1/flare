@@ -15,7 +15,7 @@ use crate::resource::{
         // concretetypes::{EnumVariant, Ty},
         common::Syntax,
         frontend::{
-            cst::{Package, UntypedCst},
+            cst::{Package, PackageCollection, UntypedCst},
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
         },
@@ -40,7 +40,8 @@ impl Environment<UntypedCst> {
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(program: &Package<UntypedCst>) -> CompResult<Self> {
+    pub fn build(program: &PackageCollection<UntypedCst>) -> CompResult<Self> {
+        dbg!(program);
         todo!()
     }
 
