@@ -3,19 +3,19 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     passes::frontend::typing::{
-        Constraint, Evidence, GenOut, ItemWrapper, Provenance, Row, Solver, Type, Typed,
+        Constraint, Evidence, GenOut, ItemWrapper, NameKind, Provenance, Row, Solver, Type, Typed,
         inst::Instantiate,
     },
     resource::rep::{
-        common::{Spanned, Variable},
-        frontend::ast::{Direction, Expr, Label, Untyped},
+        common::Spanned,
+        frontend::ast::{Direction, Expr, Untyped},
     },
 };
 
 impl Solver<'_> {
     pub fn infer(
         &mut self,
-        env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
+        env: im::HashMap<NameKind, Spanned<Intern<Type>>, FxBuildHasher>,
         ast: Spanned<Intern<Expr<Untyped>>>,
     ) -> (GenOut, Spanned<Intern<Type>>) {
         // dbg!(&env);
@@ -50,17 +50,25 @@ impl Solver<'_> {
             Expr::Ident(v) => {
                 // dbg!(v.0.0);
                 // dbg!(env.keys().collect::<Vec<_>>());
-                let ty = &env[&v.0.0];
-                // dbg!(ty.1, v.0.1);
-                (
-                    GenOut::new(vec![], ast.convert(Expr::Ident(Typed(v, *ty)))),
-                    *ty,
-                )
+                if let Some(ty) = env.get(&NameKind::Var(v.0.0)) {
+                    // dbg!(ty.1, v.0.1);
+                    (
+                        GenOut::new(vec![], ast.convert(Expr::Ident(Typed(v, *ty)))),
+                        *ty,
+                    )
+                } else if let Some(ty) = env.get(&NameKind::Label(v.0.0)) {
+                    (
+                        GenOut::new(vec![], ast.convert(Expr::Ident(Typed(v, *ty)))),
+                        *ty,
+                    )
+                } else {
+                    panic!("Undefined ident {}", v)
+                }
             }
             Expr::Lambda(arg, body) => {
                 let arg_tyvar = self.fresh_ty_var();
                 let arg_ty = arg.0.convert(Type::Unifier(arg_tyvar));
-                let env = env.update(arg.0.0, arg_ty);
+                let env = env.update(NameKind::Var(arg.0.0), arg_ty);
 
                 let (body_out, body_ty) = self.infer(env, body);
                 (
@@ -157,7 +165,7 @@ impl Solver<'_> {
 
             Expr::Let(name, def, body) => {
                 let (mut def_out, def_ty) = self.infer(env.clone(), def);
-                let env = env.update(name.0.0, def_ty);
+                let env = env.update(NameKind::Var(name.0.0), def_ty);
                 let (body_out, body_ty) = self.infer(env, body);
                 def_out.constraints.extend(body_out.constraints);
                 (
@@ -259,7 +267,10 @@ impl Solver<'_> {
             }
 
             Expr::Label(label, value) => {
-                let (out, value_ty) = self.infer(env, value);
+                let value_var = self.fresh_ty_var();
+                let value_ty = value.convert(Type::Unifier(value_var));
+                let env = env.update(NameKind::Label(label.0.0), value_ty);
+                let out = self.check(env, value, value_ty);
                 (
                     out.with_typed_ast(|ast| ast.convert(Expr::Label(label, ast))),
                     ast.convert(Type::Label(label, value_ty)),

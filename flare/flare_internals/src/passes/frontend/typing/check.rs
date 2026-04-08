@@ -3,11 +3,11 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     passes::frontend::typing::{
-        Constraint, GenOut, Provenance, Solver, Type, Typed,
+        Constraint, GenOut, NameKind, Provenance, Solver, Type, Typed,
         rows::{Row, RowCombination},
     },
     resource::rep::{
-        common::{HasSpan, Spanned},
+        common::Spanned,
         frontend::ast::{Direction, Expr, Untyped},
     },
 };
@@ -15,7 +15,7 @@ use crate::{
 impl Solver<'_> {
     pub fn check(
         &mut self,
-        env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
+        env: im::HashMap<NameKind, Spanned<Intern<Type>>, FxBuildHasher>,
         the_ast: Spanned<Intern<Expr<Untyped>>>,
         ty: impl Into<Spanned<Intern<Type>>>,
     ) -> GenOut {
@@ -61,7 +61,7 @@ impl Solver<'_> {
 
                     (arg, ret)
                 };
-                let env = env.update(arg.0.0, arg_ty);
+                let env = env.update(NameKind::Var(arg.0.0), arg_ty);
                 let body_out = self.check(env, body, ret_ty);
 
                 constraints.extend(body_out.constraints);
@@ -88,6 +88,7 @@ impl Solver<'_> {
 
             // Row Types
             (Expr::Label(ast_lbl, term), Type::Label(ty_lbl, ty)) if ast_lbl.0.0 == ty_lbl.0.0 => {
+                let env = env.update(NameKind::Label(ast_lbl.0.0), ty);
                 self.check(env, term, ty)
                     .with_typed_ast(|term| Spanned(Expr::Label(ast_lbl, term).into(), id))
             }
@@ -251,7 +252,7 @@ impl Solver<'_> {
                 // let (mut def_out, real_def_ty) = self.infer(env.clone(), def);
 
                 let mut def_out = self.check(env.clone(), def, def_ty);
-                let env = env.update(name.0.0, def_ty);
+                let env = env.update(NameKind::Var(name.0.0), def_ty);
                 let body_out = self.check(env, body, the_ty);
                 def_out.constraints.extend(body_out.constraints);
 

@@ -24,7 +24,7 @@ use crate::{
             common::{FlareSpan, Spanned, Syntax},
             frontend::{
                 ast::{BinOp, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
-                cst::{CstExpr, MatchArm, Pattern, UntypedCst},
+                cst::{CstExpr, FieldDef, MatchArm, Pattern, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind},
                 quantifier::QualifierFragment,
@@ -47,6 +47,7 @@ use crate::{
 /// In theory, this whole process could be built into the intial graph building.
 /// However, I'd rather maintain a separation of concerns,
 /// even if it would be more efficient to use a single pass over the environment.
+#[derive(Default)]
 pub struct Resolver {
     env: Environment<UntypedCst>,
     // new_env: Environment<UntypedAst>
@@ -428,42 +429,39 @@ impl Resolver {
     }
 
     #[allow(unused_variables)]
-    fn analyze_expr(
+    pub fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+        // vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+        vars: &[Intern<String>],
     ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         // dbg!(&expr);
 
         match *expr.0 {
             CstExpr::Ident(u) => {
-                if let Some((_, defn)) = vars.iter().rev().find(|n| n.0 == u.0.0) {
-                    *defn
+                if vars.iter().rev().find(|n| **n == u.0.0).is_some() {
+                    expr
                 } else {
                     // dbg!(expr);
                     self.resolve_name(u.0)
                 }
             }
-            CstExpr::ProductConstructor { fields } => todo!(),
-            // CstExpr::Concat(l, r) => {
-            //     let l = self.analyze_expr(l, vars);
-            //     let r = self.analyze_expr(r, vars);
-            //     expr.modify(CstExpr::Concat(l, r))
-            // }
-            // CstExpr::Project(direction, ex) => {
-            //     let ex = self.analyze_expr(ex, vars);
-            //     expr.modify(CstExpr::Project(direction, ex))
-            // }
-            // CstExpr::Inject(direction, ex) => {
-            //     let ex = self.analyze_expr(ex, vars);
-            //     expr.modify(CstExpr::Inject(direction, ex))
-            // }
-            // CstExpr::Branch(l, r) => {
-            //     let l = self.analyze_expr(l, vars);
-            //     let r = self.analyze_expr(r, vars);
-
-            //     expr.modify(CstExpr::Branch(l, r))
-            // }
+            CstExpr::ProductConstructor { fields } => {
+                let mut new_vars = vars.to_vec();
+                for field in fields.iter() {
+                    new_vars.push(field.name.0);
+                }
+                let fields: Vec<FieldDef<_>> = fields
+                    .iter()
+                    .map(|field| FieldDef {
+                        value: field.value.map(|val| self.analyze_expr(val, &new_vars)),
+                        ..*field
+                    })
+                    .collect();
+                expr.modify(CstExpr::ProductConstructor {
+                    fields: fields.as_slice().into(),
+                })
+            }
             CstExpr::Label(l, v) => {
                 let v = self.analyze_expr(v, vars);
                 expr.modify(CstExpr::Label(l, v))
@@ -546,7 +544,7 @@ impl Resolver {
         &mut self,
         pat: Spanned<Intern<Pattern<UntypedCst>>>,
         body: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+        vars: &[Intern<String>],
     ) -> MatchArm<UntypedCst> {
         // The branch becomes: λparam. <lets> in body
         // `param` is the lambda binder that receives the matchee at the call site.
@@ -554,15 +552,14 @@ impl Resolver {
         let branch_arg: Spanned<Intern<CstExpr<UntypedCst>>> = pat.convert(CstExpr::Ident(param));
 
         let bindings = self.compile_pattern(pat, branch_arg);
-        // dbg!(&bindings);
+        dbg!(&bindings);
         // Extend vars with user-visible bindings so analyze_expr can resolve them.
         // Each maps the binder name -> its destructured value expression.
-        let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)> =
-            vars.to_vec();
+        let mut branch_vars: Vec<Intern<String>> = vars.to_vec();
         for binding in &bindings {
             // dbg!(binding);
             if binding.user_visible {
-                branch_vars.push((binding.binder.0.0, binding.value));
+                branch_vars.push(binding.binder.0.0);
             }
         }
         // dbg!(&bindings);
@@ -635,7 +632,7 @@ impl Resolver {
     }
 
     #[allow(unused_variables)]
-    fn convert_expr(
+    pub fn convert_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
     ) -> Spanned<Intern<Expr<<UntypedCst as Syntax>::Variable>>> {
@@ -643,7 +640,14 @@ impl Resolver {
 
         match *expr.0 {
             CstExpr::Ident(u) => expr.convert(Expr::Ident(u)),
-            CstExpr::ProductConstructor { fields } => todo!(),
+            CstExpr::ProductConstructor { fields } => fields
+                .iter()
+                .map(|l| {
+                    let val = self.convert_expr(l.value.unwrap());
+                    expr.convert(Expr::Label(Label(l.name), val))
+                })
+                .reduce(|l, r| expr.convert(Expr::Concat(l, r)))
+                .unwrap(),
             CstExpr::Label(l, v) => {
                 // dbg!(vars);
                 // dbg!(expr);
@@ -717,7 +721,7 @@ impl Resolver {
                 let decision_tree = matchmatrix::compile(&patterns);
                 decision_tree.print(0);
                 let t = self.translate_decision_tree(matchee, decision_tree, &actions);
-                println!("{t}");
+                println!("match-tree: {t}");
                 t
             }
             CstExpr::Lambda(arg, body) => {
@@ -731,7 +735,8 @@ impl Resolver {
                 let decision_tree = matchmatrix::compile(&patterns);
                 decision_tree.print(0);
                 let t = self.translate_decision_tree(body, decision_tree, &actions);
-                println!("{t}");
+
+                println!("let-tree {t}");
                 t
             }
             CstExpr::Number(n) => expr.convert(Expr::Number(n)),
@@ -752,10 +757,10 @@ impl Resolver {
         pat: Spanned<Intern<Pattern<UntypedCst>>>,
         def: Spanned<Intern<CstExpr<UntypedCst>>>,
         body: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+        vars: &[Intern<String>],
     ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         let def = self.analyze_expr(def, vars);
-        let MatchArm { pat, body: body } = self.resolve_branch(pat, body, vars);
+        let MatchArm { pat, body } = self.resolve_branch(pat, body, vars);
         expr.modify(CstExpr::Let(pat, def, body))
     }
 
@@ -764,9 +769,9 @@ impl Resolver {
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         arg: Untyped,
         body: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+        vars: &[Intern<String>],
     ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
-        let new_vars = &[vars, &[(arg.0.0, arg.0.convert(CstExpr::Ident(arg)))]].concat();
+        let new_vars = &[vars, &[arg.0.0]].concat();
         let body = self.analyze_expr(body, new_vars);
         // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
         expr.convert(CstExpr::Lambda(arg, body))
@@ -775,7 +780,7 @@ impl Resolver {
     fn resolve_field_access(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<UntypedCst>>>)],
+        vars: &[Intern<String>],
     ) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {
             panic!("Not a field access")

@@ -1,7 +1,9 @@
+use im::HashMap;
+use internment::Intern;
 // use petgraph::Graph;
 use petgraph::{
     dot::Config,
-    prelude::StableDiGraph,
+    prelude::{StableDiGraph, StableGraph},
     stable_graph::{EdgeReference, NodeIndex},
     visit::EdgeRef as _,
 };
@@ -13,9 +15,10 @@ use crate::resource::{
     errors::CompResult,
     rep::{
         // concretetypes::{EnumVariant, Ty},
-        common::Syntax,
+        common::{Spanned, Syntax},
         frontend::{
-            cst::{Package, PackageCollection, UntypedCst},
+            ast::Label,
+            cst::{CstExpr, FieldDef, Macro, Package, PackageCollection, UntypedCst},
             entry::{FunctionItem, Item, ItemKind, PackageEntry},
             quantifier::QualifierFragment,
         },
@@ -30,6 +33,7 @@ use crate::resource::{
 /// implement `Clone`, since it is ridiculously expensive, and there is no
 /// real reason to clone the environment.
 #[non_exhaustive]
+#[derive(Default)]
 pub struct Environment<S: Syntax> {
     pub graph: StableDiGraph<Item<S>, QualifierFragment>,
     pub root: NodeIndex,
@@ -40,9 +44,51 @@ impl Environment<UntypedCst> {
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(program: &PackageCollection<UntypedCst>) -> CompResult<Self> {
-        dbg!(program);
+    pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Self> {
+        let g: StableDiGraph<Item<UntypedCst>, QualifierFragment> = StableGraph::default();
+        let mut macros: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>> =
+            FxHashMap::default();
+        let mut fields: Vec<FieldDef<UntypedCst>> = vec![];
+        program.packages.into_iter().for_each(|(p, _)| {
+            macros.extend(p.macros);
+            fields.push(p.root_node);
+        });
+        let root_obj: Spanned<Intern<_>> = Spanned::default_with(
+            CstExpr::ProductConstructor {
+                fields: fields.as_slice().into(),
+            }
+            .into(),
+        );
+        let proj_main_package = Spanned::default_with(
+            CstExpr::FieldAccess(
+                root_obj,
+                Label(Spanned::default_with(String::from("Main").into())),
+            )
+            .into(),
+        );
+
+        let proj_main_func: Spanned<Intern<_>> = Spanned::default_with(
+            CstExpr::FieldAccess(
+                proj_main_package,
+                Label(Spanned::default_with(String::from("main").into())),
+            )
+            .into(),
+        );
+        dbg!(proj_main_func);
+        let mut resolver = crate::passes::frontend::resolution::Resolver::default();
+        let resolved = resolver.analyze_expr(proj_main_func, &[]);
+        let resolved = resolver.convert_expr(resolved);
+        let r = crate::passes::frontend::typing::Solver::check_with_items(
+            &crate::passes::frontend::typing::ItemSource::default(),
+            resolved,
+            crate::passes::frontend::typing::TypeScheme {
+                ty: Spanned::default_with(crate::passes::frontend::typing::Type::Num.into()),
+                ..Default::default()
+            },
+        )?;
+        dbg!(r);
         todo!()
+        // proj_main_func
     }
 
     /// Builds an impl definition

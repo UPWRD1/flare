@@ -116,7 +116,8 @@ impl Provenance {
                 format!("This condition should be a bool, found {}", right.0),
                 right.1,
             ),
-            Self::FieldAccess(simple_span, label) => todo!(),
+            Self::FieldAccess(simple_span, label) => DynamicErr::new("Field not found")
+                .label(format!("This should contain {}", label.0), simple_span),
         }
     }
 }
@@ -183,28 +184,10 @@ impl TypeScheme {
         }
     }
 }
-
-#[derive(Debug)]
-pub struct TypeInferOut {
-    pub ast: Spanned<Intern<Expr<Typed>>>,
-    pub scheme: TypeScheme,
-    pub errors: FxHashMap<FlareSpan, CompilerErr>,
-    pub row_to_ev: FxHashMap<FlareSpan, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<FlareSpan, Spanned<Intern<Type>>>,
-    pub item_wrappers: FxHashMap<FlareSpan, ItemWrapper>,
-}
-
-impl TypeInferOut {
-    pub fn to_typesoutput(self) -> TypesOutput {
-        TypesOutput {
-            typed_ast: self.ast,
-            scheme: self.scheme,
-            errors: self.errors,
-            row_to_ev: self.row_to_ev,
-            branch_to_ret_ty: self.branch_to_ret_ty,
-            item_wrappers: self.item_wrappers,
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum NameKind {
+    Var(Intern<String>),
+    Label(Intern<String>),
 }
 
 #[derive(Debug)]

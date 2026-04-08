@@ -1,5 +1,6 @@
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QualifierFragment {
+    #[default]
     Root,
     Package(String),
     Type(String),
