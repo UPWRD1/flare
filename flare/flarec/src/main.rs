@@ -127,7 +127,8 @@ fn main() {
     enable_loggin();
     panic_hook();
 
-    let cli = Cli::parse(); // unsafe { backtrace_on_stack_overflow::enable() };
+    let cli = Cli::parse();
+    // unsafe { backtrace_on_stack_overflow::enable() };
 
     match cli.emit {
         EmitOptions::IR => {

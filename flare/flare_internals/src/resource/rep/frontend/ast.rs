@@ -26,7 +26,7 @@ impl Syntax for UntypedAst {
     type Name = Spanned<Intern<String>>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Untyped(pub Spanned<Intern<String>>);
 
@@ -68,25 +68,6 @@ pub enum BinOp {
     Or,
 }
 
-impl Display for BinOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BinOp::Eq => write!(f, "=="),
-            BinOp::Neq => write!(f, "!="),
-            BinOp::Gt => write!(f, ">"),
-            BinOp::Lt => write!(f, "<"),
-            BinOp::Gte => write!(f, ">="),
-            BinOp::Lte => write!(f, "<="),
-            BinOp::Add => write!(f, "+"),
-            BinOp::Sub => write!(f, "-"),
-            BinOp::Mul => write!(f, "*"),
-            BinOp::Div => write!(f, "/"),
-            BinOp::And => write!(f, "and"),
-            BinOp::Or => write!(f, "or"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Direction {
     Left,
@@ -99,7 +80,7 @@ pub struct Label(pub Spanned<Intern<String>>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, Default)]
 pub struct ItemId(pub usize);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Default)]
 pub enum Kind {
     #[default]
     Ty,

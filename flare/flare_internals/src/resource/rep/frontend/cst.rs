@@ -15,13 +15,13 @@ use crate::resource::{
 /// Type representing a Pattern.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Pattern<V: Variable> {
-    Wildcard,
+    Any,
 
     // Variable pattern: matches anything, binds to variable
     Var(V),
 
     // Literal patterns: match exact values
-    Number(ordered_float::OrderedFloat<f64>),
+    Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Particle(Spanned<Intern<String>>),
     Bool(bool),
@@ -30,7 +30,7 @@ pub enum Pattern<V: Variable> {
     // Constructor pattern: matches labeled variant
     // Pattern::Ctor(label, inner_pattern)
     // Examples: Some(x), None, Ok(y), Err(msg)
-    Ctor(Label, Spanned<Intern<Self>>),
+    Variant(Label, Spanned<Intern<Self>>),
 
     // Record pattern: matches record fields
     // Pattern::Record(fields, is_open)
@@ -97,7 +97,6 @@ where
     Sub(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Comparison(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
 
-    // Access(Spanned<Intern<Self>>),
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     FieldAccess(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Myself,
@@ -113,7 +112,12 @@ where
     ),
     Match(Spanned<Intern<Self>>, &'static [MatchArm<V>]),
     Lambda(V, Spanned<Intern<Self>>),
-    Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    Let(
+        V,
+        // Spanned<Intern<Pattern<V>>>,
+        Spanned<Intern<Self>>,
+        Spanned<Intern<Self>>,
+    ),
 }
 
 impl<V: Variable> Ident for Spanned<Intern<CstExpr<V>>> {

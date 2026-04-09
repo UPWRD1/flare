@@ -12,7 +12,6 @@ categories = ["compilers"]
 anyhow = "1.0.94"
 ariadne = {version = "0.5.1", features = ["auto-color"] }
 chumsky = {version = "0.12.0", features = ["pratt", "memoization",] }
-cranelift = {version = "0.128.3", features = ["module", "object"]}
 ena = "0.14.3"
 im = "15.1.0"
 inkwell = {version = "0.8.0", features = ["llvm21-1"]}
@@ -20,10 +19,12 @@ internment = {version = "0.8.6", features = []}
 itertools = "0.14.0"
 log = "0.4.28"
 ordered-float = { version = "4.5.0", features = [] }
-petgraph = {version = "0.8.3"}# ,  features = ["serde-1"],  default-features = false}
+petgraph = {version = "0.8.3", features = ["stable_graph"]}# ,  features = ["serde-1"],  default-features = false}
 rustc-hash = "2.1.1"
 thiserror = "2.0.7"
 tiny_pretty = "0.2.1"
+tree-sitter = "0.26.7"
+tree-sitter-flare = "0.1.0"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

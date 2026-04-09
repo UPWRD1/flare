@@ -1,11 +1,14 @@
 use std::collections::BTreeSet;
 
 use chumsky::span::{SimpleSpan, Span};
+use im::Vector;
 use internment::Intern;
+use itertools::Itertools;
 use petgraph::{
     algo::toposort,
     dot::Config,
     graph::NodeIndex,
+    prelude::StableDiGraph,
     visit::{Dfs, IntoNodeReferences, Walker},
 };
 use rustc_hash::FxHashSet;
@@ -14,14 +17,15 @@ type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 use crate::{
     passes::frontend::{
         environment::Environment,
+        matchmatrix::{self, DecisionTree, Occ, SigElem},
         typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeScheme, TypeVar},
     },
     resource::{
         errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
-            common::{Ident, Spanned},
+            common::{Ident, NodeId, Spanned},
             frontend::{
-                ast::{Expr, ItemId, Kind, Label, Untyped, UntypedAst},
+                ast::{BinOp, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
                 cst::{CstExpr, MatchArm, Pattern, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind, PackageEntry},
@@ -161,7 +165,7 @@ type DagIdx = usize;
 struct Binding {
     binder: Untyped,
     /// The RHS: some destructuring of the scrutinee (e.g. Unlabel, or the scrutinee itself)
-    value: Spanned<Intern<Expr<Untyped>>>,
+    value: Spanned<Intern<CstExpr<Untyped>>>,
     /// Whether this binding is user-visible (goes into `vars` for name resolution)
     /// or just exists to constrain the type (e.g. inaccessible for nullary ctors)
     user_visible: bool,
@@ -182,31 +186,47 @@ impl Resolver {
         let err_no_main = DynamicErr::new("Could not find a main function")
             .label("not found in any packages", SimpleSpan::default());
 
-        let g = self
-            .env
-            .graph
-            .clone()
-            .map(|idx, item| self.analyze_item(idx, item), |idx, e| *e);
+        let g = self.env.graph.clone();
+        let stable_g =
+            StableDiGraph::from(g).map(|idx, item| self.analyze_item(idx, item), |idx, e| *e);
+
         let reachable: FxHashSet<NodeIndex> =
             Dfs::new(&self.dag.clone(), self.main_dag_idx.ok_or(err_no_main)?)
                 .iter(&self.dag)
                 .collect();
+
         let mut sorted: Vec<NodeIndex> = toposort(&self.dag, None)
             .into_iter()
             .flatten()
             .filter(|x| reachable.contains(x))
             .map(|x| NodeIndex::new(*self.dag.node_weight(x).expect("Node should exist")))
             .collect();
+
+        let g = stable_g.filter_map_owned(
+            |idx, item| {
+                if reachable.contains(&idx) {
+                    Some(self.convert(&item))
+                } else {
+                    None
+                }
+            },
+            |_, e| Some(e),
+        );
+        self.debug();
+        self.env.debug();
+        dbg!(&sorted);
         sorted.reverse();
+
         if self.errors.is_empty() {
             let env = Environment::from_graph_and_root(g, self.env.root);
+            env.debug();
             Ok((env, sorted))
         } else {
             Err(ErrorCollection::new(self.errors).into())
         }
     }
 
-    fn analyze_item(&mut self, node_idx: NodeIndex, item: &Item<UntypedCst>) -> Item<UntypedAst> {
+    fn analyze_item(&mut self, node_idx: NodeIndex, item: &Item<UntypedCst>) -> Item<UntypedCst> {
         let dag_idx = if let Some((node_idx, _)) = self
             .dag
             .node_references()
@@ -238,16 +258,8 @@ impl Resolver {
 
                 Item::new(ItemKind::Function(f))
             }
-            ItemKind::Type(n, g, t) => {
-                let scheme = self.convert_type(t, Kind::Ty);
-
-                Item::new(ItemKind::Type(n, vec![].leak(), scheme))
-            }
-            ItemKind::Extern { name, args, sig } => {
-                let sig = self.in_context(|me| me.convert_type(sig, Kind::Extern(name.0)), dag_idx);
-
-                Item::new(ItemKind::Extern { name, args, sig })
-            }
+            ItemKind::Type(n, g, t) => Item::new(ItemKind::Type(n, vec![].leak(), t)),
+            ItemKind::Extern { name, args, sig } => Item::new(ItemKind::Extern { name, args, sig }),
             ItemKind::Root => Item::new(ItemKind::Root),
             ItemKind::Filename(f) => Item::new(ItemKind::Filename(f)),
             ItemKind::Dummy(d) => Item::new(ItemKind::Dummy(d)),
@@ -267,23 +279,32 @@ impl Resolver {
         &mut self,
         the_func: FunctionItem<UntypedCst>,
         idx: NodeIndex,
-    ) -> FunctionItem<UntypedAst> {
+    ) -> FunctionItem<UntypedCst> {
         self.in_context(
             |me| {
                 // me.generic_scope.clear()
                 // dbg!(the_func.sig);
-                let sig = me.convert_type(the_func.sig, Kind::Func);
                 // dbg!(sig.ty);
                 let body = me.analyze_expr(the_func.body, &[]);
                 // me.generic_scope.clear();
                 FunctionItem {
-                    sig,
                     body,
                     name: the_func.name,
+                    sig: the_func.sig,
                 }
             },
             idx,
         )
+    }
+
+    fn convert_func(&mut self, the_func: FunctionItem<UntypedCst>) -> FunctionItem<UntypedAst> {
+        let sig = self.convert_type(the_func.sig, Kind::Func);
+        let body = self.convert_expr(the_func.body);
+        FunctionItem {
+            sig,
+            body,
+            name: the_func.name,
+        }
     }
 
     fn extract_generics(&self, t: Spanned<Intern<CstType>>, kind: Kind) -> TypeScheme {
@@ -415,18 +436,19 @@ impl Resolver {
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-    ) -> Spanned<Intern<Expr<Untyped>>> {
+        vars: &[Intern<String>],
+    ) -> Spanned<Intern<CstExpr<Untyped>>> {
         // dbg!(&expr);
 
         match *expr.0 {
             CstExpr::Ident(u) => {
-                if let Some(expr) = vars
+                if vars
                     .iter()
                     .rev()
-                    .find(|n| u.ident().is_ok_and(|name| n.0 == name.0))
+                    .find(|n| u.ident().is_ok_and(|name| **n == name.0))
+                    .is_some()
                 {
-                    expr.1
+                    expr
                 } else {
                     // dbg!(expr);
                     self.resolve_name_expr(expr)
@@ -435,68 +457,67 @@ impl Resolver {
             CstExpr::Concat(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.convert(Expr::Concat(l, r))
+                expr.modify(CstExpr::Concat(l, r))
             }
             CstExpr::Project(direction, ex) => {
                 let ex = self.analyze_expr(ex, vars);
-                expr.convert(Expr::Project(direction, ex))
+                expr.modify(CstExpr::Project(direction, ex))
             }
             CstExpr::Inject(direction, ex) => {
                 let ex = self.analyze_expr(ex, vars);
-                expr.convert(Expr::Inject(direction, ex))
+                expr.modify(CstExpr::Inject(direction, ex))
             }
             CstExpr::Branch(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
 
-                expr.convert(Expr::Branch(l, r))
+                expr.modify(CstExpr::Branch(l, r))
             }
             CstExpr::Label(l, v) => {
-                // dbg!(vars);
-                // dbg!(expr);
-                let v = self.analyze_expr(v, vars);
-                expr.convert(Expr::Label(l, v))
+                let new_vars = &[vars, &[l.0.0]].concat();
+                let v = self.analyze_expr(v, new_vars);
+                expr.modify(CstExpr::Label(l, v))
             }
             CstExpr::Unlabel(v, l) => {
                 let v = self.analyze_expr(v, vars);
-                expr.convert(Expr::Unlabel(v, l))
+                expr.modify(CstExpr::Unlabel(v, l))
             }
             CstExpr::Pat(spanned) => todo!(),
             CstExpr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.convert(Expr::Mul(l, r))
+                expr.modify(CstExpr::Mul(l, r))
             }
             CstExpr::Div(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.convert(Expr::Div(l, r))
+                expr.modify(CstExpr::Div(l, r))
             }
             CstExpr::Add(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.convert(Expr::Add(l, r))
+                expr.modify(CstExpr::Add(l, r))
             }
             CstExpr::Sub(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.convert(Expr::Sub(l, r))
+                expr.modify(CstExpr::Sub(l, r))
             }
             CstExpr::Comparison(l, comparison_op, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                expr.convert(Expr::Comparison(l, comparison_op, r))
+                expr.convert(CstExpr::Comparison(l, comparison_op, r))
             }
             CstExpr::Call(func, arg) => {
                 let func = self.analyze_expr(func, vars);
 
                 let arg = self.analyze_expr(arg, vars);
-                if let Expr::Item(id, Kind::Ty) = *func.0 {
+                if let CstExpr::Item(id, Kind::Ty) = *func.0 {
                     todo!(
                         "This would be a type constructor, but it lowk isn't being used right now"
                     )
                 };
-                expr.convert(Expr::Call(func, arg))
+                expr.convert(CstExpr::Call(func, arg))
             }
             CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars),
             CstExpr::If(cond, then, otherwise) => {
@@ -505,7 +526,7 @@ impl Resolver {
                 let then = self.analyze_expr(then, then_vars);
                 let otherwise_vars = vars;
                 let otherwise = self.analyze_expr(otherwise, otherwise_vars);
-                expr.convert(Expr::If(cond, then, otherwise))
+                expr.modify(CstExpr::If(cond, then, otherwise))
             }
             CstExpr::Match(matchee, branches) => {
                 let matchee = self.analyze_expr(matchee, vars);
@@ -515,15 +536,227 @@ impl Resolver {
                     .map(|b| self.resolve_branch(*b, vars))
                     .collect();
                 assert!(!branches.is_empty());
-                let branches = branches
-                    .into_iter()
-                    .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
-                    .expect("Branches was empty; match has no arms");
-
-                expr.convert(Expr::Call(branches, matchee))
+                expr.modify(CstExpr::Match(matchee, branches.leak()))
             }
             CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
             CstExpr::Let(id, body, and_in) => self.resolve_let(expr, id, body, and_in, vars),
+            CstExpr::Number(n) => expr.convert(CstExpr::Number(n)),
+            CstExpr::String(s) => expr.convert(CstExpr::String(s)),
+            CstExpr::Bool(b) => expr.convert(CstExpr::Bool(b)),
+            CstExpr::Unit => expr.convert(CstExpr::Unit),
+            CstExpr::Particle(p) => expr.convert(CstExpr::Particle(p)),
+            CstExpr::Hole(v) => expr.convert(CstExpr::Hole(v)),
+            CstExpr::Item(item_id, kind) => expr.convert(CstExpr::Item(item_id, kind)),
+            CstExpr::Myself => todo!(),
+            CstExpr::MethodAccess { obj, prop, method } => todo!(),
+        }
+    }
+
+    fn resolve_branch(
+        &mut self,
+        b: MatchArm<Untyped>,
+        vars: &[Intern<String>],
+    ) -> MatchArm<Untyped> {
+        // The branch becomes: λparam. <lets> in body
+        // `param` is the lambda binder that receives the matchee at the call site.
+        let param = Untyped(b.pat.convert("%match_arg%".to_string()));
+        let branch_arg: Spanned<Intern<CstExpr<Untyped>>> = b.pat.convert(CstExpr::Ident(param));
+
+        let bindings = self.compile_pattern(b.pat, branch_arg);
+        // dbg!(&bindings);
+        // Extend vars with user-visible bindings so analyze_expr can resolve them.
+        // Each maps the binder name -> its destructured value expression.
+        let mut branch_vars: Vec<Intern<String>> = vars.to_vec();
+        for binding in &bindings {
+            // dbg!(binding);
+            if binding.user_visible {
+                branch_vars.push(binding.binder.0.0);
+            }
+        }
+        // dbg!(&bindings);
+
+        let body = self.analyze_expr(b.body, &branch_vars);
+        MatchArm { pat: b.pat, body }
+    }
+
+    /// Recursively compile a pattern into a flat sequence of let-bindings,
+    /// threading the current scrutinee expression down through nested constructors.
+    fn compile_pattern(
+        &mut self,
+        p: Spanned<Intern<Pattern<Untyped>>>,
+        branch_arg: Spanned<Intern<CstExpr<Untyped>>>,
+    ) -> Vec<Binding> {
+        match *p.0 {
+            Pattern::Any => vec![],
+            Pattern::Var(v) => vec![Binding {
+                binder: v,
+                value: branch_arg,
+                user_visible: true,
+            }],
+            Pattern::Unit => vec![],
+            Pattern::Variant(label, inner_pat) => {
+                let inner_val: Spanned<Intern<CstExpr<Untyped>>> =
+                    branch_arg.convert(CstExpr::Unlabel(branch_arg, label));
+                self.compile_pattern(inner_pat, inner_val)
+            }
+            Pattern::Number(_) => vec![],
+            Pattern::String(_) => todo!(),
+            Pattern::Bool(_) => todo!(),
+            Pattern::Particle(spanned) => todo!(),
+            Pattern::Record { fields, open } => todo!(),
+            Pattern::Tuple(elems) => elems
+                .iter()
+                .enumerate()
+                .flat_map(|(idx, p)| {
+                    let idx_label = Label(p.convert(idx.to_string()));
+                    let inner_val = branch_arg.convert(CstExpr::Unlabel(branch_arg, idx_label));
+                    self.compile_pattern(*p, inner_val)
+                })
+                .collect(),
+            Pattern::As(_, spanned) => todo!(),
+            Pattern::Or(patterns) => todo!(),
+            Pattern::Guard(spanned, spanned1) => todo!(),
+        }
+    }
+    fn convert(&mut self, item: &Item<UntypedCst>) -> Item<UntypedAst> {
+        match item.kind {
+            ItemKind::Package(PackageEntry { name, id }) => {
+                Item::new(ItemKind::Package(PackageEntry { name, id }))
+            }
+            ItemKind::Function(f) => {
+                let f = self.convert_func(f);
+
+                Item::new(ItemKind::Function(f))
+            }
+            ItemKind::Type(n, g, t) => {
+                let scheme = self.convert_type(t, Kind::Ty);
+
+                Item::new(ItemKind::Type(n, vec![].leak(), scheme))
+            }
+            ItemKind::Extern { name, args, sig } => {
+                let sig = self.convert_type(sig, Kind::Extern(name.0));
+
+                Item::new(ItemKind::Extern { name, args, sig })
+            }
+            ItemKind::Root => Item::new(ItemKind::Root),
+            ItemKind::Filename(f) => Item::new(ItemKind::Filename(f)),
+            ItemKind::Dummy(d) => Item::new(ItemKind::Dummy(d)),
+        }
+    }
+
+    #[allow(unused_variables)]
+    fn convert_expr(
+        &mut self,
+        expr: Spanned<Intern<CstExpr<Untyped>>>,
+    ) -> Spanned<Intern<Expr<Untyped>>> {
+        // dbg!(&expr);
+
+        match *expr.0 {
+            CstExpr::Ident(u) => expr.convert(Expr::Ident(u)),
+            CstExpr::Concat(l, r) => {
+                let l = self.convert_expr(l);
+                let r = self.convert_expr(r);
+                expr.convert(Expr::Concat(l, r))
+            }
+            CstExpr::Project(direction, ex) => {
+                let ex = self.convert_expr(ex);
+                expr.convert(Expr::Project(direction, ex))
+            }
+            CstExpr::Inject(direction, ex) => {
+                let ex = self.convert_expr(ex);
+                expr.convert(Expr::Inject(direction, ex))
+            }
+            CstExpr::Branch(l, r) => {
+                let l = self.convert_expr(l);
+                let r = self.convert_expr(r);
+
+                expr.convert(Expr::Branch(l, r))
+            }
+            CstExpr::Label(l, v) => {
+                // dbg!(vars);
+                // dbg!(expr);
+                let v = self.convert_expr(v);
+                expr.convert(Expr::Label(l, v))
+            }
+            CstExpr::Unlabel(v, l) => {
+                let v = self.convert_expr(v);
+                expr.convert(Expr::Unlabel(v, l))
+            }
+            CstExpr::Pat(spanned) => todo!(),
+            CstExpr::Mul(l, r) => {
+                let l = self.convert_expr(l);
+                let r = self.convert_expr(r);
+                expr.convert(Expr::Mul(l, r))
+            }
+            CstExpr::Div(l, r) => {
+                let l = self.convert_expr(l);
+                let r = self.convert_expr(r);
+                expr.convert(Expr::Div(l, r))
+            }
+            CstExpr::Add(l, r) => {
+                let l = self.convert_expr(l);
+                let r = self.convert_expr(r);
+                expr.convert(Expr::Add(l, r))
+            }
+            CstExpr::Sub(l, r) => {
+                let l = self.convert_expr(l);
+                let r = self.convert_expr(r);
+                expr.convert(Expr::Sub(l, r))
+            }
+            CstExpr::Comparison(l, comparison_op, r) => {
+                let l = self.convert_expr(l);
+                let r = self.convert_expr(r);
+                expr.convert(Expr::Comparison(l, comparison_op, r))
+            }
+            CstExpr::Call(func, arg) => {
+                let func = self.convert_expr(func);
+
+                let arg = self.convert_expr(arg);
+                if let Expr::Item(id, Kind::Ty) = *func.0 {
+                    todo!(
+                        "This would be a type constructor, but it lowk isn't being used right now"
+                    )
+                };
+                expr.convert(Expr::Call(func, arg))
+            }
+            CstExpr::FieldAccess(l, r) => {
+                let l = self.convert_expr(l);
+                let r = r.ident().unwrap();
+                expr.convert(Expr::Access(l, Label(r)))
+            }
+            CstExpr::If(cond, then, otherwise) => {
+                let cond = self.convert_expr(cond);
+                let then = self.convert_expr(then);
+                let otherwise = self.convert_expr(otherwise);
+                expr.convert(Expr::If(cond, then, otherwise))
+            }
+            CstExpr::Match(matchee, branches) => {
+                // let matchee = self.convert_expr(matchee, vars);
+                // let base_expr = matchee.convert(CstExpr::Let(
+                //     Untyped(matchee.convert("%matchee".to_string())),
+                //     matchee,
+                //     expr,
+                // ));
+                let (patterns, actions): (Vec<_>, Vec<_>) =
+                    branches.iter().map(|b| (b.pat, b.body)).unzip();
+                let patterns: Vec<_> = patterns.iter().map(|p| *p.0).collect();
+                // dbg!(&patterns);
+
+                let decision_tree = matchmatrix::compile(&patterns);
+                decision_tree.print(0);
+                let t = self.translate_decision_tree(matchee, decision_tree, &actions);
+                println!("{t}");
+                t
+            }
+            CstExpr::Lambda(arg, body) => {
+                let body = self.convert_expr(body);
+                expr.convert(Expr::Lambda(arg, body))
+            }
+            CstExpr::Let(id, body, and_in) => {
+                let body = self.convert_expr(body);
+                let and_in = self.convert_expr(and_in);
+                expr.convert(Expr::Let(id, body, and_in))
+            }
             CstExpr::Number(n) => expr.convert(Expr::Number(n)),
             CstExpr::String(s) => expr.convert(Expr::String(s)),
             CstExpr::Bool(b) => expr.convert(Expr::Bool(b)),
@@ -539,17 +772,18 @@ impl Resolver {
     fn resolve_let(
         &mut self,
         expr: Spanned<Intern<CstExpr<Untyped>>>,
+        // id: Spanned<Intern<Pattern<Untyped>>>,
         id: Untyped,
         body: Spanned<Intern<CstExpr<Untyped>>>,
         and_in: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-    ) -> Spanned<Intern<Expr<Untyped>>> {
+        vars: &[Intern<String>],
+    ) -> Spanned<Intern<CstExpr<Untyped>>> {
         let body = self.analyze_expr(body, vars);
 
-        let new_vars = [vars, &[(id.0.0, body)]].concat();
+        let new_vars = [vars, &[id.0.0]].concat();
         let and_in = self.analyze_expr(and_in, &new_vars);
         // let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
-        expr.convert(Expr::Let(id, body, and_in))
+        expr.modify(CstExpr::Let(id, body, and_in))
     }
 
     fn resolve_lambda(
@@ -557,184 +791,118 @@ impl Resolver {
         expr: Spanned<Intern<CstExpr<Untyped>>>,
         arg: Untyped,
         body: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-    ) -> Spanned<Intern<Expr<Untyped>>> {
-        let new_vars = &[
-            vars,
-            &[(
-                arg.0.0,
-                arg.ident()
-                    .expect("Expected expression to be namable")
-                    .convert(Expr::Ident(arg)),
-            )],
-        ]
-        .concat();
+        vars: &[Intern<String>],
+    ) -> Spanned<Intern<CstExpr<Untyped>>> {
+        let new_vars = &[vars, &[arg.0.0]].concat();
         let body = self.analyze_expr(body, new_vars);
         // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
-        expr.convert(Expr::Lambda(arg, body))
+        expr.convert(CstExpr::Lambda(arg, body))
     }
 
     fn resolve_field_access(
         &mut self,
         expr: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-    ) -> Spanned<Intern<Expr<Untyped>>> {
+        vars: &[Intern<String>],
+    ) -> Spanned<Intern<CstExpr<Untyped>>> {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {
             panic!("Not a field access")
         };
         let l = self.analyze_expr(l, vars);
-        if let Expr::Item(_, _) = *l.0 {
+        if let CstExpr::Item(_, _) = *l.0 {
             self.resolve_name_expr(r)
         } else {
-            let id = r.ident().unwrap();
-            expr.convert(Expr::Access(l, Label(id)))
+            expr.convert(CstExpr::FieldAccess(l, r))
         }
-    } // fn resolve_field_access(
-    //     &mut self,
-    //     expr: Spanned<Intern<CstExpr<Untyped>>>,
-    //     vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
-    // ) -> Spanned<Intern<Expr<Untyped>>> {
-    //     let CstExpr::FieldAccess(l, r) = *expr.0 else {
-    //         panic!("Not a field access")
-    //     };
-    //     let l = self.analyze_expr(l, vars);
-    //     if let Expr::Item(_, _) = *l.0 {
-    //         self.resolve_name_expr(r)
-    //     } else if let Expr::Ident(n) = *l.0 {
-    //         if let Some((_variable, val)) = vars.iter().find(|x| x.0 == n.0.0) {
-    //             let projection: Spanned<Intern<Expr<Untyped>>> = {
-    //                 let combo = *val;
-    //                 let id = r.ident().expect("Expression should be nameable");
-    //                 {
-    //                     dbg!(val);
-    //                     let ex = combo.convert(Expr::Project(Direction::Right, combo));
+    }
 
-    //                     combo.convert(Expr::Unlabel(ex, Label(id)))
-    //                 }
-    //             };
-    //             expr.convert(projection.0)
-    //         } else {
-    //             todo!()
-    //         }
-    //     } else if let Expr::Unlabel(_combo, _labell) = *l.0 {
-    //         self.resolve_name_expr(r)
-    //     } else {
-    //         dbg!(l);
-    //         let ex = l.convert(Expr::Project(Direction::Right, l));
-
-    //         let id = r.ident().expect("Expression should be nameable");
-    //         l.convert(Expr::Unlabel(ex, Label(id)))
-    //     }
-    // }
-
-    fn resolve_branch(
+    fn translate_dtree_occ(
         &mut self,
-        b: MatchArm<Untyped>,
-        vars: &[(Intern<String>, Spanned<Intern<Expr<Untyped>>>)],
+        occ: Occ,
+        matchee: Spanned<Intern<CstExpr<Untyped>>>,
     ) -> Spanned<Intern<Expr<Untyped>>> {
-        // The branch becomes: λparam. <lets> in body
-        // `param` is the lambda binder that receives the matchee at the call site.
-        let param = Untyped(b.pat.convert("%match_arg%".to_string()));
-        let branch_arg: Spanned<Intern<Expr<Untyped>>> = b.pat.convert(Expr::Ident(param));
-
-        let bindings = self.compile_pattern(b.pat, branch_arg);
-        // dbg!(&bindings);
-        // Extend vars with user-visible bindings so analyze_expr can resolve them.
-        // Each maps the binder name -> its destructured value expression.
-        let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<Expr<Untyped>>>)> = vars.to_vec();
-        for binding in &bindings {
-            // dbg!(binding);
-            if binding.user_visible {
-                branch_vars.push((binding.binder.0.0, binding.value));
+        match occ {
+            Occ::Base => self.convert_expr(matchee),
+            Occ::Proj(occ, l) => {
+                let subtree = self.translate_dtree_occ(*occ, matchee);
+                matchee.convert(Expr::Access(subtree, l))
+            }
+            Occ::Unwrap(occ, l) => {
+                let subtree = self.translate_dtree_occ(*occ, matchee);
+                matchee.convert(Expr::Unlabel(subtree, l))
             }
         }
-        // dbg!(&bindings);
-
-        let body = self.analyze_expr(b.body, &branch_vars);
-        // dbg!(body);
-        // Fold bindings into nested lets around the body.
-        // Reversing means the first binding (outermost destructor) ends up outermost.
-        //   bindings = [b0, b1, b2], body = B
-        //   → Let(b0, v0, Let(b1, v1, Let(b2, v2, B)))
-        let wrapped = bindings.into_iter().rev().fold(body, |acc, binding| {
-            let span = acc.1;
-            Spanned(
-                Intern::new(Expr::Let(binding.binder, binding.value, acc)),
-                span,
-            )
-        });
-
-        let span = b.pat.1;
-        let expr = Expr::Lambda(param, wrapped);
-        // dbg!(expr);
-        Spanned(expr.into(), span)
     }
 
-    /// Recursively compile a pattern into a flat sequence of let-bindings,
-    /// threading the current scrutinee expression down through nested constructors.
-    fn compile_pattern(
+    fn translate_sigelem(
+        &self,
+        sigelem: SigElem,
+        matchee_span: NodeId,
+    ) -> Spanned<Intern<Expr<Untyped>>> {
+        match sigelem {
+            SigElem::Label(label) => unimplemented!("use translate_sigelem_pat"),
+            SigElem::Num(f) => Spanned(Expr::Number(f).into(), matchee_span),
+            SigElem::String(intern) => todo!(),
+        }
+    }
+
+    fn translate_decision_tree(
         &mut self,
-        p: Spanned<Intern<Pattern<Untyped>>>,
-        branch_arg: Spanned<Intern<Expr<Untyped>>>,
-    ) -> Vec<Binding> {
-        match *p.0 {
-            // Wildcard: consume scrutinee, emit nothing.
-            // The lambda parameter stays unbound in the body — type is τ → R.
-            // Pattern::Wildcard => vec![Binding {
-            //     binder: Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string())),
-            //     value: scrutinee,
-            //     user_visible: false,
-            // }],
-            Pattern::Wildcard => vec![],
+        matchee: Spanned<Intern<CstExpr<Untyped>>>,
+        tree: DecisionTree,
 
-            // Var: bind the scrutinee directly under the variable name.
-            //   λparam. let v = param in body
-            Pattern::Var(v) => vec![Binding {
-                binder: v,
-                value: branch_arg,
-                user_visible: true,
-            }],
+        actions: &Vec<Spanned<Intern<CstExpr<Untyped>>>>,
+    ) -> Spanned<Intern<Expr<Untyped>>> {
+        match tree {
+            DecisionTree::Fail => todo!(),
+            DecisionTree::Leaf(i) => self.convert_expr(actions[i]),
+            DecisionTree::Switch {
+                occ,
+                cases,
+                default,
+            } => {
+                let case_lambdas = cases
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (label, subtree))| {
+                        let body = self.translate_decision_tree(matchee, subtree, actions);
+                        let param = Untyped(matchee.convert(i.to_string()));
+                        let arg = matchee.convert(Expr::Ident(param));
 
-            // Unit: irrefutable, no value to extract.
-            Pattern::Unit => vec![],
-            // Pattern::Unit => vec![Binding {
-            //     binder: Untyped(p.convert("%inaccessible".to_string())),
-            //     value: p.convert(Expr::Unit),
-            //     user_visible: false,
-            // }],
+                        let unlabeling: Spanned<Intern<Expr<Untyped>>> =
+                            matchee.convert(Expr::Unlabel(arg, label));
+                        // let the_let = matchee.convert(Expr::Let(, (), ()));
+                        // todo!()
+                        body
+                    })
+                    .collect_vec();
 
-            // // Nullary constructor Ctor(A, Unit):
-            // //   The scrutinee is a sum type with a label; unlabeling constrains
-            // //   the type to `{A: ()}` without producing a user-visible binding.
-            // //   λparam. let %inaccessible% = unlabel(param, A) in body
-            // Pattern::Ctor(label, inner_pat) if *inner_pat.0 == Pattern::Unit => {
-            //     // let inner_val = scrutinee.convert::<Expr<Untyped>>(Expr::Unit);
-            //     let inner_val = scrutinee.convert(Expr::Unlabel(scrutinee, label));
-            //     let inacc = Untyped(p.convert(INACCESSIBLE_IDENTIFIER.to_string()));
-            //     // vec![]
+                let branches = case_lambdas
+                    .into_iter()
+                    .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
+                    .expect("Branches was empty; match has no arms");
 
-            //     vec![Binding {
-            //         binder: inacc,
-            //         value: inner_val,
-            //         user_visible: false,
-            //     }]
-            // }
-
-            // Unary constructor Ctor(A, inner):
-            //   Unlabel the scrutinee to expose the inner value, then recurse.
-            //   λparam. let <inner bindings of unlabel(param, A)> in body
-            Pattern::Ctor(label, inner_pat) => {
-                let inner_val: Spanned<Intern<Expr<Untyped>>> =
-                    branch_arg.convert(Expr::Unlabel(branch_arg, label));
-                self.compile_pattern(inner_pat, inner_val)
+                let matchee = self.translate_dtree_occ(occ, matchee);
+                matchee.convert(Expr::Call(branches, matchee))
             }
-
-            Pattern::Number(_) => todo!(),
-            Pattern::String(_) => todo!(),
-            Pattern::Bool(_) => todo!(),
-            _ => todo!(),
+            DecisionTree::IfEq {
+                occ,
+                lit,
+                then,
+                else_,
+            } => {
+                let occ = self.translate_dtree_occ(occ, matchee);
+                let lit = self.translate_sigelem(lit, matchee.1);
+                let then = self.translate_decision_tree(matchee, *then, actions);
+                let else_ = self.translate_decision_tree(matchee, *else_, actions);
+                matchee.convert(Expr::If(
+                    matchee.convert(Expr::Comparison(occ, BinOp::Eq, lit)),
+                    then,
+                    else_,
+                ))
+            }
         }
     }
+
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     // #[deprecated]
     /// Pretty-print GraphViz for the internal state of the dependancy graph.
@@ -797,20 +965,20 @@ impl Resolver {
     fn resolve_name_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<Untyped>>>,
-    ) -> Spanned<Intern<Expr<Untyped>>> {
+    ) -> Spanned<Intern<CstExpr<Untyped>>> {
         let name = expr.ident().expect("Expression should be nameable");
         // self.env.debug();
 
         if let Ok(e) = self.search_masterenv(&QualifierFragment::Func(name.0), &expr.1) {
-            expr.convert(Expr::Item(e, Kind::Func))
+            expr.convert(CstExpr::Item(e, Kind::Func))
         } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Type(name.0), &expr.1) {
-            expr.convert(Expr::Item(e, Kind::Ty))
+            expr.convert(CstExpr::Item(e, Kind::Ty))
         } else if let Ok(e) = self.search_masterenv(&QualifierFragment::Package(name.0), &expr.1) {
-            expr.convert(Expr::Item(e, Kind::Package))
+            expr.convert(CstExpr::Item(e, Kind::Package))
         } else {
             let err = errors::not_defined(QualifierFragment::Wildcard(name.0), &expr.1);
             self.errors.push(err);
-            expr.convert(Expr::Hole(Untyped(name)))
+            expr.convert(CstExpr::Hole(Untyped(name)))
         }
     }
 

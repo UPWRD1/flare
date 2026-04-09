@@ -14,7 +14,7 @@ use inkwell::{
     types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::{
         AggregateValueEnum, AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue,
-        BasicValueEnum, FloatValue, FunctionValue, PointerValue,
+        BasicValueEnum, FunctionValue, PointerValue,
     },
 };
 use itertools::Itertools;

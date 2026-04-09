@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{self, Display};
 
 use internment::Intern;
 use itertools::Itertools;
@@ -10,7 +10,7 @@ use crate::{
         pretty::{DocExt, Render},
         rep::{
             common::{Spanned, Variable},
-            frontend::ast::{Expr, Label, Untyped},
+            frontend::ast::{BinOp, Expr, Label, Untyped},
         },
     },
 };
@@ -51,6 +51,31 @@ impl Render for Spanned<Intern<Row>> {
 
             _ => todo!(),
         }
+    }
+}
+
+impl Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinOp::Eq => write!(f, "=="),
+            BinOp::Neq => write!(f, "!="),
+            BinOp::Gt => write!(f, ">"),
+            BinOp::Lt => write!(f, "<"),
+            BinOp::Gte => write!(f, ">="),
+            BinOp::Lte => write!(f, "<="),
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+            BinOp::Mul => write!(f, "*"),
+            BinOp::Div => write!(f, "/"),
+            BinOp::And => write!(f, "and"),
+            BinOp::Or => write!(f, "or"),
+        }
+    }
+}
+
+impl Render for BinOp {
+    fn render(self) -> Doc<'static> {
+        Doc::text(format!("{}", self))
     }
 }
 
@@ -98,7 +123,7 @@ impl<V: Variable + Render> Render for Spanned<Intern<Expr<V>>> {
             Expr::Div(l, r) => l.render().space().text("/").space().render(r),
             Expr::Add(l, r) => l.render().space().text("+").space().render(r),
             Expr::Sub(l, r) => l.render().space().text("-").space().render(r),
-            Expr::Comparison(l, bin_op, spanned1) => todo!(),
+            Expr::Comparison(l, bin_op, r) => l.render().space().render(bin_op).space().render(r),
             Expr::Call(f, e) => f.render().append(e.render().parens()),
             Expr::If(cond, then, other) => Doc::text("if")
                 .space()
