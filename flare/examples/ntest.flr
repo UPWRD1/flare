@@ -96,11 +96,10 @@ package Main =
             |Some x| then x,
             |None| then 2
 
-    let main: num =
+    let main: num = { x = 3, y = x}.y
      # matcher 3
      #
-     unwrap_weird Some(1)
-        # (fn g => (fn x => g (fn v => x x v)) (fn x => g (fn v => x x v))) (fn f => fn x => if x then (if x - 1 then x * f (x - 1) else 1) else 1) 5                
+             # (fn g => (fn x => g (fn v => x x v)) (fn x => g (fn v => x x v))) (fn f => fn x => if x then (if x - 1 then x * f (x - 1) else 1) else 1) 5                
 
 
 

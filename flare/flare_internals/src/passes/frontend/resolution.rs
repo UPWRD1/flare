@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use chumsky::span::{SimpleSpan, Span};
+use im::Vector;
 use internment::Intern;
 use itertools::Itertools;
 use petgraph::{
@@ -435,18 +436,19 @@ impl Resolver {
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
+        vars: &[Intern<String>],
     ) -> Spanned<Intern<CstExpr<Untyped>>> {
         // dbg!(&expr);
 
         match *expr.0 {
             CstExpr::Ident(u) => {
-                if let Some((_, defn)) = vars
+                if vars
                     .iter()
                     .rev()
-                    .find(|n| u.ident().is_ok_and(|name| n.0 == name.0))
+                    .find(|n| u.ident().is_ok_and(|name| **n == name.0))
+                    .is_some()
                 {
-                    *defn
+                    expr
                 } else {
                     // dbg!(expr);
                     self.resolve_name_expr(expr)
@@ -472,7 +474,8 @@ impl Resolver {
                 expr.modify(CstExpr::Branch(l, r))
             }
             CstExpr::Label(l, v) => {
-                let v = self.analyze_expr(v, vars);
+                let new_vars = &[vars, &[l.0.0]].concat();
+                let v = self.analyze_expr(v, new_vars);
                 expr.modify(CstExpr::Label(l, v))
             }
             CstExpr::Unlabel(v, l) => {
@@ -552,7 +555,7 @@ impl Resolver {
     fn resolve_branch(
         &mut self,
         b: MatchArm<Untyped>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
+        vars: &[Intern<String>],
     ) -> MatchArm<Untyped> {
         // The branch becomes: λparam. <lets> in body
         // `param` is the lambda binder that receives the matchee at the call site.
@@ -563,12 +566,11 @@ impl Resolver {
         // dbg!(&bindings);
         // Extend vars with user-visible bindings so analyze_expr can resolve them.
         // Each maps the binder name -> its destructured value expression.
-        let mut branch_vars: Vec<(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)> =
-            vars.to_vec();
+        let mut branch_vars: Vec<Intern<String>> = vars.to_vec();
         for binding in &bindings {
             // dbg!(binding);
             if binding.user_visible {
-                branch_vars.push((binding.binder.0.0, binding.value));
+                branch_vars.push(binding.binder.0.0);
             }
         }
         // dbg!(&bindings);
@@ -774,11 +776,11 @@ impl Resolver {
         id: Untyped,
         body: Spanned<Intern<CstExpr<Untyped>>>,
         and_in: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
+        vars: &[Intern<String>],
     ) -> Spanned<Intern<CstExpr<Untyped>>> {
         let body = self.analyze_expr(body, vars);
 
-        let new_vars = [vars, &[(id.0.0, body)]].concat();
+        let new_vars = [vars, &[id.0.0]].concat();
         let and_in = self.analyze_expr(and_in, &new_vars);
         // let lambda = Spanned(Expr::Lambda(id, and_in, LambdaInfo::Anon).into(), expr.1);
         expr.modify(CstExpr::Let(id, body, and_in))
@@ -789,18 +791,9 @@ impl Resolver {
         expr: Spanned<Intern<CstExpr<Untyped>>>,
         arg: Untyped,
         body: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
+        vars: &[Intern<String>],
     ) -> Spanned<Intern<CstExpr<Untyped>>> {
-        let new_vars = &[
-            vars,
-            &[(
-                arg.0.0,
-                arg.ident()
-                    .expect("Expected expression to be namable")
-                    .convert(CstExpr::Ident(arg)),
-            )],
-        ]
-        .concat();
+        let new_vars = &[vars, &[arg.0.0]].concat();
         let body = self.analyze_expr(body, new_vars);
         // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
         expr.convert(CstExpr::Lambda(arg, body))
@@ -809,7 +802,7 @@ impl Resolver {
     fn resolve_field_access(
         &mut self,
         expr: Spanned<Intern<CstExpr<Untyped>>>,
-        vars: &[(Intern<String>, Spanned<Intern<CstExpr<Untyped>>>)],
+        vars: &[Intern<String>],
     ) -> Spanned<Intern<CstExpr<Untyped>>> {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {
             panic!("Not a field access")
