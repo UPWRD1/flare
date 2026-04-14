@@ -1,5 +1,5 @@
 Main = {
-    x: num = 3
-    # use Option
-    main: num = x
+    type Point = {x: num, y: num}
+    v: Point = {x = 4, y = 5}
+    main: num = v.y
 }

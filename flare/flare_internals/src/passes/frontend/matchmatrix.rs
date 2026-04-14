@@ -578,13 +578,13 @@ fn compile_matrix(matrix: Matrix) -> DecisionTree {
     }
 }
 
-struct PatMatrix<const Occs: usize, const Acts: usize>([[Pattern<UntypedCst>; Acts]; Occs]);
+// struct PatMatrix<const Occs: usize, const Acts: usize>([[Pattern<UntypedCst>; Acts]; Occs]);
 
-struct MatchCompiler<const Occs: usize, const Acts: usize, S: Syntax> {
-    occs: [CstExpr<S>; Occs],
-    actions: [CstExpr<S>; Acts],
-    matrix: PatMatrix<Occs, Acts>,
-}
+// struct MatchCompiler<const Occs: usize, const Acts: usize, S: Syntax> {
+//     occs: [CstExpr<S>; Occs],
+//     actions: [CstExpr<S>; Acts],
+//     matrix: PatMatrix<Occs, Acts>,
+// }
 // ---------------------------------------------------------------------------
 // Demo / smoke test
 // ---------------------------------------------------------------------------

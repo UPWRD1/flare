@@ -328,7 +328,7 @@ impl<'src> Translate<'src> {
 
                 // // ── Row / nominal dispatch ────────────────────────────────────────
                 // k if k == self.ids.k(NK::PropAccess) => self.lower_prop_access(node),
-                // k if k == self.ids.k(NK::FieldAccess) => self.lower_field_access(node),
+                k if k == self.ids.k(NK::FieldAccess) => self.lower_field_access(node),
 
                 // // ── Binary ops ───────────────────────────────────────────────────
                 // k if k == self.ids.k(NK::MulExpression) => self.lower_binop(node, BinOp::Mul),
@@ -428,20 +428,19 @@ impl<'src> Translate<'src> {
             .map(|node| self.lower_type(node));
         let value = self
             .get_child(node, FK::Expr)
-            .map(|node| self.lower_expr(node));
+            .map(|node| self.lower_expr(node))
+            .unwrap();
 
         // Desugar function sugar immediately
         let value = if !params.is_empty() {
-            value.map(|value| {
-                params.into_iter().map(|n| (n, self.raw_name(&n))).fold(
-                    value,
-                    |expr, (node, name)| {
-                        expr.map(|body| {
-                            CstExpr::Lambda(Untyped(self.si(node, |_| name.to_string())), expr)
-                        })
-                    },
-                )
-            })
+            params
+                .into_iter()
+                .map(|n| (n, self.raw_name(&n)))
+                .fold(value, |body, (node, name)| {
+                    value.map(|value| {
+                        CstExpr::Lambda(Untyped(self.si(node, |_| name.to_string())), body)
+                    })
+                })
         } else {
             value
         };
@@ -578,11 +577,21 @@ impl<'src> Translate<'src> {
 
         CstExpr::Match(matchee, arms.leak())
     }
+
     fn lower_call(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
         let func = self.lower_expr(node.child_by_field_id(self.ids.f(FK::Func)).unwrap());
         let arg = self.lower_expr(node.child_by_field_id(self.ids.f(FK::Expr)).unwrap());
         CstExpr::Call(func, arg)
     }
+
+    fn lower_field_access(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+        dbg!(node.to_sexp());
+        let base = self.lower_expr(self.get_child(node, FK::Expr).unwrap());
+        let field = self.name(&self.get_child(node, FK::Field).unwrap());
+
+        CstExpr::FieldAccess(base, Label(field))
+    }
+
     fn lower_pattern(&mut self, node: Node<'src>) -> Spanned<Intern<Pattern<UntypedCst>>> {
         let pat = {
             let k = node.kind_id();

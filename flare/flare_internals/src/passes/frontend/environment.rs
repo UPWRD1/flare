@@ -1,4 +1,3 @@
-use im::HashMap;
 use internment::Intern;
 // use petgraph::Graph;
 use petgraph::{
@@ -18,8 +17,8 @@ use crate::resource::{
         common::{Spanned, Syntax},
         frontend::{
             ast::Label,
-            cst::{CstExpr, FieldDef, Macro, Package, PackageCollection, UntypedCst},
-            entry::{FunctionItem, Item, ItemKind, PackageEntry},
+            cst::{CstExpr, FieldDef, Macro, PackageCollection, UntypedCst},
+            entry::Item,
             quantifier::QualifierFragment,
         },
     },

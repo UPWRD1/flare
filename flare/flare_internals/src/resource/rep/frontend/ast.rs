@@ -167,4 +167,23 @@ impl<V: Variable> Spanned<Intern<Expr<V>>> {
     pub fn id(&self) -> FlareSpan {
         self.1
     }
+
+    pub fn collect_labels(self) -> Vec<(Label, Spanned<Intern<Expr<V>>>)> {
+        let mut v = vec![];
+        fn collect_labels<V: Variable>(
+            row: Spanned<Intern<Expr<V>>>,
+            out: &mut Vec<(Label, Spanned<Intern<Expr<V>>>)>,
+        ) {
+            match *row.0 {
+                Expr::Label(label, v) => out.push((label, v)),
+                Expr::Concat(r1, r2) => {
+                    collect_labels(r1, out);
+                    collect_labels(r2, out);
+                }
+                _ => panic!("Not an expr"),
+            }
+        }
+        collect_labels(self, &mut v);
+        v
+    }
 }

@@ -454,7 +454,8 @@ impl Resolver {
                 let fields: Vec<FieldDef<_>> = fields
                     .iter()
                     .map(|field| FieldDef {
-                        value: field.value.map(|val| self.analyze_expr(val, &new_vars)),
+                        value: self.analyze_expr(field.value, &new_vars),
+                        ty: field.ty.map(|ty| self.analyze_type(ty)),
                         ..*field
                     })
                     .collect();
@@ -636,14 +637,12 @@ impl Resolver {
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
     ) -> Spanned<Intern<Expr<<UntypedCst as Syntax>::Variable>>> {
-        // dbg!(&expr);
-
         match *expr.0 {
             CstExpr::Ident(u) => expr.convert(Expr::Ident(u)),
             CstExpr::ProductConstructor { fields } => fields
                 .iter()
                 .map(|l| {
-                    let val = self.convert_expr(l.value.unwrap());
+                    let val = self.convert_expr(l.value);
                     expr.convert(Expr::Label(Label(l.name), val))
                 })
                 .reduce(|l, r| expr.convert(Expr::Concat(l, r)))

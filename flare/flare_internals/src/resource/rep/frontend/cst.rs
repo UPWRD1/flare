@@ -95,8 +95,8 @@ pub struct MatchArm<S: Syntax> {
 pub struct FieldDef<S: Syntax> {
     pub name: S::Name,
     // pub params: Intern<[S::Name]>, // non-empty = syntactic function sugar
-    pub ty: Option<S::Type>, // the annotation, if present
-    pub value: Option<Spanned<Intern<CstExpr<S>>>>, // absent = abstract / extern decl
+    pub ty: Option<S::Type>,                // the annotation, if present
+    pub value: Spanned<Intern<CstExpr<S>>>, // absent = abstract / extern decl
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -147,6 +147,7 @@ pub enum CstExpr<S: Syntax> {
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
     ),
+    // Type(S::Type),
 }
 
 #[derive(Debug, PartialEq)]

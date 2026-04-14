@@ -97,6 +97,9 @@ impl Render for Spanned<Intern<Type>> {
             Type::Prod(r) => r.render().braces(),
             Type::Sum(r) => Doc::text("|").render(r).text("|"),
             Type::Label(_, _) => todo!(),
+            Type::Recursive(v, p, t) => {
+                todo!()
+            }
             Type::Hole => todo!(),
         }
     }

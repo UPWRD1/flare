@@ -15,7 +15,7 @@ use std::{collections::BTreeSet, fmt::Display, hash::Hash};
 use ena::unify::InPlaceUnificationTable;
 use internment::Intern;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 use crate::{
     passes::frontend::typing::subst::SubstOut,
@@ -126,15 +126,20 @@ impl Provenance {
 pub struct GenOut {
     constraints: Vec<Constraint>,
     typed_ast: Spanned<Intern<Expr<Typed>>>,
+    env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
     // inference_base_loc: Option<SimpleSpan<usize, u64>>,
 }
 
 impl GenOut {
-    fn new(constraints: Vec<Constraint>, typed_ast: Spanned<Intern<Expr<Typed>>>) -> Self {
+    fn new(
+        constraints: Vec<Constraint>,
+        typed_ast: Spanned<Intern<Expr<Typed>>>,
+        env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
+    ) -> Self {
         Self {
             constraints,
             typed_ast,
-            // inference_base_loc: None,
+            env,
         }
     }
 
@@ -145,8 +150,32 @@ impl GenOut {
         Self {
             constraints: self.constraints,
             typed_ast: f(self.typed_ast),
-            // inference_base_loc: self.inference_base_loc,
+            env: self.env, // inference_base_loc: self.inference_base_loc,
         }
+    }
+
+    fn merge_with<const N: usize>(
+        self,
+        args: [Self; N],
+        f: impl Fn(
+            Spanned<Intern<Expr<Typed>>>,
+            [Spanned<Intern<Expr<Typed>>>; N],
+        ) -> Spanned<Intern<Expr<Typed>>>,
+    ) -> Self {
+        let mut new = self;
+
+        let (constraints, env, asts) = args.into_iter().fold(
+            (vec![], im::HashMap::with_hasher(FxBuildHasher), vec![]),
+            |(mut constraints, mut env, mut asts), arg| {
+                constraints.extend(arg.constraints.clone());
+                env = env.union(arg.env);
+                asts.push(arg.typed_ast);
+                (constraints, env, asts)
+            },
+        );
+        new.typed_ast = f(new.typed_ast, asts.as_slice().try_into().unwrap());
+        new.constraints = constraints;
+        new
     }
 }
 
@@ -184,11 +213,11 @@ impl TypeScheme {
         }
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum NameKind {
-    Var(Intern<String>),
-    Label(Intern<String>),
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// enum NameKind {
+//     Var(Intern<String>),
+//     Label(Intern<String>),
+// }
 
 #[derive(Debug)]
 pub struct TypesOutput {
