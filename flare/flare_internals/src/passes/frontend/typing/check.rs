@@ -1,5 +1,4 @@
 use internment::Intern;
-use itertools::Itertools;
 use rustc_hash::FxBuildHasher;
 
 use crate::{
@@ -9,7 +8,7 @@ use crate::{
     },
     resource::rep::{
         common::Spanned,
-        frontend::ast::{Direction, Expr, Label, Untyped},
+        frontend::ast::{Direction, Expr, Untyped},
     },
 };
 
@@ -82,6 +81,10 @@ impl Solver<'_> {
                 })
             }
 
+            // (Expr::ProductConstructor { fields }, Type::Prod(row)) => {
+            // todo!()
+            // }
+
             // Row Types
             (Expr::Label(ast_lbl, term), Type::Label(ty_lbl, ty)) if ast_lbl.0.0 == ty_lbl.0.0 => {
                 let env = env.update(ast_lbl.0.0, ty);
@@ -121,26 +124,11 @@ impl Solver<'_> {
                 let left_row = left.convert(left_row);
                 let right_row = right.convert(right_row);
 
-                let labels = the_ast.collect_labels();
-                let mut env = env;
-                let types = labels.into_iter().map(|(label, expr)| {
-                    let ty = label.0.convert(Type::Unifier(self.fresh_ty_var()));
-                    env.insert(label.0.0, ty);
-                    ty
+                let left_out = self.check(env.clone(), left, the_ty.modify(Type::Prod(left_row)));
+                let right_out = self.check(env, right, the_ty.modify(Type::Prod(right_row)));
+                let mut merge_out = left_out.merge_with([right_out], |left, [right]| {
+                    the_ast.convert(Expr::Concat(left, right))
                 });
-                let outs = labels
-                    .iter()
-                    .zip(types)
-                    .map(|((_, expr), ty)| self.check(env, *expr, ty))
-                    .collect_array();
-
-                dbg!(&env);
-
-                // let left_out = self.check(env.clone(), left, the_ty.modify(Type::Prod(left_row)));
-                // let right_out = self.check(env, right, the_ty.modify(Type::Prod(right_row)));
-                // let mut merge_out = left_out.merge_with([right_out], |left, [right]| {
-                //     the_ast.convert(Expr::Concat(left, right))
-                // });
                 // let mut constraints = left_out.constraints;
                 // constraints.extend(right_out.constraints);
                 let row_comb = RowCombination {

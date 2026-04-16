@@ -357,6 +357,19 @@ impl<'env> Solver<'env> {
         subst_out
     }
 
+    pub fn infer_with_items(
+        item_source: &'env ItemSource,
+        ast: Spanned<Intern<Expr<Untyped>>>,
+    ) -> (GenOut, Spanned<Intern<Type>>) {
+        let mut ctx = Self {
+            item_source,
+
+            tables: SolverTables::default(),
+        };
+
+        ctx.infer(im::HashMap::default(), ast)
+    }
+
     pub fn check_with_items(
         item_source: &'env ItemSource,
         ast: Spanned<Intern<Expr<Untyped>>>,

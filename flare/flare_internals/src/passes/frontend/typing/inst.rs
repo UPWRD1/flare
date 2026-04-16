@@ -6,22 +6,22 @@ use crate::{
         Constraint, Evidence, Provenance, Row, TyUniVar, Type, TypeScheme, TypeVar,
         rows::{RowCombination, RowUniVar, RowVar},
     },
-    resource::rep::common::{FlareSpan, Spanned},
+    resource::rep::common::Spanned,
 };
 
 pub struct Instantiate<'a> {
-    id: FlareSpan,
+    // id: FlareSpan,
     tyvar_to_unifiers: &'a FxHashMap<TypeVar, TyUniVar>,
     rowvar_to_unifiers: &'a FxHashMap<RowVar, RowUniVar>,
 }
 impl<'a> Instantiate<'a> {
     pub fn new(
-        id: FlareSpan,
+        // id: FlareSpan,
         tyvar_to_unifiers: &'a FxHashMap<TypeVar, TyUniVar>,
         rowvar_to_unifiers: &'a FxHashMap<RowVar, RowUniVar>,
     ) -> Self {
         Self {
-            id,
+            // id,
             tyvar_to_unifiers,
             rowvar_to_unifiers,
         }

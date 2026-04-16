@@ -221,6 +221,9 @@ impl Solver<'_> {
                 (merge_out, ast.convert(Type::Bool))
             }
 
+            // Expr::ProductConstructor { fields } => {
+            // todo!()
+            // }
             Expr::Label(label, value) => {
                 let value_var = self.fresh_ty_var();
                 let value_ty = value.convert(Type::Unifier(value_var));
@@ -244,13 +247,6 @@ impl Solver<'_> {
 
             Expr::Concat(left, right) => {
                 let row_comb = self.fresh_row_combination(left.1, right.1, id);
-
-                let labels = ast.collect_labels();
-                let mut env = env;
-                for (label, def) in labels {
-                    let ty = label.0.convert(Type::Unifier(self.fresh_ty_var()));
-                    env.insert(label.0.0, ty);
-                }
                 let left_out =
                     self.check(env.clone(), left, left.convert(Type::Prod(row_comb.left)));
                 let right_out = self.check(env, right, right.convert(Type::Prod(row_comb.right)));
@@ -369,9 +365,8 @@ impl Solver<'_> {
                 // Instantiate our scheme mapping it's variables to the fresh unifiers we just generated.
                 // After this we'll have a list of constraints and a type that only reference the fresh
                 // unfiers.
-                let (constraints, ty) =
-                    Instantiate::new(ast.1, &tyvar_to_unifiers, &rowvar_to_unifiers)
-                        .type_scheme(ty_scheme);
+                let (constraints, ty) = Instantiate::new(&tyvar_to_unifiers, &rowvar_to_unifiers)
+                    .type_scheme(ty_scheme);
                 let wrapper = ItemWrapper {
                     types: wrapper_tyvars,
                     rows: wrapper_rowvars,

@@ -77,14 +77,10 @@ impl Environment<UntypedCst> {
         let mut resolver = crate::passes::frontend::resolution::Resolver::default();
         let resolved = resolver.analyze_expr(proj_main_func, &[]);
         let resolved = resolver.convert_expr(resolved);
-        let r = crate::passes::frontend::typing::Solver::check_with_items(
+        let r = crate::passes::frontend::typing::Solver::infer_with_items(
             &crate::passes::frontend::typing::ItemSource::default(),
             resolved,
-            crate::passes::frontend::typing::TypeScheme {
-                ty: Spanned::default_with(crate::passes::frontend::typing::Type::Num.into()),
-                ..Default::default()
-            },
-        )?;
+        );
         dbg!(r);
         todo!()
         // proj_main_func

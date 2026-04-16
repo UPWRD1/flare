@@ -1,5 +1,5 @@
 Main = {
     type Point = {x: num, y: num}
-    v: Point = {x = 4, y = 5}
-    main: num = v.y
+    # v: Point = {x = 4, y = x}
+    main: num = {x = 4, y = x}.y
 }

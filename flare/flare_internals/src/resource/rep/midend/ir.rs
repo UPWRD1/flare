@@ -88,6 +88,7 @@ pub enum IR {
 
     Item(IRType, ItemId),
     Extern(Intern<String>, IRType),
+    // Fixpoint(Var, Box<Self>),
 }
 
 #[allow(clippy::should_implement_trait)]

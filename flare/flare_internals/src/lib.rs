@@ -62,13 +62,10 @@ pub mod passes;
 pub mod resource;
 
 use core::iter::Iterator;
-use std::{
-    hash::{Hash, Hasher},
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 use petgraph::graph::NodeIndex;
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::FxHashMap;
 
 use crate::{
     passes::{
@@ -95,7 +92,7 @@ use crate::{
                     UntypedAst,
                     // Untyped
                 },
-                cst::{Package, PackageCollection, UntypedCst},
+                cst::{PackageCollection, UntypedCst},
                 files::{FileID, FileSource},
             },
             midend::ir::IR,

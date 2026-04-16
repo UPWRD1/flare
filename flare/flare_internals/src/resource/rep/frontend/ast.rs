@@ -6,14 +6,12 @@ use std::{
 use crate::{
     passes::frontend::typing::TypeScheme,
     resource::{
-        errors::{CompResult, DynamicErr},
+        errors::CompResult,
         rep::common::{FlareSpan, HasSpan, Spanned, Syntax, Variable},
     },
 };
 
-use chumsky::span::SimpleSpan;
 use internment::Intern;
-use ordered_float::OrderedFloat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UntypedAst;
@@ -105,13 +103,15 @@ where
 
     Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Project(Direction, Spanned<Intern<Self>>),
-
     Inject(Direction, Spanned<Intern<Self>>),
     Branch(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
 
+    // ProductConstructor {
+    // fields: Intern<[(Label, Spanned<Intern<Self>>)]>,
+    // },
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
