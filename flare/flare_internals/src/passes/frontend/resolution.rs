@@ -6,7 +6,6 @@ use petgraph::{
     algo::toposort,
     dot::Config,
     graph::NodeIndex,
-    prelude::StableDiGraph,
     visit::{Dfs, IntoNodeReferences, Walker},
 };
 use rustc_hash::FxHashSet;
@@ -14,7 +13,7 @@ use rustc_hash::FxHashSet;
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 use crate::{
     passes::frontend::{
-        environment::Environment,
+        environment::EnvironmentBuilder,
         matchmatrix::{self, DecisionTree, Occ, SigElem},
         typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeScheme, TypeVar},
     },
@@ -49,7 +48,7 @@ use crate::{
 /// even if it would be more efficient to use a single pass over the environment.
 #[derive(Default)]
 pub struct Resolver {
-    env: Environment<UntypedCst>,
+    env: EnvironmentBuilder<UntypedCst>,
     // new_env: Environment<UntypedAst>
     current_parent: QualifierFragment,
     current_dag_node: Option<NodeIndex>,
@@ -170,7 +169,7 @@ struct Binding {
     user_visible: bool,
 }
 impl Resolver {
-    pub fn new(env: Environment<UntypedCst>) -> Self {
+    pub fn new(env: EnvironmentBuilder<UntypedCst>) -> Self {
         Self {
             env,
             current_parent: QualifierFragment::Root,
@@ -181,7 +180,7 @@ impl Resolver {
         }
     }
 
-    pub fn analyze(mut self) -> CompResult<(Environment<UntypedAst>, Vec<NodeIndex>)> {
+    pub fn analyze(mut self) -> CompResult<(EnvironmentBuilder<UntypedAst>, Vec<NodeIndex>)> {
         todo!()
         // let err_no_main = DynamicErr::new("Could not find a main function")
         //     .label("not found in any packages", FlareSpan::default());

@@ -20,7 +20,11 @@ Option = {
     map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
             match o 
                 # |Some v| then Some (f(v)), #this is ok
-                as |Some v| then let v = f(v) in |Some v|                  
+                as |Some v| then {
+                    v = f(v)
+                    res = |Some v|
+                }.res
+           
                 as |None| then None
             end
 }

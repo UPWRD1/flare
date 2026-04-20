@@ -134,11 +134,11 @@ pub enum CstExpr<S: Syntax> {
     // },
     Match(Spanned<Intern<Self>>, &'static [MatchArm<S>]),
     Lambda(S::Variable, Spanned<Intern<Self>>),
-    // Let(
-    //     Spanned<Intern<Pattern<S>>>,
-    //     Spanned<Intern<Self>>,
-    //     Spanned<Intern<Self>>,
-    // ),
+    Let(
+        Spanned<Intern<Pattern<S>>>,
+        Spanned<Intern<Self>>,
+        Spanned<Intern<Self>>,
+    ),
     // Pub(Spanned<Intern<Self>>),
 }
 

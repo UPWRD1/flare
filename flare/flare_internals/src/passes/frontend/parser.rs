@@ -552,7 +552,7 @@ impl<'src> Translate<'src> {
     //     let pattern = self.lower_pattern(self.get_child(node, FK::Pattern).unwrap());
     //     let value = self.lower_expr(self.get_child(node, FK::Value).unwrap());
     //     let body = self.lower_expr(self.get_child(node, FK::Value).unwrap());
-    //     // CstExpr::Let(pattern, value, body)
+    //     CstExpr::Let(pattern, value, body)
     // }
 
     // fn lower_if(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {

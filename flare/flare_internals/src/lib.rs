@@ -74,7 +74,7 @@ use crate::{
             target::{Generator, Target},
         },
         frontend::{
-            environment::Environment,
+            environment::EnvironmentBuilder,
             parser,
             resolution::Resolver,
             typechecker::Typechecker,
@@ -108,12 +108,12 @@ pub struct Parse {
 }
 
 pub struct Build {
-    env: Environment<UntypedCst>,
+    env: EnvironmentBuilder<UntypedCst>,
 }
 
 pub struct Resolve {
     order: Vec<NodeIndex>,
-    env: Environment<UntypedAst>,
+    env: EnvironmentBuilder<UntypedAst>,
 }
 pub struct Typecheck {
     items: Vec<(ItemId, TypesOutput)>,
@@ -194,7 +194,7 @@ pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
 }
 
 pub fn build(parse: Parse) -> CompResult<Build> {
-    let env = Environment::<UntypedCst>::build(parse.program)?;
+    let env = EnvironmentBuilder::<UntypedCst>::build(parse.program)?;
     Ok(Build { env })
 }
 

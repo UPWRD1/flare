@@ -1,12 +1,11 @@
 Main = {
+    # Option = use Option
     # Point = type {x: num, y: num}
 
     main: num = {
-        x = 4
+       x = 4
         y = x
-        z = y
-        a = x y
-        # b = z + y
-        # c = a + b + x
-   }.y
+        a = b
+        b = a
+    }.y
 }
