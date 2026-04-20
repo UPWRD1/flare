@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use internment::Intern;
 
 // use petgraph::Graph;
@@ -136,10 +138,10 @@ impl Environment<UntypedCst> {
             current_node: root_node,
             ..Default::default()
         };
-        // dbg!(proj_main_func);
+        dbg!(proj_main_func);
         let res = me.enter_context(
             |me| me.analyze_expr(proj_main_func, &[]),
-            None,
+            ControlFlow::Break(proj_main_func),
             Spanned::default_with(String::from("Root").into()),
         );
         me.debug();
@@ -158,11 +160,11 @@ impl Environment<UntypedCst> {
     fn resolve_name(
         &mut self,
         n: <UntypedCst as Syntax>::Name,
-    ) -> Option<<UntypedCst as Syntax>::Expr> {
+    ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
         let index = self
             .find_nearest(|node| *node.name == *n.0)
             .unwrap_or_else(|| panic!("Could not find symbol: {n}"));
-        Some(n.convert(CstExpr::Item(ItemId(index.index()))))
+        ControlFlow::Continue(n.convert(CstExpr::Item(ItemId(index.index()))))
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
@@ -186,9 +188,10 @@ impl Environment<UntypedCst> {
     fn enter_context<T>(
         &mut self,
         mut f: impl FnMut(&mut Self) -> T,
-        value: Option<<UntypedCst as Syntax>::Expr>,
+        value: ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr>,
         name: <UntypedCst as Syntax>::Name,
     ) -> T {
+        let value = value.continue_value();
         let old_node = self.current_node;
         let old_path = self.path.clone();
         self.path.push(name.0);
@@ -248,59 +251,67 @@ impl Environment<UntypedCst> {
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Intern<String>],
-    ) -> Option<<UntypedCst as Syntax>::Expr> {
+    ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
         // dbg!(&expr);
 
         match *expr.0 {
             CstExpr::Ident(u) => {
                 if vars.iter().rev().find(|n| **n == u.0.0).is_some() {
-                    Some(expr)
+                    ControlFlow::Continue(expr)
                 } else {
                     // dbg!(expr);
                     self.resolve_name(u.0)
                 }
             }
             CstExpr::ProductConstructor { fields } => {
-                fields.iter().for_each(|field| {
-                    let value = self.enter_context(
-                        |me| me.analyze_expr(field.value, vars),
-                        Some(field.value),
-                        field.name,
-                    );
-                });
-                None
+                let fields: Vec<_> = fields
+                    .iter()
+                    .map(|field| {
+                        let value = self
+                            .enter_context(
+                                |me| me.analyze_expr(field.value, vars),
+                                ControlFlow::Continue(field.value),
+                                field.name,
+                            )
+                            .into_value();
+                        FieldDef { value, ..*field }
+                    })
+                    .collect();
+                ControlFlow::Break(expr.modify(CstExpr::ProductConstructor {
+                    fields: fields.as_slice().into(),
+                }))
             }
             CstExpr::Pat(spanned) => todo!(),
             CstExpr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                Some(expr.modify(CstExpr::Mul(l?, r?)))
+                ControlFlow::Continue(expr.modify(CstExpr::Mul(l?, r?)))
             }
             CstExpr::Div(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                Some(expr.modify(CstExpr::Div(l?, r?)))
+                ControlFlow::Continue(expr.modify(CstExpr::Div(l?, r?)))
             }
             CstExpr::Add(l, r) => {
                 let l = self.analyze_expr(l, vars);
                 let r = self.analyze_expr(r, vars);
-                Some(expr.modify(CstExpr::Add(l?, r?)))
+                ControlFlow::Continue(expr.modify(CstExpr::Add(l?, r?)))
             }
             CstExpr::Sub(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                Some(expr.modify(CstExpr::Sub(l, r)))
+                ControlFlow::Continue(expr.modify(CstExpr::Sub(l, r)))
             }
             CstExpr::Comparison(l, comparison_op, r) => {
                 let l = self.analyze_expr(l, vars)?;
                 let r = self.analyze_expr(r, vars)?;
-                Some(expr.convert(CstExpr::Comparison(l, comparison_op, r)))
+                ControlFlow::Continue(expr.convert(CstExpr::Comparison(l, comparison_op, r)))
             }
             CstExpr::Call(func, arg) => {
                 let func = self.analyze_expr(func, vars)?;
 
                 let arg = self.analyze_expr(arg, vars)?;
-                Some(expr.convert(CstExpr::Call(func, arg)))
+                ControlFlow::Continue(expr.convert(CstExpr::Call(func, arg)))
             }
             CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars),
             CstExpr::Match(matchee, branches) => {
@@ -311,17 +322,17 @@ impl Environment<UntypedCst> {
                     .map(|b| self.resolve_branch(b.pat, b.body, vars))
                     .collect();
                 assert!(!branches.is_empty());
-                Some(expr.modify(CstExpr::Match(matchee, branches.leak())))
+                ControlFlow::Continue(expr.modify(CstExpr::Match(matchee, branches.leak())))
             }
             CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
             // CstExpr::Let(id, body, and_in) => self.resolve_let(expr, id, body, and_in, vars, path),
-            CstExpr::Number(n) => Some(expr.convert(CstExpr::Number(n))),
-            CstExpr::String(s) => Some(expr.convert(CstExpr::String(s))),
-            CstExpr::Bool(b) => Some(expr.convert(CstExpr::Bool(b))),
-            CstExpr::Unit => Some(expr.convert(CstExpr::Unit)),
-            CstExpr::Particle(p) => Some(expr.convert(CstExpr::Particle(p))),
-            CstExpr::Hole(v) => Some(expr.convert(CstExpr::Hole(v))),
-            CstExpr::Item(item_id) => Some(expr.convert(CstExpr::Item(item_id))),
+            CstExpr::Number(n) => ControlFlow::Continue(expr.convert(CstExpr::Number(n))),
+            CstExpr::String(s) => ControlFlow::Continue(expr.convert(CstExpr::String(s))),
+            CstExpr::Bool(b) => ControlFlow::Continue(expr.convert(CstExpr::Bool(b))),
+            CstExpr::Unit => ControlFlow::Continue(expr.convert(CstExpr::Unit)),
+            CstExpr::Particle(p) => ControlFlow::Continue(expr.convert(CstExpr::Particle(p))),
+            CstExpr::Hole(v) => ControlFlow::Continue(expr.convert(CstExpr::Hole(v))),
+            CstExpr::Item(item_id) => ControlFlow::Continue(expr.convert(CstExpr::Item(item_id))),
         }
     }
 
@@ -346,7 +357,10 @@ impl Environment<UntypedCst> {
         }
         // dbg!(&bindings);
 
-        let body = self.analyze_expr(body, &branch_vars).unwrap();
+        let body = self
+            .analyze_expr(body, &branch_vars)
+            .continue_value()
+            .unwrap();
         MatchArm { pat, body }
     }
 
@@ -356,18 +370,20 @@ impl Environment<UntypedCst> {
         arg: Untyped,
         body: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Intern<String>],
-    ) -> Option<Spanned<Intern<CstExpr<UntypedCst>>>> {
+    ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
+    {
         let new_vars = &[vars, &[arg.0.0]].concat();
         let body = self.analyze_expr(body, new_vars)?;
         // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
-        Some(expr.convert(CstExpr::Lambda(arg, body)))
+        ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
     }
 
     fn resolve_field_access(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Intern<String>],
-    ) -> Option<Spanned<Intern<CstExpr<UntypedCst>>>> {
+    ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
+    {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {
             panic!("Not a field access")
         };
@@ -375,7 +391,7 @@ impl Environment<UntypedCst> {
         if let CstExpr::Item(_) = *l.0 {
             self.resolve_name(r.0)
         } else {
-            Some(expr.convert(CstExpr::FieldAccess(l, r)))
+            ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(l, r)))
         }
     }
 

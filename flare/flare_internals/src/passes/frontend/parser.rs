@@ -316,6 +316,7 @@ impl<'src> Translate<'src> {
     fn lower_expr(&mut self, node: Node<'src>) -> Spanned<Intern<CstExpr<UntypedCst>>> {
         let expr = {
             let k = node.kind_id();
+
             match k {
                 // ── Control flow ─────────────────────────────────────────────────
                 // k if k == self.ids.k(NK::LetExpression) => self.lower_let(node),
@@ -331,11 +332,11 @@ impl<'src> Translate<'src> {
                 k if k == self.ids.k(NK::FieldAccess) => self.lower_field_access(node),
 
                 // // ── Binary ops ───────────────────────────────────────────────────
-                // k if k == self.ids.k(NK::MulExpression) => self.lower_binop(node, BinOp::Mul),
-                // k if k == self.ids.k(NK::DivExpression) => self.lower_binop(node, BinOp::Div),
-                // k if k == self.ids.k(NK::AddExpression) => self.lower_binop(node, BinOp::Add),
-                // k if k == self.ids.k(NK::SubExpression) => self.lower_binop(node, BinOp::Sub),
-                // k if k == self.ids.k(NK::CmpExpression) => self.lower_cmp(node),
+                k if k == self.ids.k(NK::MulExpression) => self.lower_binop(&node, BinOp::Mul),
+                k if k == self.ids.k(NK::DivExpression) => self.lower_binop(&node, BinOp::Div),
+                k if k == self.ids.k(NK::AddExpression) => self.lower_binop(&node, BinOp::Add),
+                k if k == self.ids.k(NK::SubExpression) => self.lower_binop(&node, BinOp::Sub),
+                // k if k == self.ids.k(NK::CmpExpression) => self.lower_binop(node),
 
                 // ── Constructors ─────────────────────────────────────────────────
                 k if k == self.ids.k(NK::FieldedConstructor) => self.lower_record(node),
@@ -576,6 +577,27 @@ impl<'src> Translate<'src> {
             .collect();
 
         CstExpr::Match(matchee, arms.leak())
+    }
+
+    fn lower_binop(&mut self, node: &Node<'src>, op: BinOp) -> CstExpr<UntypedCst> {
+        let left_node = node.child_by_field_id(self.ids.f(FK::Left)).unwrap();
+        let right_node = node.child_by_field_id(self.ids.f(FK::Right)).unwrap();
+        let left = self.lower_expr(left_node);
+        let right = self.lower_expr(right_node);
+        match op {
+            BinOp::Eq => todo!(),
+            BinOp::Neq => todo!(),
+            BinOp::Gt => todo!(),
+            BinOp::Lt => todo!(),
+            BinOp::Gte => todo!(),
+            BinOp::Lte => todo!(),
+            BinOp::Add => CstExpr::Add(left, right),
+            BinOp::Sub => todo!(),
+            BinOp::Mul => todo!(),
+            BinOp::Div => todo!(),
+            BinOp::And => todo!(),
+            BinOp::Or => todo!(),
+        }
     }
 
     fn lower_call(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
