@@ -3,8 +3,10 @@ Main = {
 
     main: num = {
         x = 4
-        y = match x
-                as 4 then 0
-                as _ then 1
-    }.y
+        y = x
+        z = x
+        a = x + y
+        # b = z + y
+        # c = a + b + x
+   }.y
 }

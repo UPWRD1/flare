@@ -111,7 +111,7 @@ pub enum CstExpr<S: Syntax> {
 
     Hole(S::Variable),
 
-    Item(ItemId, Kind),
+    Item(ItemId),
 
     ProductConstructor {
         fields: Intern<[FieldDef<S>]>,

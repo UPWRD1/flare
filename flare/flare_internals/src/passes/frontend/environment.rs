@@ -1,7 +1,8 @@
 use internment::Intern;
-use itertools::Itertools;
+
 // use petgraph::Graph;
 use petgraph::{
+    Direction::Outgoing,
     dot::Config,
     prelude::StableDiGraph,
     stable_graph::{EdgeReference, NodeIndex},
@@ -10,17 +11,14 @@ use petgraph::{
 use radix_trie::{Trie, TrieKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use std::{hash::RandomState, path};
-
 use crate::resource::{
     errors::CompResult,
     rep::{
         // concretetypes::{EnumVariant, Ty},
         common::{Spanned, Syntax},
         frontend::{
-            ast::{Label, Untyped},
+            ast::{ItemId, Label, Untyped},
             cst::{CstExpr, FieldDef, Macro, MatchArm, PackageCollection, Pattern, UntypedCst},
-            entry::Item,
             quantifier::QualifierFragment,
         },
     },
@@ -46,6 +44,37 @@ impl TrieKey for Key {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct Element {
+    name: Intern<String>,
+    value: Option<<UntypedCst as Syntax>::Expr>,
+}
+
+#[derive(Debug)]
+enum Relation {
+    Reference,
+    Parent,
+}
+
+impl Element {
+    pub fn new_with(
+        name: impl Into<Intern<String>>,
+        value: Option<<UntypedCst as Syntax>::Expr>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            value,
+        }
+    }
+
+    pub fn new(name: impl Into<Intern<String>>) -> Self {
+        Self {
+            name: name.into(),
+            value: None,
+        }
+    }
+}
+
 #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
 /// the  parser, and the index of the root.
@@ -56,7 +85,7 @@ impl TrieKey for Key {
 #[non_exhaustive]
 #[derive(Default)]
 pub struct Environment<S: Syntax> {
-    pub graph: StableDiGraph<Option<S::Expr>, String>,
+    pub graph: StableDiGraph<Element, Relation>,
     pub trie: Trie<Key, Option<S::Expr>>,
     path: Vec<Intern<String>>,
     current_node: NodeIndex,
@@ -69,9 +98,8 @@ impl Environment<UntypedCst> {
     /// - on invalid names,
     ///
     pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Self> {
-        let mut graph: StableDiGraph<Option<<UntypedCst as Syntax>::Expr>, String> =
-            StableDiGraph::default();
-        let root_node = graph.add_node(None);
+        let mut graph: StableDiGraph<Element, Relation> = StableDiGraph::default();
+        let root_node = graph.add_node(Element::new("Root".to_string()));
         let trie = Trie::new();
         let mut macros: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>> =
             FxHashMap::default();
@@ -128,16 +156,19 @@ impl Environment<UntypedCst> {
     }
 
     fn resolve_name(
-        &self,
+        &mut self,
         n: <UntypedCst as Syntax>::Name,
     ) -> Option<<UntypedCst as Syntax>::Expr> {
-        todo!()
+        let index = self
+            .find_nearest(|node| *node.name == *n.0)
+            .unwrap_or_else(|| panic!("Could not find symbol: {n}"));
+        Some(n.convert(CstExpr::Item(ItemId(index.index()))))
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     #[deprecated]
     pub fn debug(&self) {
-        let render = |_, v: EdgeReference<'_, String>| format!("label = \"{}\"", v.weight());
+        let render = |_, v: EdgeReference<'_, Relation>| format!("label = \"{:?}\"", v.weight());
         let dot = petgraph::dot::Dot::with_attr_getters(
             &self.graph,
             &[
@@ -147,12 +178,9 @@ impl Environment<UntypedCst> {
             ],
             // &|_, _| String::new(),
             &render,
-            &|_, _| String::new(),
+            &|_, (i, e)| format!("label = \"{} = {}\"", i.index(), e.name),
         );
         dbg!(dot);
-    }
-    fn add(&mut self, path: &[Intern<String>], value: Option<<UntypedCst as Syntax>::Expr>) {
-        self.trie.insert(Key::from(path.clone()), value);
     }
 
     fn enter_context<T>(
@@ -164,12 +192,9 @@ impl Environment<UntypedCst> {
         let old_node = self.current_node;
         let old_path = self.path.clone();
         self.path.push(name.0);
-        self.current_node = self.graph.add_node(value);
-        self.graph.add_edge(
-            old_node,
-            self.current_node,
-            self.path.last().unwrap().to_string(),
-        );
+        self.current_node = self.graph.add_node(Element::new_with(name.0, value));
+        self.graph
+            .add_edge(old_node, self.current_node, Relation::Parent);
 
         self.trie.insert(Key::from(self.path.clone()), value);
         let out = f(self);
@@ -179,19 +204,44 @@ impl Environment<UntypedCst> {
         out
     }
 
-    fn find_nearest_weighted<F>(&self, predicate: F) -> Option<(petgraph::graph::NodeIndex, usize)>
+    fn find_nearest<F>(&mut self, predicate: F) -> Option<petgraph::graph::NodeIndex>
     where
-        F: Fn(&Option<<UntypedCst as Syntax>::Expr>) -> bool,
+        F: Fn(&Element) -> bool,
     {
-        use petgraph::algo::astar;
-        astar(
-            &self.graph,
-            self.current_node,
-            |finish| predicate(&self.graph[finish]),
-            |_| 0,
-            |_| 0, // no heuristic → Dijkstra behavior
-        )
-        .map(|(cost, path)| (*path.last().unwrap(), cost))
+        let mut queue = std::collections::VecDeque::new();
+        let mut visited = FxHashSet::default();
+
+        queue.push_back(self.current_node);
+        visited.insert(self.current_node);
+
+        while let Some(node) = queue.pop_front() {
+            if predicate(&self.graph[node]) {
+                self.graph
+                    .add_edge(self.current_node, node, Relation::Reference);
+                return Some(node); // first match = correct shadowing
+            }
+
+            let parent = self
+                .graph
+                .edges_directed(node, petgraph::Direction::Incoming)
+                .next()
+                .unwrap()
+                .source();
+            dbg!(parent);
+            let siblings = self
+                .graph
+                .edges_directed(parent, Outgoing)
+                .filter(|n| n.target() != node)
+                .map(|e| e.target());
+
+            for neighbor in siblings {
+                if visited.insert(neighbor) {
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+
+        None
     }
 
     fn analyze_expr(
@@ -211,13 +261,9 @@ impl Environment<UntypedCst> {
                 }
             }
             CstExpr::ProductConstructor { fields } => {
-                let mut new_vars = vars.to_vec();
-                for field in fields.iter() {
-                    new_vars.push(field.name.0);
-                }
                 fields.iter().for_each(|field| {
                     let value = self.enter_context(
-                        |me| me.analyze_expr(field.value, &new_vars),
+                        |me| me.analyze_expr(field.value, vars),
                         Some(field.value),
                         field.name,
                     );
@@ -226,19 +272,19 @@ impl Environment<UntypedCst> {
             }
             CstExpr::Pat(spanned) => todo!(),
             CstExpr::Mul(l, r) => {
-                let l = self.analyze_expr(l, vars)?;
-                let r = self.analyze_expr(r, vars)?;
-                Some(expr.modify(CstExpr::Mul(l, r)))
+                let l = self.analyze_expr(l, vars);
+                let r = self.analyze_expr(r, vars);
+                Some(expr.modify(CstExpr::Mul(l?, r?)))
             }
             CstExpr::Div(l, r) => {
-                let l = self.analyze_expr(l, vars)?;
-                let r = self.analyze_expr(r, vars)?;
-                Some(expr.modify(CstExpr::Div(l, r)))
+                let l = self.analyze_expr(l, vars);
+                let r = self.analyze_expr(r, vars);
+                Some(expr.modify(CstExpr::Div(l?, r?)))
             }
             CstExpr::Add(l, r) => {
-                let l = self.analyze_expr(l, vars)?;
-                let r = self.analyze_expr(r, vars)?;
-                Some(expr.modify(CstExpr::Add(l, r)))
+                let l = self.analyze_expr(l, vars);
+                let r = self.analyze_expr(r, vars);
+                Some(expr.modify(CstExpr::Add(l?, r?)))
             }
             CstExpr::Sub(l, r) => {
                 let l = self.analyze_expr(l, vars)?;
@@ -275,7 +321,7 @@ impl Environment<UntypedCst> {
             CstExpr::Unit => Some(expr.convert(CstExpr::Unit)),
             CstExpr::Particle(p) => Some(expr.convert(CstExpr::Particle(p))),
             CstExpr::Hole(v) => Some(expr.convert(CstExpr::Hole(v))),
-            CstExpr::Item(item_id, kind) => Some(expr.convert(CstExpr::Item(item_id, kind))),
+            CstExpr::Item(item_id) => Some(expr.convert(CstExpr::Item(item_id))),
         }
     }
 
@@ -326,7 +372,7 @@ impl Environment<UntypedCst> {
             panic!("Not a field access")
         };
         let l = self.analyze_expr(l, vars)?;
-        if let CstExpr::Item(_, _) = *l.0 {
+        if let CstExpr::Item(_) = *l.0 {
             self.resolve_name(r.0)
         } else {
             Some(expr.convert(CstExpr::FieldAccess(l, r)))
