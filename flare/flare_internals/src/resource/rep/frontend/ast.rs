@@ -84,7 +84,7 @@ pub enum Kind {
 
 /// Type representing an Expression.
 /// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Expr<V>
 where
     V: Variable,
@@ -94,9 +94,9 @@ where
     Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Bool(bool),
+    #[default]
     Unit,
     Particle(Spanned<Intern<String>>),
-
     Hole(V),
 
     Item(ItemId, Kind),

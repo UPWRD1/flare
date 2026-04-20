@@ -318,8 +318,8 @@ impl<'src> Translate<'src> {
             let k = node.kind_id();
             match k {
                 // ── Control flow ─────────────────────────────────────────────────
-                k if k == self.ids.k(NK::LetExpression) => self.lower_let(node),
-                k if k == self.ids.k(NK::IfExpression) => self.lower_if(node),
+                // k if k == self.ids.k(NK::LetExpression) => self.lower_let(node),
+                // k if k == self.ids.k(NK::IfExpression) => self.lower_if(node),
                 k if k == self.ids.k(NK::MatchExpression) => self.lower_match(node),
 
                 // // ── Abstraction / application ─────────────────────────────────────
@@ -547,19 +547,19 @@ impl<'src> Translate<'src> {
         CstType::User(name, generics)
     }
 
-    fn lower_let(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
-        let pattern = self.lower_pattern(self.get_child(node, FK::Pattern).unwrap());
-        let value = self.lower_expr(self.get_child(node, FK::Value).unwrap());
-        let body = self.lower_expr(self.get_child(node, FK::Value).unwrap());
-        CstExpr::Let(pattern, value, body)
-    }
+    // fn lower_let(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+    //     let pattern = self.lower_pattern(self.get_child(node, FK::Pattern).unwrap());
+    //     let value = self.lower_expr(self.get_child(node, FK::Value).unwrap());
+    //     let body = self.lower_expr(self.get_child(node, FK::Value).unwrap());
+    //     // CstExpr::Let(pattern, value, body)
+    // }
 
-    fn lower_if(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
-        let cond = self.lower_expr(self.get_child(node, FK::Condition).unwrap());
-        let cons = self.lower_expr(self.get_child(node, FK::Consequence).unwrap());
-        let altr = self.lower_expr(self.get_child(node, FK::Alternative).unwrap());
-        CstExpr::If(cond, cons, altr)
-    }
+    // fn lower_if(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+    //     let cond = self.lower_expr(self.get_child(node, FK::Condition).unwrap());
+    //     let cons = self.lower_expr(self.get_child(node, FK::Consequence).unwrap());
+    //     let altr = self.lower_expr(self.get_child(node, FK::Alternative).unwrap());
+    //     CstExpr::If(cond, cons, altr)
+    // }
 
     fn lower_match(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
         let matchee = self.lower_expr(self.get_child(node, FK::Value).unwrap());

@@ -1,5 +1,10 @@
 Main = {
-    type Point = {x: num, y: num}
-    # v: Point = {x = 4, y = x}
-    main: num = {x = 4, y = x}.y
+    # Point = type {x: num, y: num}
+
+    main: num = {
+        x = 4
+        y = match x
+                as 4 then 0
+                as _ then 1
+    }.y
 }

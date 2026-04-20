@@ -1,14 +1,16 @@
 use internment::Intern;
+use itertools::Itertools;
 // use petgraph::Graph;
 use petgraph::{
     dot::Config,
-    prelude::{StableDiGraph, StableGraph},
+    prelude::StableDiGraph,
     stable_graph::{EdgeReference, NodeIndex},
     visit::EdgeRef as _,
 };
+use radix_trie::{Trie, TrieKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use std::hash::RandomState;
+use std::{hash::RandomState, path};
 
 use crate::resource::{
     errors::CompResult,
@@ -16,13 +18,33 @@ use crate::resource::{
         // concretetypes::{EnumVariant, Ty},
         common::{Spanned, Syntax},
         frontend::{
-            ast::Label,
-            cst::{CstExpr, FieldDef, Macro, PackageCollection, UntypedCst},
+            ast::{Label, Untyped},
+            cst::{CstExpr, FieldDef, Macro, MatchArm, PackageCollection, Pattern, UntypedCst},
             entry::Item,
             quantifier::QualifierFragment,
         },
     },
 };
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct Key(Vec<Intern<String>>);
+
+impl Key {
+    pub fn from<T>(path: T) -> Self
+    where
+        T: Into<Vec<Intern<String>>>,
+    {
+        Self(path.into())
+    }
+}
+
+impl TrieKey for Key {
+    fn encode_bytes(&self) -> Vec<u8> {
+        self.0
+            .iter()
+            .flat_map(|s| s.bytes().collect::<Vec<u8>>())
+            .collect()
+    }
+}
 
 #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
@@ -34,8 +56,11 @@ use crate::resource::{
 #[non_exhaustive]
 #[derive(Default)]
 pub struct Environment<S: Syntax> {
-    pub graph: StableDiGraph<Item<S>, QualifierFragment>,
-    pub root: NodeIndex,
+    pub graph: StableDiGraph<Option<S::Expr>, String>,
+    pub trie: Trie<Key, Option<S::Expr>>,
+    path: Vec<Intern<String>>,
+    current_node: NodeIndex,
+    vars: Vec<Intern<String>>, // pub root: NodeIndex,
 }
 
 impl Environment<UntypedCst> {
@@ -44,10 +69,14 @@ impl Environment<UntypedCst> {
     /// - on invalid names,
     ///
     pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Self> {
-        let g: StableDiGraph<Item<UntypedCst>, QualifierFragment> = StableGraph::default();
+        let mut graph: StableDiGraph<Option<<UntypedCst as Syntax>::Expr>, String> =
+            StableDiGraph::default();
+        let root_node = graph.add_node(None);
+        let trie = Trie::new();
         let mut macros: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>> =
             FxHashMap::default();
         let mut fields: Vec<FieldDef<UntypedCst>> = vec![];
+
         program.packages.into_iter().for_each(|(p, _)| {
             macros.extend(p.macros);
             fields.push(p.root_node);
@@ -73,17 +102,235 @@ impl Environment<UntypedCst> {
             )
             .into(),
         );
-        dbg!(proj_main_func);
-        let mut resolver = crate::passes::frontend::resolution::Resolver::default();
-        let resolved = resolver.analyze_expr(proj_main_func, &[]);
-        let resolved = resolver.convert_expr(resolved);
-        let r = crate::passes::frontend::typing::Solver::infer_with_items(
-            &crate::passes::frontend::typing::ItemSource::default(),
-            resolved,
+        let mut me = Self {
+            graph,
+            trie,
+            current_node: root_node,
+            ..Default::default()
+        };
+        // dbg!(proj_main_func);
+        let res = me.enter_context(
+            |me| me.analyze_expr(proj_main_func, &[]),
+            None,
+            Spanned::default_with(String::from("Root").into()),
         );
-        dbg!(r);
+        me.debug();
+        // let mut resolver = crate::passes::frontend::resolution::Resolver::default();
+        // let resolved = resolver.analyze_expr(proj_main_func, &[]);
+        // let resolved = resolver.convert_expr(resolved);
+        // let r = crate::passes::frontend::typing::Solver::infer_with_items(
+        //     &crate::passes::frontend::typing::ItemSource::default(),
+        //     resolved,
+        // );
+        // dbg!(r);
         todo!()
         // proj_main_func
+    }
+
+    fn resolve_name(
+        &self,
+        n: <UntypedCst as Syntax>::Name,
+    ) -> Option<<UntypedCst as Syntax>::Expr> {
+        todo!()
+    }
+
+    #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
+    #[deprecated]
+    pub fn debug(&self) {
+        let render = |_, v: EdgeReference<'_, String>| format!("label = \"{}\"", v.weight());
+        let dot = petgraph::dot::Dot::with_attr_getters(
+            &self.graph,
+            &[
+                Config::EdgeNoLabel,
+                Config::NodeNoLabel,
+                Config::RankDir(petgraph::dot::RankDir::LR),
+            ],
+            // &|_, _| String::new(),
+            &render,
+            &|_, _| String::new(),
+        );
+        dbg!(dot);
+    }
+    fn add(&mut self, path: &[Intern<String>], value: Option<<UntypedCst as Syntax>::Expr>) {
+        self.trie.insert(Key::from(path.clone()), value);
+    }
+
+    fn enter_context<T>(
+        &mut self,
+        mut f: impl FnMut(&mut Self) -> T,
+        value: Option<<UntypedCst as Syntax>::Expr>,
+        name: <UntypedCst as Syntax>::Name,
+    ) -> T {
+        let old_node = self.current_node;
+        let old_path = self.path.clone();
+        self.path.push(name.0);
+        self.current_node = self.graph.add_node(value);
+        self.graph.add_edge(
+            old_node,
+            self.current_node,
+            self.path.last().unwrap().to_string(),
+        );
+
+        self.trie.insert(Key::from(self.path.clone()), value);
+        let out = f(self);
+        self.current_node = old_node;
+        self.path = old_path;
+
+        out
+    }
+
+    fn find_nearest_weighted<F>(&self, predicate: F) -> Option<(petgraph::graph::NodeIndex, usize)>
+    where
+        F: Fn(&Option<<UntypedCst as Syntax>::Expr>) -> bool,
+    {
+        use petgraph::algo::astar;
+        astar(
+            &self.graph,
+            self.current_node,
+            |finish| predicate(&self.graph[finish]),
+            |_| 0,
+            |_| 0, // no heuristic → Dijkstra behavior
+        )
+        .map(|(cost, path)| (*path.last().unwrap(), cost))
+    }
+
+    fn analyze_expr(
+        &mut self,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[Intern<String>],
+    ) -> Option<<UntypedCst as Syntax>::Expr> {
+        // dbg!(&expr);
+
+        match *expr.0 {
+            CstExpr::Ident(u) => {
+                if vars.iter().rev().find(|n| **n == u.0.0).is_some() {
+                    Some(expr)
+                } else {
+                    // dbg!(expr);
+                    self.resolve_name(u.0)
+                }
+            }
+            CstExpr::ProductConstructor { fields } => {
+                let mut new_vars = vars.to_vec();
+                for field in fields.iter() {
+                    new_vars.push(field.name.0);
+                }
+                fields.iter().for_each(|field| {
+                    let value = self.enter_context(
+                        |me| me.analyze_expr(field.value, &new_vars),
+                        Some(field.value),
+                        field.name,
+                    );
+                });
+                None
+            }
+            CstExpr::Pat(spanned) => todo!(),
+            CstExpr::Mul(l, r) => {
+                let l = self.analyze_expr(l, vars)?;
+                let r = self.analyze_expr(r, vars)?;
+                Some(expr.modify(CstExpr::Mul(l, r)))
+            }
+            CstExpr::Div(l, r) => {
+                let l = self.analyze_expr(l, vars)?;
+                let r = self.analyze_expr(r, vars)?;
+                Some(expr.modify(CstExpr::Div(l, r)))
+            }
+            CstExpr::Add(l, r) => {
+                let l = self.analyze_expr(l, vars)?;
+                let r = self.analyze_expr(r, vars)?;
+                Some(expr.modify(CstExpr::Add(l, r)))
+            }
+            CstExpr::Sub(l, r) => {
+                let l = self.analyze_expr(l, vars)?;
+                let r = self.analyze_expr(r, vars)?;
+                Some(expr.modify(CstExpr::Sub(l, r)))
+            }
+            CstExpr::Comparison(l, comparison_op, r) => {
+                let l = self.analyze_expr(l, vars)?;
+                let r = self.analyze_expr(r, vars)?;
+                Some(expr.convert(CstExpr::Comparison(l, comparison_op, r)))
+            }
+            CstExpr::Call(func, arg) => {
+                let func = self.analyze_expr(func, vars)?;
+
+                let arg = self.analyze_expr(arg, vars)?;
+                Some(expr.convert(CstExpr::Call(func, arg)))
+            }
+            CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars),
+            CstExpr::Match(matchee, branches) => {
+                let matchee = self.analyze_expr(matchee, vars)?;
+
+                let branches: Vec<_> = branches
+                    .iter()
+                    .map(|b| self.resolve_branch(b.pat, b.body, vars))
+                    .collect();
+                assert!(!branches.is_empty());
+                Some(expr.modify(CstExpr::Match(matchee, branches.leak())))
+            }
+            CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
+            // CstExpr::Let(id, body, and_in) => self.resolve_let(expr, id, body, and_in, vars, path),
+            CstExpr::Number(n) => Some(expr.convert(CstExpr::Number(n))),
+            CstExpr::String(s) => Some(expr.convert(CstExpr::String(s))),
+            CstExpr::Bool(b) => Some(expr.convert(CstExpr::Bool(b))),
+            CstExpr::Unit => Some(expr.convert(CstExpr::Unit)),
+            CstExpr::Particle(p) => Some(expr.convert(CstExpr::Particle(p))),
+            CstExpr::Hole(v) => Some(expr.convert(CstExpr::Hole(v))),
+            CstExpr::Item(item_id, kind) => Some(expr.convert(CstExpr::Item(item_id, kind))),
+        }
+    }
+
+    fn resolve_branch(
+        &mut self,
+        pat: Spanned<Intern<Pattern<UntypedCst>>>,
+        body: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[Intern<String>],
+    ) -> MatchArm<UntypedCst> {
+        // The branch becomes: λparam. <lets> in body
+        // `param` is the lambda binder that receives the matchee at the call site.
+        let param = Untyped(pat.convert("%match_arg%".to_string()));
+        let branch_arg: Spanned<Intern<CstExpr<UntypedCst>>> = pat.convert(CstExpr::Ident(param));
+
+        let bindings = pat.0.bindings();
+        dbg!(&bindings);
+        // Extend vars with user-visible bindings so analyze_expr can resolve them.
+        // Each maps the binder name -> its destructured value expression.
+        let mut branch_vars: Vec<Intern<String>> = vars.to_vec();
+        for binding in &bindings {
+            branch_vars.push(binding.0.0);
+        }
+        // dbg!(&bindings);
+
+        let body = self.analyze_expr(body, &branch_vars).unwrap();
+        MatchArm { pat, body }
+    }
+
+    fn resolve_lambda(
+        &mut self,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        arg: Untyped,
+        body: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[Intern<String>],
+    ) -> Option<Spanned<Intern<CstExpr<UntypedCst>>>> {
+        let new_vars = &[vars, &[arg.0.0]].concat();
+        let body = self.analyze_expr(body, new_vars)?;
+        // *vars.iter_mut().find(|x| x.0 == arg.0 .0).unwrap() = (arg.0 .0, body);
+        Some(expr.convert(CstExpr::Lambda(arg, body)))
+    }
+
+    fn resolve_field_access(
+        &mut self,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[Intern<String>],
+    ) -> Option<Spanned<Intern<CstExpr<UntypedCst>>>> {
+        let CstExpr::FieldAccess(l, r) = *expr.0 else {
+            panic!("Not a field access")
+        };
+        let l = self.analyze_expr(l, vars)?;
+        if let CstExpr::Item(_, _) = *l.0 {
+            self.resolve_name(r.0)
+        } else {
+            Some(expr.convert(CstExpr::FieldAccess(l, r)))
+        }
     }
 
     /// Builds an impl definition
@@ -106,376 +353,11 @@ impl Environment<UntypedCst> {
 
 impl<S: Syntax> Environment<S> {
     pub fn from_graph_and_root(
-        graph: impl Into<StableDiGraph<Item<S>, QualifierFragment>>,
+        graph: &impl Into<StableDiGraph<Option<S::Expr>, QualifierFragment>>,
         root: NodeIndex,
     ) -> Self {
-        let graph = graph.into();
-        Self { graph, root }
+        todo!();
+        // let graph = graph.into();
+        // Self { graph }
     }
-
-    /// Add an `item` to the environment as a child of a `parent_node`, accessible via a `qualifier`. Returns the `NodeIndex` of the newly-created child.
-    /// # Panics
-    /// Panics if the internal graph is full.
-    /// Panics if the root node doesn't exist.
-    ///
-    /// # Examples
-    /// ```rust
-    /// let env: Environment::new();
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert!(env.graph.contains_edge(env.root, foo))
-    /// ```
-    pub fn add(
-        &mut self,
-        parent_node: NodeIndex,
-        qualifier: QualifierFragment,
-        item: Item<S>,
-    ) -> NodeIndex {
-        let child_idx = self.graph.add_node(item);
-        self.graph.add_edge(parent_node, child_idx, qualifier);
-        child_idx
-    }
-
-    #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
-    #[deprecated]
-    pub fn debug(&self) {
-        let render =
-            |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
-        let dot = petgraph::dot::Dot::with_attr_getters(
-            &self.graph,
-            &[
-                Config::EdgeNoLabel,
-                Config::NodeNoLabel,
-                Config::RankDir(petgraph::dot::RankDir::LR),
-            ],
-            // &|_, _| String::new(),
-            &render,
-            &|_, _| String::new(),
-        );
-        dbg!(dot);
-    }
-    #[inline]
-    /// Get the item value of an index.
-    /// # Examples
-    /// ```rust   
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
-    /// ```
-    pub fn value(&self, idx: NodeIndex) -> Option<&Item<S>> {
-        self.graph.node_weight(idx)
-    }
-
-    fn trace_import_path(
-        &self,
-        path: &[QualifierFragment],
-        package_to_exports: &FxHashMap<
-            QualifierFragment,
-            FxHashSet<(QualifierFragment, NodeIndex)>,
-        >,
-    ) -> NodeIndex {
-        path.windows(2)
-            .map(|path| {
-                let [left, right] = path else {
-                    panic!("Path is invalid")
-                };
-
-                if let QualifierFragment::Package(_) = left {
-                    if let Some(exports) = package_to_exports.get(left) {
-                        if let Some(n) = exports.iter().find(|x| x.0.is(right)) {
-                            n.1
-                        } else {
-                            panic!("import not found, {left}.{right}")
-                        }
-                    } else {
-                        panic!("Package has no exports")
-                    }
-                } else {
-                    panic!("Import path should be a package or subpackage")
-                }
-            })
-            .next_back()
-            .expect("Path was empty")
-    }
-
-    #[inline]
-    pub fn get_from_context(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> Option<NodeIndex> {
-        let paths = self.search_for_edge(frag);
-        for path in &paths {
-            // dbg!(path);
-            // if path.first().ok_or_else(err)?.is(packctx) {
-            if let Some(first) = path.first()
-                && first.is(packctx)
-            {
-                return self.get(path);
-            }
-        }
-        None
-    }
-
-    /// Internal helper function for `get_node_and_children`
-    fn raw_get_node_and_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> Option<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .collect();
-        Some((parent, children))
-    }
-
-    #[inline]
-    pub fn raw_get_node_and_children_indexes(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> Option<(NodeIndex, Vec<NodeIndex>)> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .map(|edge| edge.target())
-            .collect();
-        Some((parent, children))
-    }
-
-    #[inline]
-    pub fn get_node_and_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> Option<(&Item<S>, Vec<(&QualifierFragment, &Item<S>)>)> {
-        let (node, children) = self.raw_get_node_and_children(frag, packctx)?;
-        let node_w = self.value(node)?;
-
-        Some((
-            node_w,
-            children
-                .iter()
-                .map(|edge| {
-                    (
-                        edge.weight(),
-                        // # SAFETY: `self.value()` returns none only if the node
-                        // doesn't exist. We know the node exists because we
-                        // are iterating over the children of the parent.
-                        unsafe { self.value(edge.target()).unwrap_unchecked() },
-                    )
-                })
-                .collect(),
-        ))
-    }
-
-    /// Internal helper function for `get_children()`
-    fn raw_get_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> Option<Vec<EdgeReference<'_, QualifierFragment>>> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .collect();
-        Some(children)
-    }
-
-    #[inline]
-    /// Get the children of a node given the the node's quantifier and context to search in.
-    pub fn get_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> Option<Vec<(&QualifierFragment, &Item<S>)>> {
-        let children = self.raw_get_children(frag, packctx)?;
-
-        // children
-        //     .iter()
-        //     .map(|edge| self.value(edge.target()).map(|item| (edge.weight(), item)))
-        //     .collect()
-        Some(
-            children
-                .iter()
-                .map(|edge| {
-                    // # SAFETY: `self.value()` returns none only if the node
-                    // doesn't exist. We know the node exists because we
-                    // are iterating over the children of the parent.
-                    (edge.weight(), unsafe {
-                        self.value(edge.target()).unwrap_unchecked()
-                    })
-                })
-                .collect(),
-        )
-    }
-
-    #[inline]
-    /// Given a qualifier and a context to search in, get the `Item` value of the qualifier's target.
-    pub fn get_node(
-        &self,
-        target: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> Option<&Item<S>> {
-        let node = self.get_from_context(target, packctx)?;
-        let node_w = self.value(node)?;
-
-        Some(node_w)
-    }
-
-    /// Gets all the targets for all edges labeled `frag`
-    fn get_all_targets_edge<'envi, 'fragment>(
-        &'envi self,
-        frag: &'fragment QualifierFragment,
-    ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'fragment, S> {
-        let edges = self
-            .graph
-            .edge_indices()
-            .filter(move |x| self.graph.edge_weight(*x).unwrap() == (frag));
-
-        edges.map(|x| self.graph.edge_endpoints(x).unwrap().1)
-    }
-
-    /// Optionally returns a vector of the possible paths to an item fragment.
-    #[must_use]
-    #[inline]
-    pub fn search_for_edge(&self, fragment: &QualifierFragment) -> Vec<Vec<QualifierFragment>> {
-        use petgraph::algo::all_simple_paths;
-        use petgraph::prelude::*;
-        let mut paths: Vec<Vec<QualifierFragment>> = vec![];
-        let targets = self.get_all_targets_edge(fragment);
-        for target in targets {
-            let real_paths: Vec<Vec<NodeIndex>> =
-                all_simple_paths::<Vec<_>, _, RandomState>(&self.graph, self.root, target, 0, None)
-                    .collect::<Vec<_>>();
-            for frag_path in real_paths {
-                let mut path = Vec::new();
-                for node_pair in frag_path.windows(2) {
-                    debug_assert_eq!(
-                        node_pair.len(),
-                        2,
-                        "p.windows(2) failed to produce a window of size 2"
-                    );
-
-                    // SAFETY: The length of the windows is always 2, therefore
-                    // we can always index into the first two elements,
-                    // without panicking.
-                    let first = unsafe { node_pair.get_unchecked(0) };
-                    // SAFETY: Same as above
-                    let second = unsafe { node_pair.get_unchecked(1) };
-                    let edge = self
-                        .graph
-                        .edges_connecting(*first, *second)
-                        .next()
-                        .unwrap_or_else(|| {
-                            unreachable!(
-                                "Index {:?} is not a child of index {:?}; could not build dependancy graph.",
-                                first, second
-                            )
-                        })
-                        .weight().clone();
-                    path.push(edge);
-                }
-                paths.push(path);
-            }
-        }
-        paths
-    }
-
-    /// Gets an absolute path and verifies it
-    fn get<'graph>(&'graph self, qualifier_path: &[QualifierFragment]) -> Option<NodeIndex> {
-        //let _ = self.graph.edges(self.root).map(|x| dbg!(x));
-        struct Rec<'s, 'graph, T> {
-            f: &'s dyn Fn(&Self, &'graph T, NodeIndex, &[QualifierFragment]) -> Option<NodeIndex>,
-        }
-        let rec = Rec {
-            f: &|rec: &Rec<'_, 'graph, _>,
-                 graph_self: &'graph Self,
-                 n: NodeIndex,
-                 q: &[QualifierFragment]|
-             -> Option<NodeIndex> {
-                //dbg!(&q);
-                match q {
-                    [] => Some(n),
-
-                    [head, tail @ ..] => {
-                        let candidate = graph_self.graph.edges(n).find(|e| e.weight().is(head))?;
-
-                        (rec.f)(rec, graph_self, candidate.target(), tail)
-                        //self.graph.node_weight(n).cloned()
-                    }
-                }
-            },
-        };
-        (rec.f)(&rec, self, self.root, qualifier_path) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
-    }
-
-    pub fn get_parent(&self, idx: NodeIndex) -> Option<QualifierFragment> {
-        let parents = self
-            .graph
-            .edges_directed(idx, petgraph::Direction::Incoming);
-        let mut the_edge = None;
-        for parent in parents {
-            let source = parent.source();
-            let edge_idx = self.graph.find_edge(source, idx)?;
-            let edge = self.graph.edge_weight(edge_idx).cloned()?;
-            if matches!(edge, QualifierFragment::Package(_)) {
-                the_edge = Some(edge);
-            } else if !matches!(edge, QualifierFragment::Root) {
-                the_edge = self.get_parent(source);
-            } else {
-                continue;
-            }
-        }
-
-        the_edge
-    }
-
-    // #[cfg(test)]
-    // #[cfg(debug_assertions)]
-    // #[cfg(feature = "testing")]
-    // #[allow(clippy::disallowed_names)]
-    // pub fn make_graph() -> Self {
-    //     // if cfg!(test) {
-    //     let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
-    //     let root = graph.add_node(Item::Root);
-    //     let lib_foo = graph.add_node(Item::Dummy("libFoo"));
-    //     let foo = graph.add_node(Item::Dummy("foo"));
-    //     let lib_bar = graph.add_node(Item::Dummy("libBar"));
-    //     let bar = graph.add_node(Item::Dummy("Bar"));
-    //     let baz = graph.add_node(Item::Dummy("baz"));
-    //     let bar_foo = graph.add_node(Item::Dummy("fooooo"));
-    //     graph.extend_with_edges([
-    //         (
-    //             root,
-    //             lib_foo,
-    //             QualifierFragment::Package(Intern::from_ref("Foo")),
-    //         ),
-    //         (
-    //             lib_foo,
-    //             foo,
-    //             QualifierFragment::Func(Intern::from_ref("foo")),
-    //         ),
-    //         (
-    //             root,
-    //             lib_bar,
-    //             QualifierFragment::Package(Intern::from_ref("Bar")),
-    //         ),
-    //         (
-    //             lib_bar,
-    //             bar,
-    //             QualifierFragment::Type(Intern::from_ref("Bar")),
-    //         ),
-    //         (bar, baz, QualifierFragment::Field(Intern::from_ref("f1"))),
-    //         (
-    //             lib_bar,
-    //             bar_foo,
-    //             QualifierFragment::Func(Intern::from_ref("foo")),
-    //         ),
-    //     ]);
-
-    //     Self { graph, root }
-    // }
 }

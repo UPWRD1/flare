@@ -99,12 +99,13 @@ pub struct FieldDef<S: Syntax> {
     pub value: Spanned<Intern<CstExpr<S>>>, // absent = abstract / extern decl
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CstExpr<S: Syntax> {
     Ident(S::Variable),
     Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Bool(bool),
+    #[default]
     Unit,
     Particle(Spanned<Intern<String>>),
 
@@ -116,9 +117,6 @@ pub enum CstExpr<S: Syntax> {
         fields: Intern<[FieldDef<S>]>,
     },
 
-    Label(Label, Spanned<Intern<Self>>),
-    Unlabel(Spanned<Intern<Self>>, Label),
-
     Pat(Spanned<Pattern<S>>),
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -128,26 +126,20 @@ pub enum CstExpr<S: Syntax> {
 
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     FieldAccess(Spanned<Intern<Self>>, Label),
-    Myself,
-    MethodAccess {
-        obj: Spanned<Intern<Self>>,
-        prop: Option<Spanned<Intern<String>>>,
-        method: Spanned<Intern<Self>>,
-    },
-    If(
-        Spanned<Intern<Self>>,
-        Spanned<Intern<Self>>,
-        Spanned<Intern<Self>>,
-    ),
+    // Myself,
+    // MethodAccess {
+    //     obj: Spanned<Intern<Self>>,
+    //     prop: Option<Spanned<Intern<String>>>,
+    //     method: Spanned<Intern<Self>>,
+    // },
     Match(Spanned<Intern<Self>>, &'static [MatchArm<S>]),
     Lambda(S::Variable, Spanned<Intern<Self>>),
-    Let(
-        // S::Variable,
-        Spanned<Intern<Pattern<S>>>,
-        Spanned<Intern<Self>>,
-        Spanned<Intern<Self>>,
-    ),
-    // Type(S::Type),
+    // Let(
+    //     Spanned<Intern<Pattern<S>>>,
+    //     Spanned<Intern<Self>>,
+    //     Spanned<Intern<Self>>,
+    // ),
+    // Pub(Spanned<Intern<Self>>),
 }
 
 #[derive(Debug, PartialEq)]
