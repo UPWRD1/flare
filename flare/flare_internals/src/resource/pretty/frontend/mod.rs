@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{self, Display};
 
 use internment::Intern;
 use itertools::Itertools;
@@ -10,7 +10,7 @@ use crate::{
         pretty::{DocExt, Render},
         rep::{
             common::{Spanned, Variable},
-            frontend::ast::{Expr, Label, Untyped},
+            frontend::ast::{BinOp, Expr, Label, Untyped},
         },
     },
 };
@@ -54,6 +54,31 @@ impl Render for Spanned<Intern<Row>> {
     }
 }
 
+impl Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinOp::Eq => write!(f, "=="),
+            BinOp::Neq => write!(f, "!="),
+            BinOp::Gt => write!(f, ">"),
+            BinOp::Lt => write!(f, "<"),
+            BinOp::Gte => write!(f, ">="),
+            BinOp::Lte => write!(f, "<="),
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+            BinOp::Mul => write!(f, "*"),
+            BinOp::Div => write!(f, "/"),
+            BinOp::And => write!(f, "and"),
+            BinOp::Or => write!(f, "or"),
+        }
+    }
+}
+
+impl Render for BinOp {
+    fn render(self) -> Doc<'static> {
+        Doc::text(format!("{}", self))
+    }
+}
+
 impl Render for Spanned<Intern<Type>> {
     fn render(self) -> Doc<'static> {
         match *self.0 {
@@ -68,10 +93,13 @@ impl Render for Spanned<Intern<Type>> {
                 .render()
                 .append(Doc::space().append(Doc::text("->").append(Doc::space())))
                 .append(r.render()),
-            Type::TypeFun(spanned, spanned1) => todo!(),
+            Type::TypeFun(_, _) => todo!(),
             Type::Prod(r) => r.render().braces(),
             Type::Sum(r) => Doc::text("|").render(r).text("|"),
-            Type::Label(label, spanned) => todo!(),
+            Type::Label(_, _) => todo!(),
+            Type::Recursive(v, p, t) => {
+                todo!()
+            }
             Type::Hole => todo!(),
         }
     }
@@ -87,7 +115,7 @@ impl<V: Variable + Render> Render for Spanned<Intern<Expr<V>>> {
             Expr::Unit => Doc::text("Unit"),
             Expr::Particle(p) => Doc::text(format!("@{}", p.0)),
             Expr::Hole(_) => Doc::text("HOLE"),
-            Expr::Item(item_id, _) => Doc::text(format!("#{}", item_id.0)),
+            Expr::Item(item_id) => Doc::text(format!("#{}", item_id.0)),
             Expr::Concat(l, r) => l.render().text(" <> ").render(r).brackets(),
             Expr::Project(d, v) => v.render().text(" ~> ").text(format!("{d:?}")).brackets(),
             Expr::Inject(d, v) => v.render().text(" <~ ").text(format!("{d:?}")).brackets(),
@@ -98,7 +126,7 @@ impl<V: Variable + Render> Render for Spanned<Intern<Expr<V>>> {
             Expr::Div(l, r) => l.render().space().text("/").space().render(r),
             Expr::Add(l, r) => l.render().space().text("+").space().render(r),
             Expr::Sub(l, r) => l.render().space().text("-").space().render(r),
-            Expr::Comparison(l, bin_op, spanned1) => todo!(),
+            Expr::Comparison(l, bin_op, r) => l.render().space().render(bin_op).space().render(r),
             Expr::Call(f, e) => f.render().append(e.render().parens()),
             Expr::If(cond, then, other) => Doc::text("if")
                 .space()

@@ -14,7 +14,7 @@ use inkwell::{
     types::{AnyType, BasicMetadataTypeEnum, BasicType, BasicTypeEnum, FunctionType},
     values::{
         AggregateValueEnum, AnyValue, AnyValueEnum, BasicMetadataValueEnum, BasicValue,
-        BasicValueEnum, FloatValue, FunctionValue, PointerValue,
+        BasicValueEnum, FunctionValue, PointerValue,
     },
 };
 use itertools::Itertools;
@@ -242,7 +242,9 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 // dbg!(&ir_body);
                 // if item.ret_ty.
 
-                self.builder.build_return(Some(&ir_body));
+                self.builder
+                    .build_return(Some(&ir_body))
+                    .expect("Failed to build return");
 
                 if !fn_val.verify(true) {
                     panic!("Failed to verify func")

@@ -8,7 +8,7 @@ use crate::{
     resource::{
         errors::{CompilerErr, DynamicErr, TypeErr},
         rep::{
-            common::{NodeId, Spanned},
+            common::{FlareSpan, Spanned},
             frontend::ast::Label,
         },
     },
@@ -268,7 +268,7 @@ impl Solver<'_> {
         &mut self,
         goal: ClosedRow,
         sub: ClosedRow,
-        id: NodeId,
+        id: FlareSpan,
     ) -> Result<ClosedRow, UnificationError> {
         let mut diff_fields: Vec<Label> = vec![];
         let mut diff_values = vec![];

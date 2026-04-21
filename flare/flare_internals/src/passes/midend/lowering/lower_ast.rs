@@ -9,7 +9,7 @@ use crate::{
         midend::lowering::{ItemSource, lower_types::LowerTypes},
     },
     resource::rep::{
-        common::{NodeId, Spanned},
+        common::{FlareSpan, Spanned},
         frontend::ast::{self, Direction, Expr},
         midend::{
             ir::{IR, ItemId, Var, VarId},
@@ -80,9 +80,9 @@ pub struct LowerAst<'source> {
     types: LowerTypes,
     ev_to_var: FxHashMap<Evidence, Var>,
     pub solved: Vec<(Var, IR)>,
-    row_to_ev: &'source FxHashMap<NodeId, Evidence>,
-    branch_to_ret_ty: &'source FxHashMap<NodeId, Spanned<Intern<typing::Type>>>,
-    item_wrappers: &'source FxHashMap<NodeId, ItemWrapper>,
+    row_to_ev: &'source FxHashMap<FlareSpan, Evidence>,
+    branch_to_ret_ty: &'source FxHashMap<FlareSpan, Spanned<Intern<typing::Type>>>,
+    item_wrappers: &'source FxHashMap<FlareSpan, ItemWrapper>,
     item_source: &'source ItemSource,
     item_supply: &'source mut ItemSupply<ast::ItemId>,
 }
@@ -320,9 +320,9 @@ impl<'source> LowerAst<'source> {
         var_supply: VarSupply<Intern<String>>,
         types: LowerTypes,
         ev_to_var: FxHashMap<Evidence, Var>,
-        row_to_ev: &'source FxHashMap<NodeId, Evidence>,
-        branch_to_ret_ty: &'source FxHashMap<NodeId, Spanned<Intern<typing::Type>>>,
-        item_wrappers: &'source FxHashMap<NodeId, ItemWrapper>,
+        row_to_ev: &'source FxHashMap<FlareSpan, Evidence>,
+        branch_to_ret_ty: &'source FxHashMap<FlareSpan, Spanned<Intern<typing::Type>>>,
+        item_wrappers: &'source FxHashMap<FlareSpan, ItemWrapper>,
         item_source: &'source ItemSource,
         item_supply: &'source mut ItemSupply<ast::ItemId>,
     ) -> Self {
@@ -532,7 +532,7 @@ impl<'source> LowerAst<'source> {
                         .map(|ev| self.lookup_ev(ev))
                         .unwrap_or_else(|| {
                             panic!(
-                                "Project AST node lacks an expected evidence: {id}, evs:\n{:#?}",
+                                "Project AST node lacks an expected evidence: {id:?}, evs:\n{:#?}",
                                 self.row_to_ev
                             )
                         });
@@ -565,39 +565,32 @@ impl<'source> LowerAst<'source> {
                 let inj_direction = IR::field(IR::field(IR::Var(param), direction_field), 1);
                 IR::app(inj_direction, term)
             }
-            Expr::Item(item_id, k) => {
+            Expr::Item(item_id) => {
                 let ty = self.item_source.lookup_item(item_id);
                 // dbg!(&ty);
-                match k {
-                    ast::Kind::Extern(s) => IR::Extern(s, ty),
-                    ast::Kind::Func => {
-                        let item_ir = IR::Item(ty, self.item_supply.supply_for(item_id));
-                        // let item_ir = IR::Item(ty, ItemId(item_id.0 as u32));
-                        let wrapper = self
-                            .item_wrappers
-                            .get(&id)
-                            .cloned()
-                            .unwrap_or_else(|| unreachable!("Item lacks expected wrapper"));
+                let item_ir = IR::Item(ty, self.item_supply.supply_for(item_id));
+                // let item_ir = IR::Item(ty, ItemId(item_id.0 as u32));
+                let wrapper = self
+                    .item_wrappers
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| unreachable!("Item lacks expected wrapper"));
 
-                        let ty_ir = wrapper.types.into_iter().fold(item_ir, |ir, ty| {
-                            IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty.0)))
-                        });
-                        let row_ir = wrapper.rows.into_iter().fold(ty_ir, |ir, row| {
-                            IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(*row.0)))
-                        });
-                        wrapper.evidence.into_iter().fold(row_ir, |ir, ev| {
-                            let param = self.lookup_ev(ev);
-                            IR::app(ir, IR::Var(param))
-                        })
-                    }
-
-                    _ => unimplemented!(),
-                }
+                let ty_ir = wrapper.types.into_iter().fold(item_ir, |ir, ty| {
+                    IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty.0)))
+                });
+                let row_ir = wrapper.rows.into_iter().fold(ty_ir, |ir, row| {
+                    IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(*row.0)))
+                });
+                wrapper.evidence.into_iter().fold(row_ir, |ir, ev| {
+                    let param = self.lookup_ev(ev);
+                    IR::app(ir, IR::Var(param))
+                })
             }
             Expr::Access(base, field) => {
                 let base_ir = self.lower_ast(base);
 
-                // id = ast.1 is the Access node's NodeId, which is exactly what
+                // id = ast.1 is the Access node's FlareSpan, which is exactly what
                 // row_to_combo was keyed on during type checking — no fragility
                 let ev = self
                     .row_to_ev

@@ -10,13 +10,12 @@ mod templates {
     use std::fmt::Display;
 
     use crate::resource::errors::DynamicErr;
+    use crate::resource::rep::common::Spanned;
     use crate::*;
-    use chumsky::span::SimpleSpan;
-    pub fn not_defined(q: impl Display, s: &SimpleSpan<usize, u64>) -> CompilerErr {
+    pub fn not_defined(q: Spanned<impl Display>) -> CompilerErr {
         let disp = q;
-        DynamicErr::new(format!("Could not find a definition for '{}'", disp))
-            .label(format!("'{}' not found in scope", disp), *s)
-            //.src(self.src.to_string())
+        DynamicErr::new(format!("Could not find a definition for '{}'", disp.0))
+            .label(format!("'{}' not found in scope", disp.0), disp.1)
             .into()
     }
 
@@ -48,7 +47,7 @@ pub struct CompilerErr(Box<dyn ReportableError>);
 use crate::{
     FileCtx, FileID,
     passes::frontend::typing::{Row, TyUniVar, Type},
-    resource::rep::frontend::files::FileSource,
+    resource::rep::{common::FlareSpan, frontend::files::FileSource},
 };
 
 impl Display for CompilerErr {
@@ -124,8 +123,8 @@ impl From<Vec<CompilerErr>> for CompilerErr {
 pub struct DynamicErr {
     //context: Option<Context>,
     msg: String,
-    label: Option<(String, SimpleSpan<usize, FileID>)>,
-    extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
+    label: Option<(String, FlareSpan)>,
+    extra_labels: Vec<(String, FlareSpan)>,
     help: Vec<String>,
 }
 
@@ -139,14 +138,14 @@ impl DynamicErr {
         }
     }
 
-    pub fn label(self, label: impl Into<String>, span: SimpleSpan<usize, FileID>) -> Self {
+    pub fn label(self, label: impl Into<String>, span: FlareSpan) -> Self {
         Self {
             label: Some((label.into(), span)),
             ..self
         }
     }
 
-    pub fn extra_labels(self, extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>) -> Self {
+    pub fn extra_labels(self, extra_labels: Vec<(String, FlareSpan)>) -> Self {
         Self {
             extra_labels,
             ..self
@@ -160,7 +159,7 @@ impl DynamicErr {
         }
     }
 
-    pub fn extra(self, text: impl Into<String>, span: SimpleSpan<usize, FileID>) -> Self {
+    pub fn extra(self, text: impl Into<String>, span: FlareSpan) -> Self {
         Self {
             extra_labels: [self.extra_labels, vec![(text.into(), span)]].concat(),
             ..self
@@ -171,12 +170,11 @@ impl DynamicErr {
         let label_origin = self
             .label
             .as_ref()
-            .unwrap_or(&("here".to_string(), SimpleSpan::new(0, 0..0)))
+            .unwrap_or(&("here".to_string(), FlareSpan(0, 0, 0)))
             .1
-            .context;
+            .2;
         source_ids.push(label_origin);
-        let mut extra_labels_origin: Vec<u64> =
-            self.extra_labels.iter().map(|x| x.1.context).collect();
+        let mut extra_labels_origin: Vec<u64> = self.extra_labels.iter().map(|x| x.1.2).collect();
         source_ids.append(&mut extra_labels_origin);
         let mut new_sources = vec![];
         for k in source_ids {
@@ -194,7 +192,7 @@ impl DynamicErr {
             msg: self.msg,
             label: self
                 .label
-                .unwrap_or(("here".to_string(), SimpleSpan::new(0, 0..0))),
+                .unwrap_or(("here".to_string(), FlareSpan(0, 0, 0))),
             extra_labels: self.extra_labels,
             help: self.help,
             context: context.clone(),
@@ -219,8 +217,8 @@ impl std::fmt::Display for DynamicErr {
 #[derive(Error, Debug)]
 pub struct GeneralErr {
     msg: String,
-    label: (String, SimpleSpan<usize, FileID>),
-    extra_labels: Vec<(String, SimpleSpan<usize, FileID>)>,
+    label: (String, FlareSpan),
+    extra_labels: Vec<(String, FlareSpan)>,
     help: Vec<String>,
     context: FxHashMap<FileID, FileSource>,
     sources: Vec<(String, String)>,
@@ -252,7 +250,7 @@ impl std::fmt::Display for GeneralErr {
             Label::new((
                 {
                     self.context
-                        .get(&self.label.1.context)
+                        .get(&self.label.1.2)
                         .unwrap()
                         .filepath
                         .display()
@@ -266,7 +264,7 @@ impl std::fmt::Display for GeneralErr {
         .with_labels(self.extra_labels.iter().map(|label2| {
             Label::new((
                 self.context
-                    .get(&label2.1.context)
+                    .get(&label2.1.2)
                     .unwrap()
                     .filepath
                     .display()

@@ -29,7 +29,7 @@ struct ClosureConvert {
     var_supply: VarSupply<ir::VarId>,
     item_supply: ItemSupply<ir::ItemId>,
     items: BTreeMap<ir::ItemId, Item>,
-    is_in_app: bool,
+    // is_in_app: bool,
 }
 
 impl ClosureConvert {
@@ -77,7 +77,7 @@ impl ClosureConvert {
                 self.make_closure(&vars, rec_body, &env)
             }
             ir::IR::App(fun, arg) => {
-                self.is_in_app = true;
+                // self.is_in_app = true;
                 let lir = if let ir::IR::App(_, _) = *fun {
                     let mut b = fun;
                     let arg = self.convert(*arg, env);
@@ -97,7 +97,7 @@ impl ClosureConvert {
                     let arg = self.convert(*arg, env);
                     LIR::apply_lir(closure, arg)
                 };
-                self.is_in_app = false;
+                // self.is_in_app = false;
                 lir
             }
 
@@ -136,28 +136,8 @@ impl ClosureConvert {
                         LIR::BulkApply(Box::new(item), vec![])
                     }
                 }
-
-                // LIR::ClosureBuild(ty, d, vec![])
-                // LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)))
-
-                // let item_ref =
-                // LIR::FuncRef(AppType::Item(self.item_supply.supply_for(d), lower_ty(&t)));
-                // if self.is_in_app {
-                //     item_ref
-                // } else {
-                //     LIR::BulkApply(Box::new(item_ref), vec![])
-                // }
             }
-            ir::IR::Extern(n, t) => {
-                LIR::Extern(n, lower_ty(&t))
-                // LIR::FuncRef(AppType::Extern(n, lower_ty(&t)))
-                // let extern_ref = LIR::FuncRef(AppType::Extern(n, lower_ty(&t)));
-                // if self.is_in_app {
-                //     extern_ref
-                // } else {
-                //     LIR::BulkApply(Box::new(extern_ref), vec![])
-                // }
-            }
+            ir::IR::Extern(n, t) => LIR::Extern(n, lower_ty(&t)),
             ir::IR::If(c, t, e) => LIR::r#if(
                 self.convert(*c, env),
                 self.convert(*t, env),
@@ -173,11 +153,8 @@ impl ClosureConvert {
         body: ir::IR,
         env: &im::HashMap<ir::Var, Var, FxBuildHasher>,
     ) -> LIR {
-        // dbg!(&body);
         let ret = lower_ty(&body.type_of());
         let mut body = self.convert(body, env);
-        // dbg!(&body);
-        // dbg!(vars);
         let mut free_vars_set = body.free_vars();
         for var in vars {
             free_vars_set.remove(var);
@@ -244,7 +221,7 @@ pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
         var_supply,
         item_supply: ItemSupply::new(),
         items: BTreeMap::default(),
-        is_in_app: false,
+        // is_in_app: false,
     };
     ir.into_iter()
         .enumerate()

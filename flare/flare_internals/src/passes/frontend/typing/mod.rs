@@ -15,14 +15,14 @@ use std::{collections::BTreeSet, fmt::Display, hash::Hash};
 use ena::unify::InPlaceUnificationTable;
 use internment::Intern;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 use crate::{
     passes::frontend::typing::subst::SubstOut,
     resource::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
-            common::{HasSpan, Ident, NodeId, Spanned, Variable},
+            common::{FlareSpan, HasSpan, Spanned, Variable},
             frontend::ast::{Expr, ItemId, Kind, Label, Untyped},
         },
     },
@@ -34,7 +34,7 @@ pub struct Typed(pub Untyped, pub Spanned<Intern<Type>>);
 impl Variable for Typed {}
 
 impl HasSpan for Typed {
-    fn span(&self) -> chumsky::prelude::SimpleSpan<usize, u64> {
+    fn span(&self) -> FlareSpan {
         self.0.span()
     }
 }
@@ -42,12 +42,6 @@ impl HasSpan for Typed {
 impl Display for Typed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}: {}", self.0, self.1.0)
-    }
-}
-
-impl Ident for Typed {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        self.0.ident()
     }
 }
 
@@ -69,20 +63,20 @@ pub enum Evidence {
 #[derive(Debug, Clone, Copy)]
 pub enum Provenance {
     // A non function type encountered a Fun ast node, causing a type mismatch.
-    UnexpectedFun(NodeId),
+    UnexpectedFun(FlareSpan),
     // An application has an ast node in function position that does not have a function type.
-    AppExpectedFun(NodeId),
+    AppExpectedFun(FlareSpan),
     // Constraint produced by subsumption.
-    ExpectedUnify(NodeId, NodeId),
+    ExpectedUnify(FlareSpan, FlareSpan),
 
-    ExpectedCombine(NodeId, NodeId),
+    ExpectedCombine(FlareSpan, FlareSpan),
 
-    ConditionIsBool(NodeId),
-    FieldAccess(NodeId, Label),
+    ConditionIsBool(FlareSpan),
+    FieldAccess(FlareSpan, Label),
 }
 
 impl Provenance {
-    fn id(&self) -> NodeId {
+    fn id(&self) -> FlareSpan {
         match self {
             Self::UnexpectedFun(node_id)
             | Self::AppExpectedFun(node_id)
@@ -122,7 +116,8 @@ impl Provenance {
                 format!("This condition should be a bool, found {}", right.0),
                 right.1,
             ),
-            Self::FieldAccess(simple_span, label) => todo!(),
+            Self::FieldAccess(simple_span, label) => DynamicErr::new("Field not found")
+                .label(format!("This should contain {}", label.0), simple_span),
         }
     }
 }
@@ -131,15 +126,20 @@ impl Provenance {
 pub struct GenOut {
     constraints: Vec<Constraint>,
     typed_ast: Spanned<Intern<Expr<Typed>>>,
+    // env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
     // inference_base_loc: Option<SimpleSpan<usize, u64>>,
 }
 
 impl GenOut {
-    fn new(constraints: Vec<Constraint>, typed_ast: Spanned<Intern<Expr<Typed>>>) -> Self {
+    fn new(
+        constraints: Vec<Constraint>,
+        typed_ast: Spanned<Intern<Expr<Typed>>>,
+        // env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
+    ) -> Self {
         Self {
             constraints,
             typed_ast,
-            // inference_base_loc: None,
+            // env,
         }
     }
 
@@ -150,8 +150,31 @@ impl GenOut {
         Self {
             constraints: self.constraints,
             typed_ast: f(self.typed_ast),
-            // inference_base_loc: self.inference_base_loc,
+            // env: self.env, // inference_base_loc: self.inference_base_loc,
         }
+    }
+
+    fn merge_with<const N: usize>(
+        self,
+        args: [Self; N],
+        f: impl Fn(
+            Spanned<Intern<Expr<Typed>>>,
+            [Spanned<Intern<Expr<Typed>>>; N],
+        ) -> Spanned<Intern<Expr<Typed>>>,
+    ) -> Self {
+        let mut new = self;
+
+        let (constraints, asts) =
+            args.into_iter()
+                .fold((vec![], vec![]), |(mut constraints, mut asts), arg| {
+                    constraints.extend(arg.constraints.clone());
+                    // env = env.union(arg.env);
+                    asts.push(arg.typed_ast);
+                    (constraints, asts)
+                });
+        new.typed_ast = f(new.typed_ast, asts.as_slice().try_into().unwrap());
+        new.constraints = constraints;
+        new
     }
 }
 
@@ -176,7 +199,7 @@ impl TypeScheme {
 }
 
 impl HasSpan for TypeScheme {
-    fn span(&self) -> chumsky::prelude::SimpleSpan<usize, u64> {
+    fn span(&self) -> FlareSpan {
         self.ty.span()
     }
 }
@@ -189,38 +212,20 @@ impl TypeScheme {
         }
     }
 }
-
-#[derive(Debug)]
-pub struct TypeInferOut {
-    pub ast: Spanned<Intern<Expr<Typed>>>,
-    pub scheme: TypeScheme,
-    pub errors: FxHashMap<NodeId, CompilerErr>,
-    pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
-    pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
-}
-
-impl TypeInferOut {
-    pub fn to_typesoutput(self) -> TypesOutput {
-        TypesOutput {
-            typed_ast: self.ast,
-            scheme: self.scheme,
-            errors: self.errors,
-            row_to_ev: self.row_to_ev,
-            branch_to_ret_ty: self.branch_to_ret_ty,
-            item_wrappers: self.item_wrappers,
-        }
-    }
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+// enum NameKind {
+//     Var(Intern<String>),
+//     Label(Intern<String>),
+// }
 
 #[derive(Debug)]
 pub struct TypesOutput {
     pub typed_ast: Spanned<Intern<Expr<Typed>>>,
     pub scheme: TypeScheme,
-    pub errors: FxHashMap<NodeId, CompilerErr>,
-    pub row_to_ev: FxHashMap<NodeId, Evidence>,
-    pub branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
-    pub item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+    pub errors: FxHashMap<FlareSpan, CompilerErr>,
+    pub row_to_ev: FxHashMap<FlareSpan, Evidence>,
+    pub branch_to_ret_ty: FxHashMap<FlareSpan, Spanned<Intern<Type>>>,
+    pub item_wrappers: FxHashMap<FlareSpan, ItemWrapper>,
 }
 
 #[derive(Debug, Clone)]
@@ -262,17 +267,17 @@ struct SolverTables {
     row_unification_table: InPlaceUnificationTable<RowUniVar>,
 
     partial_row_combs: BTreeSet<RowCombination>,
-    row_to_combo: FxHashMap<NodeId, RowCombination>,
-    branch_to_ret_ty: FxHashMap<NodeId, Spanned<Intern<Type>>>,
+    row_to_combo: FxHashMap<FlareSpan, RowCombination>,
+    branch_to_ret_ty: FxHashMap<FlareSpan, Spanned<Intern<Type>>>,
 
     subst_unifiers_to_tyvars: FxHashMap<TyUniVar, TypeVar>,
     next_tyvar: usize,
     subst_unifiers_to_rowvars: FxHashMap<RowUniVar, RowVar>,
     next_rowvar: usize,
 
-    item_wrappers: FxHashMap<NodeId, ItemWrapper>,
+    item_wrappers: FxHashMap<FlareSpan, ItemWrapper>,
 
-    errors: FxHashMap<NodeId, CompilerErr>,
+    errors: FxHashMap<FlareSpan, CompilerErr>,
 }
 
 impl<'env> Solver<'env> {
@@ -286,9 +291,9 @@ impl<'env> Solver<'env> {
 
     fn fresh_row_combination(
         &mut self,
-        l_id: NodeId,
-        r_id: NodeId,
-        goal_id: NodeId,
+        l_id: FlareSpan,
+        r_id: FlareSpan,
+        goal_id: FlareSpan,
     ) -> RowCombination {
         RowCombination {
             left: Spanned(Row::Unifier(self.fresh_row_var()).into(), l_id),
@@ -349,6 +354,19 @@ impl<'env> Solver<'env> {
             }
         }
         subst_out
+    }
+
+    pub fn infer_with_items(
+        item_source: &'env ItemSource,
+        ast: Spanned<Intern<Expr<Untyped>>>,
+    ) -> (GenOut, Spanned<Intern<Type>>) {
+        let mut ctx = Self {
+            item_source,
+
+            tables: SolverTables::default(),
+        };
+
+        ctx.infer(im::HashMap::default(), ast)
     }
 
     pub fn check_with_items(

@@ -1,28 +1,86 @@
+use std::ops::ControlFlow;
+
 use internment::Intern;
-// use petgraph::Graph;
+
 use petgraph::{
-    dot::Config,
-    graph::{DiGraph, EdgeReference, NodeIndex},
+    prelude::StableDiGraph,
+    stable_graph::{EdgeReference, NodeIndex},
     visit::EdgeRef as _,
 };
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
-
-use std::hash::RandomState;
+use radix_trie::{Trie, TrieKey};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::resource::{
-    errors::{self, CompResult, DynamicErr},
+    errors::CompResult,
     rep::{
-        // concretetypes::{EnumVariant, Ty},
-        common::{HasSpan, Ident, Spanned, Syntax},
+        common::{Spanned, Syntax},
         frontend::{
-            ast::Untyped,
-            cst::{CstExpr, Definition, ImplDef, Program, UntypedCst},
-            csttypes::CstType,
-            entry::{FunctionItem, Item, ItemKind, PackageEntry},
+            ast::{ItemId, Label, Untyped},
+            cst::{CstExpr, FieldDef, Macro, MatchArm, PackageCollection, Pattern, UntypedCst},
+            entry::{FunctionItem, Item},
             quantifier::QualifierFragment,
         },
     },
 };
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Key(Vec<Intern<String>>);
+
+impl Key {
+    pub fn from<T>(path: T) -> Self
+    where
+        T: Into<Vec<Intern<String>>>,
+    {
+        Self(path.into())
+    }
+}
+
+impl TrieKey for Key {
+    fn encode_bytes(&self) -> Vec<u8> {
+        self.0
+            .iter()
+            .flat_map(|s| s.bytes().collect::<Vec<u8>>())
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Element<S: Syntax> {
+    name: Spanned<Intern<String>>,
+    value: Option<S::Expr>,
+    ty: Option<S::Type>,
+}
+
+#[derive(Debug)]
+pub enum Relation {
+    Reference,
+    Parent,
+}
+
+impl<S: Syntax> Element<S> {
+    pub fn new_with_ty(
+        name: Spanned<Intern<String>>,
+        value: Option<S::Expr>,
+        ty: Option<S::Type>,
+    ) -> Self {
+        Self { name, value, ty }
+    }
+    pub fn new_with(name: Spanned<Intern<String>>, value: Option<S::Expr>) -> Self {
+        Self {
+            name,
+            value,
+            ty: None,
+        }
+    }
+
+    pub fn new(name: Spanned<Intern<String>>) -> Self {
+        Self {
+            name,
+            value: None,
+            ty: None,
+        }
+    }
+}
 
 #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
@@ -32,221 +90,80 @@ use crate::resource::{
 /// implement `Clone`, since it is ridiculously expensive, and there is no
 /// real reason to clone the environment.
 #[non_exhaustive]
-pub struct Environment<S: Syntax> {
-    pub graph: DiGraph<Item<S>, QualifierFragment>,
-    pub root: NodeIndex,
+#[derive(Default)]
+pub struct EnvironmentBuilder<S: Syntax> {
+    pub graph: StableDiGraph<Element<S>, Relation>,
+    pub trie: Trie<Key, NodeIndex>,
+    path: Vec<Intern<String>>,
+    current_node: NodeIndex,
+    // vars: Vec<Intern<String>>, // pub root: NodeIndex,
 }
 
-impl Environment<UntypedCst> {
-    /// Build the environment from a given `Program`
+pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
+
+impl EnvironmentBuilder<UntypedCst> {
+    /// Build the environment from a given `PackageCollection`
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(program: &Program<UntypedCst>) -> CompResult<Self> {
-        // use ItemKind::*;
-        let mut graph = DiGraph::new();
-        let mut current_node = graph.add_node(Item::new(ItemKind::Root));
-        let num_packages = program.packages.len();
+    pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Environment<UntypedCst>> {
+        let mut graph: StableDiGraph<Element<UntypedCst>, Relation> = StableDiGraph::default();
+        let root_node = graph.add_node(Element::new(Spanned::default_with("Root".to_string())));
+        let trie = Trie::new();
+        let mut macros: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>> =
+            FxHashMap::default();
+        let mut fields: Vec<FieldDef<UntypedCst>> = vec![];
+
+        program.packages.into_iter().for_each(|(p, _)| {
+            macros.extend(p.macros);
+            fields.push(p.root_node);
+        });
+        let root_obj: Spanned<Intern<_>> = Spanned::default_with(CstExpr::ProductConstructor {
+            fields: fields.as_slice().into(),
+        });
+        let proj_main_package = Spanned::default_with(CstExpr::FieldAccess(
+            root_obj,
+            Label(Spanned::default_with(String::from("Main"))),
+        ));
+
+        let proj_main_func: Spanned<Intern<_>> = Spanned::default_with(CstExpr::FieldAccess(
+            proj_main_package,
+            Label(Spanned::default_with(String::from("main"))),
+        ));
         let mut me = Self {
             graph,
-            root: current_node,
+            trie,
+            current_node: root_node,
+            ..Default::default()
         };
-        let mut package_to_imports: FxHashMap<
-            Spanned<QualifierFragment>,
-            FxHashSet<Spanned<Intern<CstExpr<Untyped>>>>,
-        > = FxHashMap::with_capacity_and_hasher(num_packages, FxBuildHasher);
 
-        let mut package_to_exports: FxHashMap<
-            QualifierFragment,
-            FxHashSet<(QualifierFragment, NodeIndex)>,
-        > = FxHashMap::with_capacity_and_hasher(num_packages, FxBuildHasher);
+        let res = me
+            .enter_context(
+                |me| me.analyze_expr(proj_main_func, &[]),
+                ControlFlow::Break(proj_main_func),
+                Spanned::default_with(String::from("Root")),
+            )
+            .into_value();
 
-        // Start building each package's contents
-        for package in &program.packages {
-            let package_name = package.0.name;
-
-            let mut imports = FxHashSet::default();
-            let mut exports = FxHashSet::default();
-
-            let package_entry = Item::new(ItemKind::Package(PackageEntry {
-                name: package.0.name,
-                id: package.1,
-            }
-                as PackageEntry<UntypedCst>));
-            let package_quant = QualifierFragment::Package(package_name.0);
-
-            let p_id = me.add(current_node, package_quant, package_entry);
-
-            let old_current = current_node;
-            current_node = p_id;
-
-            for item in &package.0.items {
-                let mut item_nodeindex: NodeIndex = NodeIndex::new(0);
-                let qual: Option<QualifierFragment>;
-                match item.def {
-                    Definition::Import(import_item) => {
-                        // dbg!(import_item);
-                        qual = None;
-                        imports.insert(import_item);
-                    }
-                    Definition::Type(name, generics, t) => {
-                        let qfrag = QualifierFragment::Type(name.ident()?.0);
-
-                        qual = Some(qfrag);
-                        let t = if generics.is_empty() {
-                            t
-                        } else {
-                            let mut new_t = generics.iter().fold(t, |g, t| {
-                                Spanned(CstType::GenericFun(*t, g).into(), g.span())
-                            });
-                            new_t.1 = t.1;
-                            new_t
-                        };
-                        let entry = Item::new(ItemKind::Type(name, generics, t));
-                        item_nodeindex = me.add(current_node, qfrag, entry);
-                    }
-                    Definition::Let(name, body, sig) => {
-                        let qfrag = QualifierFragment::Func(name.0);
-                        qual = Some(qfrag);
-                        let entry = Item::new(ItemKind::Function(FunctionItem { name, sig, body }));
-                        item_nodeindex = me.add(current_node, qfrag, entry);
-                    }
-                    Definition::Extern(name, args, sig) => {
-                        let qfrag = QualifierFragment::Func(name.0);
-                        qual = Some(qfrag);
-                        let entry = Item::new(ItemKind::Extern {
-                            //parent: current_parent.clone(),
-                            name,
-                            args,
-                            sig,
-                        });
-                        item_nodeindex = me.add(current_node, qfrag, entry);
-                    }
-                    Definition::ImplDef(ImplDef { the_ty, methods }) => {
-                        qual = None;
-                        me.build_impl_def(package_quant, the_ty, methods)?;
-                    }
-                }
-                if let Some(qual) = qual
-                    && item.is_pub
-                {
-                    exports.insert((qual, item_nodeindex));
-                }
-            }
-            current_node = old_current;
-            let name = Spanned(package_quant, package_name.1);
-            package_to_imports.insert(name, imports);
-            package_to_exports.insert(name.0, exports);
-        }
-
-        let new_package_to_imports: FxHashMap<
-            Spanned<QualifierFragment>,
-            FxHashSet<Vec<QualifierFragment>>,
-        > = package_to_imports
-            .into_iter()
-            .map(|(package_name, package_imports)| {
-                let new_package_imports: FxHashSet<_> = package_imports
-                    .into_iter()
-                    .flat_map(|import_expr| {
-                        QualifierFragment::from_expr(&import_expr)
-                            .expect("Could not generate qualifier fragment")
-                    })
-                    .collect();
-                Ok((package_name, new_package_imports))
-            })
-            .collect::<CompResult<_>>()?;
-
-        for (importing_package_qual, imports) in new_package_to_imports {
-            let importing_package = me.get(&[importing_package_qual.0][..]).map_err(|_| {
-                errors::not_defined(importing_package_qual.0, &importing_package_qual.1)
-            })?;
-
-            for import_path in imports {
-                let import = me.trace_import_path(&import_path, &package_to_exports);
-
-                me.graph.update_edge(
-                    importing_package,
-                    import,
-                    *import_path.last().expect("Import path should not be empty"),
-                );
-            }
-        }
-
-        Ok(me)
+        me.debug();
+        Ok(me.lift(res))
     }
 
-    /// Builds an impl definition
-    /// # Errors
-    /// On invalid names.
-    #[allow(dead_code, unused_variables)]
-    fn build_impl_def(
-        &self,
-        package_quant: QualifierFragment,
-        the_ty: <UntypedCst as Syntax>::Name,
-        methods: &[(
-            <UntypedCst as Syntax>::Name,
-            <UntypedCst as Syntax>::Expr,
-            <UntypedCst as Syntax>::Type,
-        )],
-    ) -> CompResult<()> {
-        todo!()
-        // use ItemKind::Function;
-        // let type_name = QualifierFragment::Type(the_ty.0);
-
-        // let type_node = self
-        //     .get(&[package_quant, type_name])
-        //     .map_err(|_| errors::not_defined(type_name, &the_ty.1))?;
-        // for &(method_name, method_body, method_ty) in methods {
-        //     let method_qual = QualifierFragment::Method(method_name.0);
-        //     let the_method = Item::new(
-        //         Function(FunctionItem {
-        //             name: Untyped(method_name),
-        //             sig: method_ty,
-        //             body: method_body,
-        //         }),
-        //         false,
-        //     );
-        //     self.add(type_node, method_qual, the_method);
-        // }
-        // Ok(())
-    }
-}
-
-impl<S: Syntax> Environment<S> {
-    pub fn from_graph_and_root(
-        graph: DiGraph<Item<S>, QualifierFragment>,
-        root: NodeIndex,
-    ) -> Self {
-        Self { graph, root }
-    }
-
-    /// Add an `item` to the environment as a child of a `parent_node`, accessible via a `qualifier`. Returns the `NodeIndex` of the newly-created child.
-    /// # Panics
-    /// Panics if the internal graph is full.
-    /// Panics if the root node doesn't exist.
-    ///
-    /// # Examples
-    /// ```rust
-    /// let env: Environment::new();
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert!(env.graph.contains_edge(env.root, foo))
-    /// ```
-    pub fn add(
+    fn resolve_name(
         &mut self,
-        parent_node: NodeIndex,
-        qualifier: QualifierFragment,
-        item: Item<S>,
-    ) -> NodeIndex {
-        let child_idx = self.graph.add_node(item);
-        self.graph.add_edge(parent_node, child_idx, qualifier);
-        child_idx
+        n: <UntypedCst as Syntax>::Name,
+    ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
+        let index = self
+            .find_nearest(|node| node.name.0 == n.0)
+            .unwrap_or_else(|| panic!("Could not find symbol: {n}"));
+        ControlFlow::Continue(n.convert(CstExpr::Item(ItemId(index.index()))))
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     #[deprecated]
     pub fn debug(&self) {
-        let render =
-            |_, v: EdgeReference<'_, QualifierFragment>| format!("label = \"{}\"", v.weight());
+        use petgraph::dot::Config;
+        let render = |_, v: EdgeReference<'_, Relation>| format!("label = \"{:?}\"", v.weight());
         let dot = petgraph::dot::Dot::with_attr_getters(
             &self.graph,
             &[
@@ -256,340 +173,329 @@ impl<S: Syntax> Environment<S> {
             ],
             // &|_, _| String::new(),
             &render,
-            &|_, _| String::new(),
+            &|_, (i, e)| format!("label = \"{} = {}\"", i.index(), e.name),
         );
         dbg!(dot);
     }
-    #[inline]
-    /// Get the item value of an index.
-    /// # Examples
-    /// ```rust   
-    /// let foo = env.add(env.root, QualifierFragment::Dummy("libFoo"), Item::Dummy("Foo"));
-    /// assert_eq!(Some(Item::Dummy("Foo")), env.value(foo))
-    /// ```
-    pub fn value(&self, idx: NodeIndex) -> CompResult<&Item<S>> {
+
+    fn enter_context<T>(
+        &mut self,
+        mut f: impl FnMut(&mut Self) -> T,
+        value: ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr>,
+        name: <UntypedCst as Syntax>::Name,
+    ) -> T {
+        let value = value.continue_value();
+        let old_node = self.current_node;
+        let old_path = self.path.clone();
+        self.path.push(name.0);
+        self.current_node = self.graph.add_node(Element::new_with(name, value));
         self.graph
-            .node_weight(idx)
-            .ok_or_else(|| unreachable!("Bad node index: {:?}", idx))
+            .add_edge(old_node, self.current_node, Relation::Parent);
+
+        self.trie
+            .insert(Key::from(self.path.clone()), self.current_node);
+        let out = f(self);
+        self.current_node = old_node;
+        self.path = old_path;
+
+        out
     }
 
-    fn trace_import_path(
-        &self,
-        path: &[QualifierFragment],
-        package_to_exports: &FxHashMap<
-            QualifierFragment,
-            FxHashSet<(QualifierFragment, NodeIndex)>,
-        >,
-    ) -> NodeIndex {
-        path.windows(2)
-            .map(|path| {
-                let [left, right] = path else {
-                    panic!("Path is invalid")
-                };
+    fn find_nearest<F>(&mut self, predicate: F) -> Option<petgraph::graph::NodeIndex>
+    where
+        F: Fn(&Element<UntypedCst>) -> bool,
+    {
+        use petgraph::Direction::{Incoming, Outgoing};
+        let mut queue = std::collections::VecDeque::new();
+        let mut visited = FxHashSet::default();
 
-                if let QualifierFragment::Package(_) = left {
-                    if let Some(exports) = package_to_exports.get(left) {
-                        if let Some(n) = exports.iter().find(|x| x.0.is(right)) {
-                            n.1
-                        } else {
-                            panic!("import not found, {left}.{right}")
-                        }
-                    } else {
-                        panic!("Package has no exports")
+        queue.push_back(self.current_node);
+        visited.insert(self.current_node);
+
+        while let Some(node) = queue.pop_front() {
+            if predicate(&self.graph[node]) {
+                self.graph
+                    .add_edge(self.current_node, node, Relation::Reference);
+                return Some(node);
+            }
+
+            let parent = self
+                .graph
+                .edges_directed(node, Incoming)
+                .find(|e| matches!(e.weight(), Relation::Parent))
+                .map(|e| e.source());
+
+            if let Some(parent) = parent {
+                let siblings = self
+                    .graph
+                    .edges_directed(parent, Outgoing)
+                    .filter(|e| matches!(e.weight(), Relation::Parent))
+                    .map(|e| e.target())
+                    .filter(|&n| n != node);
+
+                for neighbor in siblings {
+                    if visited.insert(neighbor) {
+                        queue.push_back(neighbor);
                     }
+                }
+
+                if visited.insert(parent) {
+                    queue.push_back(parent);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn analyze_expr(
+        &mut self,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[Intern<String>],
+    ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
+        match *expr.0 {
+            CstExpr::Ident(u) => {
+                if vars.iter().rev().find(|n| **n == u.0.0).is_some() {
+                    ControlFlow::Continue(expr)
                 } else {
-                    panic!("Import path should be a package or subpackage")
+                    // dbg!(expr);
+                    self.resolve_name(u.0)
                 }
-            })
-            .next_back()
-            .expect("Path was empty")
-    }
-
-    #[inline]
-    pub fn get_from_context(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<NodeIndex> {
-        let err = || DynamicErr::new(format!("{} does not exist in {}", frag, packctx));
-        let paths = self.search_for_edge(frag);
-        for path in &paths {
-            // dbg!(path);
-            // if path.first().ok_or_else(err)?.is(packctx) {
-            if path.first().ok_or_else(err)?.is(packctx) {
-                return self.get(path);
             }
-        }
-        Err(err().into())
-    }
+            CstExpr::ProductConstructor { fields } => {
+                // Phase 1: register all sibling nodes before resolving any of them.
+                self.pre_register_fields(&fields);
 
-    /// Internal helper function for `get_node_and_children`
-    fn raw_get_node_and_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<(NodeIndex, Vec<EdgeReference<'_, QualifierFragment>>)> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .collect();
-        Ok((parent, children))
-    }
+                // Phase 2: now resolve expressions, with all siblings visible.
+                let resolved_fields = self.resolve_fields(&fields, vars);
 
-    #[inline]
-    pub fn raw_get_node_and_children_indexes(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<(NodeIndex, Vec<NodeIndex>)> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .map(|edge| edge.target())
-            .collect();
-        Ok((parent, children))
-    }
-
-    #[inline]
-    pub fn get_node_and_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<(&Item<S>, Vec<(&QualifierFragment, &Item<S>)>)> {
-        let (node, children) = self.raw_get_node_and_children(frag, packctx)?;
-        let node_w = self.value(node)?;
-
-        Ok((
-            node_w,
-            children
-                .iter()
-                .map(|edge| {
-                    (
-                        edge.weight(),
-                        // # SAFETY: `self.value()` returns none only if the node
-                        // doesn't exist. We know the node exists because we
-                        // are iterating over the children of the parent.
-                        unsafe { self.value(edge.target()).unwrap_unchecked() },
-                    )
-                })
-                .collect(),
-        ))
-    }
-
-    /// Internal helper function for `get_children()`
-    fn raw_get_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<Vec<EdgeReference<'_, QualifierFragment>>> {
-        let parent = self.get_from_context(frag, packctx)?;
-        let children: Vec<_> = self
-            .graph
-            .edges_directed(parent, petgraph::Direction::Outgoing)
-            .collect();
-        Ok(children)
-    }
-
-    #[inline]
-    /// Get the children of a node given the the node's quantifier and context to search in.
-    pub fn get_children(
-        &self,
-        frag: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<Vec<(&QualifierFragment, &Item<S>)>> {
-        let children = self.raw_get_children(frag, packctx)?;
-
-        // children
-        //     .iter()
-        //     .map(|edge| self.value(edge.target()).map(|item| (edge.weight(), item)))
-        //     .collect()
-        Ok(children
-            .iter()
-            .map(|edge| {
-                // # SAFETY: `self.value()` returns none only if the node
-                // doesn't exist. We know the node exists because we
-                // are iterating over the children of the parent.
-                (edge.weight(), unsafe {
-                    self.value(edge.target()).unwrap_unchecked()
-                })
-            })
-            .collect())
-    }
-
-    #[inline]
-    /// Given a qualifier and a context to search in, get the `Item` value of the qualifier's target.
-    pub fn get_node(
-        &self,
-        target: &QualifierFragment,
-        packctx: &QualifierFragment,
-    ) -> CompResult<&Item<S>> {
-        let node = self.get_from_context(target, packctx)?;
-        let node_w = self.value(node)?;
-
-        Ok(node_w)
-    }
-
-    /// Gets all the targets for all edges labeled `frag`
-    fn get_all_targets_edge<'envi, 'fragment>(
-        &'envi self,
-        frag: &'fragment QualifierFragment,
-    ) -> impl Iterator<Item = NodeIndex> + use<'envi, 'fragment, S> {
-        let edges = self
-            .graph
-            .edge_references()
-            .filter(move |x| x.weight() == (frag));
-        edges.map(|x| x.target())
-    }
-
-    /// Optionally returns a vector of the possible paths to an item fragment.
-    #[must_use]
-    #[inline]
-    pub fn search_for_edge(&self, fragment: &QualifierFragment) -> Vec<Vec<QualifierFragment>> {
-        use petgraph::algo::all_simple_paths;
-        use petgraph::prelude::*;
-        let mut paths: Vec<Vec<QualifierFragment>> = vec![];
-        let targets = self.get_all_targets_edge(fragment);
-        for target in targets {
-            let real_paths: Vec<Vec<NodeIndex>> =
-                all_simple_paths::<Vec<_>, _, RandomState>(&self.graph, self.root, target, 0, None)
-                    .collect::<Vec<_>>();
-            for frag_path in real_paths {
-                let mut path = Vec::new();
-                for node_pair in frag_path.windows(2) {
-                    debug_assert_eq!(
-                        node_pair.len(),
-                        2,
-                        "p.windows(2) failed to produce a window of size 2"
-                    );
-
-                    // SAFETY: The length of the windows is always 2, therefore
-                    // we can always index into the first two elements,
-                    // without panicking.
-                    let first = unsafe { node_pair.get_unchecked(0) };
-                    // SAFETY: Same as above
-                    let second = unsafe { node_pair.get_unchecked(1) };
-                    let edge = *self
-                        .graph
-                        .edges_connecting(*first, *second)
-                        .next()
-                        .unwrap_or_else(|| {
-                            unreachable!(
-                                "Index {:?} is not a child of index {:?}; could not build dependancy graph.",
-                                first, second
-                            )
-                        })
-                        .weight();
-                    path.push(edge);
-                }
-                paths.push(path);
+                ControlFlow::Break(expr.modify(CstExpr::ProductConstructor {
+                    fields: resolved_fields.as_slice().into(),
+                }))
             }
+            CstExpr::Mul(l, r) => {
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
+                ControlFlow::Continue(expr.modify(CstExpr::Mul(l, r)))
+            }
+            CstExpr::Div(l, r) => {
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
+                ControlFlow::Continue(expr.modify(CstExpr::Div(l, r)))
+            }
+            CstExpr::Add(l, r) => {
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
+                ControlFlow::Continue(expr.modify(CstExpr::Add(l, r)))
+            }
+            CstExpr::Sub(l, r) => {
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
+                ControlFlow::Continue(expr.modify(CstExpr::Sub(l, r)))
+            }
+            CstExpr::Comparison(l, comparison_op, r) => {
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
+                ControlFlow::Continue(expr.convert(CstExpr::Comparison(l, comparison_op, r)))
+            }
+            CstExpr::Call(func, arg) => {
+                let func = self.analyze_expr(func, vars).into_value();
+
+                let arg = self.analyze_expr(arg, vars).into_value();
+                ControlFlow::Continue(expr.convert(CstExpr::Call(func, arg)))
+            }
+            CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars),
+            CstExpr::Match(matchee, branches) => {
+                let matchee = self.analyze_expr(matchee, vars).into_value();
+
+                let branches: Vec<_> = branches
+                    .iter()
+                    .map(|b| self.resolve_branch(b.pat, b.body, vars))
+                    .collect();
+                assert!(!branches.is_empty());
+                ControlFlow::Continue(expr.modify(CstExpr::Match(matchee, branches.leak())))
+            }
+            CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
+            CstExpr::Number(n) => ControlFlow::Continue(expr.convert(CstExpr::Number(n))),
+            CstExpr::String(s) => ControlFlow::Continue(expr.convert(CstExpr::String(s))),
+            CstExpr::Bool(b) => ControlFlow::Continue(expr.convert(CstExpr::Bool(b))),
+            CstExpr::Unit => ControlFlow::Continue(expr.convert(CstExpr::Unit)),
+            CstExpr::Particle(p) => ControlFlow::Continue(expr.convert(CstExpr::Particle(p))),
+            CstExpr::Hole(v) => ControlFlow::Continue(expr.convert(CstExpr::Hole(v))),
+            CstExpr::Item(item_id) => ControlFlow::Continue(expr.convert(CstExpr::Item(item_id))),
+            _ => todo!(),
         }
-        paths
     }
 
-    /// Gets an absolute path and verifies it
-    fn get<'graph>(&'graph self, qualifier_path: &[QualifierFragment]) -> CompResult<NodeIndex> {
-        //let _ = self.graph.edges(self.root).map(|x| dbg!(x));
-        struct Rec<'s, 'graph, T> {
-            f: &'s dyn Fn(
-                &Self,
-                &'graph T,
-                NodeIndex,
-                &[QualifierFragment],
-            ) -> CompResult<NodeIndex>,
-        }
-        let rec = Rec {
-            f: &|rec: &Rec<'_, 'graph, _>,
-                 graph_self: &'graph Self,
-                 n: NodeIndex,
-                 q: &[QualifierFragment]|
-             -> CompResult<NodeIndex> {
-                //dbg!(&q);
-                match q {
-                    [] => Ok(n),
+    /// Phase 1: recursively pre-register every field in a ProductConstructor
+    /// as a node in the graph, so that forward/out-of-order references are
+    /// visible when Phase 2 runs.
+    fn pre_register_fields(&mut self, fields: &[FieldDef<UntypedCst>]) {
+        for field in fields {
+            let old_node = self.current_node;
+            let old_path = self.path.clone();
 
-                    [head, tail @ ..] => {
-                        let candidate = graph_self
-                            .graph
-                            .edges(n)
-                            .find(|e| e.weight().is(head))
-                            .ok_or_else(|| DynamicErr::new("Does not Exist"))?;
+            self.path.push(field.name.0);
+            let key = Key::from(self.path.clone());
 
-                        (rec.f)(rec, graph_self, candidate.target(), tail)
-                        //self.graph.node_weight(n).cloned()
-                    }
-                }
-            },
-        };
-        (rec.f)(&rec, self, self.root, qualifier_path) //.inspect(|x| {dbg!(&self.graph.node_weight(*x));})
-    }
-
-    pub fn get_parent(&self, idx: NodeIndex) -> Option<QualifierFragment> {
-        let parents = self
-            .graph
-            .edges_directed(idx, petgraph::Direction::Incoming);
-        let mut the_edge = None;
-        for parent in parents {
-            let source = parent.source();
-            let edge_idx = self.graph.find_edge(source, idx)?;
-            let edge = self.graph.edge_weight(edge_idx).copied()?;
-            if matches!(edge, QualifierFragment::Package(_)) {
-                the_edge = Some(edge);
-            } else if !matches!(edge, QualifierFragment::Root) {
-                the_edge = self.get_parent(source);
+            let new_node = if let Some(&existing) = self.trie.get(&key) {
+                existing
             } else {
-                continue;
-            }
-        }
+                let n = self
+                    .graph
+                    .add_node(Element::new_with_ty(field.name, None, field.ty)); // value filled in phase 2
+                self.graph.add_edge(old_node, n, Relation::Parent);
+                self.trie.insert(key, n);
+                n
+            };
 
-        the_edge
+            // Recurse into nested ProductConstructors so deeply-nested fields
+            // are also pre-registered before any resolution happens.
+            self.current_node = new_node;
+            if let CstExpr::ProductConstructor { fields: nested } = *field.value.0 {
+                self.pre_register_fields(&nested);
+            }
+
+            self.current_node = old_node;
+            self.path = old_path;
+        }
     }
 
-    // #[cfg(test)]
-    // #[cfg(debug_assertions)]
-    // #[cfg(feature = "testing")]
-    // #[allow(clippy::disallowed_names)]
-    // pub fn make_graph() -> Self {
-    //     // if cfg!(test) {
-    //     let mut graph: DiGraph<Item, QualifierFragment> = DiGraph::new();
-    //     let root = graph.add_node(Item::Root);
-    //     let lib_foo = graph.add_node(Item::Dummy("libFoo"));
-    //     let foo = graph.add_node(Item::Dummy("foo"));
-    //     let lib_bar = graph.add_node(Item::Dummy("libBar"));
-    //     let bar = graph.add_node(Item::Dummy("Bar"));
-    //     let baz = graph.add_node(Item::Dummy("baz"));
-    //     let bar_foo = graph.add_node(Item::Dummy("fooooo"));
-    //     graph.extend_with_edges([
-    //         (
-    //             root,
-    //             lib_foo,
-    //             QualifierFragment::Package(Intern::from_ref("Foo")),
-    //         ),
-    //         (
-    //             lib_foo,
-    //             foo,
-    //             QualifierFragment::Func(Intern::from_ref("foo")),
-    //         ),
-    //         (
-    //             root,
-    //             lib_bar,
-    //             QualifierFragment::Package(Intern::from_ref("Bar")),
-    //         ),
-    //         (
-    //             lib_bar,
-    //             bar,
-    //             QualifierFragment::Type(Intern::from_ref("Bar")),
-    //         ),
-    //         (bar, baz, QualifierFragment::Field(Intern::from_ref("f1"))),
-    //         (
-    //             lib_bar,
-    //             bar_foo,
-    //             QualifierFragment::Func(Intern::from_ref("foo")),
-    //         ),
-    //     ]);
+    /// Phase 2: resolve expressions for each field now that all siblings
+    /// exist in the graph. Updates the node's value in-place.
+    fn resolve_fields(
+        &mut self,
+        fields: &[FieldDef<UntypedCst>],
+        vars: &[Intern<String>],
+    ) -> Vec<FieldDef<UntypedCst>> {
+        fields
+            .iter()
+            .map(|field| {
+                // Retrieve the node index that phase 1 already created.
+                self.path.push(field.name.0);
+                let node_index = *self
+                    .trie
+                    .get(&Key::from(self.path.clone()))
+                    .expect("node must exist after pre-registration");
 
-    //     Self { graph, root }
-    // }
+                let old_node = self.current_node;
+                self.current_node = node_index;
+                let value = self.analyze_expr(field.value, vars).into_value();
+
+                // Patch the value into the already-existing node.
+                self.graph[node_index].value = Some(value);
+
+                self.current_node = old_node;
+                self.path.pop();
+
+                FieldDef { value, ..*field }
+            })
+            .collect()
+    }
+    fn resolve_branch(
+        &mut self,
+        pat: Spanned<Intern<Pattern<UntypedCst>>>,
+        body: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[Intern<String>],
+    ) -> MatchArm<UntypedCst> {
+        // The branch becomes: λparam. <lets> in body
+        // `param` is the lambda binder that receives the matchee at the call site.
+        let param = Untyped(pat.convert("%match_arg%".to_string()));
+        let branch_arg: Spanned<Intern<CstExpr<UntypedCst>>> = pat.convert(CstExpr::Ident(param));
+
+        let bindings = pat.0.bindings();
+        // dbg!(&bindings);
+        // Extend vars with user-visible bindings so analyze_expr can resolve them.
+        // Each maps the binder name -> its destructured value expression.
+        let mut branch_vars: Vec<Intern<String>> = vars.to_vec();
+        for binding in &bindings {
+            branch_vars.push(binding.0.0);
+        }
+        // dbg!(&branch_vars);
+
+        let body = self.analyze_expr(body, &branch_vars).into_value();
+        MatchArm { pat, body }
+    }
+
+    fn resolve_lambda(
+        &mut self,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        arg: Untyped,
+        body: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[Intern<String>],
+    ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
+    {
+        let new_vars = &[vars, &[arg.0.0]].concat();
+        let body = self.analyze_expr(body, new_vars).into_value();
+        ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
+    }
+
+    fn resolve_field_access(
+        &mut self,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        vars: &[Intern<String>],
+    ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
+    {
+        let CstExpr::FieldAccess(l, r) = *expr.0 else {
+            panic!("Not a field access")
+        };
+        let l = self.analyze_expr(l, vars).into_value();
+        ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(l, r)))
+    }
+
+    fn lift(self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
+        let mut map: FxHashMap<NodeIndex, Item<UntypedCst>> = FxHashMap::default();
+        let nodes_with_references: Vec<_> = self
+            .graph
+            .edge_indices()
+            .filter_map(|eidx| {
+                let edge = self.graph.edge_weight(eidx)?;
+                if let Relation::Reference = edge {
+                    self.graph.edge_endpoints(eidx).map(|(_, target)| target)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for node in nodes_with_references {
+            let element = &self.graph[node];
+            let item = Item {
+                kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
+                    name: element.name,
+                    sig: element.ty.expect("Recursive definition requires type"),
+                    body: element.value.expect("Definition requires body"),
+                }),
+            };
+            map.insert(node, item);
+        }
+
+        let main_node = self
+            .graph
+            .node_indices()
+            .find(|n| *self.graph[*n].name.0 == "main")
+            .unwrap();
+        let element = &self.graph[main_node];
+        let main_item = Item {
+            kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
+                name: element.name,
+                sig: element.ty.expect("Recursive definition requires type"),
+                body: element.value.expect("Definition requires body"),
+            }),
+        };
+        map.insert(main_node, main_item);
+        dbg!(&map);
+        map
+    }
+}
+
+impl<S: Syntax> EnvironmentBuilder<S> {
+    pub fn from_graph_and_root(
+        graph: &impl Into<StableDiGraph<Option<S::Expr>, QualifierFragment>>,
+        root: NodeIndex,
+    ) -> Self {
+        todo!();
+        // let graph = graph.into();
+        // Self { graph }
+    }
 }

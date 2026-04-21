@@ -1,6 +1,5 @@
 use std::{collections::BTreeSet, fmt, hash::Hash};
 
-use chumsky::span::SimpleSpan;
 use ena::unify::{EqUnifyValue, UnifyKey};
 use internment::Intern;
 
@@ -9,13 +8,7 @@ use crate::{
         TypeScheme,
         rows::{Row, RowUniVar},
     },
-    resource::{
-        errors::CompResult,
-        rep::{
-            common::{Ident, Spanned},
-            frontend::ast::Label,
-        },
-    },
+    resource::rep::{common::Spanned, frontend::ast::Label},
 };
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TyUniVar(pub u32);
@@ -45,12 +38,19 @@ impl UnifyKey for TyUniVar {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeVar(pub usize);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Polarity {
+    Inductive,   // must terminate
+    Coinductive, // must be productive
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum Type {
-    // Subtable(Spanned<Intern<Self>>, SimpleSpan<usize, u64>),
     Unifier(TyUniVar),
-
     Var(TypeVar),
+
+    Recursive(TyUniVar, Polarity, Spanned<Intern<Self>>),
+
     Particle(Spanned<Intern<String>>),
     #[default]
     Unit,
@@ -59,26 +59,15 @@ pub enum Type {
     String,
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
-    // Package(Spanned<Intern<String>>),
-    // Item(ItemId),
     TypeFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Prod(Spanned<Intern<Row>>),
     Sum(Spanned<Intern<Row>>),
     Label(Label, Spanned<Intern<Self>>),
+
     Hole,
 }
 
 impl EqUnifyValue for Spanned<Intern<Type>> {}
-
-impl Ident for Type {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        match self {
-            // Self::Package(spanned) => Ok(*spanned),
-            Self::Label(l, _) => Ok(l.0),
-            _ => unreachable!("{:?}", self),
-        }
-    }
-}
 
 impl Type {
     pub fn render(&self, scheme: &TypeScheme) -> String {
@@ -100,20 +89,12 @@ impl Type {
             Self::Prod(r) => format!("{{{}}}", r.render(scheme)),
             Self::Sum(r) => format!("|{}|", r.render(scheme)),
             Self::TypeFun(l, r) => format!("[{}]{}", l.0.render(scheme), r.0.render(scheme)),
+            Self::Recursive(v, p, t) => {
+                format!("μ{v}: {p:?}.{}", t.0.render(scheme))
+            }
             // Self::TypeApp(l, r) => format!("{}::[{}]", r.0.render(scheme), l.0.render(scheme)),
             _ => format!("{self}"),
         }
-    }
-
-    pub fn to_default_span(self) -> Spanned<Intern<Self>> {
-        Spanned(
-            Intern::from(self),
-            SimpleSpan {
-                start: 0,
-                end: 0,
-                context: 0,
-            },
-        )
     }
 
     pub fn occurs_check(&self, var: TyUniVar) -> Result<(), Self> {
@@ -150,11 +131,14 @@ impl Type {
                 l.0.occurs_check(var).map_err(|_| *self)?;
                 r.0.occurs_check(var).map_err(|_| *self)
             }
+            Self::Recursive(v, _, ty) => {
+                if *v == var {
+                    Ok(())
+                } else {
+                    ty.0.occurs_check(var)
+                }
+            }
 
-            // Self::TypeApp(l, r) => {
-            //     l.0.occurs_check(var).map_err(|_| *self)?;
-            //     r.0.occurs_check(var).map_err(|_| *self)
-            // }
             Self::Hole => Ok(()),
         }
     }
@@ -177,6 +161,9 @@ impl Type {
                 Row::Open(_) => false,
                 Row::Closed(row) => row.mentions(unbound_tys, unbound_rows),
             },
+            Self::Recursive(v, _, ty) => {
+                unbound_tys.contains(v) || ty.0.mentions(unbound_tys, unbound_rows)
+            }
             _ => todo!(),
         }
     }

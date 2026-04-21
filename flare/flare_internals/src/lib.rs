@@ -11,7 +11,7 @@
 //    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //    See the License for the specific language governing permissions and
 //    limitations under the License.
-
+#![feature(control_flow_into_value)]
 #[forbid(
     unused_unsafe,
     clippy::fallible_impl_from,
@@ -34,7 +34,6 @@
     clippy::redundant_allocation,
     clippy::deref_by_slicing,
     clippy::cloned_instead_of_copied,
-    clippy::unwrap_in_result,
     unused_allocation,
     clippy::ptr_arg,
     clippy::needless_pass_by_ref_mut,
@@ -42,6 +41,7 @@
     // clippy::min_ident_chars,
     )]
 #[warn(
+clippy::unwrap_in_result,
     clippy::large_stack_frames,
     // clippy::panic,
     clippy::dbg_macro,
@@ -62,13 +62,8 @@ pub mod passes;
 pub mod resource;
 
 use core::iter::Iterator;
-use std::{
-    hash::{Hash, Hasher},
-    path::{Path, PathBuf},
-};
-
-use petgraph::graph::NodeIndex;
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::FxHashMap;
+use std::path::PathBuf;
 
 use crate::{
     passes::{
@@ -77,7 +72,7 @@ use crate::{
             target::{Generator, Target},
         },
         frontend::{
-            environment::Environment,
+            environment::{Environment, EnvironmentBuilder},
             parser,
             resolution::Resolver,
             typechecker::Typechecker,
@@ -95,7 +90,7 @@ use crate::{
                     UntypedAst,
                     // Untyped
                 },
-                cst::{Package, Program, UntypedCst},
+                cst::{PackageCollection, UntypedCst},
                 files::{FileID, FileSource},
             },
             midend::ir::IR,
@@ -107,17 +102,17 @@ use crate::{
 pub struct Init;
 
 pub struct Parse {
-    program: Program<UntypedCst>,
+    program: PackageCollection<UntypedCst>,
 }
 
 pub struct Build {
     env: Environment<UntypedCst>,
 }
-
+#[derive(Debug)]
 pub struct Resolve {
-    order: Vec<NodeIndex>,
     env: Environment<UntypedAst>,
 }
+#[derive(Debug)]
 pub struct Typecheck {
     items: Vec<(ItemId, TypesOutput)>,
     source: ItemSource,
@@ -167,9 +162,9 @@ pub struct Context<T, O> {
 pub fn make_filectx(src_paths: &[PathBuf]) -> FileCtx {
     src_paths
         .iter()
-        .map(|filepath| {
-            let id = convert_path_to_id(filepath);
-
+        .enumerate()
+        .map(|(id, filepath)| {
+            let id = id as u64;
             let src_text = std::fs::read_to_string(filepath).unwrap();
 
             let source = FileSource {
@@ -182,44 +177,33 @@ pub fn make_filectx(src_paths: &[PathBuf]) -> FileCtx {
         .collect()
 }
 
-fn parse_file(file: &FileSource) -> CompResult<Vec<Package<UntypedCst>>> {
+fn parse_file(file: &FileSource) -> CompResult<PackageCollection<UntypedCst>> {
     parser::parse(file)
 }
 
 pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
-    let mut processed: Vec<(Vec<Package<UntypedCst>>, FileID)> = vec![];
-    for (id, file) in filectx {
-        let pack = parse_file(file)?;
-        processed.push((pack, *id))
+    let mut program = PackageCollection::default();
+    for file in filectx.values() {
+        let collection = parse_file(file)?;
+        program = program.merge(collection)
     }
 
-    let v: Vec<_> = processed
-        .into_iter()
-        .flat_map(|(packages, id)| {
-            packages
-                .into_iter()
-                .map(|p| (p, id))
-                .collect::<Vec<(Package<_>, FileID)>>()
-        })
-        .collect::<Vec<_>>();
-
-    let program = Program { packages: v };
     Ok(Parse { program })
 }
 
 pub fn build(parse: Parse) -> CompResult<Build> {
-    let env = Environment::<UntypedCst>::build(&parse.program)?;
+    let env = EnvironmentBuilder::<UntypedCst>::build(parse.program)?;
     Ok(Build { env })
 }
 
 pub fn resolve(build: Build) -> CompResult<Resolve> {
     let resolver = Resolver::new(build.env);
-    let (env, order) = resolver.analyze()?;
-    Ok(Resolve { order, env })
+    let env = resolver.analyze()?;
+    Ok(Resolve { env })
 }
 
 pub fn typecheck(resolve: Resolve) -> CompResult<Typecheck> {
-    let tc = Typechecker::new(resolve.order.leak(), resolve.env);
+    let tc = Typechecker::new(resolve.env);
     let (items, source) = tc.check()?;
     // for item in &items {
     //     println!("#{}:\n{}\n------------", item.0.0, item.1.typed_ast)
@@ -261,11 +245,4 @@ pub fn generate<T: Target>(converted: Convert, target: T) -> CompResult<T::Outpu
     let g = Generator::new(target, converted.cc);
     let output = g.generate();
     Ok(output)
-}
-
-fn convert_path_to_id(path: &Path) -> FileID {
-    let mut hasher = FxHasher::default();
-    path.hash(&mut hasher);
-    //path.canonicalize().unwrap().hash(&mut hasher);
-    hasher.finish()
 }

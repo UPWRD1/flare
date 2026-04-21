@@ -6,41 +6,33 @@ use std::{
 use crate::{
     passes::frontend::typing::TypeScheme,
     resource::{
-        errors::{CompResult, DynamicErr},
-        rep::common::{HasSpan, Ident, Spanned, Syntax, Variable},
+        errors::CompResult,
+        rep::common::{FlareSpan, HasSpan, Spanned, Syntax, Variable},
     },
 };
 
-use chumsky::span::SimpleSpan;
 use internment::Intern;
-use ordered_float::OrderedFloat;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UntypedAst;
 
 impl Syntax for UntypedAst {
     type Expr = Spanned<Intern<Expr<Self::Variable>>>;
-    // type Type = Spanned<Intern<Type>>;
     type Type = TypeScheme;
+    type Pattern = ();
     type Variable = Untyped;
     type Name = Spanned<Intern<String>>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Untyped(pub Spanned<Intern<String>>);
 
 impl Variable for Untyped {}
 
 impl HasSpan for Untyped {
-    fn span(&self) -> SimpleSpan<usize, u64> {
+    fn span(&self) -> FlareSpan {
         self.0.1
-    }
-}
-
-impl Ident for Untyped {
-    fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-        Ok(self.0)
     }
 }
 
@@ -68,25 +60,6 @@ pub enum BinOp {
     Or,
 }
 
-impl Display for BinOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BinOp::Eq => write!(f, "=="),
-            BinOp::Neq => write!(f, "!="),
-            BinOp::Gt => write!(f, ">"),
-            BinOp::Lt => write!(f, "<"),
-            BinOp::Gte => write!(f, ">="),
-            BinOp::Lte => write!(f, "<="),
-            BinOp::Add => write!(f, "+"),
-            BinOp::Sub => write!(f, "-"),
-            BinOp::Mul => write!(f, "*"),
-            BinOp::Div => write!(f, "/"),
-            BinOp::And => write!(f, "and"),
-            BinOp::Or => write!(f, "or"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum Direction {
     Left,
@@ -99,7 +72,7 @@ pub struct Label(pub Spanned<Intern<String>>);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord, Default)]
 pub struct ItemId(pub usize);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Default)]
 pub enum Kind {
     #[default]
     Ty,
@@ -111,7 +84,7 @@ pub enum Kind {
 
 /// Type representing an Expression.
 /// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Expr<V>
 where
     V: Variable,
@@ -121,22 +94,24 @@ where
     Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Bool(bool),
+    #[default]
     Unit,
     Particle(Spanned<Intern<String>>),
-
     Hole(V),
 
-    Item(ItemId, Kind),
+    Item(ItemId),
 
     Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Project(Direction, Spanned<Intern<Self>>),
-
     Inject(Direction, Spanned<Intern<Self>>),
     Branch(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
 
+    // ProductConstructor {
+    // fields: Intern<[(Label, Spanned<Intern<Self>>)]>,
+    // },
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -189,34 +164,26 @@ impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
 }
 
 impl<V: Variable> Spanned<Intern<Expr<V>>> {
-    pub fn id(&self) -> SimpleSpan<usize, u64> {
+    pub fn id(&self) -> FlareSpan {
         self.1
     }
-}
 
-impl<V: Variable> Expr<V> {
-    pub fn get_num(&self, span: SimpleSpan<usize, u64>) -> CompResult<OrderedFloat<f32>> {
-        match self {
-            Self::Number(n) => Ok(*n),
-            _ => Err(DynamicErr::new("Not a number").label("here", span).into()),
+    pub fn collect_labels(self) -> Vec<(Label, Spanned<Intern<Expr<V>>>)> {
+        let mut v = vec![];
+        fn collect_labels<V: Variable>(
+            row: Spanned<Intern<Expr<V>>>,
+            out: &mut Vec<(Label, Spanned<Intern<Expr<V>>>)>,
+        ) {
+            match *row.0 {
+                Expr::Label(label, v) => out.push((label, v)),
+                Expr::Concat(r1, r2) => {
+                    collect_labels(r1, out);
+                    collect_labels(r2, out);
+                }
+                _ => panic!("Not an expr"),
+            }
         }
-    }
-
-    pub fn inject_call_start(
-        self,
-        arg: Spanned<Intern<Self>>,
-        span: SimpleSpan<usize, u64>,
-    ) -> Spanned<Intern<Self>> {
-        match self {
-            Self::Call(l, r) => Spanned(
-                Intern::from(Self::Call(l.0.inject_call_start(arg, span), r)),
-                span,
-            ),
-            Self::Ident(_n) => Spanned(
-                Intern::from(Self::Call(Spanned(Intern::from(self), span), arg)),
-                span,
-            ),
-            _ => panic!(),
-        }
+        collect_labels(self, &mut v);
+        v
     }
 }

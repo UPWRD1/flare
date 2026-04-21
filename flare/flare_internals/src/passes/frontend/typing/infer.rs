@@ -370,7 +370,7 @@ impl Solver<'_> {
                     ast.convert(Type::Sum(row_comb.goal)),
                 )
             }
-            Expr::Item(item_id, kind) => {
+            Expr::Item(item_id) => {
                 // dbg!(kind);
                 let ty_scheme = self.item_source.type_of_item(item_id);
 
@@ -399,9 +399,8 @@ impl Solver<'_> {
                 // Instantiate our scheme mapping it's variables to the fresh unifiers we just generated.
                 // After this we'll have a list of constraints and a type that only reference the fresh
                 // unfiers.
-                let (constraints, ty) =
-                    Instantiate::new(ast.1, &tyvar_to_unifiers, &rowvar_to_unifiers)
-                        .type_scheme(ty_scheme);
+                let (constraints, ty) = Instantiate::new(&tyvar_to_unifiers, &rowvar_to_unifiers)
+                    .type_scheme(ty_scheme);
                 let wrapper = ItemWrapper {
                     types: wrapper_tyvars,
                     rows: wrapper_rowvars,
@@ -423,22 +422,10 @@ impl Solver<'_> {
                 };
                 self.tables.item_wrappers.insert(id, wrapper);
                 (
-                    GenOut::new(constraints, ast.convert(Expr::Item(item_id, kind))),
+                    GenOut::new(constraints, ast.convert(Expr::Item(item_id))),
                     ty,
                 )
             }
-
-            // Expr::Access(base, field) => {}
-            // Expr::Access(l, r) => {
-            //     let ret_var = self.fresh_row_var();
-            //     let (out, ty) = self.infer(env.clone(), l);
-
-            //     let row: Row = ty.0.to_row();
-            //     // let row = self.normalize_row(ty.convert(row)).0;
-            //     let path = path_to_field(row.field_index(r), row.len_fields());
-            //     let projections = apply_field_path(l, &path, r);
-            //     self.infer(env, ast.convert(*projections.0))
-            // }
             Expr::Access(base, field) => {
                 // dbg!(base.1, field.0.1, id);
 
