@@ -126,7 +126,7 @@ impl Provenance {
 pub struct GenOut {
     constraints: Vec<Constraint>,
     typed_ast: Spanned<Intern<Expr<Typed>>>,
-    env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
+    // env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
     // inference_base_loc: Option<SimpleSpan<usize, u64>>,
 }
 
@@ -134,12 +134,12 @@ impl GenOut {
     fn new(
         constraints: Vec<Constraint>,
         typed_ast: Spanned<Intern<Expr<Typed>>>,
-        env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
+        // env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
     ) -> Self {
         Self {
             constraints,
             typed_ast,
-            env,
+            // env,
         }
     }
 
@@ -150,7 +150,7 @@ impl GenOut {
         Self {
             constraints: self.constraints,
             typed_ast: f(self.typed_ast),
-            env: self.env, // inference_base_loc: self.inference_base_loc,
+            // env: self.env, // inference_base_loc: self.inference_base_loc,
         }
     }
 
@@ -164,15 +164,14 @@ impl GenOut {
     ) -> Self {
         let mut new = self;
 
-        let (constraints, env, asts) = args.into_iter().fold(
-            (vec![], im::HashMap::with_hasher(FxBuildHasher), vec![]),
-            |(mut constraints, mut env, mut asts), arg| {
-                constraints.extend(arg.constraints.clone());
-                env = env.union(arg.env);
-                asts.push(arg.typed_ast);
-                (constraints, env, asts)
-            },
-        );
+        let (constraints, asts) =
+            args.into_iter()
+                .fold((vec![], vec![]), |(mut constraints, mut asts), arg| {
+                    constraints.extend(arg.constraints.clone());
+                    // env = env.union(arg.env);
+                    asts.push(arg.typed_ast);
+                    (constraints, asts)
+                });
         new.typed_ast = f(new.typed_ast, asts.as_slice().try_into().unwrap());
         new.constraints = constraints;
         new

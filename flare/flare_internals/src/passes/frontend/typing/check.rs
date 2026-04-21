@@ -31,13 +31,11 @@ impl Solver<'_> {
             //     GenOut::new(vec![], Spanned(Expr::Number(n).into(), id))
             // }
             (Expr::String(s), Type::String) => {
-                GenOut::new(vec![], Spanned(Expr::String(s).into(), id), env)
+                GenOut::new(vec![], Spanned(Expr::String(s).into(), id))
             }
-            (Expr::Bool(b), Type::Bool) => {
-                GenOut::new(vec![], Spanned(Expr::Bool(b).into(), id), env)
-            }
+            (Expr::Bool(b), Type::Bool) => GenOut::new(vec![], Spanned(Expr::Bool(b).into(), id)),
 
-            (Expr::Unit, Type::Unit) => GenOut::new(vec![], Spanned(Expr::Unit.into(), id), env),
+            (Expr::Unit, Type::Unit) => GenOut::new(vec![], Spanned(Expr::Unit.into(), id)),
 
             // Lambdas
             // (Expr::Lambda(arg, body), Type::Func(arg_ty, ret_ty)) => {

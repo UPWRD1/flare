@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 use crate::resource::rep::{
     common::{Spanned, Syntax},
     frontend::{
-        ast::{BinOp, ItemId, Kind, Label, Untyped},
+        ast::{BinOp, ItemId, Label, Untyped},
         csttypes::CstType,
         files::FileID,
     },
@@ -117,7 +117,6 @@ pub enum CstExpr<S: Syntax> {
         fields: Intern<[FieldDef<S>]>,
     },
 
-    Pat(Spanned<Pattern<S>>),
     Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),

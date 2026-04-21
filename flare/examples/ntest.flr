@@ -3,8 +3,8 @@ Main: num = {
     # Point = type {x: num, y: num}
     main: num = {
        x:num = 4
-        y:num = 5
-        a: num = b
-        b: num = a
+        y:num = x
+        # a: num = b
+        # b: num = a
     }.y
 }

@@ -341,7 +341,6 @@ impl Resolver {
                 })
                 .reduce(|l, r| expr.convert(Expr::Concat(l, r)))
                 .unwrap(),
-            CstExpr::Pat(spanned) => todo!(),
             CstExpr::Mul(l, r) => {
                 let l = self.convert_expr(l);
                 let r = self.convert_expr(r);

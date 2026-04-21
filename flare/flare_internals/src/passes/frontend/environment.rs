@@ -273,7 +273,6 @@ impl EnvironmentBuilder<UntypedCst> {
                     fields: resolved_fields.as_slice().into(),
                 }))
             }
-            CstExpr::Pat(spanned) => todo!(),
             CstExpr::Mul(l, r) => {
                 let l = self.analyze_expr(l, vars).into_value();
                 let r = self.analyze_expr(r, vars).into_value();
@@ -317,7 +316,6 @@ impl EnvironmentBuilder<UntypedCst> {
                 ControlFlow::Continue(expr.modify(CstExpr::Match(matchee, branches.leak())))
             }
             CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
-            // CstExpr::Let(id, body, and_in) => self.resolve_let(expr, id, body, and_in, vars, path),
             CstExpr::Number(n) => ControlFlow::Continue(expr.convert(CstExpr::Number(n))),
             CstExpr::String(s) => ControlFlow::Continue(expr.convert(CstExpr::String(s))),
             CstExpr::Bool(b) => ControlFlow::Continue(expr.convert(CstExpr::Bool(b))),
