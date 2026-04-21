@@ -155,11 +155,8 @@ pub struct ImplDef<S: Syntax> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Macro<S: Syntax> {
     Import(S::Pattern),
-    Type(S::Type, S::Type),
-    Extern(S::Name, &'static [S::Variable], S::Type),
     ImplDef(ImplDef<S>),
-    Name(S::Name),
-    Pub(&'static Self),
+    Ret(S::Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     passes::frontend::{
-        environment::{Environment, EnvironmentBuilder},
+        environment::Environment,
         typing::{ItemSource, Solver, TypeScheme, TypesOutput},
     },
     resource::{

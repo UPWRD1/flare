@@ -15,7 +15,7 @@ use std::{collections::BTreeSet, fmt::Display, hash::Hash};
 use ena::unify::InPlaceUnificationTable;
 use internment::Intern;
 
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     passes::frontend::typing::subst::SubstOut,
@@ -350,7 +350,7 @@ impl<'env> Solver<'env> {
                 subst_out = subst_out.merge(norm_row_comb, |(t, mut evidences), ev| {
                     evidences.push(ev);
                     (t, evidences)
-                })
+                });
             }
         }
         subst_out

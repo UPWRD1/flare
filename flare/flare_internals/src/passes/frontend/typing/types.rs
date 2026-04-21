@@ -111,7 +111,8 @@ impl Type {
             | Self::Bool
             | Self::Unit
             | Self::Particle(_)
-            | Self::Var(_) => Ok(()),
+            | Self::Var(_)
+            | Self::Hole => Ok(()),
             Self::Func(arg, ret) => {
                 arg.0.occurs_check(var).map_err(|_| *self)?;
                 ret.0.occurs_check(var).map_err(|_| *self)
@@ -138,8 +139,6 @@ impl Type {
                     ty.0.occurs_check(var)
                 }
             }
-
-            Self::Hole => Ok(()),
         }
     }
 

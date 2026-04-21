@@ -153,13 +153,13 @@ impl Matrix {
     pub fn print(&self) -> String {
         let mut accum: String = String::new();
         for s in &self.header {
-            accum = format!("{}{:?},\t", accum, s)
+            accum = format!("{accum}{s:?},\t");
         }
         let len = accum.len();
         let divider = format!("{:-^1$}", "", len);
         accum = format!("{accum}\n{divider}\n");
         for (pat, _) in &self.rows {
-            accum = format!("{accum}|{}\n", pat.iter().map(|p| p.show()).join("\t|\t"))
+            accum = format!("{accum}|{}\n", pat.iter().map(Pattern::show).join("\t|\t"));
         }
         accum
     }
@@ -411,7 +411,7 @@ fn unwrap_payload(p: Pattern<UntypedCst>) -> Pattern<UntypedCst> {
 // Helper predicates
 // ---------------------------------------------------------------------------
 
-/// Does pattern `p` admit constructor `c`?  
+/// Does pattern `p` admit constructor `c`?\
 /// (Wildcards / variables admit everything.)
 fn admits(c: &SigElem, p: &Pattern<UntypedCst>) -> bool {
     match c {
@@ -469,7 +469,7 @@ fn collect_signature(ps: &[Pattern<UntypedCst>]) -> HashSet<SigElem> {
 
 /// True iff any pattern in the slice is refutable.
 fn has_refutable(ps: &[Pattern<UntypedCst>]) -> bool {
-    ps.iter().any(|p| p.is_refutable())
+    ps.iter().any(Pattern::is_refutable)
 }
 
 // ---------------------------------------------------------------------------
@@ -526,46 +526,7 @@ fn compile_matrix(matrix: Matrix) -> DecisionTree {
         .filter(|s| matches!(s, SigElem::Num(_) | SigElem::String(_)))
         .collect();
 
-    if !lits.is_empty() {
-        // Fold literals into a chain of IfEq, innermost else = default
-        lits.iter().rfold(default_tree, |else_branch, lit| {
-            let sub = specialise(&matrix, |p| admits(lit, p));
-            DecisionTree::IfEq {
-                occ: occ.clone(),
-                lit: **lit,
-                then: Box::new(compile_matrix(sub)),
-                else_: Box::new(else_branch),
-            }
-        })
-    } else {
-        // For each constructor, specialise and wrap in Unlabel
-        // let cases = labels
-        //     .iter()
-        //     .map(|lbl| {
-        //         let sub = specialise(&matrix, |p| matches!(p, Pattern::Variant(lbl, _)));
-        //         // The payload occ is what specialise_ctor produces as its header[0]
-        //         // — an Unwrap(occ). Wrap the sub-tree in an Unlabel node.
-        //         // let payload_occ = Occ::Unwrap(Box::new(occ.clone()), **lbl);
-        //         let inner = compile_matrix(sub);
-        //         (**lbl, inner)
-        //     })
-        //     .collect();
-
-        // let default = {
-        //     let sub = specialise_default(&matrix);
-        //     if sub.is_empty() {
-        //         Some(Box::new(DecisionTree::Fail))
-        //     } else {
-        //         Some(Box::new(compile_matrix(sub)))
-        //     }
-        // };
-
-        // DecisionTree::Switch {
-        //     occ,
-        //     cases,
-        //     default,
-        // }
-
+    if lits.is_empty() {
         // Pure enum switch — existing logic
         DecisionTree::Switch {
             occ,
@@ -578,6 +539,17 @@ fn compile_matrix(matrix: Matrix) -> DecisionTree {
                 .collect(),
             default: Some(Box::new(default_tree)),
         }
+    } else {
+        // Fold literals into a chain of IfEq, innermost else = default
+        lits.iter().rfold(default_tree, |else_branch, lit| {
+            let sub = specialise(&matrix, |p| admits(lit, p));
+            DecisionTree::IfEq {
+                occ: occ.clone(),
+                lit: **lit,
+                then: Box::new(compile_matrix(sub)),
+                else_: Box::new(else_branch),
+            }
+        })
     }
 }
 

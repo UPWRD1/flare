@@ -55,6 +55,7 @@ pub struct Element<S: Syntax> {
 pub enum Relation {
     Reference,
     Parent,
+    Return,
 }
 
 impl<S: Syntax> Element<S> {
@@ -96,7 +97,7 @@ pub struct EnvironmentBuilder<S: Syntax> {
     pub trie: Trie<Key, NodeIndex>,
     path: Vec<Intern<String>>,
     current_node: NodeIndex,
-    errors: FxHashSet<CompilerErr>,
+    errors: Vec<CompilerErr>,
 }
 
 pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
@@ -156,8 +157,8 @@ impl EnvironmentBuilder<UntypedCst> {
         if let Some(index) = self.find_nearest(|node| node.name.0 == n.0) {
             ControlFlow::Continue(n.convert(CstExpr::Item(ItemId(index.index()))))
         } else {
-            self.errors.insert(errors::not_defined(n));
-            ControlFlow::Continue(n.convert(CstExpr::Hole(n)))
+            self.errors.push(errors::not_defined(n));
+            ControlFlow::Continue(n.convert(CstExpr::Hole(Untyped(n))))
         }
     }
 
@@ -309,11 +310,11 @@ impl EnvironmentBuilder<UntypedCst> {
             CstExpr::Particle(p) => ControlFlow::Continue(expr.convert(CstExpr::Particle(p))),
             CstExpr::Hole(v) => ControlFlow::Continue(expr.convert(CstExpr::Hole(v))),
             CstExpr::Item(item_id) => ControlFlow::Continue(expr.convert(CstExpr::Item(item_id))),
-            _ => todo!(),
+            CstExpr::Let(..) => todo!(),
         }
     }
 
-    /// Phase 1: recursively pre-register every field in a ProductConstructor
+    /// Phase 1: recursively pre-register every field in a `ProductConstructor`
     /// as a node in the graph, so that forward/out-of-order references are
     /// visible when Phase 2 runs.
     fn pre_register_fields(&mut self, fields: &[FieldDef<UntypedCst>]) {
@@ -390,14 +391,12 @@ impl EnvironmentBuilder<UntypedCst> {
         let branch_arg: Spanned<Intern<CstExpr<UntypedCst>>> = pat.convert(CstExpr::Ident(param));
 
         let bindings = pat.0.bindings();
-        // dbg!(&bindings);
         // Extend vars with user-visible bindings so analyze_expr can resolve them.
         // Each maps the binder name -> its destructured value expression.
         let mut branch_vars: Vec<Intern<String>> = vars.to_vec();
         for binding in &bindings {
             branch_vars.push(binding.0.0);
         }
-        // dbg!(&branch_vars);
 
         let body = self.analyze_expr(body, &branch_vars).into_value();
         MatchArm { pat, body }

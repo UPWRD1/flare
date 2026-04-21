@@ -8,10 +8,7 @@ use crate::{
         rows::{RowCombination, RowVar},
         types::TypeVar,
     },
-    resource::rep::{
-        common::Spanned,
-        frontend::ast::{Direction, Expr},
-    },
+    resource::rep::{common::Spanned, frontend::ast::Expr},
 };
 
 #[derive(Debug)]
@@ -125,12 +122,11 @@ impl Solver<'_> {
             Type::Var(v) => SubstOut::new(the_ty.convert(Type::Var(v))),
             Type::Unifier(v) => {
                 let root = self.tables.unification_table.find(v);
-                match self.tables.unification_table.probe_value(root) {
-                    Some(t) => self.substitute_ty(t),
-                    None => {
-                        let ty_var = self.tyvar_for_unifier(root);
-                        SubstOut::new(the_ty.convert(Type::Var(ty_var))).with_unbound_ty(ty_var)
-                    }
+                if let Some(t) = self.tables.unification_table.probe_value(root) {
+                    self.substitute_ty(t)
+                } else {
+                    let ty_var = self.tyvar_for_unifier(root);
+                    SubstOut::new(the_ty.convert(Type::Var(ty_var))).with_unbound_ty(ty_var)
                 }
             }
             Type::Func(arg, ret) => {
@@ -314,31 +310,5 @@ impl Solver<'_> {
             .merge(self.substitute_row(comb.goal), |(left, right), goal| {
                 Evidence::RowEquation { left, right, goal }
             })
-    }
-}
-
-fn desugar_access(
-    base: Spanned<Intern<Expr<Typed>>>,
-    label: Intern<String>,
-) -> Option<Spanned<Intern<Expr<Typed>>>> {
-    match *base.0 {
-        // Found it: strip the label wrapper
-        Expr::Label(lbl, body) if lbl.0.0 == label => Some(body),
-
-        // Recurse into a concat — use THIS concat's NodeId on the Project
-        Expr::Concat(left, right) => {
-            if let Some(inner) = desugar_access(left, label) {
-                // base.convert gives the Project the Concat's NodeId ← key
-                Some(base.convert(Expr::Project(Direction::Left, inner)))
-            } else {
-                desugar_access(right, label)
-                    .map(|inner| base.convert(Expr::Project(Direction::Right, inner)))
-            }
-        }
-
-        // Transparent wrappers
-        Expr::Unlabel(inner, _) => desugar_access(inner, label),
-
-        _ => None,
     }
 }

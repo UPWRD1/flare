@@ -57,8 +57,7 @@ pub enum NK {
     PatternAtom,
     // Macros
     UseMacro,
-    ExternMacro,
-    TypeMacro,
+    ReturnMacro,
     ExtendMacro,
     // Types
     ArrowType,
@@ -103,7 +102,18 @@ pub struct LangIds {
 
 impl LangIds {
     pub fn new(lang: &Language) -> Self {
-        use NK::*;
+        use FK::{
+            Arg, Expr, Field, Func, Generics, Import, Left, Name, Operator, Pattern, Right, Sigil,
+            Type, Value,
+        };
+        use NK::{
+            ArrowType, BinExpression, Boolean, CallExpression, ExtendMacro, FieldAccess,
+            FieldAssignment, FieldedConstructor, GenericType, GroupedType, Identifier, Lambda,
+            MatchExpression, Number, ParenthesizedExpression, Path, PatternAlias, PatternAtom,
+            PatternPath, PatternProduct, PatternVariable, PatternVariant, PrimitiveType,
+            ProductType, PropAccess, PropQualifier, ReturnMacro, SelfType, SourceFile, StringNode,
+            SumConstructor, SumType, UnitExpr, UseMacro, UserType,
+        };
         let mut kinds = [0u16; NK::COUNT as usize];
 
         macro_rules! k {
@@ -137,8 +147,7 @@ impl LangIds {
         k!(PatternAlias, "pattern_alias");
         k!(PatternAtom, "pattern_atom");
         k!(UseMacro, "use_macro");
-        k!(ExternMacro, "extern_macro");
-        k!(TypeMacro, "type_macro");
+        k!(ReturnMacro, "return_macro");
         k!(ExtendMacro, "extend_macro");
         k!(ArrowType, "arrow_type");
         k!(ProductType, "product_type");
@@ -149,7 +158,6 @@ impl LangIds {
         k!(SelfType, "self_type");
         k!(GroupedType, "grouped_type");
 
-        use FK::*;
         let mut fields = [0u16; FK::COUNT as usize];
         macro_rules! f {
             ($variant:expr, $name:expr) => {
@@ -178,12 +186,12 @@ impl LangIds {
         Self { kinds, fields }
     }
 
-    #[inline(always)]
+    #[inline]
     pub const fn k(&self, nk: NK) -> u16 {
         self.kinds[nk as usize]
     }
 
-    #[inline(always)]
+    #[inline]
     pub const fn f(&self, fk: FK) -> u16 {
         self.fields[fk as usize]
     }
@@ -202,7 +210,7 @@ impl<'src> Translate<'src> {
     fn new(ids: &'src LangIds, file: &'src FileSource) -> Self {
         Self {
             file,
-            defs: Default::default(),
+            defs: FxHashMap::default(),
             _phantom: PhantomData,
             ids,
             errors: FxHashMap::default(),
@@ -283,12 +291,10 @@ impl<'src> Translate<'src> {
 
             match k {
                 // ── Control flow ─────────────────────────────────────────────────
-                // k if k == self.ids.k(NK::LetExpression) => self.lower_let(node),
-                // k if k == self.ids.k(NK::IfExpression) => self.lower_if(node),
                 k if k == self.ids.k(NK::MatchExpression) => self.lower_match(node),
 
                 // // ── Abstraction / application ─────────────────────────────────────
-                // k if k == self.ids.k(NK::Lambda) => self.lower_lambda(node),
+                k if k == self.ids.k(NK::Lambda) => self.lower_lambda(node),
                 k if k == self.ids.k(NK::CallExpression) => self.lower_call(node),
 
                 // // ── Row / nominal dispatch ────────────────────────────────────────
@@ -297,7 +303,6 @@ impl<'src> Translate<'src> {
 
                 // // ── Binary ops ───────────────────────────────────────────────────
                 k if k == self.ids.k(NK::BinExpression) => self.lower_binop(&node),
-                // k if k == self.ids.k(NK::CmpExpression) => self.lower_binop(node),
 
                 // ── Constructors ─────────────────────────────────────────────────
                 k if k == self.ids.k(NK::FieldedConstructor) => self.lower_record(node),
@@ -312,15 +317,14 @@ impl<'src> Translate<'src> {
 
                 // ── Primaries ────────────────────────────────────────────────────
                 k if k == self.ids.k(NK::Identifier) => CstExpr::Ident(Untyped(self.name(&node))),
-                // k if k == self.ids.k(NK::Path) => self.lower_path(node),
+
                 k if k == self.ids.k(NK::Number) => {
                     let text = self.raw_name(&node);
-                    match text.parse::<f32>() {
-                        Ok(v) => CstExpr::Number(OrderedFloat::from(v)),
-                        Err(_) => {
-                            self.error(node, "malformed number literal");
-                            CstExpr::Hole(Untyped(self.si(node, |_| text.to_string())))
-                        }
+                    if let Ok(v) = text.parse::<f32>() {
+                        CstExpr::Number(OrderedFloat::from(v))
+                    } else {
+                        self.error(node, "malformed number literal");
+                        CstExpr::Hole(Untyped(self.si(node, |_| text.to_string())))
                     }
                 }
                 k if k == self.ids.k(NK::StringNode) => CstExpr::String(self.name(&node)),
@@ -367,8 +371,8 @@ impl<'src> Translate<'src> {
                         self.add_use_macro(child);
                         None
                     }
-                    k if k == self.ids.k(NK::TypeMacro) => {
-                        self.add_type_macro(child);
+                    k if k == self.ids.k(NK::ReturnMacro) => {
+                        self.add_return_macro(child);
                         None
                     }
                     _ => {
@@ -386,7 +390,7 @@ impl<'src> Translate<'src> {
 
     fn translate_field_assignment(&mut self, node: Node<'src>) -> FieldDef<UntypedCst> {
         // Determine name and params from the two structural variants
-        let (name, params) = {
+        let (name, args) = {
             let name = self.get_child(node, FK::Name).unwrap();
             let args = self.get_children_by(node, FK::Arg);
             (self.name(&name), args)
@@ -402,17 +406,16 @@ impl<'src> Translate<'src> {
             .unwrap();
 
         // Desugar function sugar immediately
-        let value = if !params.is_empty() {
-            params
-                .into_iter()
+        let value = if args.is_empty() {
+            value
+        } else {
+            args.into_iter()
                 .map(|n| (n, self.raw_name(&n)))
                 .fold(value, |body, (node, name)| {
                     value.map(|value| {
                         CstExpr::Lambda(Untyped(self.si(node, |_| name.to_string())), body)
                     })
                 })
-        } else {
-            value
         };
 
         FieldDef { name, ty, value }
@@ -439,14 +442,12 @@ impl<'src> Translate<'src> {
             .or_insert(vec![the_macro]);
     }
 
-    fn add_type_macro(&mut self, node: Node<'src>) {
+    fn add_return_macro(&mut self, node: Node<'src>) {
         let path = self.collapse_current_path();
-        let key_ty_node = self.get_field(&node, FK::Name).unwrap();
-        let key_ty = self.lower_type(key_ty_node);
+        let expr_node = node.child(1).unwrap();
+        let expr = self.lower_expr(expr_node);
+        let the_macro = Macro::Ret(expr);
 
-        let defn_ty_node = self.get_field(&node, FK::Type).unwrap();
-        let defn_ty = self.lower_type(defn_ty_node);
-        let the_macro = Macro::Type(key_ty, defn_ty);
         self.defs
             .entry(path)
             .and_modify(|v| v.push(the_macro.clone()))
@@ -472,7 +473,7 @@ impl<'src> Translate<'src> {
                         self.lower_type(node.child_by_field_id(self.ids.f(FK::Right)).unwrap());
                     CstType::Func(param, result)
                 }
-                // k if k == self.k_product_type => self.lower_product_type(node),
+                k if k == self.ids.k(NK::ProductType) => self.lower_product_type(node),
                 // k if k == self.k_sum_type => self.lower_sum_type(node),
                 // k if k == self.k_self_type => CstType::SelfType,
                 // k if k == self.k_grouped_type => {
@@ -511,6 +512,10 @@ impl<'src> Translate<'src> {
         CstType::User(name, generics)
     }
 
+    fn lower_product_type(&self, node: Node<'src>) -> CstType {
+        todo!()
+    }
+
     fn lower_match(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
         let matchee = self.lower_expr(self.get_child(node, FK::Value).unwrap());
         let patterns = self.get_children_by(node, FK::Pattern);
@@ -526,6 +531,29 @@ impl<'src> Translate<'src> {
             .collect();
 
         CstExpr::Match(matchee, arms.leak())
+    }
+
+    fn lower_lambda(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+        let args = self.get_children_by(node, FK::Arg);
+
+        let value = self
+            .get_child(node, FK::Expr)
+            .map(|node| self.lower_expr(node))
+            .unwrap();
+
+        // Desugar function sugar immediately
+        let value = if args.is_empty() {
+            value
+        } else {
+            args.into_iter()
+                .map(|n| (n, self.raw_name(&n)))
+                .fold(value, |body, (node, name)| {
+                    value.map(|value| {
+                        CstExpr::Lambda(Untyped(self.si(node, |_| name.to_string())), body)
+                    })
+                })
+        };
+        *value.0
     }
 
     fn lower_binop(&mut self, node: &Node<'src>) -> CstExpr<UntypedCst> {
@@ -573,8 +601,7 @@ impl<'src> Translate<'src> {
                         .named_children(&mut node.walk())
                         // skip the variant_name child, take the rest as payload
                         .nth(1)
-                        .map(|n| self.lower_pattern(n))
-                        .unwrap_or(self.si(node, |_| Pattern::Unit));
+                        .map_or(self.si(node, |_| Pattern::Unit), |n| self.lower_pattern(n));
                     Pattern::Variant(label, payload)
 
                     // Pattern::Variant { tag, payload }

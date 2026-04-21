@@ -57,17 +57,15 @@ impl<'a> Instantiate<'a> {
                 // Type Scheme's should have been generalized and only contain Row::Open.
                 // If we see a Unifier in a type scheme our type checker has a bug in it.
                 Row::Unifier(_) => unreachable!("Leftover unifier in type scheme"),
-                Row::Open(var) => self
-                    .rowvar_to_unifiers
-                    .get(&var)
-                    .copied()
-                    .map(Row::Unifier)
-                    .unwrap_or_else(|| {
+                Row::Open(var) => self.rowvar_to_unifiers.get(&var).copied().map_or_else(
+                    || {
                         unreachable!(
                             "Expected row var {:?} to be mapped to fresh unifier in instantiation",
                             var
                         )
-                    }),
+                    },
+                    Row::Unifier,
+                ),
                 Row::Closed(mut row) => {
                     row.values = row
                         .values
@@ -82,37 +80,32 @@ impl<'a> Instantiate<'a> {
     }
 
     fn ty(&self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
-        ty.map(|ty| {
-            match *ty {
-                Type::Var(var) => self
-                    .tyvar_to_unifiers
-                    .get(&var)
-                    .copied()
-                    .map(Type::Unifier)
-                    // .map(|x| ty.convert(x))
-                    .unwrap_or_else(|| {
-                        unreachable!(
-                            "Expected type var {:?} to be mapped to fresh unifier in instantiation",
-                            var
-                        )
-                    }),
-                Type::Num
-                | Type::Bool
-                | Type::String
-                | Type::Unit
-                | Type::Unifier(_)
-                | Type::Particle(_) => *ty,
-                Type::Func(arg, ret) => {
-                    let arg = self.ty(arg);
-                    let ret = self.ty(ret);
-                    Type::Func(arg, ret)
-                }
-                Type::Prod(row) => Type::Prod(self.row(row)),
-                Type::Sum(row) => Type::Sum(self.row(row)),
-                Type::Label(label, ty) => Type::Label(label, ty),
-
-                _ => todo!("{:?}", ty),
+        ty.map(|ty| match *ty {
+            Type::Var(var) => self.tyvar_to_unifiers.get(&var).copied().map_or_else(
+                || {
+                    unreachable!(
+                        "Expected type var {:?} to be mapped to fresh unifier in instantiation",
+                        var
+                    )
+                },
+                Type::Unifier,
+            ),
+            Type::Num
+            | Type::Bool
+            | Type::String
+            | Type::Unit
+            | Type::Unifier(_)
+            | Type::Particle(_) => *ty,
+            Type::Func(arg, ret) => {
+                let arg = self.ty(arg);
+                let ret = self.ty(ret);
+                Type::Func(arg, ret)
             }
+            Type::Prod(row) => Type::Prod(self.row(row)),
+            Type::Sum(row) => Type::Sum(self.row(row)),
+            Type::Label(label, ty) => Type::Label(label, ty),
+
+            _ => todo!("{:?}", ty),
         })
     }
 }

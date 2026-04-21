@@ -493,7 +493,7 @@ pub fn subst_generic_type(
                     ..r
                 }
             };
-            accum = accum.modify(CstType::Prod(r))
+            accum = accum.modify(CstType::Prod(r));
         }
 
         (CstType::Sum(r), _) => {
@@ -509,24 +509,24 @@ pub fn subst_generic_type(
                     ..r
                 }
             };
-            accum = accum.modify(CstType::Sum(r))
+            accum = accum.modify(CstType::Sum(r));
         }
 
         (CstType::Label(label, value), _) => {
             accum = accum.modify(CstType::Label(
                 label,
                 subst_generic_type(value, target, replacement),
-            ))
+            ));
         }
         // GENERATED: Claude
         (CstType::GenericFun(param, body), _) => {
             if *param.0 == *target {
                 // The parameter shadows the target, don't substitute in body
-                accum = subject
+                accum = subject;
             } else {
                 // Safe to substitute in body
                 let new_body = subst_generic_type(body, target, replacement);
-                accum = accum.modify(CstType::GenericFun(param, new_body))
+                accum = accum.modify(CstType::GenericFun(param, new_body));
             }
         }
         _ => accum = subject,

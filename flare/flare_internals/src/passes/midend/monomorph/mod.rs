@@ -173,7 +173,7 @@ fn post_order(root: Monomorph, all_deps: &FxHashMap<Monomorph, Vec<Monomorph>>) 
 
 // ── Shared helper: beta-reduction ────────────────────────────────────────────
 
-/// Peel the leading TyFun binders off `ir`, substituting each concrete type
+/// Peel the leading `TyFun` binders off `ir`, substituting each concrete type
 /// argument from `apps` in turn.
 ///
 /// Each step performs one beta-reduction:
@@ -198,7 +198,7 @@ fn beta_reduce_tyfuns(mut ir: IR, apps: &[TyApp]) -> IR {
 
 // ── Shared helper: TyApp chain peeling ───────────────────────────────────────
 
-/// Walk a left-spine TyApp chain by reference and collect the base `Item` and
+/// Walk a left-spine `TyApp` chain by reference and collect the base `Item` and
 /// its type arguments in application order (outermost first).
 ///
 /// `TyApp(TyApp(Item(f), A), B)`  →  `Some(Monomorph { f, [A, B] })`

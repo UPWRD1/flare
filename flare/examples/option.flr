@@ -1,5 +1,5 @@
 Option = {
-    type Option[?T] = |Some ?T, None|
+    Option[?T] = type |Some ?T, None|
 
     Some x : ?T -> Option[?T] = |Some x|
 
