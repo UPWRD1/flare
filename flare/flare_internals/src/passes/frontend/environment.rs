@@ -1,4 +1,4 @@
-use std::ops::ControlFlow;
+use std::{f64::consts::E, ops::ControlFlow};
 
 use internment::Intern;
 
@@ -19,7 +19,7 @@ use crate::resource::{
         frontend::{
             ast::{ItemId, Label, Untyped},
             cst::{CstExpr, FieldDef, Macro, MatchArm, PackageCollection, Pattern, UntypedCst},
-            entry::Item,
+            entry::{FunctionItem, Item},
             quantifier::QualifierFragment,
         },
     },
@@ -48,8 +48,9 @@ impl TrieKey for Key {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Element<S: Syntax> {
-    name: Intern<String>,
+    name: Spanned<Intern<String>>,
     value: Option<S::Expr>,
+    ty: Option<S::Type>,
 }
 
 #[derive(Debug)]
@@ -59,17 +60,26 @@ pub enum Relation {
 }
 
 impl<S: Syntax> Element<S> {
-    pub fn new_with(name: impl Into<Intern<String>>, value: Option<S::Expr>) -> Self {
+    pub fn new_with_ty(
+        name: Spanned<Intern<String>>,
+        value: Option<S::Expr>,
+        ty: Option<S::Type>,
+    ) -> Self {
+        Self { name, value, ty }
+    }
+    pub fn new_with(name: Spanned<Intern<String>>, value: Option<S::Expr>) -> Self {
         Self {
-            name: name.into(),
+            name,
             value,
+            ty: None,
         }
     }
 
-    pub fn new(name: impl Into<Intern<String>>) -> Self {
+    pub fn new(name: Spanned<Intern<String>>) -> Self {
         Self {
-            name: name.into(),
+            name,
             value: None,
+            ty: None,
         }
     }
 }
@@ -91,19 +101,16 @@ pub struct EnvironmentBuilder<S: Syntax> {
     vars: Vec<Intern<String>>, // pub root: NodeIndex,
 }
 
-pub struct Environment<S: Syntax> {
-    pub graph: StableDiGraph<Item<S>, QualifierFragment>,
-    pub root: NodeIndex,
-}
+pub type Environment<S: Syntax> = FxHashMap<NodeIndex, Item<S>>;
 
 impl EnvironmentBuilder<UntypedCst> {
     /// Build the environment from a given `PackageCollection`
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Self> {
+    pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Environment<UntypedCst>> {
         let mut graph: StableDiGraph<Element<UntypedCst>, Relation> = StableDiGraph::default();
-        let root_node = graph.add_node(Element::new("Root".to_string()));
+        let root_node = graph.add_node(Element::new(Spanned::default_with("Root".to_string())));
         let trie = Trie::new();
         let mut macros: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>> =
             FxHashMap::default();
@@ -113,27 +120,18 @@ impl EnvironmentBuilder<UntypedCst> {
             macros.extend(p.macros);
             fields.push(p.root_node);
         });
-        let root_obj: Spanned<Intern<_>> = Spanned::default_with(
-            CstExpr::ProductConstructor {
-                fields: fields.as_slice().into(),
-            }
-            .into(),
-        );
-        let proj_main_package = Spanned::default_with(
-            CstExpr::FieldAccess(
-                root_obj,
-                Label(Spanned::default_with(String::from("Main").into())),
-            )
-            .into(),
-        );
+        let root_obj: Spanned<Intern<_>> = Spanned::default_with(CstExpr::ProductConstructor {
+            fields: fields.as_slice().into(),
+        });
+        let proj_main_package = Spanned::default_with(CstExpr::FieldAccess(
+            root_obj,
+            Label(Spanned::default_with(String::from("Main"))),
+        ));
 
-        let proj_main_func: Spanned<Intern<_>> = Spanned::default_with(
-            CstExpr::FieldAccess(
-                proj_main_package,
-                Label(Spanned::default_with(String::from("main").into())),
-            )
-            .into(),
-        );
+        let proj_main_func: Spanned<Intern<_>> = Spanned::default_with(CstExpr::FieldAccess(
+            proj_main_package,
+            Label(Spanned::default_with(String::from("main"))),
+        ));
         let mut me = Self {
             graph,
             trie,
@@ -141,14 +139,16 @@ impl EnvironmentBuilder<UntypedCst> {
             ..Default::default()
         };
         // dbg!(proj_main_func);
-        let res = me.enter_context(
-            |me| me.analyze_expr(proj_main_func, &[]),
-            ControlFlow::Break(proj_main_func),
-            Spanned::default_with(String::from("Root").into()),
-        );
+        let res = me
+            .enter_context(
+                |me| me.analyze_expr(proj_main_func, &[]),
+                ControlFlow::Break(proj_main_func),
+                Spanned::default_with(String::from("Root")),
+            )
+            .into_value();
 
         me.debug();
-        Ok(me.lift())
+        Ok(me.lift(res))
     }
 
     fn resolve_name(
@@ -156,7 +156,7 @@ impl EnvironmentBuilder<UntypedCst> {
         n: <UntypedCst as Syntax>::Name,
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
         let index = self
-            .find_nearest(|node| *node.name == *n.0)
+            .find_nearest(|node| node.name.0 == n.0)
             .unwrap_or_else(|| panic!("Could not find symbol: {n}"));
         ControlFlow::Continue(n.convert(CstExpr::Item(ItemId(index.index()))))
     }
@@ -189,7 +189,7 @@ impl EnvironmentBuilder<UntypedCst> {
         let old_node = self.current_node;
         let old_path = self.path.clone();
         self.path.push(name.0);
-        self.current_node = self.graph.add_node(Element::new_with(name.0, value));
+        self.current_node = self.graph.add_node(Element::new_with(name, value));
         self.graph
             .add_edge(old_node, self.current_node, Relation::Parent);
 
@@ -206,6 +206,7 @@ impl EnvironmentBuilder<UntypedCst> {
     where
         F: Fn(&Element<UntypedCst>) -> bool,
     {
+        use petgraph::Direction::{Incoming, Outgoing};
         let mut queue = std::collections::VecDeque::new();
         let mut visited = FxHashSet::default();
 
@@ -214,36 +215,42 @@ impl EnvironmentBuilder<UntypedCst> {
 
         while let Some(node) = queue.pop_front() {
             if predicate(&self.graph[node]) {
+                // Consider deferring this mutation if it causes issues
                 self.graph
                     .add_edge(self.current_node, node, Relation::Reference);
-                return Some(node); // first match = correct shadowing
+                return Some(node);
             }
 
+            // --- Find parent (filtered!) ---
             let parent = self
                 .graph
-                .edges_directed(node, petgraph::Direction::Incoming)
-                .next()?
-                .source();
+                .edges_directed(node, Incoming)
+                .find(|e| matches!(e.weight(), Relation::Parent))
+                .map(|e| e.source());
 
-            let siblings = self
-                .graph
-                .edges_directed(parent, Outgoing)
-                .filter(|n| n.target() != node)
-                .map(|e| e.target());
+            if let Some(parent) = parent {
+                // --- Siblings (filtered!) ---
+                let siblings = self
+                    .graph
+                    .edges_directed(parent, Outgoing)
+                    .filter(|e| matches!(e.weight(), Relation::Parent))
+                    .map(|e| e.target())
+                    .filter(|&n| n != node);
 
-            for neighbor in siblings {
-                if visited.insert(neighbor) {
-                    queue.push_back(neighbor);
+                for neighbor in siblings {
+                    if visited.insert(neighbor) {
+                        queue.push_back(neighbor);
+                    }
                 }
-            }
-            if visited.insert(parent) {
-                queue.push_back(parent);
+
+                if visited.insert(parent) {
+                    queue.push_back(parent);
+                }
             }
         }
 
         None
     }
-
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
@@ -331,10 +338,12 @@ impl EnvironmentBuilder<UntypedCst> {
     fn pre_register_fields(&mut self, fields: &[FieldDef<UntypedCst>]) {
         for field in fields {
             let old_node = self.current_node;
-            // let old_path = self.path.clone();
+            let old_path = self.path.clone();
 
             self.path.push(field.name.0);
-            let new_node = self.graph.add_node(Element::new_with(field.name.0, None)); // value filled in phase 2
+            let new_node = self
+                .graph
+                .add_node(Element::new_with_ty(field.name, None, field.ty)); // value filled in phase 2
             self.graph.add_edge(old_node, new_node, Relation::Parent);
             self.trie.insert(Key::from(self.path.clone()), new_node);
 
@@ -344,10 +353,9 @@ impl EnvironmentBuilder<UntypedCst> {
             if let CstExpr::ProductConstructor { fields: nested } = *field.value.0 {
                 self.pre_register_fields(&nested);
             }
-            self.path.pop();
 
             self.current_node = old_node;
-            // self.path = old_path;
+            self.path = old_path;
         }
     }
 
@@ -370,7 +378,6 @@ impl EnvironmentBuilder<UntypedCst> {
 
                 let old_node = self.current_node;
                 self.current_node = node_index;
-                self.debug();
                 let value = self.analyze_expr(field.value, vars).into_value();
 
                 // Patch the value into the already-existing node.
@@ -434,11 +441,8 @@ impl EnvironmentBuilder<UntypedCst> {
         ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(l, r)))
     }
 
-    fn lift(mut self) -> Self {
-        let mut g: StableDiGraph<Item<UntypedCst>, QualifierFragment> = StableDiGraph::new();
-        // use petgraph::algo::*;
-        // let res = tarjan_scc(&self.graph);
-        // dbg!(res);
+    fn lift(self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
+        let mut map: FxHashMap<NodeIndex, Item<UntypedCst>> = FxHashMap::default();
         let nodes_with_references: Vec<_> = self
             .graph
             .edge_indices()
@@ -451,11 +455,34 @@ impl EnvironmentBuilder<UntypedCst> {
                 }
             })
             .collect();
+
         for node in nodes_with_references {
             let element = &self.graph[node];
-            g.
+            let item = Item {
+                kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
+                    name: element.name,
+                    sig: element.ty.expect("Recursive definition requires type"),
+                    body: element.value.expect("Definition requires body"),
+                }),
+            };
+            map.insert(node, item);
         }
-        todo!()
+
+        let main_node = self
+            .graph
+            .node_indices()
+            .find(|n| *self.graph[*n].name.0 == "main")
+            .unwrap();
+        let element = &self.graph[main_node];
+        let main_item = Item {
+            kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
+                name: element.name,
+                sig: element.ty.expect("Recursive definition requires type"),
+                body: element.value.expect("Definition requires body"),
+            }),
+        };
+        map.insert(main_node, main_item);
+        map
     }
 }
 

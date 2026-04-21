@@ -336,7 +336,7 @@ impl Solver<'_> {
                     ast.convert(Type::Sum(row_comb.goal)),
                 )
             }
-            Expr::Item(item_id, kind) => {
+            Expr::Item(item_id) => {
                 // dbg!(kind);
                 let ty_scheme = self.item_source.type_of_item(item_id);
 
@@ -388,7 +388,7 @@ impl Solver<'_> {
                 };
                 self.tables.item_wrappers.insert(id, wrapper);
                 (
-                    GenOut::new(constraints, ast.convert(Expr::Item(item_id, kind)), env),
+                    GenOut::new(constraints, ast.convert(Expr::Item(item_id)), env),
                     ty,
                 )
             }

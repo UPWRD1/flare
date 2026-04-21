@@ -62,10 +62,8 @@ pub mod passes;
 pub mod resource;
 
 use core::iter::Iterator;
-use std::path::PathBuf;
-
-use petgraph::graph::NodeIndex;
 use rustc_hash::FxHashMap;
+use std::path::PathBuf;
 
 use crate::{
     passes::{
@@ -74,7 +72,7 @@ use crate::{
             target::{Generator, Target},
         },
         frontend::{
-            environment::EnvironmentBuilder,
+            environment::{Environment, EnvironmentBuilder},
             parser,
             resolution::Resolver,
             typechecker::Typechecker,
@@ -108,13 +106,13 @@ pub struct Parse {
 }
 
 pub struct Build {
-    env: EnvironmentBuilder<UntypedCst>,
+    env: Environment<UntypedCst>,
 }
-
+#[derive(Debug)]
 pub struct Resolve {
-    order: Vec<NodeIndex>,
-    env: EnvironmentBuilder<UntypedAst>,
+    env: Environment<UntypedAst>,
 }
+#[derive(Debug)]
 pub struct Typecheck {
     items: Vec<(ItemId, TypesOutput)>,
     source: ItemSource,
@@ -200,12 +198,12 @@ pub fn build(parse: Parse) -> CompResult<Build> {
 
 pub fn resolve(build: Build) -> CompResult<Resolve> {
     let resolver = Resolver::new(build.env);
-    let (env, order) = resolver.analyze()?;
-    Ok(Resolve { order, env })
+    let env = resolver.analyze()?;
+    Ok(Resolve { env })
 }
 
 pub fn typecheck(resolve: Resolve) -> CompResult<Typecheck> {
-    let tc = Typechecker::new(resolve.order.leak(), resolve.env);
+    let tc = Typechecker::new(resolve.env);
     let (items, source) = tc.check()?;
     // for item in &items {
     //     println!("#{}:\n{}\n------------", item.0.0, item.1.typed_ast)

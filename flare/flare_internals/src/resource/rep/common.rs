@@ -114,8 +114,8 @@ impl<T> Spanned<T> {
         Spanned(((f)(self.0)).into(), self.1)
     }
 
-    pub fn default_with(v: T) -> Self {
-        Self(v, FlareSpan::default())
+    pub fn default_with(v: impl Into<T>) -> Self {
+        Self(v.into(), FlareSpan::default())
     }
 }
 

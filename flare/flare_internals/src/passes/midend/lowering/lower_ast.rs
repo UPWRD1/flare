@@ -565,34 +565,27 @@ impl<'source> LowerAst<'source> {
                 let inj_direction = IR::field(IR::field(IR::Var(param), direction_field), 1);
                 IR::app(inj_direction, term)
             }
-            Expr::Item(item_id, k) => {
+            Expr::Item(item_id) => {
                 let ty = self.item_source.lookup_item(item_id);
                 // dbg!(&ty);
-                match k {
-                    ast::Kind::Extern(s) => IR::Extern(s, ty),
-                    ast::Kind::Func => {
-                        let item_ir = IR::Item(ty, self.item_supply.supply_for(item_id));
-                        // let item_ir = IR::Item(ty, ItemId(item_id.0 as u32));
-                        let wrapper = self
-                            .item_wrappers
-                            .get(&id)
-                            .cloned()
-                            .unwrap_or_else(|| unreachable!("Item lacks expected wrapper"));
+                let item_ir = IR::Item(ty, self.item_supply.supply_for(item_id));
+                // let item_ir = IR::Item(ty, ItemId(item_id.0 as u32));
+                let wrapper = self
+                    .item_wrappers
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| unreachable!("Item lacks expected wrapper"));
 
-                        let ty_ir = wrapper.types.into_iter().fold(item_ir, |ir, ty| {
-                            IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty.0)))
-                        });
-                        let row_ir = wrapper.rows.into_iter().fold(ty_ir, |ir, row| {
-                            IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(*row.0)))
-                        });
-                        wrapper.evidence.into_iter().fold(row_ir, |ir, ev| {
-                            let param = self.lookup_ev(ev);
-                            IR::app(ir, IR::Var(param))
-                        })
-                    }
-
-                    _ => unimplemented!(),
-                }
+                let ty_ir = wrapper.types.into_iter().fold(item_ir, |ir, ty| {
+                    IR::ty_app(ir, TyApp::Ty(self.types.lower_ty(*ty.0)))
+                });
+                let row_ir = wrapper.rows.into_iter().fold(ty_ir, |ir, row| {
+                    IR::ty_app(ir, TyApp::Row(self.types.lower_row_ty(*row.0)))
+                });
+                wrapper.evidence.into_iter().fold(row_ir, |ir, ev| {
+                    let param = self.lookup_ev(ev);
+                    IR::app(ir, IR::Var(param))
+                })
             }
             Expr::Access(base, field) => {
                 let base_ir = self.lower_ast(base);

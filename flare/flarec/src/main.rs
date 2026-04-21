@@ -87,6 +87,7 @@ struct Cli {
 #[derive(Copy, Clone, ValueEnum, Default)]
 enum EmitOptions {
     LIR,
+    AST,
     IR,
     #[default]
     LLVM,
@@ -162,6 +163,29 @@ fn main() {
         }
         EmitOptions::LIR => make_target!(LIRTarget, cli),
         EmitOptions::LLVM => make_target!(LLVM, cli),
+        EmitOptions::AST => {
+            let ctx = make_filectx(&cli.input_files);
+            let now: Instant = Instant::now();
+            parse(&ctx)
+                .and_then(build)
+                .and_then(resolve)
+                // .and_then(typecheck)
+                // .and_then(lower)
+                // .and_then(simplify)
+                // .and_then(monomorph)
+                // .and_then(reduce)
+                .and_then(|res| {
+                    let output = format!("{res:?}");
+                    let elapsed = now.elapsed();
+                    println!("Compiled  in {elapsed:.2?}",);
+                    let f = cli.output_file.with_extension(IRTarget.ext());
+                    let mut f = File::create(f).unwrap();
+                    f.write_all(output.as_bytes())?;
+
+                    Ok(())
+                })
+                .inspect_err(|e| e.report(&ctx))
+        }
     }
     .unwrap_or_else(|_| std::process::exit(1))
 }

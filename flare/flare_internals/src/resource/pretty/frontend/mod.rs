@@ -115,7 +115,7 @@ impl<V: Variable + Render> Render for Spanned<Intern<Expr<V>>> {
             Expr::Unit => Doc::text("Unit"),
             Expr::Particle(p) => Doc::text(format!("@{}", p.0)),
             Expr::Hole(_) => Doc::text("HOLE"),
-            Expr::Item(item_id, _) => Doc::text(format!("#{}", item_id.0)),
+            Expr::Item(item_id) => Doc::text(format!("#{}", item_id.0)),
             Expr::Concat(l, r) => l.render().text(" <> ").render(r).brackets(),
             Expr::Project(d, v) => v.render().text(" ~> ").text(format!("{d:?}")).brackets(),
             Expr::Inject(d, v) => v.render().text(" <~ ").text(format!("{d:?}")).brackets(),

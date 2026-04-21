@@ -99,7 +99,7 @@ where
     Particle(Spanned<Intern<String>>),
     Hole(V),
 
-    Item(ItemId, Kind),
+    Item(ItemId),
 
     Concat(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     Project(Direction, Spanned<Intern<Self>>),

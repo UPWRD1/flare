@@ -247,7 +247,7 @@ impl Solver<'_> {
                 // dbg!(ast.1, nast.1, unsub_ast.1);
                 unsub_ast.convert(Expr::Inject(dir, nast))
             }),
-            Expr::Item(id, item) => SubstOut::new(unsub_ast.convert(Expr::Item(id, item))),
+            Expr::Item(id) => SubstOut::new(unsub_ast.convert(Expr::Item(id))),
             // Expr::Access(ex, label) => {
             //     // let row_comb = self.tables.row_to_combo.get(&unsub_ast.1).unwrap();
             //     self.substitute_ast(ex)

@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     passes::frontend::{
-        environment::EnvironmentBuilder,
+        environment::{Environment, EnvironmentBuilder},
         typing::{ItemSource, Solver, TypeScheme, TypesOutput},
     },
     resource::{
@@ -16,15 +16,15 @@ use crate::{
 };
 
 pub struct Typechecker {
-    item_order: &'static [NodeIndex],
+    // item_order: &'static [NodeIndex],
     context: ItemSource,
-    env: EnvironmentBuilder<UntypedAst>,
+    env: Environment<UntypedAst>,
 }
 
 impl Typechecker {
-    pub fn new(item_order: &'static [NodeIndex], env: EnvironmentBuilder<UntypedAst>) -> Self {
+    pub fn new(env: Environment<UntypedAst>) -> Self {
         Self {
-            item_order,
+            // item_order,
             env,
             // row_var_count: 0,
             context: ItemSource::new(FxHashMap::default()),
@@ -32,21 +32,15 @@ impl Typechecker {
     }
 
     pub fn check(mut self) -> CompResult<(Vec<(ItemId, TypesOutput)>, ItemSource)> {
-        todo!()
-        for item_idx in self.item_order {
-            let item = self
-                .env
-                .value(*item_idx)
-                .expect("Item should exist")
-                .clone();
+        for (item_idx, item) in self.env.clone() {
             match item.kind {
                 ItemKind::Function(f) => {
                     // dbg!(f.sig);
-                    self.register_function(*item_idx, f);
+                    self.register_function(item_idx, f);
                 }
                 ItemKind::Type(_n, _, t) => {
                     // dbg!(t);
-                    self.register_type(*item_idx, t);
+                    self.register_type(item_idx, t);
                 }
                 ItemKind::Extern { name, sig, .. } => {
                     self.context.insert(ItemId(item_idx.index()), sig.clone());
@@ -73,9 +67,9 @@ impl Typechecker {
     fn check_items(&mut self) -> CompResult<Vec<(ItemId, TypesOutput)>> {
         // dbg!(&self.context);
         let to_check: Vec<_> = self
-            .item_order
+            .env
             .iter()
-            .filter_map(|idx| {
+            .filter_map(|(idx, item)| {
                 let id = ItemId(idx.index());
                 let scheme = self
                     .context
@@ -83,12 +77,10 @@ impl Typechecker {
                     .get(&id)
                     .expect("Context should be loaded")
                     .clone();
-                todo!()
-                // let item = self.env.value(*idx).expect("Item should exist");
-                // match item.kind {
-                //     ItemKind::Function(_) | ItemKind::Extern { .. } => Some((id, scheme, item)),
-                //     _ => None,
-                // }
+                match item.kind {
+                    ItemKind::Function(_) | ItemKind::Extern { .. } => Some((id, scheme, item)),
+                    _ => None,
+                }
             })
             .collect();
         to_check
@@ -110,10 +102,7 @@ impl Typechecker {
                     }
 
                     ItemKind::Extern { name, args, sig: _ } => {
-                        let ex = name.convert(Expr::Item(
-                            id,
-                            crate::resource::rep::frontend::ast::Kind::Extern(name.0),
-                        ));
+                        let ex = name.convert(Expr::Item(id));
 
                         let funcs = args.iter().fold(ex, |prev, arg| {
                             prev.convert(Expr::Lambda(
@@ -139,7 +128,7 @@ impl Typechecker {
             .collect()
     }
 
-    pub fn finish(self) -> EnvironmentBuilder<UntypedAst> {
+    pub fn finish(self) -> Environment<UntypedAst> {
         self.env
     }
 }
