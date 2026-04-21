@@ -170,30 +170,11 @@ impl Solver<'_> {
             Expr::Unit => SubstOut::new(unsub_ast.convert(Expr::Unit)),
             Expr::Particle(p) => SubstOut::new(unsub_ast.convert(Expr::Particle(p))),
 
-            Expr::Add(l, r) => self
+            Expr::Bin(l, op, r) => self
                 .substitute_ast(l)
                 .merge(self.substitute_ast(r), |l, r| {
-                    unsub_ast.convert(Expr::Add(l, r))
+                    unsub_ast.convert(Expr::Bin(l, op, r))
                 }),
-            Expr::Sub(l, r) => self
-                .substitute_ast(l)
-                .merge(self.substitute_ast(r), |l, r| {
-                    unsub_ast.convert(Expr::Sub(l, r))
-                }),
-            Expr::Mul(l, r) => self
-                .substitute_ast(l)
-                .merge(self.substitute_ast(r), |l, r| {
-                    unsub_ast.convert(Expr::Mul(l, r))
-                }),
-            Expr::Div(l, r) => self
-                .substitute_ast(l)
-                .merge(self.substitute_ast(r), |l, r| {
-                    unsub_ast.convert(Expr::Div(l, r))
-                }),
-            Expr::Comparison(l, op, r) => {
-                SubstOut::new(unsub_ast.convert(Expr::Comparison(l, op, r)))
-            }
-
             Expr::Hole(v) => self
                 .substitute_ty(v.1)
                 .map(|ty| unsub_ast.convert(Expr::Hole(Typed(v.0, ty)))),

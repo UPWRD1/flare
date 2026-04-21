@@ -146,20 +146,6 @@ impl IR {
         Self::If(c.into(), t.into(), o.into())
     }
 
-    pub fn add(l: Self, r: Self) -> Self {
-        Self::Bin(Box::new(l), BinOp::Add, Box::new(r))
-    }
-
-    pub fn sub(l: Self, r: Self) -> Self {
-        Self::Bin(Box::new(l), BinOp::Sub, Box::new(r))
-    }
-    pub fn mul(l: Self, r: Self) -> Self {
-        Self::Bin(Box::new(l), BinOp::Mul, Box::new(r))
-    }
-    pub fn div(l: Self, r: Self) -> Self {
-        Self::Bin(Box::new(l), BinOp::Div, Box::new(r))
-    }
-
     pub fn bin(l: Self, op: BinOp, r: Self) -> Self {
         Self::Bin(Box::new(l), op, Box::new(r))
     }

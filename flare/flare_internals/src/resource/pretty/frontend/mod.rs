@@ -122,11 +122,7 @@ impl<V: Variable + Render> Render for Spanned<Intern<Expr<V>>> {
             Expr::Branch(l, r) => l.render().text(" ?? ").render(r),
             Expr::Label(label, v) => label.render().text(":").space().render(v).braces(),
             Expr::Unlabel(v, label) => label.render().text("^").render(v),
-            Expr::Mul(l, r) => l.render().space().text("*").space().render(r),
-            Expr::Div(l, r) => l.render().space().text("/").space().render(r),
-            Expr::Add(l, r) => l.render().space().text("+").space().render(r),
-            Expr::Sub(l, r) => l.render().space().text("-").space().render(r),
-            Expr::Comparison(l, bin_op, r) => l.render().space().render(bin_op).space().render(r),
+            Expr::Bin(l, bin_op, r) => l.render().space().render(bin_op).space().render(r),
             Expr::Call(f, e) => f.render().append(e.render().parens()),
             Expr::If(cond, then, other) => Doc::text("if")
                 .space()

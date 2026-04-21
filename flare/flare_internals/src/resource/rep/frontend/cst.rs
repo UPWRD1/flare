@@ -68,13 +68,13 @@ impl<S: Syntax> Pattern<S> {
                 | Pattern::Bool(_)
                 | Pattern::Unit => (),
                 Pattern::Variant(_, subpat) => bindings(&subpat.0, vars),
-                Pattern::Record { fields, open } => {
+                Pattern::Record { fields, open: _ } => {
                     fields.iter().for_each(|(_, f)| bindings(&f.0, vars))
                 }
                 Pattern::Tuple(fields) => fields.iter().for_each(|f| bindings(&f.0, vars)),
                 Pattern::At(v, _) => vars.push(*v),
-                Pattern::Or(patterns) => todo!(),
-                Pattern::Guard(spanned, spanned1) => todo!(),
+                Pattern::Or(_) => todo!(),
+                Pattern::Guard(_, _) => todo!(),
             }
         }
         let mut v = vec![];
@@ -116,12 +116,12 @@ pub enum CstExpr<S: Syntax> {
     ProductConstructor {
         fields: Intern<[FieldDef<S>]>,
     },
+    VariantConstructor {
+        name: S::Name,
+        value: Option<Spanned<Intern<Self>>>,
+    },
 
-    Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Sub(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Comparison(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
+    Bin(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
 
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     FieldAccess(Spanned<Intern<Self>>, Label),

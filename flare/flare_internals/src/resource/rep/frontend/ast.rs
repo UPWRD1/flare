@@ -112,11 +112,7 @@ where
     // ProductConstructor {
     // fields: Intern<[(Label, Spanned<Intern<Self>>)]>,
     // },
-    Mul(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Div(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Add(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Sub(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    Comparison(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
+    Bin(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
 
     Access(Spanned<Intern<Self>>, Label),
 

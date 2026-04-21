@@ -1,32 +1,25 @@
-use std::{collections::BTreeSet, convert};
+use std::collections::BTreeSet;
 
 use internment::Intern;
 use itertools::Itertools;
-use petgraph::{
-    algo::toposort,
-    dot::Config,
-    graph::NodeIndex,
-    visit::{Dfs, IntoNodeReferences, Walker},
-};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 use crate::{
     passes::frontend::{
-        environment::{Environment, EnvironmentBuilder},
+        environment::Environment,
         matchmatrix::{self, DecisionTree, Occ, SigElem},
         typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeScheme, TypeVar},
     },
     resource::{
-        errors::{self, CompResult, CompilerErr, DynamicErr, ErrorCollection},
+        errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
         rep::{
             common::{FlareSpan, Spanned, Syntax},
             frontend::{
-                ast::{BinOp, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
+                ast::{BinOp, Direction, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
                 cst::{CstExpr, FieldDef, MatchArm, Pattern, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind},
-                quantifier::QualifierFragment,
             },
         },
     },
@@ -202,7 +195,7 @@ impl Resolver {
 
     fn convert_func(&mut self, the_func: FunctionItem<UntypedCst>) -> FunctionItem<UntypedAst> {
         let sig = self.convert_type(the_func.sig, Kind::Func);
-        let body = self.convert_expr(the_func.body);
+        let body = self.desugar_cstexpr(the_func.body);
         FunctionItem {
             sig,
             body,
@@ -327,7 +320,7 @@ impl Resolver {
     }
 
     #[allow(unused_variables)]
-    pub fn convert_expr(
+    pub fn desugar_cstexpr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
     ) -> Spanned<Intern<Expr<<UntypedCst as Syntax>::Variable>>> {
@@ -336,40 +329,30 @@ impl Resolver {
             CstExpr::ProductConstructor { fields } => fields
                 .iter()
                 .map(|l| {
-                    let val = self.convert_expr(l.value);
+                    let val = self.desugar_cstexpr(l.value);
                     expr.convert(Expr::Label(Label(l.name), val))
                 })
                 .reduce(|l, r| expr.convert(Expr::Concat(l, r)))
                 .unwrap(),
-            CstExpr::Mul(l, r) => {
-                let l = self.convert_expr(l);
-                let r = self.convert_expr(r);
-                expr.convert(Expr::Mul(l, r))
+            CstExpr::VariantConstructor { name, value } => {
+                let value = if let Some(value) = value {
+                    self.desugar_cstexpr(value)
+                } else {
+                    name.convert(Expr::Unit)
+                };
+
+                let label = expr.convert(Expr::Label(Label(name), value));
+                expr.convert(Expr::Inject(Direction::Right, label))
             }
-            CstExpr::Div(l, r) => {
-                let l = self.convert_expr(l);
-                let r = self.convert_expr(r);
-                expr.convert(Expr::Div(l, r))
-            }
-            CstExpr::Add(l, r) => {
-                let l = self.convert_expr(l);
-                let r = self.convert_expr(r);
-                expr.convert(Expr::Add(l, r))
-            }
-            CstExpr::Sub(l, r) => {
-                let l = self.convert_expr(l);
-                let r = self.convert_expr(r);
-                expr.convert(Expr::Sub(l, r))
-            }
-            CstExpr::Comparison(l, comparison_op, r) => {
-                let l = self.convert_expr(l);
-                let r = self.convert_expr(r);
-                expr.convert(Expr::Comparison(l, comparison_op, r))
+            CstExpr::Bin(l, op, r) => {
+                let l = self.desugar_cstexpr(l);
+                let r = self.desugar_cstexpr(r);
+                expr.convert(Expr::Bin(l, op, r))
             }
             CstExpr::Call(func, arg) => {
-                let func = self.convert_expr(func);
+                let func = self.desugar_cstexpr(func);
 
-                let arg = self.convert_expr(arg);
+                let arg = self.desugar_cstexpr(arg);
                 if let Expr::Item(id) = *func.0 {
                     todo!(
                         "This would be a type constructor, but it lowk isn't being used right now"
@@ -378,28 +361,13 @@ impl Resolver {
                 expr.convert(Expr::Call(func, arg))
             }
             CstExpr::FieldAccess(l, r) => {
-                let l = self.convert_expr(l);
+                let l = self.desugar_cstexpr(l);
                 expr.convert(Expr::Access(l, r))
             }
-            // CstExpr::If(cond, then, otherwise) => {
-            //     let cond = self.convert_expr(cond);
-            //     let then = self.convert_expr(then);
-            //     let otherwise = self.convert_expr(otherwise);
-            //     expr.convert(Expr::If(cond, then, otherwise))
-            // }
             CstExpr::Match(matchee, branches) => {
-                // let matchee = self.convert_expr(matchee, vars);
-                // let base_expr = matchee.convert(CstExpr::Let(
-                //     UntypedCst
-                // (matchee.convert("%matchee".to_string())),
-                //     matchee,
-                //     expr,
-                // ));
                 let (patterns, actions): (Vec<_>, Vec<_>) =
                     branches.iter().map(|b| (b.pat, b.body)).unzip();
                 let patterns: Vec<_> = patterns.iter().map(|p| *p.0).collect();
-                // dbg!(&patterns);
-
                 let decision_tree = matchmatrix::compile(&patterns);
                 decision_tree.print(0);
                 let t = self.translate_decision_tree(matchee, decision_tree, &actions);
@@ -407,7 +375,7 @@ impl Resolver {
                 t
             }
             CstExpr::Lambda(arg, body) => {
-                let body = self.convert_expr(body);
+                let body = self.desugar_cstexpr(body);
                 expr.convert(Expr::Lambda(arg, body))
             }
             CstExpr::Let(pat, body, and_in) => {
@@ -441,7 +409,7 @@ impl Resolver {
         matchee: Spanned<Intern<CstExpr<UntypedCst>>>,
     ) -> Spanned<Intern<Expr<Untyped>>> {
         match occ {
-            Occ::Base => self.convert_expr(matchee),
+            Occ::Base => self.desugar_cstexpr(matchee),
             Occ::Proj(occ, l) => {
                 let subtree = self.translate_dtree_occ(*occ, matchee);
                 matchee.convert(Expr::Access(subtree, l))
@@ -474,7 +442,7 @@ impl Resolver {
     ) -> Spanned<Intern<Expr<Untyped>>> {
         match tree {
             DecisionTree::Fail => todo!(),
-            DecisionTree::Leaf(i) => self.convert_expr(actions[i]),
+            DecisionTree::Leaf(i) => self.desugar_cstexpr(actions[i]),
             DecisionTree::Switch {
                 occ,
                 cases,
@@ -515,7 +483,7 @@ impl Resolver {
                 let then = self.translate_decision_tree(matchee, *then, actions);
                 let else_ = self.translate_decision_tree(matchee, *else_, actions);
                 matchee.convert(Expr::If(
-                    matchee.convert(Expr::Comparison(occ, BinOp::Eq, lit)),
+                    matchee.convert(Expr::Bin(occ, BinOp::Eq, lit)),
                     then,
                     else_,
                 ))

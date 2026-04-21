@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, num::NonZero};
 
 use crate::resource::{
-    errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
+    errors::CompResult,
     rep::{
         common::{FlareSpan, Spanned, Syntax},
         frontend::{
@@ -32,18 +32,14 @@ pub enum NK {
     // Expressions
     CallExpression,
     Lambda,
-    LetExpression,
-    IfExpression,
+    // LetExpression,
+    // IfExpression,
     MatchExpression,
     PropAccess,
     PropQualifier,
     FieldAccess,
     SumConstructor,
-    MulExpression,
-    DivExpression,
-    AddExpression,
-    SubExpression,
-    CmpExpression,
+    BinExpression,
     ParenthesizedExpression,
     // Primaries
     Identifier,
@@ -79,35 +75,23 @@ pub enum NK {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
+#[forbid(dead_code)]
 pub enum FK {
     Name,
     Arg,
-    Value,
-    Body,
-    Expr,
     Type,
-    Parameter,
-    Return,
-    Condition,
-    Consequence,
-    Alternative,
+    Expr,
+    Value,
     Pattern,
-    Func,
     Field,
-    Macro,
-    Assignment,
-    Callee,
+    Func,
     Left,
     Right,
     Operator,
     Generics,
     Data,
     Import,
-    Implementor,
-    Spec,
-    TheType,
     Sigil,
-    VariantName,
     // sentinel
     COUNT,
 }
@@ -133,18 +117,12 @@ impl LangIds {
         k!(FieldedConstructor, "fielded_constructor");
         k!(CallExpression, "call_expression");
         k!(Lambda, "lambda");
-        k!(LetExpression, "let_expression");
-        k!(IfExpression, "if_expression");
         k!(MatchExpression, "match_expression");
         k!(PropAccess, "prop_access");
         k!(PropQualifier, "prop_qualifier");
         k!(FieldAccess, "field_access");
         k!(SumConstructor, "sum_constructor");
-        k!(MulExpression, "mul_expression");
-        k!(DivExpression, "div_expression");
-        k!(AddExpression, "add_expression");
-        k!(SubExpression, "sub_expression");
-        k!(CmpExpression, "cmp_expression");
+        k!(BinExpression, "binary_expression");
         k!(ParenthesizedExpression, "parenthesized_expression");
         k!(Identifier, "identifier");
         k!(Path, "path");
@@ -187,30 +165,16 @@ impl LangIds {
         f!(Arg, "arg");
         f!(Type, "type");
         f!(Expr, "expr");
-        // f!(FunctionField, "function_field");
-        // f!(ValField, "val_field");
-        f!(Body, "body");
         f!(Value, "value");
-        f!(Parameter, "parameter");
-        f!(Return, "return");
-        f!(Condition, "condition");
-        f!(Consequence, "consequence");
-        f!(Alternative, "alternative");
         f!(Pattern, "pattern");
         f!(Field, "field");
-        f!(Callee, "callee");
         f!(Func, "func");
         f!(Left, "left");
         f!(Right, "right");
-        f!(Operator, "operator");
+        f!(Operator, "op");
         f!(Generics, "generics");
-        f!(Data, "data");
         f!(Import, "import");
-        f!(Implementor, "implementor");
-        f!(Spec, "spec");
-        f!(TheType, "the_type");
         f!(Sigil, "sigil");
-        f!(VariantName, "variant_name");
         Self { kinds, fields }
     }
 
@@ -332,15 +296,12 @@ impl<'src> Translate<'src> {
                 k if k == self.ids.k(NK::FieldAccess) => self.lower_field_access(node),
 
                 // // ── Binary ops ───────────────────────────────────────────────────
-                k if k == self.ids.k(NK::MulExpression) => self.lower_binop(&node, BinOp::Mul),
-                k if k == self.ids.k(NK::DivExpression) => self.lower_binop(&node, BinOp::Div),
-                k if k == self.ids.k(NK::AddExpression) => self.lower_binop(&node, BinOp::Add),
-                k if k == self.ids.k(NK::SubExpression) => self.lower_binop(&node, BinOp::Sub),
+                k if k == self.ids.k(NK::BinExpression) => self.lower_binop(&node),
                 // k if k == self.ids.k(NK::CmpExpression) => self.lower_binop(node),
 
                 // ── Constructors ─────────────────────────────────────────────────
                 k if k == self.ids.k(NK::FieldedConstructor) => self.lower_record(node),
-                // k if k == self.ids.k(NK::SumConstructor) => self.lower_variant(node),
+                k if k == self.ids.k(NK::SumConstructor) => self.lower_variant(node),
 
                 // ── Transparent wrapper ───────────────────────────────────────────
                 k if k == self.ids.k(NK::ParenthesizedExpression) => {
@@ -376,6 +337,14 @@ impl<'src> Translate<'src> {
             }
         };
         self.si(node, |_| expr)
+    }
+
+    fn lower_variant(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+        let name = self.get_child(node, FK::Name).unwrap();
+        let name = self.name(&name);
+        let value = self.get_child(node, FK::Expr);
+        let value = value.map(|value| self.lower_expr(value));
+        CstExpr::VariantConstructor { name, value }
     }
 
     fn lower_record(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
@@ -446,12 +415,7 @@ impl<'src> Translate<'src> {
             value
         };
 
-        FieldDef {
-            name,
-            // params: (&[]).into(),
-            ty,
-            value,
-        }
+        FieldDef { name, ty, value }
     }
 
     fn collapse_current_path(&self) -> CstExpr<UntypedCst> {
@@ -461,7 +425,6 @@ impl<'src> Translate<'src> {
             .current_path
             .iter()
             .fold(init, |l, r| r.convert(CstExpr::FieldAccess(l, Label(*r))));
-        // dbg!(expr);
         *expr.0
     }
 
@@ -481,7 +444,7 @@ impl<'src> Translate<'src> {
         let key_ty_node = self.get_field(&node, FK::Name).unwrap();
         let key_ty = self.lower_type(key_ty_node);
 
-        let defn_ty_node = self.get_field(&node, FK::TheType).unwrap();
+        let defn_ty_node = self.get_field(&node, FK::Type).unwrap();
         let defn_ty = self.lower_type(defn_ty_node);
         let the_macro = Macro::Type(key_ty, defn_ty);
         self.defs
@@ -504,9 +467,9 @@ impl<'src> Translate<'src> {
                 }
                 k if k == self.ids.k(NK::ArrowType) => {
                     let param =
-                        self.lower_type(node.child_by_field_id(self.ids.f(FK::Parameter)).unwrap());
+                        self.lower_type(node.child_by_field_id(self.ids.f(FK::Left)).unwrap());
                     let result =
-                        self.lower_type(node.child_by_field_id(self.ids.f(FK::Return)).unwrap());
+                        self.lower_type(node.child_by_field_id(self.ids.f(FK::Right)).unwrap());
                     CstType::Func(param, result)
                 }
                 // k if k == self.k_product_type => self.lower_product_type(node),
@@ -548,20 +511,6 @@ impl<'src> Translate<'src> {
         CstType::User(name, generics)
     }
 
-    // fn lower_let(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
-    //     let pattern = self.lower_pattern(self.get_child(node, FK::Pattern).unwrap());
-    //     let value = self.lower_expr(self.get_child(node, FK::Value).unwrap());
-    //     let body = self.lower_expr(self.get_child(node, FK::Value).unwrap());
-    //     CstExpr::Let(pattern, value, body)
-    // }
-
-    // fn lower_if(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
-    //     let cond = self.lower_expr(self.get_child(node, FK::Condition).unwrap());
-    //     let cons = self.lower_expr(self.get_child(node, FK::Consequence).unwrap());
-    //     let altr = self.lower_expr(self.get_child(node, FK::Alternative).unwrap());
-    //     CstExpr::If(cond, cons, altr)
-    // }
-
     fn lower_match(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
         let matchee = self.lower_expr(self.get_child(node, FK::Value).unwrap());
         let patterns = self.get_children_by(node, FK::Pattern);
@@ -579,25 +528,21 @@ impl<'src> Translate<'src> {
         CstExpr::Match(matchee, arms.leak())
     }
 
-    fn lower_binop(&mut self, node: &Node<'src>, op: BinOp) -> CstExpr<UntypedCst> {
+    fn lower_binop(&mut self, node: &Node<'src>) -> CstExpr<UntypedCst> {
         let left_node = node.child_by_field_id(self.ids.f(FK::Left)).unwrap();
+        let op_node = node.child_by_field_id(self.ids.f(FK::Operator)).unwrap();
         let right_node = node.child_by_field_id(self.ids.f(FK::Right)).unwrap();
         let left = self.lower_expr(left_node);
         let right = self.lower_expr(right_node);
-        match op {
-            BinOp::Eq => todo!(),
-            BinOp::Neq => todo!(),
-            BinOp::Gt => todo!(),
-            BinOp::Lt => todo!(),
-            BinOp::Gte => todo!(),
-            BinOp::Lte => todo!(),
-            BinOp::Add => CstExpr::Add(left, right),
-            BinOp::Sub => todo!(),
-            BinOp::Mul => todo!(),
-            BinOp::Div => todo!(),
-            BinOp::And => todo!(),
-            BinOp::Or => todo!(),
-        }
+        dbg!(op_node.to_string());
+        CstExpr::Bin(
+            left,
+            match op_node.to_string().as_str() {
+                "+" => BinOp::Add,
+                _ => todo!(),
+            },
+            right,
+        )
     }
 
     fn lower_call(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
@@ -623,7 +568,7 @@ impl<'src> Translate<'src> {
                 }
                 k if k == self.ids.k(NK::PatternProduct) => self.lower_pattern_product(node),
                 k if k == self.ids.k(NK::PatternVariant) => {
-                    let tag = self.get_field(&node, FK::VariantName).unwrap();
+                    let tag = self.get_field(&node, FK::Name).unwrap();
                     let name = self.name(&tag);
                     let label = Label(name);
                     let payload = node

@@ -457,27 +457,7 @@ impl<'source> LowerAst<'source> {
                 IR::local(Var::new(ir_var, ir_ty), ir_def, ir_body)
             }
 
-            Expr::Add(l, r) => {
-                let ir_l = self.lower_ast(l);
-                let ir_r = self.lower_ast(r);
-                IR::add(ir_l, ir_r)
-            }
-            Expr::Sub(l, r) => {
-                let ir_l = self.lower_ast(l);
-                let ir_r = self.lower_ast(r);
-                IR::sub(ir_l, ir_r)
-            }
-            Expr::Mul(l, r) => {
-                let ir_l = self.lower_ast(l);
-                let ir_r = self.lower_ast(r);
-                IR::mul(ir_l, ir_r)
-            }
-            Expr::Div(l, r) => {
-                let ir_l = self.lower_ast(l);
-                let ir_r = self.lower_ast(r);
-                IR::div(ir_l, ir_r)
-            }
-            Expr::Comparison(l, op, r) => {
+            Expr::Bin(l, op, r) => {
                 let ir_l = self.lower_ast(l);
                 let ir_r = self.lower_ast(r);
                 IR::bin(ir_l, op, ir_r)

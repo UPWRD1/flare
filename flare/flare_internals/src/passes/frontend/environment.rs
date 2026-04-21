@@ -273,30 +273,14 @@ impl EnvironmentBuilder<UntypedCst> {
                     fields: resolved_fields.as_slice().into(),
                 }))
             }
-            CstExpr::Mul(l, r) => {
-                let l = self.analyze_expr(l, vars).into_value();
-                let r = self.analyze_expr(r, vars).into_value();
-                ControlFlow::Continue(expr.modify(CstExpr::Mul(l, r)))
+            CstExpr::VariantConstructor { name, value } => {
+                let value = value.map(|value| self.analyze_expr(value, vars).into_value());
+                ControlFlow::Continue(expr.modify(CstExpr::VariantConstructor { name, value }))
             }
-            CstExpr::Div(l, r) => {
+            CstExpr::Bin(l, op, r) => {
                 let l = self.analyze_expr(l, vars).into_value();
                 let r = self.analyze_expr(r, vars).into_value();
-                ControlFlow::Continue(expr.modify(CstExpr::Div(l, r)))
-            }
-            CstExpr::Add(l, r) => {
-                let l = self.analyze_expr(l, vars).into_value();
-                let r = self.analyze_expr(r, vars).into_value();
-                ControlFlow::Continue(expr.modify(CstExpr::Add(l, r)))
-            }
-            CstExpr::Sub(l, r) => {
-                let l = self.analyze_expr(l, vars).into_value();
-                let r = self.analyze_expr(r, vars).into_value();
-                ControlFlow::Continue(expr.modify(CstExpr::Sub(l, r)))
-            }
-            CstExpr::Comparison(l, comparison_op, r) => {
-                let l = self.analyze_expr(l, vars).into_value();
-                let r = self.analyze_expr(r, vars).into_value();
-                ControlFlow::Continue(expr.convert(CstExpr::Comparison(l, comparison_op, r)))
+                ControlFlow::Continue(expr.modify(CstExpr::Bin(l, op, r)))
             }
             CstExpr::Call(func, arg) => {
                 let func = self.analyze_expr(func, vars).into_value();
