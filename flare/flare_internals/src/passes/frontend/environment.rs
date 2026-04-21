@@ -215,13 +215,11 @@ impl EnvironmentBuilder<UntypedCst> {
 
         while let Some(node) = queue.pop_front() {
             if predicate(&self.graph[node]) {
-                // Consider deferring this mutation if it causes issues
                 self.graph
                     .add_edge(self.current_node, node, Relation::Reference);
                 return Some(node);
             }
 
-            // --- Find parent (filtered!) ---
             let parent = self
                 .graph
                 .edges_directed(node, Incoming)
@@ -229,7 +227,6 @@ impl EnvironmentBuilder<UntypedCst> {
                 .map(|e| e.source());
 
             if let Some(parent) = parent {
-                // --- Siblings (filtered!) ---
                 let siblings = self
                     .graph
                     .edges_directed(parent, Outgoing)
@@ -251,6 +248,7 @@ impl EnvironmentBuilder<UntypedCst> {
 
         None
     }
+
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
@@ -341,11 +339,18 @@ impl EnvironmentBuilder<UntypedCst> {
             let old_path = self.path.clone();
 
             self.path.push(field.name.0);
-            let new_node = self
-                .graph
-                .add_node(Element::new_with_ty(field.name, None, field.ty)); // value filled in phase 2
-            self.graph.add_edge(old_node, new_node, Relation::Parent);
-            self.trie.insert(Key::from(self.path.clone()), new_node);
+            let key = Key::from(self.path.clone());
+
+            let new_node = if let Some(&existing) = self.trie.get(&key) {
+                existing
+            } else {
+                let n = self
+                    .graph
+                    .add_node(Element::new_with_ty(field.name, None, field.ty)); // value filled in phase 2
+                self.graph.add_edge(old_node, n, Relation::Parent);
+                self.trie.insert(key, n);
+                n
+            };
 
             // Recurse into nested ProductConstructors so deeply-nested fields
             // are also pre-registered before any resolution happens.
