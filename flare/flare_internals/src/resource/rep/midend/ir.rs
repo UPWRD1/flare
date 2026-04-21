@@ -13,7 +13,7 @@ use crate::resource::rep::{
 pub struct VarId(pub usize);
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash)]
-pub struct ItemId(pub u32);
+pub struct ItemId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Var {
@@ -59,6 +59,8 @@ pub enum Param {
     Val(Var),
 }
 
+/// Layer 1 Intermediate Representation.
+/// Used after evidence generation for simplification and monomorphization
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
 pub enum IR {
     Var(Var),
@@ -67,7 +69,6 @@ pub enum IR {
     Bool(bool),
     #[default]
     Unit,
-    // Comment(String, Box<Self>),
     Particle(Intern<String>),
 
     Fun(Var, Box<Self>),
@@ -88,7 +89,6 @@ pub enum IR {
 
     Item(IRType, ItemId),
     Extern(Intern<String>, IRType),
-    // Fixpoint(Var, Box<Self>),
 }
 
 #[allow(clippy::should_implement_trait)]
@@ -151,6 +151,103 @@ impl IR {
     }
 
     pub fn type_of(&self) -> IRType {
+        fn type_of_app(fun: &IR, arg: &IR) -> IRType {
+            if let IRType::Fun(fun_arg_ty, ret_ty) = fun.type_of() {
+                if arg.type_of() != *fun_arg_ty {
+                    unreachable!(
+                        "Function applied to wrong argument type. Expected {}, found {}\n fun: {}\narg: {}",
+                        fun_arg_ty,
+                        arg.type_of(),
+                        fun,
+                        arg
+                    );
+                }
+                *ret_ty
+            } else if let IR::Item(t, _) = fun {
+                t.clone().into_ret_ty()
+            } else {
+                unreachable!("IR used non-function type as a function: {fun}")
+            }
+        }
+
+        fn type_of_tyapp(ty_fun: &IR, ty_app: &TyApp) -> IRType {
+            let IRType::TyFun(kind, ret_ty) = ty_fun.type_of() else {
+                unreachable!("Type applied to non-forall IR term");
+            };
+            match (kind, ty_app) {
+                (Kind::Type, TyApp::Ty(ty)) => ret_ty.subst_ty(ty.clone(), 0),
+                (Kind::Row, TyApp::Row(row)) => ret_ty.subst_row(row.clone(), 0),
+                (Kind::Type, TyApp::Row(_)) => {
+                    unreachable!("Kind mismatch. Type applied a Row to variable of kind Type",)
+                }
+                (Kind::Row, TyApp::Ty(_)) => {
+                    unreachable!("Type applied a Type to variable of kind Row",)
+                }
+            }
+        }
+
+        fn type_of_case(ty: &IRType, elem: &IR, branches: &[Branch]) -> IRType {
+            let IRType::Sum(Row::Closed(elems)) = elem.type_of() else {
+                unreachable!("Case scrutinee does not have sum type")
+            };
+            for (branch, elem) in branches.iter().zip(elems.iter()) {
+                if elem != &branch.param.ty {
+                    unreachable!(
+                        "Branch has unexpected parameter type {:?} != {:?}",
+                        elem.clone(),
+                        branch.param.ty.clone()
+                    )
+                }
+
+                if ty != &branch.body.type_of() {
+                    unreachable!(
+                        "ICE: Branch body has unexpected return type. ty: {ty:?} vs branch: {:?}\n\nbranch:\n{}",
+                        branch.body.type_of(),
+                        branch.body,
+                    )
+                }
+            }
+            ty.clone()
+        }
+
+        fn type_of_tag(ty: &IRType, tag: &usize, body: &IR) -> IRType {
+            let IRType::Sum(Row::Closed(elems)) = ty else {
+                unreachable!("ICE: Tagged value with non sum type");
+            };
+            if body.type_of() != elems[*tag] {
+                unreachable!(
+                    "Tagged value has element with the wrong type body {} vs elem {}, \n",
+                    body.type_of(),
+                    elems[*tag],
+                )
+            }
+            ty.clone()
+        }
+
+        fn type_of_if(cond: &IR, then: &IR, other: &IR) -> IRType {
+            if cond.type_of() != IRType::Bool {
+                unreachable!("Cannot evaluate if expression with a non-bool condition")
+            }
+            let then_ty = then.type_of();
+            if then_ty != other.type_of() {
+                unreachable!("If arms have differing types")
+            }
+            then_ty
+        }
+
+        fn type_of_local(v: &Var, defn: &IR, body: &IR) -> IRType {
+            if v.ty != defn.type_of() {
+                unreachable!(
+                    "Type mismatch local variable ${} has different type from its definition:  {} vs {}, \ndefn = \n{}",
+                    v.id.0,
+                    v.ty,
+                    defn.type_of(),
+                    defn
+                )
+            }
+            body.type_of()
+        }
+
         match self {
             Self::Var(v) => v.ty.clone(),
             Self::Num(_) => IRType::Num,
@@ -165,75 +262,19 @@ impl IR {
             Self::Str(_) => IRType::Str,
             Self::Bool(_) => IRType::Bool,
             Self::Unit => IRType::Unit,
-
-            // Self::Comment(_, r) => r.type_of(),
             Self::Particle(p) => IRType::Particle(*p),
 
             Self::Fun(arg, body) => IRType::fun(arg.ty.clone(), body.type_of()),
-
-            Self::App(fun, arg) => {
-                if let IRType::Fun(fun_arg_ty, ret_ty) = fun.type_of() {
-                    if arg.type_of() != *fun_arg_ty {
-                        unreachable!(
-                            "Function applied to wrong argument type. Expected {}, found {}\n fun: {}\narg: {}",
-                            fun_arg_ty,
-                            arg.type_of(),
-                            fun,
-                            arg
-                        );
-                    }
-                    *ret_ty
-                } else if let Self::Item(t, _) = &**fun {
-                    t.clone().into_ret_ty()
-                } else {
-                    unreachable!("IR used non-function type as a function: {fun}")
-                }
-            }
+            Self::App(fun, arg) => type_of_app(fun, arg),
 
             // These should all be numbers
             Self::Bin(l, op, r) => Self::type_of_binop(l, *op, r),
 
             Self::TyFun(kind, body) => IRType::ty_fun(*kind, body.type_of()),
-            Self::TyApp(ty_fun, ty_app) => {
-                let IRType::TyFun(kind, ret_ty) = ty_fun.type_of() else {
-                    unreachable!("Type applied to non-forall IR term");
-                };
-                match (kind, ty_app) {
-                    (Kind::Type, TyApp::Ty(ty)) => ret_ty.subst_ty(ty.clone(), 0),
-                    (Kind::Row, TyApp::Row(row)) => ret_ty.subst_row(row.clone(), 0),
-                    (Kind::Type, TyApp::Row(_)) => {
-                        unreachable!("Kind mismatch. Type applied a Row to variable of kind Type",)
-                    }
-                    (Kind::Row, TyApp::Ty(_)) => {
-                        unreachable!("Type applied a Type to variable of kind Row",)
-                    }
-                }
-            }
-            Self::Local(v, defn, body) => {
-                if v.ty != defn.type_of() {
-                    unreachable!(
-                        "Type mismatch local variable ${} has different type from its definition:  {} vs {}, \ndefn = \n{}",
-                        v.id.0,
-                        v.ty,
-                        defn.type_of(),
-                        defn
-                    )
-                }
-                body.type_of()
-            }
+            Self::TyApp(ty_fun, ty_app) => type_of_tyapp(ty_fun, ty_app),
+            Self::Local(v, defn, body) => type_of_local(v, defn, body),
 
-            Self::If(cond, then, other) => {
-                if cond.type_of() != IRType::Bool {
-                    unreachable!("Cannot evaluate if expression with a non-bool condition")
-                }
-
-                let then_ty = then.type_of();
-
-                if then_ty != other.type_of() {
-                    unreachable!("If arms have differing types")
-                }
-                then_ty
-            }
+            Self::If(cond, then, other) => type_of_if(cond, then, other),
 
             Self::Tuple(elems) => {
                 IRType::Prod(Row::Closed(elems.iter().map(Self::type_of).collect()))
@@ -244,47 +285,8 @@ impl IR {
                 };
                 elems[*field].clone()
             }
-            Self::Tag(ty, tag, body) => {
-                let IRType::Sum(Row::Closed(elems)) = ty else {
-                    unreachable!("ICE: Tagged value with non sum type");
-                };
-
-                if body.type_of() != elems[*tag] {
-                    unreachable!(
-                        "Tagged value has element with the wrong type body {} vs elem {}, \nir = {}",
-                        body.type_of(),
-                        elems[*tag],
-                        self,
-                    )
-                }
-
-                ty.clone()
-            }
-            Self::Case(ty, elem, branches) => {
-                let IRType::Sum(Row::Closed(elems)) = elem.type_of() else {
-                    unreachable!("Case scrutinee does not have sum type")
-                };
-
-                for (branch, elem) in branches.iter().zip(elems.iter()) {
-                    if elem != &branch.param.ty {
-                        unreachable!(
-                            "Branch has unexpected parameter type {:?} != {:?}",
-                            elem.clone(),
-                            branch.param.ty.clone()
-                        )
-                    }
-
-                    if ty != &branch.body.type_of() {
-                        unreachable!(
-                            "ICE: Branch body has unexpected return type. ty: {ty:?} vs branch: {:?}\n\nbranch:\n{}",
-                            branch.body.type_of(),
-                            branch.body,
-                        )
-                    }
-                }
-
-                ty.clone()
-            }
+            Self::Tag(ty, tag, body) => type_of_tag(ty, tag, body),
+            Self::Case(ty, elem, branches) => type_of_case(ty, elem, branches),
             Self::Item(t, _) | Self::Extern(_, t) => t.clone(),
         }
     }
@@ -301,29 +303,6 @@ impl IR {
                     )
                 }
                 lty
-                //     (
-                //     match (lty, op, rty) {
-                //     (
-                //         IRType::Num(Specifier::I32),
-                //         (BinOp::Add | BinOp::Sub | BinOp::Mul),
-                //         IRType::Num(Specifier::I32),
-                //     ) => Specifier::I32,
-                //     (IRType::Num(Specifier::I32), (BinOp::Div), IRType::Num(Specifier::I32)) => {
-                //         if let (IR::Num(l), IR::Num(r)) = (l, r) {
-                //             if l.rem_euclid(**r) == 0.0 {
-                //                 Specifier::I32
-                //             } else {
-                //                 Specifier::F64
-                //             }
-                //         } else {
-                //             Specifier::Unknown
-                //         }
-                //     }
-                //     (IRType::Num(_), _, IRType::Num(_)) => Specifier::F64,
-                //     _ => unreachable!(
-                //         "Expected number type in arithmatic operation while generating IR",
-                //     ),
-                // })
             }
             BinOp::And | BinOp::Or => {
                 let lty = l.type_of();
@@ -359,8 +338,6 @@ impl IR {
             | Self::Bool(_)
             | Self::Unit
             | Self::Particle(_) => 0,
-
-            // Self::Comment(_, r) => r.size(),
             Self::Bin(l, _, r) => l.size() + r.size(),
 
             Self::Fun(_, body) => 10 + body.size(),
@@ -375,21 +352,19 @@ impl IR {
             Self::Tuple(v) => v.iter().map(Self::size).sum::<usize>(),
             Self::Case(_, s, b) => s.size() + b.iter().map(|x| x.as_fun().size()).sum::<usize>(),
             Self::Item(_, _) | Self::Extern(_, _) => 0,
-            // _ => todo!(),
         }
     }
 
     pub fn is_trivial(&self) -> bool {
-        match self {
+        matches!(
+            self,
             Self::Var(_)
-            | Self::Num(_)
-            | Self::Str(_)
-            | Self::Unit
-            | Self::Bool(_)
-            | Self::Particle(_) => true,
-            // Self::Field(x, _) if x.is_trivial() => true,
-            _ => false,
-        }
+                | Self::Num(_)
+                | Self::Str(_)
+                | Self::Unit
+                | Self::Bool(_)
+                | Self::Particle(_)
+        )
     }
     pub fn is_value(&self) -> bool {
         match self {
@@ -412,7 +387,6 @@ impl IR {
             | Self::Tag(_, _, _) => true,
             Self::Item(_, _) | Self::Extern(_, _) => true,
             Self::If(..) => false,
-            // _ => todo!("{self:?}"),
         }
     }
 
@@ -500,7 +474,7 @@ impl<'a> Iterator for IrIterator<'a> {
 
                     // Do nothing
                 }
-                // IR::Comment(_, ir)
+
                 IR::Fun(_, ir)
                 | IR::TyFun(_, ir)
                 | IR::TyApp(ir, _)
@@ -542,8 +516,3 @@ impl<'a> Iterator for IrIterator<'a> {
         }
     }
 }
-
-// struct IRModule {
-//     externs: FxHashMap<ItemId, Intern<String>>,
-//     items: FxHashMap<ItemId, IR>,
-// }

@@ -29,7 +29,6 @@ pub(crate) use templates::*;
 
 use ariadne::{Color, Label, Report, ReportKind, sources};
 
-use chumsky::span::{SimpleSpan, Span};
 use thiserror::Error;
 
 pub type CompResult<T> = Result<T, CompilerErr>;

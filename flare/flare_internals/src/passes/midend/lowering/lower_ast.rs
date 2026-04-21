@@ -45,7 +45,7 @@ impl<K: Eq + std::hash::Hash> VarSupply<K> {
 
 #[derive(Default)]
 pub struct ItemSupply<T: Eq + Hash> {
-    pub next: u32,
+    pub next: usize,
     cache: FxHashMap<T, ItemId>,
 }
 
@@ -418,13 +418,10 @@ impl<'source> LowerAst<'source> {
     pub fn lower_ast(&mut self, ast: Spanned<Intern<Expr<Typed>>>) -> IR {
         let id = ast.1;
         match *ast.0 {
-            Expr::Ident(Typed(var, ty)) => {
-                // dbg!(ty);
-                IR::Var(Var::new(
-                    self.var_supply.supply_for(var.0.0),
-                    self.types.lower_ty(*ty.0),
-                ))
-            }
+            Expr::Ident(Typed(var, ty)) => IR::Var(Var::new(
+                self.var_supply.supply_for(var.0.0),
+                self.types.lower_ty(*ty.0),
+            )),
             Expr::Number(n) => IR::Num(n),
             Expr::String(n) => IR::Str(n.0),
             Expr::Bool(b) => IR::Bool(b),
@@ -465,17 +462,10 @@ impl<'source> LowerAst<'source> {
 
             Expr::Label(_, body) | Expr::Unlabel(body, _) => self.lower_ast(body),
             Expr::Concat(left, right) => {
-                let param = self
-                    .row_to_ev
-                    .get(&id)
-                    .copied()
-                    .map(|ev| self.lookup_ev(ev))
-                    .unwrap_or_else(|| {
-                        unreachable!(
-                            "Concat AST node lacks evidence\n\n{:?}\n\n{:#?}",
-                            id, self.row_to_ev
-                        )
-                    });
+                let param = self.row_to_ev.get(&id).copied().map_or_else(
+                    || unreachable!("Concat AST node lacks evidence\n\n{:?}", id,),
+                    |ev| self.lookup_ev(ev),
+                );
 
                 let concat = IR::field(IR::Var(param), 0);
                 let left = self.lower_ast(left);
@@ -505,17 +495,10 @@ impl<'source> LowerAst<'source> {
                 } else {
                     let term = self.lower_ast(body);
 
-                    let param = self
-                        .row_to_ev
-                        .get(&id)
-                        .copied()
-                        .map(|ev| self.lookup_ev(ev))
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Project AST node lacks an expected evidence: {id:?}, evs:\n{:#?}",
-                                self.row_to_ev
-                            )
-                        });
+                    let param = self.row_to_ev.get(&id).copied().map_or_else(
+                        || panic!("Project AST node lacks an expected evidence: {id:?}"),
+                        |ev| self.lookup_ev(ev),
+                    );
                     let direction_field = match direction {
                         Direction::Left => 2,
                         Direction::Right => 3,
@@ -525,17 +508,10 @@ impl<'source> LowerAst<'source> {
                 }
             }
             Expr::Inject(direction, body) => {
-                let param = self
-                    .row_to_ev
-                    .get(&id)
-                    .copied()
-                    .map(|ev| self.lookup_ev(ev))
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "Inject AST node lacks an expected evidence: {:?} \n\n {:#?}",
-                            id, self.row_to_ev
-                        )
-                    });
+                let param = self.row_to_ev.get(&id).copied().map_or_else(
+                    || panic!("Inject AST node lacks an expected evidence: {id:?}"),
+                    |ev| self.lookup_ev(ev),
+                );
 
                 let term = self.lower_ast(body);
                 let direction_field = match direction {
@@ -547,9 +523,8 @@ impl<'source> LowerAst<'source> {
             }
             Expr::Item(item_id) => {
                 let ty = self.item_source.lookup_item(item_id);
-                // dbg!(&ty);
+
                 let item_ir = IR::Item(ty, self.item_supply.supply_for(item_id));
-                // let item_ir = IR::Item(ty, ItemId(item_id.0 as u32));
                 let wrapper = self
                     .item_wrappers
                     .get(&id)
@@ -576,7 +551,7 @@ impl<'source> LowerAst<'source> {
                     .row_to_ev
                     .get(&id)
                     .copied()
-                    .unwrap_or_else(|| panic!("Access node lacks evidence: {:?}", id));
+                    .unwrap_or_else(|| panic!("Access node lacks evidence: {id:?}"));
 
                 let param = self.lookup_ev(ev);
 
@@ -585,7 +560,7 @@ impl<'source> LowerAst<'source> {
                 let prj_left = IR::field(IR::field(IR::Var(param), 2), 0);
                 IR::app(prj_left, base_ir)
             }
-            _ => todo!("{ast:?}"),
+            Expr::Hole(_) => todo!(),
         }
     }
 }

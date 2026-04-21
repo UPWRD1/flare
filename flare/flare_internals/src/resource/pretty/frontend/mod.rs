@@ -82,7 +82,6 @@ impl Render for BinOp {
 impl Render for Spanned<Intern<Type>> {
     fn render(self) -> Doc<'static> {
         match *self.0 {
-            Type::Unifier(ty_uni_var) => todo!(),
             Type::Var(v) => Doc::text(format!("?{}", v.0)),
             Type::Num => Doc::text("num"),
             Type::Unit => Doc::text("unit"),
@@ -93,14 +92,9 @@ impl Render for Spanned<Intern<Type>> {
                 .render()
                 .append(Doc::space().append(Doc::text("->").append(Doc::space())))
                 .append(r.render()),
-            Type::TypeFun(_, _) => todo!(),
             Type::Prod(r) => r.render().braces(),
             Type::Sum(r) => Doc::text("|").render(r).text("|"),
-            Type::Label(_, _) => todo!(),
-            Type::Recursive(v, p, t) => {
-                todo!()
-            }
-            Type::Hole => todo!(),
+            _ => todo!("{self:?}"),
         }
     }
 }

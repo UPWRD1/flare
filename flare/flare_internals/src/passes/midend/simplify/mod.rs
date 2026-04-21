@@ -33,10 +33,7 @@ impl Occurrences {
         let mut vars = FxHashMap::default();
         vars.insert(var, Occurrence::Once);
         Self { vars }
-        // Self {
-        // vars: FxHashMap::from_iter([(v, Occurrence::Once)]),
-        // }
-    }
+            }
 
     fn lookup_var(&self, k: &Var) -> Occurrence {
         *self.vars.get(&k.id).unwrap_or_else(|| {
@@ -47,7 +44,6 @@ impl Occurrences {
     }
 
     fn mark_dead(&mut self, k: VarId) {
-        // self.vars.remove(&k);
         self.vars.entry(k).and_modify(|x| *x = Occurrence::Dead);
     }
 
@@ -214,19 +210,12 @@ IR::Item(t, id) => {
         IR::Bin(ir, bin_op, ir1) => todo!(),
   }
 }
-struct OccuranceAnalyzer {
-    // items: &'i [IR],
-}
-impl OccuranceAnalyzer {
-    pub fn new() -> Self {
-        Self {} 
-    }
+struct OccuranceAnalyzer;
 
+impl OccuranceAnalyzer {
     fn occurrence_analysis(
-        &self,
         ir: &IR,
-        // seen: &im::HashSet<ItemId, FxBuildHasher>,
-    ) -> (FxHashSet<VarId>, Occurrences) {
+           ) -> (FxHashSet<VarId>, Occurrences) {
         match ir {
             IR::Var(var) => {
                 let mut free = FxHashSet::default();
@@ -236,17 +225,17 @@ impl OccuranceAnalyzer {
             IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
                 (FxHashSet::default(), Occurrences::default())
             }
-            // IR::Comment(_, r) => self.occurrence_analysis(r, seen),
+
             IR::Bin(l, _, r) => {
-                let (mut free, occs) = self.occurrence_analysis(l, );
-                let (r_free, r_occs) = self.occurrence_analysis(r, );
+                let (mut free, occs) = Self::occurrence_analysis(l, );
+                let (r_free, r_occs) = Self::occurrence_analysis(r, );
 
                 free.extend(r_free);
                 (free, occs.merge(r_occs))
             }
 
             IR::Fun(var, ir) => {
-                let (mut free, mut occs) = self.occurrence_analysis(ir);
+                let (mut free, mut occs) = Self::occurrence_analysis(ir);
                 free.remove(&var.id);
                 occs.vars.entry(var.id).or_insert(Occurrence::Dead);
                 let occs = occs.in_fun(&free);
@@ -254,26 +243,26 @@ impl OccuranceAnalyzer {
             }
 
             IR::App(fun, arg) => {
-                let (mut fun_free, fun_occs) = self.occurrence_analysis(fun);
-                let (arg_free, arg_occs) = self.occurrence_analysis(arg);
+                let (mut fun_free, fun_occs) = Self::occurrence_analysis(fun);
+                let (arg_free, arg_occs) = Self::occurrence_analysis(arg);
                 fun_free.extend(arg_free);
                 (fun_free, fun_occs.merge(arg_occs))
             }
-            IR::TyFun(_, ir) | IR::TyApp(ir, _) | IR::Field(ir, _) | IR::Tag(_, _, ir) => self.occurrence_analysis(ir),
+            IR::TyFun(_, ir) | IR::TyApp(ir, _) | IR::Field(ir, _) | IR::Tag(_, _, ir) => Self::occurrence_analysis(ir),
             IR::Local(var, defn, body) => {
-                let (mut free, mut occs) = self.occurrence_analysis(body);
-                let (defn_free, defn_occs) = self.occurrence_analysis(defn);
+                let (mut free, mut occs) = Self::occurrence_analysis(body);
+                let (defn_free, defn_occs) = Self::occurrence_analysis(defn);
                 free.extend(defn_free);
                 free.remove(&var.id);
                 occs.vars.entry(var.id).or_insert(Occurrence::Dead);
                 (free, defn_occs.merge(occs))
             }
             IR::If(c, t, o) => {
-                let (mut free, mut occs) = self.occurrence_analysis(c);
+                let (mut free, mut occs) = Self::occurrence_analysis(c);
 
-                let (then_free, then_occs) = self.occurrence_analysis(t);
+                let (then_free, then_occs) = Self::occurrence_analysis(t);
 
-                let (other_free, other_occs) = self.occurrence_analysis(o);
+                let (other_free, other_occs) = Self::occurrence_analysis(o);
 
                 free.extend(then_free);
                 free.extend(other_free);
@@ -288,8 +277,7 @@ impl OccuranceAnalyzer {
                 let mut occs = Occurrences::default();
                 let mut free = FxHashSet::default();
                 for elem in elements {
-                    // dbg!(elem);
-                    let (elem_free, elem_occs) = self.occurrence_analysis(elem);
+                    let (elem_free, elem_occs) = Self::occurrence_analysis(elem);
                     free.extend(elem_free);
                     occs = occs.merge(elem_occs);
                 }
@@ -297,11 +285,11 @@ impl OccuranceAnalyzer {
             }
             IR::Case(_, scrutinee, branches) => {
                 let (mut scrutinee_free, mut scrutinee_occs) =
-                    self.occurrence_analysis(scrutinee);
+                    Self::occurrence_analysis(scrutinee);
                 
                 for branch in branches {
                     let (mut branch_free, mut branch_occs) =
-                        self.occurrence_analysis(&branch.body);
+                        Self::occurrence_analysis(&branch.body);
                     branch_free.remove(&branch.param.id);
 
                     branch_occs
@@ -317,16 +305,9 @@ impl OccuranceAnalyzer {
             }
 
             IR::Item(_, id) => {
-                // dbg!(self.items.len(), id);
-                // if seen.contains(id) {
-                    // We are analyzing a recursive function
-                    (Default::default(), Default::default())
-                // } else {
-                //     let seen = seen.update(*id);
-                //     self.occurrence_analysis(&self.items[id.0 as usize], &seen)
-                // }
-            }
-            IR::Extern(_, _) => (Default::default(), Default::default()),
+                                   (FxHashSet::default(), Occurrences::default())
+                           }
+            IR::Extern(_, _) => (FxHashSet::default(), Occurrences::default()),
             // _ => todo!("{ir:?}"),
         }
     }
@@ -373,15 +354,14 @@ struct Simplifier {
 }
 
 pub fn simplify(the_ir: Vec<IR>) -> Vec<IR> {
-    let occ_a = OccuranceAnalyzer::new();
-    the_ir
+       the_ir
                 .into_iter().enumerate()
         .map(|(i, ir)| {
             let mut simplifier = Simplifier::new();
             let mut ir = ir;
             for _ in 0..4 {
                 // println!("Pass {n}");
-                let (_, occs) = occ_a.occurrence_analysis(&ir);
+                let (_, occs) = OccuranceAnalyzer::occurrence_analysis(&ir);
                 simplifier.with_occs(occs);
                 ir = simplifier.simplify(ir, InScope::default(), vec![]);
                 if simplifier.did_no_work() {
@@ -402,7 +382,7 @@ impl Simplifier {
            ..Default::default()        }
     }
     fn with_occs(&mut self, occs: Occurrences) {
-        self.occs = occs
+        self.occs = occs;
     }
         
     fn did_no_work(&self) -> bool {
@@ -481,10 +461,7 @@ impl Simplifier {
                     *obj
                 }
                 IR::Case(ty, scrutinee, branches) => {
-                    if branches.is_empty() {
-                        panic!("Empty branches");
-                        // break self.rebuild(*scrutinee, in_scope, ctx);
-                    }
+                   assert!(!branches.is_empty(), "Empty branches");
                     
                     let branches: Vec<Branch> = branches
                         .into_iter()
@@ -597,17 +574,17 @@ impl Simplifier {
             Occurrence::Dead | Occurrence::Once => unreachable!(
                 "Encountered dead or single-use variable while determining inline viablility. This should have been handled prior.",
             ),
-            Occurrence::OnceInFun => ir.is_value() && self.some_benefit(ir, in_scope, ctx),
+            Occurrence::OnceInFun => ir.is_value() && Self::some_benefit(ir, in_scope, ctx),
             Occurrence::Many => {
                 // dbg!(&ir);
                 // dbg!(ir.size());
                 let small_enough = ir.size() <= self.inline_size_threshold   ;
-                ir.is_value() && small_enough && self.some_benefit(ir, in_scope, ctx)
+                ir.is_value() && small_enough && Self::some_benefit(ir, in_scope, ctx)
             }
         }
     }
 
-    fn some_benefit(&self, ir: &IR, in_scope: &InScope, ctx: &SimplifierContext) -> bool {
+    fn some_benefit( ir: &IR, in_scope: &InScope, ctx: &SimplifierContext) -> bool {
         let (params, _) = ir.clone().split_funs();
 
         let args = ctx
@@ -674,7 +651,7 @@ impl Simplifier {
                         let branch_as_fn = correct_branch.as_fun();
                         ir = IR::app(branch_as_fn, *body);
                     } else {
-                        ir = IR::case(ty, ir, b)
+                        ir = IR::case(ty, ir, b);
                     }
                 },
                 ContextEntry::TyApp(ty_app) => {
@@ -694,11 +671,11 @@ impl Simplifier {
                 }
                 ContextEntry::Local(var, occ, body) => {
                     // if ir.is_trivial() {
-                    if self.some_benefit(&ir, &in_scope, &ctx) {
+                    if Self::some_benefit(&ir, &in_scope, &ctx) {
                         self.locals_inlined += 1;
                         self.subst.insert(var.id, SubstRng::Done(ir));
                         return self.simplify(body, in_scope, ctx);
-                    } else {
+                    } 
                         let body = self.simplify(
                             body,
                             in_scope.update(var.id, Definition::BoundTo(ir.clone(), occ)),
@@ -710,10 +687,9 @@ impl Simplifier {
                         } else {
                             IR::local(var, ir, body)
                         }
-                    }
-                }
+                                    }
                 ContextEntry::Bin(op, r) => {
-                    ir = self.rebuild_binop(ir, op, r, in_scope.clone())
+                    ir = self.rebuild_binop(ir, op, r, in_scope.clone());
                 }
             }
         }

@@ -534,7 +534,6 @@ impl<'src> Translate<'src> {
         let right_node = node.child_by_field_id(self.ids.f(FK::Right)).unwrap();
         let left = self.lower_expr(left_node);
         let right = self.lower_expr(right_node);
-        dbg!(op_node.to_string());
         CstExpr::Bin(
             left,
             match op_node.to_string().as_str() {
@@ -552,7 +551,6 @@ impl<'src> Translate<'src> {
     }
 
     fn lower_field_access(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
-        dbg!(node.to_sexp());
         let base = self.lower_expr(self.get_child(node, FK::Expr).unwrap());
         let field = self.name(&self.get_child(node, FK::Field).unwrap());
 
@@ -649,7 +647,7 @@ pub fn parse(file: &FileSource) -> CompResult<PackageCollection<UntypedCst>> {
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_flare::LANGUAGE.into())
-        .unwrap();
+        .expect("Could not set language");
     let tree = parser.parse(&file.source, None).unwrap();
     Ok(translate_tree_sitter(&tree, file))
 }

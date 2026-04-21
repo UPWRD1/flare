@@ -43,12 +43,12 @@ use crate::{
 //   the substitution trivially correct without any manual depth arithmetic.
 
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
-    let main_id = ItemId(the_ir.len() as u32 - 1);
+    let main_id = ItemId(the_ir.len() - 1);
 
     let ref_ir: FxHashMap<ItemId, IR> = the_ir
         .into_iter()
         .enumerate()
-        .map(|(i, ir)| (ItemId(i as u32), ir))
+        .map(|(i, ir)| (ItemId(i), ir))
         .collect();
 
     let root = Monomorph {
@@ -64,7 +64,7 @@ pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
     let id_map: FxHashMap<Monomorph, ItemId> = order
         .iter()
         .enumerate()
-        .map(|(i, m)| (*m, ItemId(i as u32)))
+        .map(|(i, m)| (*m, ItemId(i)))
         .collect();
 
     // Phase 3 — instantiate and rewrite.
@@ -344,8 +344,8 @@ fn resolve_ty_app_chain(
 
     loop {
         match cur {
-            IR::TyApp(inner2, app2) => {
-                apps.push(app2.clone());
+            IR::TyApp(inner2, new_app) => {
+                apps.push(new_app.clone());
                 cur = inner2;
             }
             IR::Item(og_ty, id) => {

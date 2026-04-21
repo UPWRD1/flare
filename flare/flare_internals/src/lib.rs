@@ -20,7 +20,7 @@
     // clippy::undocumented_unsafe_blocks
 )]
 #[deny(
-    // clippy::pedantic,
+    clippy::pedantic,
     // clippy::nursery,
     clippy::perf,
     clippy::correctness,

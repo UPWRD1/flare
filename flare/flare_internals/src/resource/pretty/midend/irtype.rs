@@ -106,7 +106,7 @@ impl std::fmt::Display for TyApp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Ty(t) => write!(f, "{}", t),
-            Self::Row(row) => todo!(),
+            Self::Row(_) => todo!(),
         }
     }
 }

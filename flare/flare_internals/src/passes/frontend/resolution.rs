@@ -4,7 +4,6 @@ use internment::Intern;
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-type DiGraph<N, E> = petgraph::graph::DiGraph<N, E>;
 use crate::{
     passes::frontend::{
         environment::Environment,
@@ -17,7 +16,7 @@ use crate::{
             common::{FlareSpan, Spanned, Syntax},
             frontend::{
                 ast::{BinOp, Direction, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
-                cst::{CstExpr, FieldDef, MatchArm, Pattern, UntypedCst},
+                cst::{CstExpr, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind},
             },
@@ -42,11 +41,6 @@ use crate::{
 #[derive(Default)]
 pub struct Resolver {
     env: Environment<UntypedCst>,
-    // new_env: Environment<UntypedAst>
-    // current_parent: QualifierFragment,
-    // current_dag_node: Option<NodeIndex>,
-    // pub dag: DiGraph<DagIdx, ()>,
-    // main_dag_idx: Option<NodeIndex>,
     errors: Vec<CompilerErr>,
     pub seen: FxHashSet<ItemId>,
 }
@@ -58,8 +52,6 @@ pub struct TypeFixer {
     pub types_to_name: Vec<(TypeVar, Intern<String>)>,
     evidence: Vec<Evidence>,
     type_var_count: usize,
-    // seen_row_vars: FxHashMap<FlareSpan, RowVar>,
-    // inside_type_fun: TyappState,
 }
 
 impl TypeFixer {
@@ -128,16 +120,11 @@ impl TypeFixer {
                 // let reduced = self.analyze_type(t); // re-run beta reduction
                 // self.helper(reduced, f)
                 panic!()
-                // let r = self.convert_type(r);
-
-                // t.convert(Type::TypeApp(l, r))
             }
             CstType::GenericFun(l, r) => {
                 // panic!("Should have been resolved");
                 // let l = self.helper(l);
                 self.helper(r)
-
-                // t.convert(Type::TypeFun(l, r))
             }
             CstType::Particle(p) => t.convert(Type::Particle(p)),
             CstType::Unit => t.convert(Type::Unit),
@@ -146,30 +133,13 @@ impl TypeFixer {
             CstType::String => t.convert(Type::String),
             CstType::Hole => t.convert(Type::Hole),
         }
-        // dbg!(o)
     }
 }
 
-type DagIdx = usize;
-
-/// A single destructuring step produced by pattern compilation.
-#[derive(Debug)]
-struct Binding {
-    binder: Untyped,
-    /// The RHS: some destructuring of the scrutinee (e.g. Unlabel, or the scrutinee itself)
-    value: Spanned<Intern<CstExpr<UntypedCst>>>,
-    /// Whether this binding is user-visible (goes into `vars` for name resolution)
-    /// or just exists to constrain the type (e.g. inaccessible for nullary ctors)
-    user_visible: bool,
-}
 impl Resolver {
     pub fn new(env: Environment<UntypedCst>) -> Self {
         Self {
             env,
-            // current_parent: QualifierFragment::Root,
-            // current_dag_node: None,
-            // dag: DiGraph::new(),
-            // main_dag_idx: None,
             errors: Vec::new(),
             seen: FxHashSet::default(),
         }
@@ -458,8 +428,6 @@ impl Resolver {
 
                         let unlabeling: Spanned<Intern<Expr<Untyped>>> =
                             matchee.convert(Expr::Unlabel(arg, label));
-                        // let the_let = matchee.convert(Expr::Let(, (), ()));
-                        // todo!()
                         body
                     })
                     .collect_vec();
@@ -561,12 +529,6 @@ pub fn subst_generic_type(
                 accum = accum.modify(CstType::GenericFun(param, new_body))
             }
         }
-        // (CstType::GenericApp(l, r), _) => {
-        //     accum = accum.modify(CstType::GenericApp(
-        //         subst_generic_type(l, target, replacement),
-        //         subst_generic_type(r, target, replacement),
-        //     ));
-        // }
         _ => accum = subject,
     }
 

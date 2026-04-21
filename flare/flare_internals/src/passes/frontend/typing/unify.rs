@@ -308,20 +308,11 @@ impl Solver<'_> {
         match (*left.0, *right.0, *goal.0) {
             (Row::Closed(l), Row::Closed(r), g) => {
                 let calc_goal = ClosedRow::merge(l, r);
-
-                // self.unify_row_row(
-                //                    Spanned(Row::Closed(calc_goal).into(), left.1.union(right.1)),
-                //                    goal.convert(g),
-                //                )
                 self.unify_row_row(goal.convert(Row::Closed(calc_goal)), goal)
             }
             (Row::Unifier(var), Row::Closed(sub), Row::Closed(g)) => {
                 let diff_row = self.diff_and_unify(g, sub, goal.1)?;
 
-                // self.unify_row_row(
-                //                     Spanned(Row::Unifier(var).into(), left.1.union(right.1)),
-                //                     right.convert(Row::Closed(diff_row)),
-                //                 )
                 self.unify_row_row(
                     left.convert(Row::Unifier(var)),
                     right.convert(Row::Closed(diff_row)),
@@ -331,11 +322,6 @@ impl Solver<'_> {
             (Row::Closed(sub), Row::Unifier(var), Row::Closed(g)) => {
                 let diff_row = self.diff_and_unify(g, sub, goal.1)?;
 
-                // self.unify_row_row(
-                //     Spanned(Row::Unifier(var).into(), left.1.union(right.1)),
-                //     left.convert(Row::Closed(diff_row)),
-                // )
-
                 self.unify_row_row(
                     right.convert(Row::Unifier(var)),
                     left.convert(Row::Closed(diff_row)),
@@ -343,8 +329,6 @@ impl Solver<'_> {
             }
 
             (_l, _r, _g) => {
-                // let sub = self.diff_and_unify(right, left)?;
-                // self.unify_row_row(sub, right)
                 let new_comb = RowCombination { left, right, goal };
                 // Check if we've already seen an combination that we can unify against
                 let mut poss_uni = None;
@@ -418,89 +402,15 @@ impl Solver<'_> {
                             )
                             .into(),
                     ),
-                    UnificationError::TypeNotEqual(left, right) => {
-                        (
-                            provenance.id(),
-                            provenance
-                                .to_dyn_err(
-                                    &left.map(|left| left.render(scheme)),
-                                    &right.map(|right| right.render(scheme)),
-                                )
-                                .into(),
-                        )
-                        // match provenance {
-                        //     Provenance::UnexpectedFun(node_id) => (
-                        //         node_id,
-                        //         DynamicErr::new("Encountered an unexpected function".to_string())
-                        //             .label("This is a function", node_id)
-                        //             .extra(format!("This is {}", left.0.render(scheme)), left.1)
-                        //             .extra(format!("This is {}", right.0.render(scheme)), right.1)
-                        //             .into(),
-                        //     ),
-                        //     Provenance::AppExpectedFun(node_id) => (
-                        //         node_id,
-                        //         DynamicErr::new("Expected a function".to_string())
-                        //             .label("This is not a function", node_id)
-                        //             .extra(format!("This is {}", left.0), left.1)
-                        //             .extra(format!("This is {}", right.0), right.1)
-                        //             .into(),
-                        //     ),
-                        //     Provenance::ExpectedUnify(l_id, r_id) => {
-                        //         let left_rendered = left.0.render(scheme);
-                        //         let right_rendered = right.0.render(scheme);
-                        //         (
-                        //         l_id,
-                        //         DynamicErr::new(format!(
-                        //             "Type mismatch between {left_rendered} and {right_rendered}"
-                        //         ))
-                        //         .label(format!("expected '{right_rendered}' here, found '{left_rendered}'"), l_id)
-                        //         .extra(format!("This is {}", left_rendered), left.1)
-                        //         .extra(format!("This is {}", right_rendered), r_id)
-                        //         .into(),
-                        //     )
-                        //     }
-                        //     Provenance::ConditionIsBool(c_id) => {
-                        //         let err = DynamicErr::new("Expected bool").label(
-                        //             format!("This condtio should be a bool, found {}", right.0),
-                        //             left.1,
-                        //         );
-                        //         (c_id, err.into())
-                        //     }
-
-                        //     Provenance::ExpectedCombine(l_span, r_span) => {
-                        //         let err = DynamicErr::new(format!(
-                        //             "Row mismatch between {} and {}",
-                        //             left.0, right.0
-                        //         ))
-                        //         .label(
-                        //             format!(
-                        //                 "Expected {} to combine with {}",
-                        //                 right.0.render(scheme),
-                        //                 left.0.render(scheme)
-                        //             ),
-                        //             l_span,
-                        //         )
-                        //         .extra("and here", r_span);
-                        //         (l_span, err.into())
-                        //     }
-                        //     Provenance::FieldAccess(l_span, l) => {
-                        //         let err = DynamicErr::new(format!(
-                        //             "Expected {} to contain {}",
-                        //             left.0, right.0
-                        //         ))
-                        //         .label(
-                        //             format!(
-                        //                 "Expected {} to combine with {}",
-                        //                 right.0.render(scheme),
-                        //                 left.0.render(scheme)
-                        //             ),
-                        //             l_span,
-                        //         )
-                        //         .extra("here", l.0.1);
-                        //         (l_span, err.into())
-                        //     } // _ => unreachable!("Invalid providence"),
-                        // }
-                    }
+                    UnificationError::TypeNotEqual(left, right) => (
+                        provenance.id(),
+                        provenance
+                            .to_dyn_err(
+                                &left.map(|left| left.render(scheme)),
+                                &right.map(|right| right.render(scheme)),
+                            )
+                            .into(),
+                    ),
                     UnificationError::RowsNotEqual(l, r) => {
                         let err = match provenance {
                             Provenance::ExpectedCombine(l_span, r_span) => {
@@ -553,6 +463,5 @@ impl Solver<'_> {
         } else {
             Err(UnificationFailure)
         }
-        // dbg!()
     }
 }

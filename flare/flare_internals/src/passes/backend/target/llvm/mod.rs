@@ -160,7 +160,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 let max_variant_size_bytes = self
                     .create_union_variants(ty)
                     .iter()
-                    .map(|t| (self.get_ty_size(*t) / 8) as u32)
+                    .map(|t| self.get_ty_size(*t) / 8)
                     .max()
                     .unwrap();
 
@@ -170,7 +170,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                             self.context.i8_type().as_basic_type_enum(),
                             self.context
                                 .i8_type()
-                                .array_type(max_variant_size_bytes)
+                                .array_type(max_variant_size_bytes.try_into().unwrap())
                                 .as_basic_type_enum(),
                         ],
                         true,
@@ -219,9 +219,8 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         }
     }
 
-    fn codegen_item(&self, item: Item) -> CompResult<AnyValueEnum<'ir>> {
-        // dbg!(&item);
-        let name = Self::make_func_name(&item.id);
+    fn codegen_item(&self, item: Item) -> inkwell::values::AnyValueEnum<'ir> {
+        let name = Self::make_func_name(item.id);
         let (ty, pass_mode) =
             self.make_func_type(item.ret_ty, &item.params.iter().map(|p| p.ty).collect_vec());
         let fn_val = self.module.add_function(&name, ty, Some(Linkage::External));
@@ -239,18 +238,14 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 }
 
                 let ir_body = self.codegen_ir(item.body, None);
-                // dbg!(&ir_body);
-                // if item.ret_ty.
 
                 self.builder
                     .build_return(Some(&ir_body))
                     .expect("Failed to build return");
 
-                if !fn_val.verify(true) {
-                    panic!("Failed to verify func")
-                }
+                assert!(fn_val.verify(true), "Failed to verify func");
 
-                Ok(fn_val.as_any_value_enum())
+                fn_val.as_any_value_enum()
             }
             PassMode::Sret(sret_ty) => {
                 // Same as above, but now skip the sret pointer at the start.
@@ -269,19 +264,17 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 let ir_body = self.codegen_ir(item.body, Some(out_slot));
                 self.builder.build_return(None);
 
-                if !fn_val.verify(true) {
-                    panic!("Failed to verify func")
-                }
+                assert!(fn_val.verify(true), "Failed to verify func");
 
-                Ok(fn_val.as_any_value_enum())
+                fn_val.as_any_value_enum()
             }
         }
     }
-    fn make_func_name(id: &ItemId) -> String {
+    fn make_func_name(id: ItemId) -> String {
         format!("flare_f_{}", id.0)
     }
 
-    fn make_args<'a>(&self, args: &'a [BasicValueEnum<'ir>]) -> Vec<BasicMetadataValueEnum<'ir>> {
+    fn make_args<'a>(args: &'a [BasicValueEnum<'ir>]) -> Vec<BasicMetadataValueEnum<'ir>> {
         args.iter()
             .map(|arg| match *arg {
                 BasicValueEnum::ArrayValue(v) => BasicMetadataValueEnum::ArrayValue(v),
@@ -293,7 +286,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 BasicValueEnum::VectorValue(v) => BasicMetadataValueEnum::VectorValue(v),
                 BasicValueEnum::ScalableVectorValue(v) => {
                     BasicMetadataValueEnum::ScalableVectorValue(v)
-                } // _ => panic!("Invalid conversion"),
+                }
             })
             .collect()
     }
@@ -311,7 +304,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 .expect("Could not build alloca"),
         }
     }
-
+    #[allow(clippy::cast_sign_loss)]
     fn codegen_ir(
         &self,
         ir: LIR,
@@ -330,120 +323,10 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             LIR::Unit => self.context.i8_type().const_int(0u64, false).into(),
             LIR::Float(f) => {
                 let float_type = self.context.f32_type();
-                float_type.const_float(f.0 as f64).into()
+                float_type.const_float(f64::from(f.0)).into()
             }
             LIR::ClosureBuild(fun_ty, id, ref vars) => {
-                let name = Self::make_func_name(&id);
-                let closure_ty = ir.get_fn_ty();
-
-                let closure_struct_ty = self.convert_aggregate_ty(closure_ty);
-                if closure_ty.is_alloca() {
-                    // dbg!(closure_ty);
-                    // dbg!(closure_struct_ty);
-                    // self.builder.insert
-
-                    let closure_struct = self.build_alloca(closure_struct_ty, out_slot);
-                    let item_fn = self
-                        .module
-                        .get_function(&name)
-                        .unwrap()
-                        .as_global_value()
-                        .as_pointer_value()
-                        .as_basic_value_enum();
-                    let function_field = self
-                        .builder
-                        .build_struct_gep(closure_struct_ty, closure_struct, 0, "closure_func_gep")
-                        .unwrap();
-                    self.builder
-                        .build_store(function_field, item_fn)
-                        .expect("Could not store closure func");
-
-                    let env_struct_ty = self.convert_aggregate_ty(
-                        closure_ty.closure_to_struct_rep().into_struct_fields()[1],
-                    );
-
-                    for (idx, var) in vars.iter().enumerate() {
-                        let val = self
-                            .sym_table
-                            .borrow()
-                            .get(var)
-                            .copied()
-                            .expect("Undefined variable");
-                        let env_struct = self
-                            .builder
-                            .build_struct_gep(
-                                closure_struct_ty,
-                                closure_struct,
-                                1,
-                                "closure_env_gep",
-                            )
-                            .unwrap();
-                        let capt_field = self
-                            .builder
-                            .build_struct_gep(
-                                env_struct_ty,
-                                env_struct,
-                                idx as u32,
-                                "closure_field_gep",
-                            )
-                            .unwrap();
-                        self.builder
-                            .build_store(capt_field, val)
-                            .expect("Could not store closure env field");
-                    }
-
-                    closure_struct.into()
-                } else {
-                    // dbg!(closure_struct_ty);
-                    // self.builder.insert
-
-                    // let closure_struct = self.build_alloca(closure_struct_ty, out_slot);
-                    let item_fn = self
-                        .module
-                        .get_function(&name)
-                        .unwrap()
-                        .as_global_value()
-                        .as_pointer_value()
-                        .as_basic_value_enum();
-                    let env_struct_ty = self.convert_aggregate_ty(
-                        closure_ty.closure_to_struct_rep().into_struct_fields()[1],
-                    );
-                    let env_vals = vars
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, var)| {
-                            self.sym_table
-                                .borrow()
-                                .get(var)
-                                .copied()
-                                .expect("Undefined variable")
-                        })
-                        .collect_vec();
-                    let env_struct = {
-                        let undef = env_struct_ty.into_struct_type().get_undef();
-                        let mut s: AggregateValueEnum = undef.into();
-                        for (idx, val) in env_vals.into_iter().enumerate() {
-                            s = self
-                                .builder
-                                .build_insert_value(s, val, idx as u32, "env_insert")
-                                .unwrap();
-                        }
-                        s.into_struct_value().into()
-                    };
-
-                    let closure_struct = {
-                        let undef = closure_struct_ty.into_struct_type().get_undef();
-                        let mut s: AggregateValueEnum = undef.into();
-                        for (idx, val) in [item_fn, env_struct].into_iter().enumerate() {
-                            s = self
-                                .builder
-                                .build_insert_value(s, val, idx as u32, "env_insert")
-                                .unwrap();
-                        }
-                        s.into_struct_value()
-                    };
-                    closure_struct.into()
-                }
+                self.codegen_closure(&ir, out_slot, id, vars)
             }
             LIR::Apply(fun, arg) => {
                 self.handle_app(*fun, vec![*arg], |arg| self.codegen_ir(arg, None))
@@ -467,17 +350,12 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             }
             LIR::Access(obj, idx) => self.codegen_access(*obj, idx),
             LIR::Struct(_) => self.codegen_struct(ir, out_slot),
-            LIR::Field(obj, idx) => self.codegen_field(&obj, idx),
+            LIR::Field(obj, idx) => self.codegen_field(&obj, idx.try_into().unwrap()),
             LIR::Case(..) => self.codegen_case(ir, out_slot),
             LIR::Tag(ty, idx, body) => self.codegen_tag(out_slot, ty, idx, &body),
             LIR::Item(id, lirtype) => {
-                let name = Self::make_func_name(&id);
+                let name = Self::make_func_name(id);
                 let item_fn = self.module.get_function(&name).unwrap();
-                // let call = self
-                //     .builder
-                //     .build_call(item_fn, &[], "calltmp")
-                //     .expect("LLVM failed to build call expression");
-                // call.try_as_basic_value().unwrap_basic()
                 item_fn
                     .as_global_value()
                     .as_pointer_value()
@@ -520,6 +398,110 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
                 phi.as_basic_value()
             }
+        }
+    }
+
+    fn codegen_closure(
+        &self,
+        ir: &LIR,
+        out_slot: Option<PointerValue<'ctx>>,
+        id: ItemId,
+        vars: &[Var],
+    ) -> BasicValueEnum<'ir> {
+        let name = Self::make_func_name(id);
+        let closure_ty = ir.get_fn_ty();
+        let closure_struct_ty = self.convert_aggregate_ty(closure_ty);
+        if closure_ty.is_alloca() {
+            let closure_struct = self.build_alloca(closure_struct_ty, out_slot);
+            let item_fn = self
+                .module
+                .get_function(&name)
+                .unwrap()
+                .as_global_value()
+                .as_pointer_value()
+                .as_basic_value_enum();
+            let function_field = self
+                .builder
+                .build_struct_gep(closure_struct_ty, closure_struct, 0, "closure_func_gep")
+                .unwrap();
+            self.builder
+                .build_store(function_field, item_fn)
+                .expect("Could not store closure func");
+
+            let env_struct_ty = self
+                .convert_aggregate_ty(closure_ty.closure_to_struct_rep().into_struct_fields()[1]);
+
+            for (idx, var) in vars.iter().enumerate() {
+                let val = self
+                    .sym_table
+                    .borrow()
+                    .get(var)
+                    .copied()
+                    .expect("Undefined variable");
+                let env_struct = self
+                    .builder
+                    .build_struct_gep(closure_struct_ty, closure_struct, 1, "closure_env_gep")
+                    .unwrap();
+                let capt_field = self
+                    .builder
+                    .build_struct_gep(
+                        env_struct_ty,
+                        env_struct,
+                        idx.try_into().unwrap(),
+                        "closure_field_gep",
+                    )
+                    .unwrap();
+                self.builder
+                    .build_store(capt_field, val)
+                    .expect("Could not store closure env field");
+            }
+
+            closure_struct.into()
+        } else {
+            let item_fn = self
+                .module
+                .get_function(&name)
+                .unwrap()
+                .as_global_value()
+                .as_pointer_value()
+                .as_basic_value_enum();
+            let env_struct_ty = self
+                .convert_aggregate_ty(closure_ty.closure_to_struct_rep().into_struct_fields()[1]);
+            let env_vals = vars
+                .iter()
+                .enumerate()
+                .map(|(idx, var)| {
+                    self.sym_table
+                        .borrow()
+                        .get(var)
+                        .copied()
+                        .expect("Undefined variable")
+                })
+                .collect_vec();
+            let env_struct = {
+                let undef = env_struct_ty.into_struct_type().get_undef();
+                let mut s: AggregateValueEnum = undef.into();
+                for (idx, val) in env_vals.into_iter().enumerate() {
+                    s = self
+                        .builder
+                        .build_insert_value(s, val, idx as u32, "env_insert")
+                        .unwrap();
+                }
+                s.into_struct_value().into()
+            };
+
+            let closure_struct = {
+                let undef = closure_struct_ty.into_struct_type().get_undef();
+                let mut s: AggregateValueEnum = undef.into();
+                for (idx, val) in [item_fn, env_struct].into_iter().enumerate() {
+                    s = self
+                        .builder
+                        .build_insert_value(s, val, idx as u32, "env_insert")
+                        .unwrap();
+                }
+                s.into_struct_value()
+            };
+            closure_struct.into()
         }
     }
 
@@ -585,7 +567,6 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
     }
 
     fn codegen_case(&self, ir: LIR, out_slot: Option<PointerValue<'ctx>>) -> BasicValueEnum<'ir> {
-        // let ret_ty = self.convert_aggregate_ty(ir.type_of());
         if let LIR::Case(ty, scrutinee, branches) = ir {
             let the_func = self.current_func.borrow().unwrap();
             let scrutinee_ty = scrutinee.type_of();
@@ -594,10 +575,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             let ret_ty = self.convert_aggregate_ty(ty);
 
             let merge_block = self.context.append_basic_block(the_func, "case_merge");
-            // dbg!(scrutinee_bv);
             if scrutinee.type_of().is_alloca() {
-                // let result = self.build_alloca(ret_ty, out_slot);
-                // dbg!(scrutinee);
                 let tag_ptr = self
                     .builder
                     .build_struct_gep(union_ty, scrutinee_bv.into_pointer_value(), 0, "tag_gep")
@@ -639,7 +617,6 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                             "scrutinee_as_variant_gep",
                         )
                         .expect("Could not cast scrutinee into variant");
-                    // let arg = dbg!(branch_lir.type_of());
                     let v = self.handle_app(branch_lir.clone(), vec![scrutinee_as_tag], |arg| {
                         self.builder
                             .build_load(variant_body_ty, arg, "variant_cast")
@@ -648,25 +625,21 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
-                    // dbg!(v);
                     phi_incoming.push((v, branch_blocks[branch_idx].1));
                 }
                 // Trap block.
                 self.builder.position_at_end(trap_block);
                 self.builder.build_unreachable().unwrap();
                 {
-                    // let ty = phi_incoming.first().unwrap().0.get_type();
                     self.builder.position_at_end(merge_block);
                     let phi = self.builder.build_phi(ret_ty, "case_phi").unwrap();
-                    for (val, from_block) in phi_incoming.iter() {
+                    for (val, from_block) in &phi_incoming {
                         phi.add_incoming(&[(val, *from_block)]);
                     }
                     phi.as_basic_value()
                 }
             } else {
                 let scrutinee_bv = scrutinee_bv.into_struct_value();
-                // let result = self.build_alloca(ret_ty, out_slot);
-                // dbg!(scrutinee);
                 let tag_value = self
                     .builder
                     .build_extract_value(scrutinee_bv, 0, "extract_tag")
@@ -709,13 +682,13 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                     let scrutinee_as_tag = self
                         .builder
                         .build_load(variant_body_ty, payload_ptr, "payload_load")
-                        .unwrap(); // let arg = dbg!(branch_lir.type_of());
+                        .unwrap();
                     let v = self.handle_app(branch_lir.clone(), vec![scrutinee_as_tag], |arg| arg);
 
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
-                    // dbg!(v);
+
                     phi_incoming.push((v, branch_blocks[branch_idx].1));
                 }
                 // Trap block.
@@ -724,8 +697,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 {
                     self.builder.position_at_end(merge_block);
                     let phi = self.builder.build_phi(ret_ty, "case_phi").unwrap();
-                    // dbg!(phi);
-                    for (val, from_block) in phi_incoming.iter() {
+                    for (val, from_block) in &phi_incoming {
                         phi.add_incoming(&[(val, *from_block)]);
                     }
                     phi.as_basic_value()
@@ -744,7 +716,6 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 let fn_gep = self
                     .builder
                     .build_struct_gep(
-                        // self.context.ptr_type(AddressSpace::default()),
                         self.convert_aggregate_ty(obj_ty), // actual struct type
                         obj_ptr,
                         0,
@@ -764,7 +735,6 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
                 let field_ty = env_ty.into_struct_fields().into_iter().nth(idx).unwrap();
                 let env_ty = self.convert_aggregate_ty(env_ty);
-                // dbg!(field_ty);
                 let env_gep = self
                     .builder
                     .build_struct_gep(
@@ -812,8 +782,6 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         let struct_ty = self.convert_aggregate_ty(struct_lirty);
         if let LIR::Struct(fields) = ir {
             if struct_lirty.is_alloca() {
-                // dbg!(&ir.type_of());
-                // dbg!(struct_ty, out_slot);
                 // TODO: Maybe incorrect. Review later.
                 // Use the provided slot, or alloca a local one if none provided
                 let the_struct = self.build_alloca(struct_ty, out_slot);
@@ -837,8 +805,6 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                         .builder
                         .build_insert_value(s, val, idx as u32, "field_store")
                         .unwrap();
-
-                    // dbg!(undef, s);
                 }
                 s.into_struct_value().into()
             }
@@ -847,7 +813,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         }
     }
 
-    fn codegen_field(&self, obj: &LIR, idx: usize) -> BasicValueEnum<'ir> {
+    fn codegen_field(&self, obj: &LIR, idx: u32) -> BasicValueEnum<'ir> {
         // dbg!(&obj);
         let struct_ty = self.convert_aggregate_ty(obj.type_of()).into_struct_type();
         let obj = self.codegen_ir(obj.clone(), None);
@@ -856,11 +822,11 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
             let pointer_idx = self
                 .builder
-                .build_struct_gep(struct_ty, obj, idx as u32, "struct_gep")
+                .build_struct_gep(struct_ty, obj, idx, "struct_gep")
                 .unwrap();
             self.builder
                 .build_load(
-                    struct_ty.get_field_type_at_index(idx as u32).unwrap(),
+                    struct_ty.get_field_type_at_index(idx).unwrap(),
                     pointer_idx,
                     "load_field",
                 )
@@ -869,7 +835,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             let obj = obj.into_struct_value();
 
             self.builder
-                .build_extract_value(obj, idx as u32, "get_field")
+                .build_extract_value(obj, idx, "get_field")
                 .unwrap()
         } else {
             panic!("Not a struct")
@@ -953,8 +919,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
 
         arg_tys.insert(0, closure_ty);
         let (the_fun_ty, passmode) = self.make_func_type(ret_ty, &arg_tys);
-        // dbg!(the_fun_ty);
-        //
+
         if closure_ty.is_alloca() {
             let closure_and_env_pointer = self.codegen_ir(closure, None).into_pointer_value();
 
@@ -1005,14 +970,11 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         Vec<BasicValueEnum<'ir>>,
         PassMode<'ir>,
     ) {
-        // dbg!(fun_ty);
         let (arg_tys, ret) = fun_ty.destructure_closure();
         let (fun_ty, passmode) = self.make_func_type(ret, &arg_tys);
-        // dbg!(fun_ty);
         let fun = self.codegen_ir(fun, None);
         let args = args.into_iter().map(arg_f).collect_vec();
 
-        // dbg!(&args);
         match fun {
             BasicValueEnum::PointerValue(pointer) => (pointer, fun_ty, args, passmode),
             _ => panic!("Invalid function: {fun:?}"),
@@ -1028,8 +990,8 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
     ) -> BasicValueEnum<'ir> {
         match passmode {
             PassMode::Normal => {
-                let args = self.make_args(&args);
-                // dbg!(&args);
+                let args = Self::make_args(&args);
+
                 self.builder
                     .build_indirect_call(the_fun_ty, fun_ptr, &args, "closure_indirect")
                     .expect("Could not build closure call")
@@ -1040,8 +1002,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 // Alloca in the caller
                 let result_slot = self.builder.build_alloca(*sret_ty, "sret_slot").unwrap();
                 args.insert(0, result_slot.as_basic_value_enum());
-                let args = self.make_args(&args);
-                // dbg!(&args);
+                let args = Self::make_args(&args);
 
                 let sret_attr = self.context.create_type_attribute(
                     Attribute::get_named_enum_kind_id("sret"),
@@ -1062,7 +1023,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
         }
     }
 
-    fn generate_main_func(&self, flare_entry_id: &ItemId) -> AnyValueEnum<'ir> {
+    fn generate_main_func(&self, flare_entry_id: ItemId) -> AnyValueEnum<'ir> {
         let name = "main";
         let (ty, passmode) = self.make_func_type(LIRType::Int, &[]);
         let fn_val = self.module.add_function(name, ty, Some(Linkage::External));
@@ -1089,9 +1050,7 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
             .build_return(cast.as_ref().map(|v| v as &dyn BasicValue).ok())
             .unwrap();
 
-        if !fn_val.verify(true) {
-            panic!("Failed to verify func")
-        }
+        assert!(fn_val.verify(true), "Failed to verify func");
         fn_val.as_any_value_enum()
     }
 }
@@ -1135,20 +1094,20 @@ impl FlareTarget for LLVM {
         let machine = make_target_machine();
         let llvm_ctx = LLVMContext::new(&ctx, machine);
 
-        for (item, purpose) in funcs.into_iter() {
+        for (item, purpose) in funcs {
             match purpose {
                 FunctionPurpose::Normal | FunctionPurpose::Closure => {
                     // log::info!("{}", item);
-                    llvm_ctx.codegen_item(item).unwrap();
+                    llvm_ctx.codegen_item(item);
                     // log::info!("---------------------------------")
                 }
 
                 FunctionPurpose::Main => {
                     let id = item.id;
                     // log::info!("{}", item);
-                    let main_id = llvm_ctx.codegen_item(item).unwrap();
+                    let main_id = llvm_ctx.codegen_item(item);
                     // log::info!("------------main---------");
-                    llvm_ctx.generate_main_func(&id);
+                    llvm_ctx.generate_main_func(id);
 
                     // log::info!("---------------------------------")
                 }
@@ -1164,16 +1123,13 @@ impl FlareTarget for LLVM {
             .unwrap();
 
         let bit = llvm_ctx.module.write_bitcode_to_memory();
-        // let o = bit.create_object_file().unwrap();
-        // o.get_symbols()
-        // todo!()
         bit.as_slice().to_vec()
         // llvm_ctx.compile(&cli.output.as_path(), FileType::Object);
         // Generate the object file.
         // product.emit().expect("Could not emit bytes")
     }
 
-    fn ext(&self) -> &str {
+    fn ext(&self) -> &'static str {
         "bc"
     }
 }

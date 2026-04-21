@@ -11,7 +11,7 @@ use radix_trie::{Trie, TrieKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::resource::{
-    errors::CompResult,
+    errors::{self, CompResult, CompilerErr},
     rep::{
         common::{Spanned, Syntax},
         frontend::{
@@ -96,7 +96,7 @@ pub struct EnvironmentBuilder<S: Syntax> {
     pub trie: Trie<Key, NodeIndex>,
     path: Vec<Intern<String>>,
     current_node: NodeIndex,
-    // vars: Vec<Intern<String>>, // pub root: NodeIndex,
+    errors: FxHashSet<CompilerErr>,
 }
 
 pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
@@ -153,10 +153,12 @@ impl EnvironmentBuilder<UntypedCst> {
         &mut self,
         n: <UntypedCst as Syntax>::Name,
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
-        let index = self
-            .find_nearest(|node| node.name.0 == n.0)
-            .unwrap_or_else(|| panic!("Could not find symbol: {n}"));
-        ControlFlow::Continue(n.convert(CstExpr::Item(ItemId(index.index()))))
+        if let Some(index) = self.find_nearest(|node| node.name.0 == n.0) {
+            ControlFlow::Continue(n.convert(CstExpr::Item(ItemId(index.index()))))
+        } else {
+            self.errors.insert(errors::not_defined(n));
+            ControlFlow::Continue(n.convert(CstExpr::Hole(n)))
+        }
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
@@ -468,7 +470,6 @@ impl EnvironmentBuilder<UntypedCst> {
             }),
         };
         map.insert(main_node, main_item);
-        dbg!(&map);
         map
     }
 }
@@ -479,7 +480,5 @@ impl<S: Syntax> EnvironmentBuilder<S> {
         root: NodeIndex,
     ) -> Self {
         todo!();
-        // let graph = graph.into();
-        // Self { graph }
     }
 }

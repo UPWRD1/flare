@@ -16,7 +16,7 @@ impl Target for IRTarget {
         unimplemented!("don't do this")
     }
 
-    fn ext(&self) -> &str {
+    fn ext(&self) -> &'static str {
         "ir"
     }
 }

@@ -6,23 +6,22 @@ use crate::resource::rep::midend::{
 };
 
 fn track_seen(ir: &[IR]) -> FxHashSet<ItemId> {
-    ir.iter().rev().flat_map(|ir| ir.who_do_i_call()).collect()
+    ir.iter().rev().flat_map(IR::who_do_i_call).collect()
 }
 /// DANGER!
-/// currently, this is an invalid transformation because it does not update item indexes afterwards.
+// / currently, this is an invalid transformation because it does not update item indexes afterwards. Probably. Need to review
 pub fn reduce(irs: Vec<IR>) -> Vec<IR> {
-    // irs
     let mut seen = track_seen(&irs);
-    seen.insert(ItemId(irs.len() as u32));
+    seen.insert(ItemId(irs.len()));
     let mut new_counter = 0;
     let mut map: FxHashMap<ItemId, ItemId> = FxHashMap::default();
-    let len = irs.len() as u32 - 1;
+    let len = irs.len() - 1;
     let ir: Vec<IR> = irs
         .into_iter()
         .enumerate()
         .filter_map(|(index_counter, ir)| {
             // dbg!(&ir);
-            let id = ItemId(index_counter as u32);
+            let id = ItemId(index_counter);
             let nid = ItemId(new_counter);
             let retain_item = seen.contains(&id) || id.0 == len || matches!(ir, IR::Extern(_, _));
             // index_counter += 1;
@@ -81,7 +80,7 @@ fn reduce_ir(ir: IR, map: &FxHashMap<ItemId, ItemId>) -> IR {
         IR::Item(t, item_id) => IR::Item(
             strip_ty(t),
             *map.get(&item_id)
-                .unwrap_or_else(|| panic!("cannot find {:?}", item_id)),
+                .unwrap_or_else(|| panic!("cannot find {item_id:?}")),
         ),
         _ => ir,
     }

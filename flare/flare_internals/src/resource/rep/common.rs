@@ -1,3 +1,5 @@
+/// Common traits and types that are pervasive throughout the compiler.
+/// Most of these are frontend related.
 use crate::resource::rep::frontend::files::FileID;
 use internment::Intern;
 use std::{
@@ -18,19 +20,9 @@ pub trait Syntax: Debug + Copy + PartialEq + Eq + Hash + Send + Sync + 'static {
     type Name: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static + Display;
 }
 
-// pub trait Ident {
-// fn ident(&self) -> CompResult<Spanned<Intern<String>>>;
-// }
-
 pub trait HasSpan {
     fn span(&self) -> FlareSpan;
 }
-
-// impl Ident for Spanned<Intern<String>> {
-// fn ident(&self) -> CompResult<Spanned<Intern<String>>> {
-// Ok(*self)
-// }
-// }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FlareSpan(pub usize, pub usize, pub FileID);

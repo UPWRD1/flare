@@ -13,7 +13,7 @@ use itertools::Itertools;
 pub struct LIRTarget;
 
 impl LIRTarget {
-    fn render_item(&self, item: Item) -> String {
+    fn render_item(item: Item) -> String {
         format!(
             "fn {}({}) -> {} {{\n\t{}\n}}\n",
             item.id.0,
@@ -48,11 +48,8 @@ impl LIRTarget {
         )
     }
 
-    fn render_closures(&self, closures: BTreeMap<ItemId, Item>) -> String {
-        closures
-            .into_values()
-            .map(|x| self.render_item(x))
-            .join("\n")
+    fn render_closures(closures: BTreeMap<ItemId, Item>) -> String {
+        closures.into_values().map(Self::render_item).join("\n")
     }
 }
 
@@ -63,13 +60,13 @@ impl Target for LIRTarget {
     fn generate(&mut self, ir: Vec<ClosureConvertOut>) -> Self::Output {
         ir.into_iter()
             .map(|ir| {
-                let closures = self.render_closures(ir.closure_items);
-                let main_body = self.render_item(ir.item);
+                let closures = Self::render_closures(ir.closure_items);
+                let main_body = Self::render_item(ir.item);
                 format!("{closures}\n{main_body}")
             })
             .join("---------------------\n\n")
     }
-    fn ext(&self) -> &str {
+    fn ext(&self) -> &'static str {
         "lir"
     }
 }

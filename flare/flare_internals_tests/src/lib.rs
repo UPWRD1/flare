@@ -1,5 +1,5 @@
+#[allow(dead_code)]
 mod helper {
-    use chumsky::prelude::*;
     use flare_internals::resource::rep::common::{FlareSpan, Spanned};
     use internment::Intern;
     pub struct SpanGenerator {
@@ -38,8 +38,6 @@ mod tests {
     };
 
     use crate::helper::SpanGenerator;
-
-    use super::*;
 
     #[test]
     fn subst_ty() {

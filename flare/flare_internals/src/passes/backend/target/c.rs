@@ -11,7 +11,7 @@ impl Target for C {
         todo!()
     }
 
-    fn ext(&self) -> &str {
+    fn ext(&self) -> &'static str {
         "c"
     }
 }

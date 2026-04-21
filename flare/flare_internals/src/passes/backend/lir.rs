@@ -143,7 +143,7 @@ impl ClosureConvert {
                 self.convert(*t, env),
                 self.convert(*e, env),
             ),
-            _ => todo!("{ir:?}"),
+            ir::IR::Bool(_) => todo!(),
         }
     }
 
@@ -226,7 +226,7 @@ pub fn closure_convert(ir: Vec<ir::IR>) -> Vec<ClosureConvertOut> {
     ir.into_iter()
         .enumerate()
         .map(|(idx, ir)| {
-            let id = ItemId(idx as u32);
+            let id = ItemId(idx);
             convert(ir, id, &mut converter)
         })
         .collect()
@@ -272,7 +272,7 @@ fn convert(ir: ir::IR, id: ItemId, conversion: &mut ClosureConvert) -> ClosureCo
 fn lower_ty(ty: &IRType) -> LIRType {
     match ty {
         IRType::Num => LIRType::Float,
-        IRType::Str => LIRType::String,
+        IRType::Str | IRType::Particle(_) => LIRType::String,
         IRType::Unit => LIRType::Unit,
         IRType::Fun(arg, ret) => {
             // dbg!(ty);
@@ -295,9 +295,8 @@ fn lower_ty(ty: &IRType) -> LIRType {
         }
         IRType::Prod(r) => LIRType::Struct(lower_row(r)),
         IRType::Sum(r) => LIRType::Union(lower_row(r)),
-        IRType::Particle(_) => LIRType::String,
         IRType::Bool => LIRType::Bool,
-        _ => todo!("{ty:?}"),
+        IRType::Volatile(irtype) => todo!(),
     }
 }
 
