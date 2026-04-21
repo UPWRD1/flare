@@ -153,10 +153,10 @@ fn main() {
                         .join("\n\n");
                     let elapsed = now.elapsed();
                     println!("Compiled  in {elapsed:.2?}",);
-                    let f = cli.output_file.with_extension(IRTarget.ext());
-                    let mut f = File::create(f).unwrap();
+                    let fpath = cli.output_file.with_extension(IRTarget.ext());
+                    let mut f = File::create(&fpath).unwrap();
                     f.write_all(output.as_bytes())?;
-
+                    println!("Wrote {} bytes to {}", output.len(), fpath.display());
                     Ok(())
                 })
                 .inspect_err(|e| e.report(&ctx))
@@ -178,10 +178,10 @@ fn main() {
                     let output = format!("{res:?}");
                     let elapsed = now.elapsed();
                     println!("Compiled  in {elapsed:.2?}",);
-                    let f = cli.output_file.with_extension(IRTarget.ext());
-                    let mut f = File::create(f).unwrap();
+                    let fpath = cli.output_file.with_extension("ast");
+                    let mut f = File::create(&fpath).unwrap();
                     f.write_all(output.as_bytes())?;
-
+                    println!("Wrote {} bytes to {}", output.len(), fpath.display());
                     Ok(())
                 })
                 .inspect_err(|e| e.report(&ctx))

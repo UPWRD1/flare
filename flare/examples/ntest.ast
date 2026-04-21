@@ -1,0 +1,55 @@
+Resolve { env: {NodeIndex(7): Item { kind: Function(FunctionItem { name: "b", sig: TypeScheme { unbound_types: {}, unbound_rows: {}, evidence: [], ty: Num, types_to_name: [], kind: Func }, body: Item(
+    ItemId(
+        6,
+    ),
+) }) }, NodeIndex(6): Item { kind: Function(FunctionItem { name: "a", sig: TypeScheme { unbound_types: {}, unbound_rows: {}, evidence: [], ty: Num, types_to_name: [], kind: Func }, body: Item(
+    ItemId(
+        7,
+    ),
+) }) }, NodeIndex(3): Item { kind: Function(FunctionItem { name: "main", sig: TypeScheme { unbound_types: {}, unbound_rows: {}, evidence: [], ty: Num, types_to_name: [], kind: Func }, body: Access(
+    Concat(
+        Concat(
+            Concat(
+                Label(
+                    Label(
+                        "x",
+                    ),
+                    Number(
+                        4.0,
+                    ),
+                ),
+                Label(
+                    Label(
+                        "y",
+                    ),
+                    Number(
+                        5.0,
+                    ),
+                ),
+            ),
+            Label(
+                Label(
+                    "a",
+                ),
+                Item(
+                    ItemId(
+                        7,
+                    ),
+                ),
+            ),
+        ),
+        Label(
+            Label(
+                "b",
+            ),
+            Item(
+                ItemId(
+                    6,
+                ),
+            ),
+        ),
+    ),
+    Label(
+        "y",
+    ),
+) }) }} }

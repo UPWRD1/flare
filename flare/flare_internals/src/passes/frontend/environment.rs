@@ -1,10 +1,8 @@
-use std::{f64::consts::E, ops::ControlFlow};
+use std::ops::ControlFlow;
 
 use internment::Intern;
 
 use petgraph::{
-    Direction::Outgoing,
-    dot::Config,
     prelude::StableDiGraph,
     stable_graph::{EdgeReference, NodeIndex},
     visit::EdgeRef as _,
@@ -98,10 +96,10 @@ pub struct EnvironmentBuilder<S: Syntax> {
     pub trie: Trie<Key, NodeIndex>,
     path: Vec<Intern<String>>,
     current_node: NodeIndex,
-    vars: Vec<Intern<String>>, // pub root: NodeIndex,
+    // vars: Vec<Intern<String>>, // pub root: NodeIndex,
 }
 
-pub type Environment<S: Syntax> = FxHashMap<NodeIndex, Item<S>>;
+pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
 
 impl EnvironmentBuilder<UntypedCst> {
     /// Build the environment from a given `PackageCollection`
@@ -138,7 +136,7 @@ impl EnvironmentBuilder<UntypedCst> {
             current_node: root_node,
             ..Default::default()
         };
-        // dbg!(proj_main_func);
+
         let res = me
             .enter_context(
                 |me| me.analyze_expr(proj_main_func, &[]),
@@ -164,6 +162,7 @@ impl EnvironmentBuilder<UntypedCst> {
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     #[deprecated]
     pub fn debug(&self) {
+        use petgraph::dot::Config;
         let render = |_, v: EdgeReference<'_, Relation>| format!("label = \"{:?}\"", v.weight());
         let dot = petgraph::dot::Dot::with_attr_getters(
             &self.graph,
@@ -276,34 +275,34 @@ impl EnvironmentBuilder<UntypedCst> {
             }
             CstExpr::Pat(spanned) => todo!(),
             CstExpr::Mul(l, r) => {
-                let l = self.analyze_expr(l, vars);
-                let r = self.analyze_expr(r, vars);
-                ControlFlow::Continue(expr.modify(CstExpr::Mul(l?, r?)))
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
+                ControlFlow::Continue(expr.modify(CstExpr::Mul(l, r)))
             }
             CstExpr::Div(l, r) => {
-                let l = self.analyze_expr(l, vars);
-                let r = self.analyze_expr(r, vars);
-                ControlFlow::Continue(expr.modify(CstExpr::Div(l?, r?)))
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
+                ControlFlow::Continue(expr.modify(CstExpr::Div(l, r)))
             }
             CstExpr::Add(l, r) => {
-                let l = self.analyze_expr(l, vars);
-                let r = self.analyze_expr(r, vars);
-                ControlFlow::Continue(expr.modify(CstExpr::Add(l?, r?)))
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
+                ControlFlow::Continue(expr.modify(CstExpr::Add(l, r)))
             }
             CstExpr::Sub(l, r) => {
-                let l = self.analyze_expr(l, vars)?;
-                let r = self.analyze_expr(r, vars)?;
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
                 ControlFlow::Continue(expr.modify(CstExpr::Sub(l, r)))
             }
             CstExpr::Comparison(l, comparison_op, r) => {
-                let l = self.analyze_expr(l, vars)?;
-                let r = self.analyze_expr(r, vars)?;
+                let l = self.analyze_expr(l, vars).into_value();
+                let r = self.analyze_expr(r, vars).into_value();
                 ControlFlow::Continue(expr.convert(CstExpr::Comparison(l, comparison_op, r)))
             }
             CstExpr::Call(func, arg) => {
-                let func = self.analyze_expr(func, vars)?;
+                let func = self.analyze_expr(func, vars).into_value();
 
-                let arg = self.analyze_expr(arg, vars)?;
+                let arg = self.analyze_expr(arg, vars).into_value();
                 ControlFlow::Continue(expr.convert(CstExpr::Call(func, arg)))
             }
             CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars),
@@ -414,7 +413,7 @@ impl EnvironmentBuilder<UntypedCst> {
         for binding in &bindings {
             branch_vars.push(binding.0.0);
         }
-        dbg!(&branch_vars);
+        // dbg!(&branch_vars);
 
         let body = self.analyze_expr(body, &branch_vars).into_value();
         MatchArm { pat, body }
@@ -429,7 +428,7 @@ impl EnvironmentBuilder<UntypedCst> {
     ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
     {
         let new_vars = &[vars, &[arg.0.0]].concat();
-        let body = self.analyze_expr(body, new_vars)?;
+        let body = self.analyze_expr(body, new_vars).into_value();
         ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
     }
 
@@ -442,7 +441,7 @@ impl EnvironmentBuilder<UntypedCst> {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {
             panic!("Not a field access")
         };
-        let l = self.analyze_expr(l, vars)?;
+        let l = self.analyze_expr(l, vars).into_value();
         ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(l, r)))
     }
 
@@ -487,6 +486,7 @@ impl EnvironmentBuilder<UntypedCst> {
             }),
         };
         map.insert(main_node, main_item);
+        dbg!(&map);
         map
     }
 }

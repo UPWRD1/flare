@@ -191,7 +191,7 @@ impl Resolver {
             .map(|(idx, item)| (idx, self.convert(&item)))
             .collect();
 
-        converted.retain(|k, v| self.seen.contains(&ItemId(k.index())));
+        converted.retain(|k, v| self.seen.contains(&ItemId(k.index())) || v.ident() == "main");
 
         if self.errors.is_empty() {
             Ok(converted)
