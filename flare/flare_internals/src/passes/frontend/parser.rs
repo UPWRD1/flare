@@ -200,7 +200,6 @@ impl LangIds {
 
 pub struct Translate<'src> {
     file: &'src FileSource,
-    defs: FxHashMap<CstExpr<UntypedCst>, Vec<FieldMacro<UntypedCst>>>,
     _phantom: PhantomData<Node<'src>>,
     ids: &'src LangIds, // shared, constructed once per process
     errors: FxHashMap<FlareSpan, String>,
@@ -211,7 +210,6 @@ impl<'src> Translate<'src> {
     fn new(ids: &'src LangIds, file: &'src FileSource) -> Self {
         Self {
             file,
-            defs: FxHashMap::default(),
             _phantom: PhantomData,
             ids,
             errors: FxHashMap::default(),
@@ -436,6 +434,7 @@ impl<'src> Translate<'src> {
         let mut cursor = node.walk();
         dbg!(node.children(&mut cursor).collect::<Vec<_>>());
         let expr_node = node.child(1).unwrap();
+        dbg!(expr_node);
         let expr = self.lower_expr(expr_node);
         let the_macro = FieldMacro::Ret(expr);
         Field::Macro(the_macro)

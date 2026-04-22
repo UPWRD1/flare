@@ -11,7 +11,7 @@ use radix_trie::{Trie, TrieKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::resource::{
-    errors::{self, CompResult, CompilerErr},
+    errors::{self, CompResult, CompilerErr, ErrorCollection},
     rep::{
         common::{Spanned, Syntax},
         frontend::{
@@ -105,7 +105,7 @@ pub struct EnvironmentBuilder<S: Syntax> {
     pub graph: StableDiGraph<Element<S>, Relation>,
     pub trie: Trie<Key, NodeIndex>,
     path: Vec<Intern<String>>,
-    current_node: NodeIndex,
+    node_stack: Vec<NodeIndex>,
     context: BuilderContext,
     errors: Vec<CompilerErr>,
 }
@@ -146,7 +146,7 @@ impl EnvironmentBuilder<UntypedCst> {
         let mut me = Self {
             graph,
             trie,
-            current_node: root_node,
+            node_stack: vec![root_node],
             context: BuilderContext::Autoproject,
             ..Default::default()
         };
@@ -160,7 +160,11 @@ impl EnvironmentBuilder<UntypedCst> {
             .into_value();
         dbg!(res);
         me.debug();
-        Ok(me.lift(res))
+        if me.errors.is_empty() {
+            Ok(me.lift(res))
+        } else {
+            Err(ErrorCollection::new(me.errors).into())
+        }
     }
 
     fn autoproject(
@@ -219,32 +223,6 @@ impl EnvironmentBuilder<UntypedCst> {
         );
         dbg!(dot);
     }
-
-    fn enter_context<T>(
-        &mut self,
-        mut f: impl FnMut(&mut Self) -> T,
-        value: ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr>,
-        name: <UntypedCst as Syntax>::Name,
-    ) -> T {
-        let value = value
-            .continue_value()
-            .map_or_else(OnceCell::new, std::convert::Into::into);
-        let old_node = self.current_node;
-        let old_path = self.path.clone();
-        self.path.push(name.0);
-        self.current_node = self.graph.add_node(Element::new_with(name, value));
-        self.graph
-            .add_edge(old_node, self.current_node, Relation::Parent);
-
-        self.trie
-            .insert(Key::from(self.path.clone()), self.current_node);
-        let out = f(self);
-        self.current_node = old_node;
-        self.path = old_path;
-
-        out
-    }
-
     fn enter_context_root<T>(
         &mut self,
         mut f: impl FnMut(&mut Self) -> T,
@@ -254,8 +232,10 @@ impl EnvironmentBuilder<UntypedCst> {
         let value = value.continue_value();
         self.path.push(name.0);
 
-        self.trie
-            .insert(Key::from(self.path.clone()), self.current_node);
+        self.trie.insert(
+            Key::from(self.path.clone()),
+            *self.node_stack.last().unwrap(),
+        );
 
         f(self)
     }
@@ -267,40 +247,22 @@ impl EnvironmentBuilder<UntypedCst> {
         use petgraph::Direction::{Incoming, Outgoing};
         let mut queue = std::collections::VecDeque::new();
         let mut visited = FxHashSet::default();
-
-        queue.push_back(self.current_node);
-        visited.insert(self.current_node);
+        let the_node = self.node_stack.last().copied().unwrap();
+        queue.extend(self.node_stack.clone());
+        visited.insert(the_node);
 
         while let Some(node) = queue.pop_front() {
             if predicate(&self.graph[node]) {
-                self.graph
-                    .add_edge(self.current_node, node, Relation::Reference);
+                self.graph.add_edge(the_node, node, Relation::Reference);
                 return Some(node);
             }
-
-            let parent = self
-                .graph
-                .edges_directed(node, Incoming)
-                .find(|e| matches!(e.weight(), Relation::Parent))
-                .map(|e| e.source());
-
-            if let Some(parent) = parent {
+            if !visited.contains(&node) {
                 let siblings = self
                     .graph
-                    .edges_directed(parent, Outgoing)
-                    .filter(|e| matches!(e.weight(), Relation::Parent))
+                    .edges_directed(node, Outgoing)
+                    .filter(|e| matches!(e.weight(), Relation::Parent | Relation::Return))
                     .map(|e| e.target())
                     .filter(|&n| n != node);
-
-                for neighbor in siblings {
-                    if visited.insert(neighbor) {
-                        queue.push_back(neighbor);
-                    }
-                }
-
-                if visited.insert(parent) {
-                    queue.push_back(parent);
-                }
             }
         }
 
@@ -377,9 +339,7 @@ impl EnvironmentBuilder<UntypedCst> {
             .filter_map(|field| {
                 match field {
                     Field::Def(field) => {
-                        let old_node = self.current_node;
-                        let old_path = self.path.clone();
-
+                        let node_stack_top = self.node_stack.last().copied().unwrap();
                         self.path.push(field.name.0);
                         let key = Key::from(self.path.clone());
 
@@ -391,20 +351,20 @@ impl EnvironmentBuilder<UntypedCst> {
                                 OnceCell::new(),
                                 field.ty,
                             )); // value filled in phase 2
-                            self.graph.add_edge(old_node, n, Relation::Parent);
+                            self.graph.add_edge(node_stack_top, n, Relation::Parent);
                             self.trie.insert(key, n);
                             n
                         };
 
                         // Recurse into nested ProductConstructors so deeply-nested fields
                         // are also pre-registered before any resolution happens.
-                        self.current_node = new_node;
+                        self.node_stack.push(new_node);
                         if let CstExpr::ProductConstructor { fields } = *field.value.0 {
                             self.pre_register_fields(fields.to_vec());
                         }
 
-                        self.current_node = old_node;
-                        self.path = old_path;
+                        self.node_stack.pop();
+                        self.path.pop();
                         Some(Field::Def(field))
                     }
 
@@ -425,8 +385,7 @@ impl EnvironmentBuilder<UntypedCst> {
     fn add_ret_macro(&mut self, expr: <UntypedCst as Syntax>::Expr) -> Field<UntypedCst> {
         let name = Spanned::default_with(String::from("%return"));
 
-        let old_node = self.current_node;
-        let old_path = self.path.clone();
+        let old_node = self.node_stack.last().copied().unwrap();
 
         self.path.push(name.0);
         let key = Key::from(self.path.clone());
@@ -444,7 +403,7 @@ impl EnvironmentBuilder<UntypedCst> {
             self.pre_register_fields(fields.to_vec());
         }
 
-        self.current_node = new_node;
+        self.node_stack.push(new_node);
 
         let new_field_def = FieldDef {
             name,
@@ -452,8 +411,8 @@ impl EnvironmentBuilder<UntypedCst> {
             value: expr,
         };
 
-        self.current_node = old_node;
-        self.path = old_path;
+        self.node_stack.pop();
+        self.path.pop();
         Field::Def(new_field_def)
     }
 
@@ -474,14 +433,14 @@ impl EnvironmentBuilder<UntypedCst> {
                             .get(&Key::from(self.path.clone()))
                             .expect("node must exist after pre-registration");
 
-                        let old_node = self.current_node;
-                        self.current_node = node_index;
+                        let old_node = self.node_stack.last().copied().unwrap();
+                        self.node_stack.push(node_index);
                         let value = self.analyze_expr(field.value, vars).into_value();
 
                         // Patch the value into the already-existing node.
                         self.graph[node_index].value.set(value);
 
-                        self.current_node = old_node;
+                        self.node_stack.pop();
                         self.path.pop();
 
                         Field::Def(FieldDef { value, ..*field })
