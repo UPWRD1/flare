@@ -55,7 +55,7 @@ impl<'a> Instantiate<'a> {
     }
 
     fn row(&self, row: Spanned<Intern<Row>>) -> Spanned<Intern<Row>> {
-        row.map(|row| {
+        row.map_inner(|row| {
             match *row {
                 // Type Scheme's should have been generalized and only contain Row::Open.
                 // If we see a Unifier in a type scheme our type checker has a bug in it.
@@ -83,7 +83,7 @@ impl<'a> Instantiate<'a> {
     }
 
     fn ty(&self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
-        ty.map(|ty| match *ty {
+        ty.map_inner(|ty| match *ty {
             Type::Var(var) => self.tyvar_to_unifiers.get(&var).copied().map_or_else(
                 || {
                     unreachable!(

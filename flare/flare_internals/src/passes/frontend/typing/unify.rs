@@ -70,7 +70,7 @@ impl Solver<'_> {
     }
 
     pub fn normalize_row(&mut self, row: Spanned<Intern<Row>>) -> Spanned<Intern<Row>> {
-        row.map(|row| match *row {
+        row.map_inner(|row| match *row {
             Row::Unifier(var) => match self.tables.row_unification_table.probe_value(var) {
                 Some(Row::Closed(closed)) => Row::Closed(self.normalize_closed_row(closed)).into(),
                 Some(row) => row.into(),
@@ -406,8 +406,8 @@ impl Solver<'_> {
                         provenance.id(),
                         provenance
                             .to_dyn_err(
-                                &left.map(|left| left.render(scheme)),
-                                &right.map(|right| right.render(scheme)),
+                                &left.map_inner(|left| left.render(scheme)),
+                                &right.map_inner(|right| right.render(scheme)),
                             )
                             .into(),
                     ),

@@ -402,7 +402,7 @@ impl<'src> Translate<'src> {
             args.into_iter()
                 .map(|n| (n, self.raw_name(&n)))
                 .fold(value, |body, (node, name)| {
-                    value.map(|value| {
+                    value.map_inner(|value| {
                         CstExpr::Lambda(Untyped(self.si(node, |_| name.to_string())), body)
                     })
                 })
@@ -534,7 +534,7 @@ impl<'src> Translate<'src> {
             args.into_iter()
                 .map(|n| (n, self.raw_name(&n)))
                 .fold(value, |body, (node, name)| {
-                    value.map(|value| {
+                    value.map_inner(|value| {
                         CstExpr::Lambda(Untyped(self.si(node, |_| name.to_string())), body)
                     })
                 })

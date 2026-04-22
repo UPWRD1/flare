@@ -1,4 +1,4 @@
-use std::{cell::OnceCell, collections::VecDeque, ops::ControlFlow};
+use std::{cell::OnceCell, ops::ControlFlow};
 
 use internment::Intern;
 
@@ -150,11 +150,10 @@ impl EnvironmentBuilder<UntypedCst> {
             context: BuilderContext::Autoproject,
             ..Default::default()
         };
-        dbg!(root_obj);
+
         let res = me
             .enter_context_root(
                 |me| me.analyze_expr(root_obj, &[]),
-                ControlFlow::Break(root_obj),
                 Spanned::default_with(String::from("Root")),
             )
             .into_value();
@@ -179,10 +178,12 @@ impl EnvironmentBuilder<UntypedCst> {
                     .edges_directed(index, petgraph::Direction::Outgoing)
                     .find(|edge| matches!(edge.weight(), Relation::Return))
                 {
-                    expr.convert(CstExpr::FieldAccess(
-                        expr,
-                        Label(Spanned::default_with(String::from("%return"))),
-                    ))
+                    expr.map(|expr| {
+                        CstExpr::FieldAccess(
+                            expr,
+                            Label(Spanned::default_with(String::from("%return"))),
+                        )
+                    })
                 } else {
                     expr
                 }
@@ -226,10 +227,8 @@ impl EnvironmentBuilder<UntypedCst> {
     fn enter_context_root<T>(
         &mut self,
         mut f: impl FnMut(&mut Self) -> T,
-        value: ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr>,
         name: <UntypedCst as Syntax>::Name,
     ) -> T {
-        let value = value.continue_value();
         self.path.push(name.0);
 
         self.trie.insert(
@@ -244,11 +243,11 @@ impl EnvironmentBuilder<UntypedCst> {
     where
         F: Fn(&Element<UntypedCst>) -> bool,
     {
-        use petgraph::Direction::{Incoming, Outgoing};
+        use petgraph::Direction::Outgoing;
         let mut queue = std::collections::VecDeque::new();
         let mut visited = FxHashSet::default();
-        let the_node = self.node_stack.last().copied().unwrap();
-        queue.extend(self.node_stack.clone());
+        let the_node = self.node_stack.last().copied()?;
+        queue.extend(self.node_stack.iter().rev().collect::<Vec<_>>());
         visited.insert(the_node);
 
         while let Some(node) = queue.pop_front() {
@@ -257,12 +256,14 @@ impl EnvironmentBuilder<UntypedCst> {
                 return Some(node);
             }
             if !visited.contains(&node) {
-                let siblings = self
+                let siblings: Vec<_> = self
                     .graph
                     .edges_directed(node, Outgoing)
                     .filter(|e| matches!(e.weight(), Relation::Parent | Relation::Return))
                     .map(|e| e.target())
-                    .filter(|&n| n != node);
+                    .filter(|&n| n != node)
+                    .collect();
+                queue.extend(siblings);
             }
         }
 
@@ -274,7 +275,6 @@ impl EnvironmentBuilder<UntypedCst> {
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Var],
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
-        dbg!(&self.context);
         match *expr.0 {
             CstExpr::Ident(u) => {
                 if let Some(var) = vars.iter().rev().find(|n| *n.name == *u.0.0) {
@@ -329,7 +329,7 @@ impl EnvironmentBuilder<UntypedCst> {
             CstExpr::Particle(p) => ControlFlow::Continue(expr.convert(CstExpr::Particle(p))),
             CstExpr::Hole(v) => ControlFlow::Continue(expr.convert(CstExpr::Hole(v))),
             CstExpr::Item(item_id) => ControlFlow::Continue(expr.convert(CstExpr::Item(item_id))),
-            CstExpr::Let(..) => todo!(),
+            CstExpr::Let(..) => unimplemented!(),
         }
     }
 
@@ -438,7 +438,7 @@ impl EnvironmentBuilder<UntypedCst> {
                         let value = self.analyze_expr(field.value, vars).into_value();
 
                         // Patch the value into the already-existing node.
-                        self.graph[node_index].value.set(value);
+                        self.graph[node_index].value.set(value).unwrap();
 
                         self.node_stack.pop();
                         self.path.pop();
@@ -526,7 +526,7 @@ impl EnvironmentBuilder<UntypedCst> {
         let main_node = self
             .graph
             .node_indices()
-            .find(|n| *self.graph[*n].name.0 == "main")
+            .find(|n| *self.graph[*n].name.0 == "Main")
             .unwrap();
         let element = &mut self.graph[main_node];
         let main_item = Item {

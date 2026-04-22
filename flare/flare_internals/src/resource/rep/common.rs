@@ -99,11 +99,19 @@ impl<T> Spanned<T> {
         Spanned(value.into(), self.1)
     }
 
-    pub fn map<U, V>(self, f: impl FnOnce(T) -> U) -> Spanned<V>
+    pub fn map_inner<U, V>(self, f: impl FnOnce(T) -> U) -> Spanned<V>
     where
         U: Into<V>,
     {
         Spanned(((f)(self.0)).into(), self.1)
+    }
+
+    pub fn map<U, V>(self, f: impl FnOnce(Self) -> U) -> Spanned<V>
+    where
+        U: Into<V>,
+    {
+        let span = self.1.clone();
+        Spanned(((f)(self)).into(), span)
     }
 
     pub fn default_with(v: impl Into<T>) -> Self {
