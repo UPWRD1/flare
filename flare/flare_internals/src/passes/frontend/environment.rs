@@ -197,8 +197,7 @@ impl EnvironmentBuilder<UntypedCst> {
         n: <UntypedCst as Syntax>::Name,
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
         let expr = if let Some(index) = self.find_nearest(|node| node.name.0 == n.0) {
-            let stage_1 = n.convert(CstExpr::Item(ItemId(index.index())));
-            self.autoproject(stage_1, index)
+            n.convert(CstExpr::Item(ItemId(index.index())))
         } else {
             self.errors.push(errors::not_defined(n));
             n.convert(CstExpr::Hole(Untyped(n)))
@@ -293,6 +292,12 @@ impl EnvironmentBuilder<UntypedCst> {
                     fields: resolved_fields.as_slice().into(),
                 });
 
+                let expr = match self.context {
+                    BuilderContext::Autoproject => {
+                        self.autoproject(expr, self.node_stack.last().copied().unwrap())
+                    }
+                    BuilderContext::Value => expr,
+                };
                 ControlFlow::Break(expr)
             }
             CstExpr::VariantConstructor { name, value } => {
