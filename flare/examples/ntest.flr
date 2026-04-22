@@ -1,4 +1,4 @@
-ain: num = {
+Main: num = {
     # Option = use Option
     # Point = type {x: num, y: num}
     main: num = {

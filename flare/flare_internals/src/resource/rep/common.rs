@@ -13,11 +13,11 @@ pub trait Variable:
 {
 }
 pub trait Syntax: Debug + Copy + PartialEq + Eq + Hash + Send + Sync + 'static {
-    type Expr: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static + Default;
-    type Type: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
-    type Pattern: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
+    type Expr: Clone + Copy + Debug + PartialEq + Eq + Hash + Send + Sync + 'static + Default;
+    type Type: Clone + Copy + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
+    type Pattern: Clone + Copy + Debug + PartialEq + Eq + Hash + Send + Sync + 'static;
     type Variable: Variable;
-    type Name: Clone + Debug + PartialEq + Eq + Hash + Send + Sync + 'static + Display;
+    type Name: Clone + Copy + Debug + PartialEq + Eq + Hash + Send + Sync + 'static + Display;
 }
 
 pub trait HasSpan {

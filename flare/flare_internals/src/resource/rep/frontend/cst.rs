@@ -99,6 +99,12 @@ pub struct FieldDef<S: Syntax> {
     pub value: Spanned<Intern<CstExpr<S>>>, // absent = abstract / extern decl
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Field<S: Syntax> {
+    Def(FieldDef<S>),
+    Macro(FieldMacro<S>),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CstExpr<S: Syntax> {
     Ident(S::Variable),
@@ -114,7 +120,7 @@ pub enum CstExpr<S: Syntax> {
     Item(ItemId),
 
     ProductConstructor {
-        fields: Intern<[FieldDef<S>]>,
+        fields: Intern<[Field<S>]>,
     },
     VariantConstructor {
         name: S::Name,
@@ -138,7 +144,6 @@ pub enum CstExpr<S: Syntax> {
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
     ),
-    // Pub(Spanned<Intern<Self>>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -146,16 +151,16 @@ pub struct ImportItem<S: Syntax> {
     pub items: Vec<Spanned<Intern<CstExpr<S>>>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ImplDef<S: Syntax> {
-    pub the_ty: S::Name,
-    pub methods: &'static [(S::Name, S::Expr, S::Type)],
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Extend<S: Syntax> {
+    pub the_ty: S::Expr,
+    pub with: S::Expr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Macro<S: Syntax> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FieldMacro<S: Syntax> {
     Import(S::Pattern),
-    ImplDef(ImplDef<S>),
+    Extend(Extend<S>),
     Ret(S::Expr),
 }
 
@@ -167,8 +172,7 @@ pub enum Visibility {
 
 #[derive(Debug)]
 pub struct Package<S: Syntax> {
-    pub macros: FxHashMap<CstExpr<S>, Vec<Macro<S>>>,
-    pub root_node: FieldDef<S>,
+    pub root_node: Field<S>,
 }
 
 #[derive(Default, Debug)]

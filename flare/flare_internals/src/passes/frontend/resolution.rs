@@ -16,7 +16,7 @@ use crate::{
             common::{FlareSpan, Spanned, Syntax},
             frontend::{
                 ast::{BinOp, Direction, Expr, ItemId, Kind, Label, Untyped, UntypedAst},
-                cst::{CstExpr, UntypedCst},
+                cst::{CstExpr, Field, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind},
             },
@@ -164,7 +164,7 @@ impl Resolver {
     }
 
     fn convert_func(&mut self, the_func: FunctionItem<UntypedCst>) -> FunctionItem<UntypedAst> {
-        let sig = self.convert_type(the_func.sig, Kind::Func);
+        let sig = self.convert_type(the_func.sig, Kind::Func).into();
         let body = self.desugar_cstexpr(the_func.body);
         FunctionItem {
             sig,
@@ -274,12 +274,12 @@ impl Resolver {
                 Item::new(ItemKind::Function(f))
             }
             ItemKind::Type(n, g, t) => {
-                let scheme = self.convert_type(t, Kind::Ty);
+                let scheme = self.convert_type(t, Kind::Ty).into();
 
                 Item::new(ItemKind::Type(n, vec![].leak(), scheme))
             }
             ItemKind::Extern { name, args, sig } => {
-                let sig = self.convert_type(sig, Kind::Extern(name.0));
+                let sig = self.convert_type(sig, Kind::Extern(name.0)).into();
 
                 Item::new(ItemKind::Extern { name, args, sig })
             }
@@ -298,9 +298,12 @@ impl Resolver {
             CstExpr::Ident(u) => expr.convert(Expr::Ident(u)),
             CstExpr::ProductConstructor { fields } => fields
                 .iter()
-                .map(|l| {
-                    let val = self.desugar_cstexpr(l.value);
-                    expr.convert(Expr::Label(Label(l.name), val))
+                .map(|field| match *field {
+                    Field::Def(field) => {
+                        let val = self.desugar_cstexpr(field.value);
+                        expr.convert(Expr::Label(Label(field.name), val))
+                    }
+                    Field::Macro(field_macro) => todo!(),
                 })
                 .reduce(|l, r| expr.convert(Expr::Concat(l, r)))
                 .unwrap(),

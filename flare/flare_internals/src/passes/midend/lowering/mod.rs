@@ -23,14 +23,19 @@ pub mod lower_ast;
 pub mod lower_types;
 pub mod subst;
 
-fn lower_ty_scheme(scheme: typing::TypeScheme) -> LoweredTyScheme {
+fn lower_ty_scheme(scheme: internment::Intern<typing::TypeScheme>) -> LoweredTyScheme {
     // dbg!(&scheme.unbound_types);
     let mut kinds = vec![Kind::Type; scheme.unbound_types.len() + scheme.unbound_rows.len()];
     let ty_env = scheme
         .unbound_types
-        .into_iter()
-        .map(AstTypeVar::Ty)
-        .chain(scheme.unbound_rows.into_iter().map(AstTypeVar::Row))
+        .iter()
+        .map(|arg0: &typing::TypeVar| AstTypeVar::Ty(*arg0))
+        .chain(
+            scheme
+                .unbound_rows
+                .iter()
+                .map(|arg0: &typing::RowVar| AstTypeVar::Row(*arg0)),
+        )
         .rev()
         .enumerate()
         .map(|(i, tyvar)| {
@@ -46,10 +51,10 @@ fn lower_ty_scheme(scheme: typing::TypeScheme) -> LoweredTyScheme {
     let mut ev_to_ty = BTreeMap::new();
     let ev_tys = scheme
         .evidence
-        .into_iter()
+        .iter()
         .map(|ev| {
             let ty = lower_types.lower_ev_ty(&ev);
-            ev_to_ty.insert(ev, ty.clone());
+            ev_to_ty.insert(*ev, ty.clone());
             ty
         })
         .collect::<Vec<_>>();

@@ -16,7 +16,7 @@ use crate::resource::{
         common::{Spanned, Syntax},
         frontend::{
             ast::{ItemId, Label, Untyped},
-            cst::{CstExpr, FieldDef, Macro, MatchArm, PackageCollection, Pattern, UntypedCst},
+            cst::{CstExpr, Field, FieldDef, MatchArm, PackageCollection, Pattern, UntypedCst},
             entry::{FunctionItem, Item},
             quantifier::QualifierFragment,
         },
@@ -56,6 +56,19 @@ pub enum Relation {
     Reference,
     Parent,
     Return,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum VarKind {
+    Object(NodeIndex),
+    Atom,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Var {
+    name: Intern<String>,
+    kind: VarKind,
 }
 
 impl<S: Syntax> Element<S> {
@@ -111,12 +124,9 @@ impl EnvironmentBuilder<UntypedCst> {
         let mut graph: StableDiGraph<Element<UntypedCst>, Relation> = StableDiGraph::default();
         let root_node = graph.add_node(Element::new(Spanned::default_with("Root".to_string())));
         let trie = Trie::new();
-        let mut macros: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>> =
-            FxHashMap::default();
-        let mut fields: Vec<FieldDef<UntypedCst>> = vec![];
+        let mut fields: Vec<Field<UntypedCst>> = vec![];
 
         program.packages.into_iter().for_each(|(p, _)| {
-            macros.extend(p.macros);
             fields.push(p.root_node);
         });
         let root_obj: Spanned<Intern<_>> = Spanned::default_with(CstExpr::ProductConstructor {
@@ -145,7 +155,6 @@ impl EnvironmentBuilder<UntypedCst> {
                 Spanned::default_with(String::from("Root")),
             )
             .into_value();
-
         me.debug();
         Ok(me.lift(res))
     }
@@ -254,21 +263,34 @@ impl EnvironmentBuilder<UntypedCst> {
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[Intern<String>],
+        vars: &[Var],
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
+        dbg!(self.current_node);
         match *expr.0 {
             CstExpr::Ident(u) => {
-                if vars.iter().rev().find(|n| **n == u.0.0).is_some() {
-                    ControlFlow::Continue(expr)
+                if let Some(var) = vars.iter().rev().find(|n| *n.name == *u.0.0) {
+                    match var.kind {
+                        VarKind::Object(node_index)
+                            if let Some(edge) = self
+                                .graph
+                                .edges_directed(node_index, petgraph::Direction::Outgoing)
+                                .find(|edge| matches!(edge.weight(), Relation::Return)) =>
+                        {
+                            ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(
+                                expr,
+                                Label(Spanned::default_with(String::from("%return"))),
+                            )))
+                        }
+                        VarKind::Object(_) | VarKind::Atom => ControlFlow::Continue(expr),
+                        VarKind::Unknown => todo!(),
+                    }
                 } else {
-                    // dbg!(expr);
                     self.resolve_name(u.0)
                 }
             }
             CstExpr::ProductConstructor { fields } => {
                 // Phase 1: register all sibling nodes before resolving any of them.
-                self.pre_register_fields(&fields);
-
+                let fields = self.pre_register_fields(fields.to_vec(), vars);
                 // Phase 2: now resolve expressions, with all siblings visible.
                 let resolved_fields = self.resolve_fields(&fields, vars);
 
@@ -314,90 +336,148 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    /// Phase 1: recursively pre-register every field in a `ProductConstructor`
-    /// as a node in the graph, so that forward/out-of-order references are
-    /// visible when Phase 2 runs.
-    fn pre_register_fields(&mut self, fields: &[FieldDef<UntypedCst>]) {
-        for field in fields {
-            let old_node = self.current_node;
-            let old_path = self.path.clone();
-
-            self.path.push(field.name.0);
-            let key = Key::from(self.path.clone());
-
-            let new_node = if let Some(&existing) = self.trie.get(&key) {
-                existing
-            } else {
-                let n = self
-                    .graph
-                    .add_node(Element::new_with_ty(field.name, None, field.ty)); // value filled in phase 2
-                self.graph.add_edge(old_node, n, Relation::Parent);
-                self.trie.insert(key, n);
-                n
-            };
-
-            // Recurse into nested ProductConstructors so deeply-nested fields
-            // are also pre-registered before any resolution happens.
-            self.current_node = new_node;
-            if let CstExpr::ProductConstructor { fields: nested } = *field.value.0 {
-                self.pre_register_fields(&nested);
-            }
-
-            self.current_node = old_node;
-            self.path = old_path;
-        }
-    }
-
-    /// Phase 2: resolve expressions for each field now that all siblings
-    /// exist in the graph. Updates the node's value in-place.
-    fn resolve_fields(
+    fn pre_register_fields(
         &mut self,
-        fields: &[FieldDef<UntypedCst>],
-        vars: &[Intern<String>],
-    ) -> Vec<FieldDef<UntypedCst>> {
+        fields: Vec<Field<UntypedCst>>,
+        vars: &[Var],
+    ) -> Vec<Field<UntypedCst>> {
         fields
-            .iter()
-            .map(|field| {
-                // Retrieve the node index that phase 1 already created.
-                self.path.push(field.name.0);
-                let node_index = *self
-                    .trie
-                    .get(&Key::from(self.path.clone()))
-                    .expect("node must exist after pre-registration");
+            .into_iter()
+            .filter_map(|field| {
+                match field {
+                    Field::Def(field) => {
+                        let old_node = self.current_node;
+                        let old_path = self.path.clone();
 
-                let old_node = self.current_node;
-                self.current_node = node_index;
-                let value = self.analyze_expr(field.value, vars).into_value();
+                        self.path.push(field.name.0);
+                        let key = Key::from(self.path.clone());
 
-                // Patch the value into the already-existing node.
-                self.graph[node_index].value = Some(value);
+                        let new_node = if let Some(&existing) = self.trie.get(&key) {
+                            existing
+                        } else {
+                            let n = self
+                                .graph
+                                .add_node(Element::new_with_ty(field.name, None, field.ty)); // value filled in phase 2
+                            self.graph.add_edge(old_node, n, Relation::Parent);
+                            self.trie.insert(key, n);
+                            n
+                        };
 
-                self.current_node = old_node;
-                self.path.pop();
+                        // Recurse into nested ProductConstructors so deeply-nested fields
+                        // are also pre-registered before any resolution happens.
+                        self.current_node = new_node;
+                        if let CstExpr::ProductConstructor { fields } = *field.value.0 {
+                            self.pre_register_fields(fields.to_vec(), vars);
+                        }
 
-                FieldDef { value, ..*field }
+                        self.current_node = old_node;
+                        self.path = old_path;
+                        Some(Field::Def(field))
+                    }
+
+                    Field::Macro(field_macro) => match field_macro {
+                        crate::resource::rep::frontend::cst::FieldMacro::Import(_) => todo!(),
+                        crate::resource::rep::frontend::cst::FieldMacro::Extend(extend) => {
+                            todo!()
+                        }
+                        crate::resource::rep::frontend::cst::FieldMacro::Ret(v) => {
+                            Some(self.add_ret_macro(v, vars))
+                        }
+                    },
+                }
             })
             .collect()
     }
+
+    fn add_ret_macro(
+        &mut self,
+        expr: <UntypedCst as Syntax>::Expr,
+        vars: &[Var],
+    ) -> Field<UntypedCst> {
+        let name = Spanned::default_with(String::from("%return"));
+
+        let old_node = self.current_node;
+        let old_path = self.path.clone();
+
+        self.path.push(name.0);
+        let key = Key::from(self.path.clone());
+
+        let new_node = if let Some(&existing) = self.trie.get(&key) {
+            existing
+        } else {
+            let n = self.graph.add_node(Element::new_with(name, None)); // value filled in phase 2
+            self.graph.add_edge(old_node, n, Relation::Return);
+            self.trie.insert(key, n);
+            n
+        };
+
+        if let CstExpr::ProductConstructor { fields } = *expr.0 {
+            self.pre_register_fields(fields.to_vec(), vars);
+        }
+
+        self.current_node = new_node;
+
+        let new_field_def = FieldDef {
+            name,
+            ty: None,
+            value: expr,
+        };
+
+        self.current_node = old_node;
+        self.path = old_path;
+        Field::Def(new_field_def)
+    }
+
+    fn resolve_fields(
+        &mut self,
+        fields: &[Field<UntypedCst>],
+        vars: &[Var],
+    ) -> Vec<Field<UntypedCst>> {
+        fields
+            .iter()
+            .map(|field| {
+                match field {
+                    Field::Def(field) => {
+                        // Retrieve the node index that phase 1 already created.
+                        self.path.push(field.name.0);
+                        let node_index = *self
+                            .trie
+                            .get(&Key::from(self.path.clone()))
+                            .expect("node must exist after pre-registration");
+
+                        let old_node = self.current_node;
+                        self.current_node = node_index;
+                        let value = self.analyze_expr(field.value, vars).into_value();
+
+                        // Patch the value into the already-existing node.
+                        self.graph[node_index].value = Some(value);
+
+                        self.current_node = old_node;
+                        self.path.pop();
+
+                        Field::Def(FieldDef { value, ..*field })
+                    }
+                    Field::Macro(field_macro) => {
+                        panic!("Should have been inserted in pre-registration")
+                    }
+                }
+            })
+            .collect()
+    }
+
     fn resolve_branch(
         &mut self,
         pat: Spanned<Intern<Pattern<UntypedCst>>>,
         body: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[Intern<String>],
+        vars: &[Var],
     ) -> MatchArm<UntypedCst> {
-        // The branch becomes: λparam. <lets> in body
-        // `param` is the lambda binder that receives the matchee at the call site.
-        let param = Untyped(pat.convert("%match_arg%".to_string()));
-        let branch_arg: Spanned<Intern<CstExpr<UntypedCst>>> = pat.convert(CstExpr::Ident(param));
-
         let bindings = pat.0.bindings();
-        // Extend vars with user-visible bindings so analyze_expr can resolve them.
-        // Each maps the binder name -> its destructured value expression.
-        let mut branch_vars: Vec<Intern<String>> = vars.to_vec();
-        for binding in &bindings {
-            branch_vars.push(binding.0.0);
-        }
-
+        // Extend vars with bindings
+        let mut branch_vars: Vec<Var> = vars.to_vec();
+        branch_vars.extend(bindings.iter().map(|v| Var {
+            name: v.0.0,
+            kind: VarKind::Unknown,
+        }));
         let body = self.analyze_expr(body, &branch_vars).into_value();
         MatchArm { pat, body }
     }
@@ -407,10 +487,17 @@ impl EnvironmentBuilder<UntypedCst> {
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         arg: Untyped,
         body: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[Intern<String>],
+        vars: &[Var],
     ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
     {
-        let new_vars = &[vars, &[arg.0.0]].concat();
+        let new_vars = &[
+            vars,
+            &[Var {
+                name: arg.0.0,
+                kind: VarKind::Unknown,
+            }],
+        ]
+        .concat();
         let body = self.analyze_expr(body, new_vars).into_value();
         ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
     }
@@ -418,7 +505,7 @@ impl EnvironmentBuilder<UntypedCst> {
     fn resolve_field_access(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[Intern<String>],
+        vars: &[Var],
     ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
     {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {

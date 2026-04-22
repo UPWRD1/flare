@@ -27,10 +27,13 @@ impl<'a> Instantiate<'a> {
         }
     }
 
-    pub fn type_scheme(&self, ty_scheme: TypeScheme) -> (Vec<Constraint>, Spanned<Intern<Type>>) {
+    pub fn type_scheme(
+        &self,
+        ty_scheme: Intern<TypeScheme>,
+    ) -> (Vec<Constraint>, Spanned<Intern<Type>>) {
         let constraints = ty_scheme
             .evidence
-            .into_iter()
+            .iter()
             .map(|ev| self.evidence(&ev))
             .collect();
         let ty = self.ty(ty_scheme.ty);

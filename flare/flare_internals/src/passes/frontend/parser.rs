@@ -7,7 +7,8 @@ use crate::resource::{
         frontend::{
             ast::{BinOp, Label, Untyped},
             cst::{
-                CstExpr, FieldDef, Macro, MatchArm, Package, PackageCollection, Pattern, UntypedCst,
+                CstExpr, Field, FieldDef, FieldMacro, MatchArm, Package, PackageCollection,
+                Pattern, UntypedCst,
             },
             csttypes::CstType,
             files::FileSource,
@@ -199,7 +200,7 @@ impl LangIds {
 
 pub struct Translate<'src> {
     file: &'src FileSource,
-    defs: FxHashMap<CstExpr<UntypedCst>, Vec<Macro<UntypedCst>>>,
+    defs: FxHashMap<CstExpr<UntypedCst>, Vec<FieldMacro<UntypedCst>>>,
     _phantom: PhantomData<Node<'src>>,
     ids: &'src LangIds, // shared, constructed once per process
     errors: FxHashMap<FlareSpan, String>,
@@ -277,10 +278,7 @@ impl<'src> Translate<'src> {
             .map(|n| {
                 let def = self.translate_field_assignment(n);
 
-                Package {
-                    macros: std::mem::take(&mut self.defs),
-                    root_node: def,
-                }
+                Package { root_node: def }
             })
             .collect()
     }
@@ -355,7 +353,7 @@ impl<'src> Translate<'src> {
         let mut cursor = node.walk();
         let children = node.children(&mut cursor);
         // dbg!(&children);
-        let fields: Vec<FieldDef<UntypedCst>> = children
+        let fields: Vec<Field<UntypedCst>> = children
             .into_iter()
             .filter_map(|child| {
                 if !child.is_named() {
@@ -367,14 +365,8 @@ impl<'src> Translate<'src> {
                     k if k == self.ids.k(NK::FieldAssignment) => {
                         Some(self.translate_field_assignment(child))
                     }
-                    k if k == self.ids.k(NK::UseMacro) => {
-                        self.add_use_macro(child);
-                        None
-                    }
-                    k if k == self.ids.k(NK::ReturnMacro) => {
-                        self.add_return_macro(child);
-                        None
-                    }
+                    k if k == self.ids.k(NK::UseMacro) => Some(self.add_use_macro(child)),
+                    k if k == self.ids.k(NK::ReturnMacro) => Some(self.add_return_macro(child)),
                     _ => {
                         println!("extra: {}", child.to_sexp());
                         None
@@ -388,7 +380,7 @@ impl<'src> Translate<'src> {
         }
     }
 
-    fn translate_field_assignment(&mut self, node: Node<'src>) -> FieldDef<UntypedCst> {
+    fn translate_field_assignment(&mut self, node: Node<'src>) -> Field<UntypedCst> {
         // Determine name and params from the two structural variants
         let (name, args) = {
             let name = self.get_child(node, FK::Name).unwrap();
@@ -418,7 +410,7 @@ impl<'src> Translate<'src> {
                 })
         };
 
-        FieldDef { name, ty, value }
+        Field::Def(FieldDef { name, ty, value })
     }
 
     fn collapse_current_path(&self) -> CstExpr<UntypedCst> {
@@ -431,27 +423,20 @@ impl<'src> Translate<'src> {
         *expr.0
     }
 
-    fn add_use_macro(&mut self, node: Node<'src>) {
+    fn add_use_macro(&mut self, node: Node<'src>) -> Field<UntypedCst> {
         let path = self.collapse_current_path();
         let import_node = self.get_field(&node, FK::Import).unwrap();
         let expr = self.lower_pattern(import_node);
-        let the_macro = Macro::Import(expr);
-        self.defs
-            .entry(path)
-            .and_modify(|v| v.push(the_macro.clone()))
-            .or_insert(vec![the_macro]);
+        let the_macro = FieldMacro::Import(expr);
+        Field::Macro(the_macro)
     }
 
-    fn add_return_macro(&mut self, node: Node<'src>) {
+    fn add_return_macro(&mut self, node: Node<'src>) -> Field<UntypedCst> {
         let path = self.collapse_current_path();
         let expr_node = node.child(1).unwrap();
         let expr = self.lower_expr(expr_node);
-        let the_macro = Macro::Ret(expr);
-
-        self.defs
-            .entry(path)
-            .and_modify(|v| v.push(the_macro.clone()))
-            .or_insert(vec![the_macro]);
+        let the_macro = FieldMacro::Ret(expr);
+        Field::Macro(the_macro)
     }
 
     fn lower_type(&mut self, node: Node<'src>) -> Spanned<Intern<CstType>> {

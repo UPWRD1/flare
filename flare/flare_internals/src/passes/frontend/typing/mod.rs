@@ -221,7 +221,7 @@ impl TypeScheme {
 #[derive(Debug)]
 pub struct TypesOutput {
     pub typed_ast: Spanned<Intern<Expr<Typed>>>,
-    pub scheme: TypeScheme,
+    pub scheme: Intern<TypeScheme>,
     pub errors: FxHashMap<FlareSpan, CompilerErr>,
     pub row_to_ev: FxHashMap<FlareSpan, Evidence>,
     pub branch_to_ret_ty: FxHashMap<FlareSpan, Spanned<Intern<Type>>>,
@@ -237,22 +237,26 @@ pub struct ItemWrapper {
 
 #[derive(Default, Debug)]
 pub struct ItemSource {
-    pub types: FxHashMap<ItemId, TypeScheme>,
+    pub types: FxHashMap<ItemId, Intern<TypeScheme>>,
 }
 
 impl ItemSource {
-    pub fn new(types: FxHashMap<ItemId, TypeScheme>) -> Self {
+    pub fn new(types: FxHashMap<ItemId, Intern<TypeScheme>>) -> Self {
         Self { types }
     }
 
-    fn type_of_item(&self, item_id: ItemId) -> TypeScheme {
+    fn type_of_item(&self, item_id: ItemId) -> Intern<TypeScheme> {
         // dbg!item_id);
         // d cbg!(self);
         self.types[&item_id].clone()
     }
 
-    pub fn insert(&mut self, k: ItemId, v: TypeScheme) -> Option<TypeScheme> {
-        self.types.insert(k, v)
+    pub fn insert(
+        &mut self,
+        k: ItemId,
+        v: impl Into<Intern<TypeScheme>>,
+    ) -> Option<Intern<TypeScheme>> {
+        self.types.insert(k, v.into())
     }
 }
 
@@ -372,7 +376,7 @@ impl<'env> Solver<'env> {
     pub fn check_with_items(
         item_source: &'env ItemSource,
         ast: Spanned<Intern<Expr<Untyped>>>,
-        signature: TypeScheme,
+        signature: Intern<TypeScheme>,
     ) -> CompResult<TypesOutput> {
         let mut ctx = Self {
             item_source,
@@ -389,7 +393,7 @@ impl<'env> Solver<'env> {
     fn type_check_logic(
         &mut self,
         ast: Spanned<Intern<Expr<Untyped>>>,
-        signature: TypeScheme,
+        signature: Intern<TypeScheme>,
     ) -> CompResult<TypesOutput> {
         // dbg!(&signature);
         // let id = ast.id();

@@ -1,3 +1,4 @@
+use internment::Intern;
 use petgraph::graph::NodeIndex;
 use rustc_hash::FxHashMap;
 
@@ -43,7 +44,7 @@ impl Typechecker {
                     self.register_type(item_idx, t);
                 }
                 ItemKind::Extern { name, sig, .. } => {
-                    self.context.insert(ItemId(item_idx.index()), sig.clone());
+                    self.context.insert(ItemId(item_idx.index()), sig);
                 }
                 _ => unreachable!("{:?}", item.kind),
             }
@@ -54,7 +55,7 @@ impl Typechecker {
         Ok((out, self.context))
     }
 
-    fn register_type(&mut self, item_idx: NodeIndex, scheme: TypeScheme) {
+    fn register_type(&mut self, item_idx: NodeIndex, scheme: Intern<TypeScheme>) {
         // TODO: Add support for  Type::Generic(_) =>rows and generics
         self.context.insert(ItemId(item_idx.index()), scheme);
     }
@@ -89,13 +90,15 @@ impl Typechecker {
                 let solved = match &item.kind {
                     ItemKind::Function(f) => {
                         // println!("Checking {} : {}", f.name.0, scheme.ty.0);
-                        Solver::check_with_items(&self.context, f.body, scheme).map_err(|e| {
-                            if let Some(e) = e.downcast_ref::<DynamicErr>() {
-                                e.clone().label("in this let-definition", f.name.1).into()
-                            } else {
-                                e
-                            }
-                        })?
+                        Solver::check_with_items(&self.context, f.body, scheme.into()).map_err(
+                            |e| {
+                                if let Some(e) = e.downcast_ref::<DynamicErr>() {
+                                    e.clone().label("in this let-definition", f.name.1).into()
+                                } else {
+                                    e
+                                }
+                            },
+                        )?
                         // .inspect(|types_output| {
                         //     println!("Checked {} : {}", f.name.0, types_output.scheme.ty.0)
                         // })?
