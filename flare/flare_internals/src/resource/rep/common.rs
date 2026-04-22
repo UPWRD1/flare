@@ -110,7 +110,7 @@ impl<T> Spanned<T> {
     where
         U: Into<V>,
     {
-        let span = self.1.clone();
+        let span = self.1;
         Spanned(((f)(self)).into(), span)
     }
 

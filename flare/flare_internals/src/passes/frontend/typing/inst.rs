@@ -34,7 +34,7 @@ impl<'a> Instantiate<'a> {
         let constraints = ty_scheme
             .evidence
             .iter()
-            .map(|ev| self.evidence(&ev))
+            .map(|ev| self.evidence(ev))
             .collect();
         let ty = self.ty(ty_scheme.ty);
         (constraints, ty)

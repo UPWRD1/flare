@@ -246,9 +246,7 @@ impl ItemSource {
     }
 
     fn type_of_item(&self, item_id: ItemId) -> Intern<TypeScheme> {
-        // dbg!item_id);
-        // d cbg!(self);
-        self.types[&item_id].clone()
+        self.types[&item_id]
     }
 
     pub fn insert(

@@ -45,15 +45,14 @@ fn lower_ty_scheme(scheme: internment::Intern<typing::TypeScheme>) -> LoweredTyS
         .collect();
 
     let lower_types = LowerTypes { env: ty_env };
-    // dbg!(scheme.ty);
-    // dbg!(&lower_types.env);
+
     let lower_ty = lower_types.lower_ty(*scheme.ty.0);
     let mut ev_to_ty = BTreeMap::new();
     let ev_tys = scheme
         .evidence
         .iter()
         .map(|ev| {
-            let ty = lower_types.lower_ev_ty(&ev);
+            let ty = lower_types.lower_ev_ty(ev);
             ev_to_ty.insert(*ev, ty.clone());
             ty
         })
@@ -124,7 +123,7 @@ impl Lowerer {
     }
 
     fn lower_logic(&mut self, item_source: &ItemSource, out: &TypesOutput, item_id: ItemId) -> IR {
-        let lowered_scheme = lower_ty_scheme(out.scheme.clone());
+        let lowered_scheme = lower_ty_scheme(out.scheme);
 
         let mut var_supply = VarSupply::default();
         let mut params = vec![];

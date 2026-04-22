@@ -1,6 +1,9 @@
 use internment::Intern;
 
-use crate::resource::rep::{common::Spanned, frontend::ast::Label};
+use crate::resource::rep::{
+    common::Spanned,
+    frontend::ast::{ItemId, Label},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub enum CstType {
@@ -15,7 +18,7 @@ pub enum CstType {
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
     // Package(Spanned<Intern<String>>),
-    // Item(ItemId),
+    Item(ItemId, &'static [Spanned<Intern<Self>>]),
     GenericFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     GenericApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     User(Spanned<Intern<String>>, &'static [Spanned<Intern<Self>>]),

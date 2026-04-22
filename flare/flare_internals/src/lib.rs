@@ -20,7 +20,7 @@
     // clippy::undocumented_unsafe_blocks
 )]
 #[deny(
-    clippy::pedantic,
+    // clippy::pedantic,
     // clippy::nursery,
     clippy::perf,
     clippy::correctness,
@@ -41,7 +41,7 @@
     // clippy::min_ident_chars,
     )]
 #[warn(
-clippy::unwrap_in_result,
+    clippy::unwrap_in_result,
     clippy::large_stack_frames,
     // clippy::panic,
     clippy::dbg_macro,

@@ -17,8 +17,8 @@ use crate::resource::{
         frontend::{
             ast::{ItemId, Label, Untyped},
             cst::{CstExpr, Field, FieldDef, MatchArm, PackageCollection, Pattern, UntypedCst},
+            csttypes::CstType,
             entry::{FunctionItem, Item},
-            quantifier::QualifierFragment,
         },
     },
 };
@@ -192,17 +192,8 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn resolve_name(
-        &mut self,
-        n: <UntypedCst as Syntax>::Name,
-    ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
-        let expr = if let Some(index) = self.find_nearest(|node| node.name.0 == n.0) {
-            n.convert(CstExpr::Item(ItemId(index.index())))
-        } else {
-            self.errors.push(errors::not_defined(n));
-            n.convert(CstExpr::Hole(Untyped(n)))
-        };
-        ControlFlow::Continue(expr)
+    fn resolve_name(&mut self, n: <UntypedCst as Syntax>::Name) -> Option<NodeIndex> {
+        self.find_nearest(|node| node.name.0 == n.0)
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
@@ -217,9 +208,15 @@ impl EnvironmentBuilder<UntypedCst> {
                 Config::NodeNoLabel,
                 Config::RankDir(petgraph::dot::RankDir::LR),
             ],
-            // &|_, _| String::new(),
             &render,
-            &|_, (i, e)| format!("label = \"{} = {}\"", i.index(), e.name),
+            &|_, (i, e)| {
+                format!(
+                    "label = \"{} = {}; {}\"",
+                    i.index(),
+                    e.name,
+                    e.value.get().is_some()
+                )
+            },
         );
         dbg!(dot);
     }
@@ -278,8 +275,10 @@ impl EnvironmentBuilder<UntypedCst> {
             CstExpr::Ident(u) => {
                 if let Some(var) = vars.iter().rev().find(|n| *n.name == *u.0.0) {
                     ControlFlow::Continue(expr)
+                } else if let Some(index) = self.resolve_name(u.0) {
+                    ControlFlow::Continue(expr.modify(CstExpr::Item(ItemId(index.index()))))
                 } else {
-                    self.resolve_name(u.0)
+                    ControlFlow::Continue(expr.modify(CstExpr::Hole(u)))
                 }
             }
             CstExpr::ProductConstructor { fields } => {
@@ -440,7 +439,10 @@ impl EnvironmentBuilder<UntypedCst> {
 
                         let old_node = self.node_stack.last().copied().unwrap();
                         self.node_stack.push(node_index);
+
+                        // Actual transformations
                         let value = self.analyze_expr(field.value, vars).into_value();
+                        let f_type = field.ty.map(|ty| self.resolve_type(ty));
 
                         // Patch the value into the already-existing node.
                         self.graph[node_index].value.set(value).unwrap();
@@ -501,56 +503,55 @@ impl EnvironmentBuilder<UntypedCst> {
         ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(l, r)))
     }
 
-    fn lift(mut self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
-        let mut map: FxHashMap<NodeIndex, Item<UntypedCst>> = FxHashMap::default();
-        let nodes_with_references: Vec<_> = self
-            .graph
-            .edge_indices()
-            .filter_map(|eidx| {
-                let edge = self.graph.edge_weight(eidx)?;
-                if let Relation::Reference = edge {
-                    self.graph.edge_endpoints(eidx).map(|(_, target)| target)
+    fn resolve_type(&mut self, ty: <UntypedCst as Syntax>::Type) -> <UntypedCst as Syntax>::Type {
+        match *ty.0 {
+            CstType::Generic(_)
+            | CstType::Particle(_)
+            | CstType::Unit
+            | CstType::Num
+            | CstType::Bool
+            | CstType::String
+            | CstType::Hole => ty,
+            CstType::Func(l, r) => {
+                let l = self.resolve_type(l);
+                let r = self.resolve_type(r);
+                ty.modify(CstType::Func(l, r))
+            }
+            CstType::Item(item_id, spanneds) => todo!(),
+            CstType::GenericFun(spanned, spanned1) => todo!(),
+            CstType::GenericApp(spanned, spanned1) => todo!(),
+            CstType::User(name, generics) => {
+                if let Some(index) = self.resolve_name(name) {
+                    let id = ItemId(index.index());
+                    ty.modify(CstType::Item(id, generics))
                 } else {
-                    None
+                    ty.modify(CstType::Hole)
                 }
-            })
-            .collect();
-
-        for node in nodes_with_references {
-            let element = &mut self.graph[node];
-            let item = Item {
-                kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
-                    name: element.name,
-                    sig: element.ty.expect("Recursive definition requires type"),
-                    body: element.value.take().expect("Definition requires body"),
-                }),
-            };
-            map.insert(node, item);
+            }
+            CstType::Prod(cst_closed_row) => todo!(),
+            CstType::Sum(cst_closed_row) => todo!(),
+            CstType::Label(label, inner) => {
+                ty.modify(CstType::Label(label, self.resolve_type(inner)))
+            }
         }
-
-        let main_node = self
-            .graph
-            .node_indices()
-            .find(|n| *self.graph[*n].name.0 == "Main")
-            .unwrap();
-        let element = &mut self.graph[main_node];
-        let main_item = Item {
-            kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
-                name: element.name,
-                sig: element.ty.expect("Recursive definition requires type"),
-                body: element.value.take().expect("Definition requires body"),
-            }),
-        };
-        map.insert(main_node, main_item);
-        map
     }
-}
 
-impl<S: Syntax> EnvironmentBuilder<S> {
-    pub fn from_graph_and_root(
-        graph: &impl Into<StableDiGraph<Option<S::Expr>, QualifierFragment>>,
-        root: NodeIndex,
-    ) -> Self {
-        todo!();
+    fn lift(self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
+        self.graph
+            .node_indices()
+            .filter_map(|node| {
+                let element = &self.graph[node];
+                let ty = element.ty?;
+                let body = *element.value.get()?;
+                let item = Item {
+                    kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
+                        name: element.name,
+                        sig: ty,
+                        body,
+                    }),
+                };
+                Some((node, item))
+            })
+            .collect()
     }
 }

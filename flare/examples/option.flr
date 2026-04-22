@@ -1,5 +1,5 @@
-Option = {
-    Option[?T] = type |Some ?T, None|
+Option[?T] = {
+    return type |Some ?T, None|
 
     Some x : ?T -> Option[?T] = |Some x|
 
@@ -22,7 +22,7 @@ Option = {
                 # |Some v| then Some (f(v)), #this is ok
                 as |Some v| then {
                     v = f(v)
-                    res = |Some v|
+                    res = Some v
                 }.res
            
                 as |None| then None

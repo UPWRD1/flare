@@ -432,9 +432,7 @@ impl<'src> Translate<'src> {
     fn add_return_macro(&mut self, node: Node<'src>) -> Field<UntypedCst> {
         let path = self.collapse_current_path();
         let mut cursor = node.walk();
-        dbg!(node.children(&mut cursor).collect::<Vec<_>>());
         let expr_node = node.child(1).unwrap();
-        dbg!(expr_node);
         let expr = self.lower_expr(expr_node);
         let the_macro = FieldMacro::Ret(expr);
         Field::Macro(the_macro)
@@ -548,11 +546,15 @@ impl<'src> Translate<'src> {
         let right_node = node.child_by_field_id(self.ids.f(FK::Right)).unwrap();
         let left = self.lower_expr(left_node);
         let right = self.lower_expr(right_node);
+        let op_str = op_node.to_string();
         CstExpr::Bin(
             left,
-            match op_node.to_string().as_str() {
-                "+" => BinOp::Add,
-                _ => todo!(),
+            match op_str.as_str() {
+                "(\"+\")" => BinOp::Add,
+                "(\"-\")" => BinOp::Sub,
+                "(\"*\")" => BinOp::Mul,
+                "(\"/\")" => BinOp::Div,
+                _ => todo!("{op_str}"),
             },
             right,
         )

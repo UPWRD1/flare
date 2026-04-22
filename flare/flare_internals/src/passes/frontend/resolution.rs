@@ -112,7 +112,11 @@ impl TypeFixer {
             )),
             CstType::Label(l, t) => t.convert(Type::Label(l, self.helper(t))),
             CstType::User(t, g) => {
-                unreachable!("Encountered user type {}[{g:?}] after resolution", t.0)
+                unreachable!("Encountered user type {}[{g:?}] after environment", t.0)
+            }
+
+            CstType::Item(t, g) => {
+                unreachable!("Encountered item type {}[{g:?}] after resolution", t.0)
             }
 
             CstType::GenericApp(l, r) => {
@@ -204,7 +208,7 @@ impl Resolver {
                 // dbg!(new_t);
                 t.modify(CstType::Label(l, new_t))
             }
-            CstType::User(name, instanced_generics) => {
+            CstType::Item(id, instanced_generics) => {
                 todo!()
             }
             CstType::Prod(r) => {
@@ -263,6 +267,7 @@ impl Resolver {
             | CstType::Bool
             | CstType::String
             | CstType::Hole => t,
+            CstType::User(..) => panic!("Found User type after environment"),
         }
     }
 
@@ -330,7 +335,7 @@ impl Resolver {
                     todo!(
                         "This would be a type constructor, but it lowk isn't being used right now"
                     )
-                };
+                }
                 expr.convert(Expr::Call(func, arg))
             }
             CstExpr::FieldAccess(l, r) => {

@@ -76,8 +76,8 @@ impl Typechecker {
                     .context
                     .types
                     .get(&id)
-                    .expect("Context should be loaded")
-                    .clone();
+                    .copied()
+                    .expect("Context should be loaded");
                 match item.kind {
                     ItemKind::Function(_) | ItemKind::Extern { .. } => Some((id, scheme, item)),
                     _ => None,
@@ -90,15 +90,13 @@ impl Typechecker {
                 let solved = match &item.kind {
                     ItemKind::Function(f) => {
                         // println!("Checking {} : {}", f.name.0, scheme.ty.0);
-                        Solver::check_with_items(&self.context, f.body, scheme.into()).map_err(
-                            |e| {
-                                if let Some(e) = e.downcast_ref::<DynamicErr>() {
-                                    e.clone().label("in this let-definition", f.name.1).into()
-                                } else {
-                                    e
-                                }
-                            },
-                        )?
+                        Solver::check_with_items(&self.context, f.body, scheme).map_err(|e| {
+                            if let Some(e) = e.downcast_ref::<DynamicErr>() {
+                                e.clone().label("in this let-definition", f.name.1).into()
+                            } else {
+                                e
+                            }
+                        })?
                         // .inspect(|types_output| {
                         //     println!("Checked {} : {}", f.name.0, types_output.scheme.ty.0)
                         // })?
@@ -122,7 +120,7 @@ impl Typechecker {
                 };
 
                 if solved.errors.is_empty() {
-                    self.context.insert(id, solved.scheme.clone());
+                    self.context.insert(id, solved.scheme);
                     Ok((id, solved))
                 } else {
                     Err(ErrorCollection::new(solved.errors.into_values().collect()).into())

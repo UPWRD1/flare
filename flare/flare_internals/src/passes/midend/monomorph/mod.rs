@@ -43,7 +43,7 @@ use crate::{
 //   the substitution trivially correct without any manual depth arithmetic.
 
 pub fn monomorph(the_ir: Vec<IR>) -> Vec<IR> {
-    let main_id = ItemId(the_ir.len() - 1);
+    let main_id = ItemId(the_ir.len().saturating_sub(1));
 
     let ref_ir: FxHashMap<ItemId, IR> = the_ir
         .into_iter()

@@ -1,5 +1,4 @@
 use internment::Intern;
-use rustc_hash::FxHashMap;
 
 use crate::resource::rep::{
     common::{Spanned, Syntax},

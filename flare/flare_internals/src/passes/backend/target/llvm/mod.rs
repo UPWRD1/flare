@@ -22,16 +22,13 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     passes::backend::{lir::ClosureConvertOut, target::Target as FlareTarget},
-    resource::{
-        errors::CompResult,
-        rep::{
-            backend::{
-                lir::{Item, LIR, Var},
-                types::LIRType,
-            },
-            frontend::ast::BinOp,
-            midend::ir::ItemId,
+    resource::rep::{
+        backend::{
+            lir::{Item, LIR, Var},
+            types::LIRType,
         },
+        frontend::ast::BinOp,
+        midend::ir::ItemId,
     },
 };
 

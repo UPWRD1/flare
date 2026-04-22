@@ -8,7 +8,6 @@ use crate::resource::{
 
 impl Render for LIRType {
     fn render(self) -> Doc<'static> {
-        // dbg!(&self);
         match self {
             Self::Int => Doc::text("i32"),
             Self::Float => Doc::text("f32"),
