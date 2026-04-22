@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, num::NonZero};
 
 use crate::resource::{
-    errors::CompResult,
+    errors::{CompResult, DynamicErr, ErrorCollection},
     rep::{
         common::{FlareSpan, Spanned, Syntax},
         frontend::{
@@ -10,7 +10,7 @@ use crate::resource::{
                 CstExpr, Field, FieldDef, FieldMacro, MatchArm, Package, PackageCollection,
                 Pattern, UntypedCst,
             },
-            csttypes::CstType,
+            csttypes::{CstClosedRow, CstType},
             files::FileSource,
         },
     },
@@ -41,6 +41,7 @@ pub enum NK {
     FieldAccess,
     SumConstructor,
     BinExpression,
+    TypeExpression,
     ParenthesizedExpression,
     // Primaries
     Identifier,
@@ -113,7 +114,7 @@ impl LangIds {
             MatchExpression, Number, ParenthesizedExpression, Path, PatternAlias, PatternAtom,
             PatternPath, PatternProduct, PatternVariable, PatternVariant, PrimitiveType,
             ProductType, PropAccess, PropQualifier, ReturnMacro, SelfType, SourceFile, StringNode,
-            SumConstructor, SumType, UnitExpr, UseMacro, UserType,
+            SumConstructor, SumType, TypeExpression, UnitExpr, UseMacro, UserType,
         };
         let mut kinds = [0u16; NK::COUNT as usize];
 
@@ -135,6 +136,7 @@ impl LangIds {
         k!(SumConstructor, "sum_constructor");
         k!(BinExpression, "binary_expression");
         k!(ParenthesizedExpression, "parenthesized_expression");
+        k!(TypeExpression, "type_expression");
         k!(Identifier, "identifier");
         k!(Path, "path");
         k!(Number, "number");
@@ -327,6 +329,8 @@ impl<'src> Translate<'src> {
                 k if k == self.ids.k(NK::Boolean) => CstExpr::Bool(self.raw_name(&node) == "true"),
                 k if k == self.ids.k(NK::UnitExpr) => CstExpr::Unit,
 
+                k if k == self.ids.k(NK::TypeExpression) => self.lower_type_expr(node),
+
                 _ => {
                     self.error(
                         node,
@@ -337,6 +341,12 @@ impl<'src> Translate<'src> {
             }
         };
         self.si(node, |_| expr)
+    }
+
+    fn lower_type_expr(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
+        let the_type = node.child(1).unwrap();
+        let the_type = self.lower_type(the_type);
+        CstExpr::Type(the_type)
     }
 
     fn lower_variant(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
@@ -431,7 +441,6 @@ impl<'src> Translate<'src> {
 
     fn add_return_macro(&mut self, node: Node<'src>) -> Field<UntypedCst> {
         let path = self.collapse_current_path();
-        let mut cursor = node.walk();
         let expr_node = node.child(1).unwrap();
         let expr = self.lower_expr(expr_node);
         let the_macro = FieldMacro::Ret(expr);
@@ -458,14 +467,14 @@ impl<'src> Translate<'src> {
                     CstType::Func(param, result)
                 }
                 k if k == self.ids.k(NK::ProductType) => self.lower_product_type(node),
-                // k if k == self.k_sum_type => self.lower_sum_type(node),
+                k if k == self.ids.k(NK::SumType) => self.lower_sum_type(node),
                 // k if k == self.k_self_type => CstType::SelfType,
-                // k if k == self.k_grouped_type => {
-                //     // transparent paren — unwrap
-                //     self.lower_type(node.named_child(0).unwrap()).node
-                // }
+                k if k == self.ids.k(NK::GroupedType) => {
+                    // transparent paren — unwrap
+                    *self.lower_type(node.named_child(0).unwrap()).0
+                }
                 _ => {
-                    self.error(node, "unexpected type node");
+                    self.error(node, "Unknown type node");
                     CstType::Hole
                 }
             }
@@ -496,8 +505,40 @@ impl<'src> Translate<'src> {
         CstType::User(name, generics)
     }
 
-    fn lower_product_type(&self, node: Node<'src>) -> CstType {
-        todo!()
+    fn lower_product_type(&mut self, node: Node<'src>) -> CstType {
+        let fields: Vec<_> = self
+            .get_children_by(node, FK::Name)
+            .iter()
+            .map(|node| self.name(node))
+            .map(Label)
+            .collect();
+        let values: Vec<_> = self
+            .get_children_by(node, FK::Type)
+            .into_iter()
+            .map(|node| self.lower_type(node))
+            .collect();
+        CstType::Prod(CstClosedRow {
+            fields: fields.leak(),
+            values: values.leak(),
+        })
+    }
+
+    fn lower_sum_type(&mut self, node: Node<'src>) -> CstType {
+        let fields: Vec<_> = self
+            .get_children_by(node, FK::Name)
+            .iter()
+            .map(|node| self.name(node))
+            .map(Label)
+            .collect();
+        let values: Vec<_> = self
+            .get_children_by(node, FK::Type)
+            .into_iter()
+            .map(|node| self.lower_type(node))
+            .collect();
+        CstType::Sum(CstClosedRow {
+            fields: fields.leak(),
+            values: values.leak(),
+        })
     }
 
     fn lower_match(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
@@ -608,15 +649,19 @@ impl<'src> Translate<'src> {
                 //         name,
                 //     }
                 // }
-                // k if k == self.k_pattern_atom => {
-                //     let inner = node.named_child(0).unwrap();
-                //     if inner.kind_id() == self.k_number {
-                //         let v = inner.utf8_text(self.src).unwrap().parse().unwrap();
-                //         Pattern::Atom(Atom::Num(v))
-                //     } else {
-                //         Pattern::Atom(Atom::Str(self.extract_string(inner)))
-                //     }
-                // }
+                k if k == self.ids.k(NK::PatternAtom) => {
+                    let inner = node.named_child(0).unwrap();
+                    if inner.kind_id() == self.ids.k(NK::Number) {
+                        let v = inner
+                            .utf8_text(self.file.source.as_bytes())
+                            .unwrap()
+                            .parse()
+                            .unwrap();
+                        Pattern::Number(v)
+                    } else {
+                        Pattern::String(self.name(&inner))
+                    }
+                }
                 _ => {
                     self.error(node, "unexpected pattern node");
                     Pattern::Hole(Untyped(self.name(&node)))
@@ -645,7 +690,10 @@ impl<'src> Translate<'src> {
     }
 }
 
-fn translate_tree_sitter(tree: &Tree, file: &FileSource) -> PackageCollection<UntypedCst> {
+fn translate_tree_sitter(
+    tree: &Tree,
+    file: &FileSource,
+) -> CompResult<PackageCollection<UntypedCst>> {
     let root = tree.root_node();
     let ids = LangIds::new(&tree_sitter::Language::new(tree_sitter_flare::LANGUAGE));
     let mut lowerer = Translate::new(&ids, file);
@@ -654,7 +702,18 @@ fn translate_tree_sitter(tree: &Tree, file: &FileSource) -> PackageCollection<Un
         .into_iter()
         .map(|p| (p, file.id))
         .collect();
-    PackageCollection { packages }
+    if lowerer.errors.is_empty() {
+        Ok(PackageCollection { packages })
+    } else {
+        Err(ErrorCollection::new(
+            lowerer
+                .errors
+                .into_iter()
+                .map(|(span, msg)| DynamicErr::new(msg).label("Here", span).into())
+                .collect(),
+        )
+        .into())
+    }
 }
 
 /// Public parsing function. Produces a parse tree from a source string.
@@ -664,5 +723,5 @@ pub fn parse(file: &FileSource) -> CompResult<PackageCollection<UntypedCst>> {
         .set_language(&tree_sitter_flare::LANGUAGE.into())
         .expect("Could not set language");
     let tree = parser.parse(&file.source, None).unwrap();
-    Ok(translate_tree_sitter(&tree, file))
+    translate_tree_sitter(&tree, file)
 }

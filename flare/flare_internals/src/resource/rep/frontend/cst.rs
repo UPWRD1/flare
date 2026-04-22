@@ -143,6 +143,7 @@ pub enum CstExpr<S: Syntax> {
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
     ),
+    Type(S::Type),
 }
 
 #[derive(Debug, PartialEq)]

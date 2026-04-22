@@ -11,13 +11,13 @@ use radix_trie::{Trie, TrieKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::resource::{
-    errors::{self, CompResult, CompilerErr, ErrorCollection},
+    errors::{CompResult, CompilerErr, ErrorCollection},
     rep::{
         common::{Spanned, Syntax},
         frontend::{
             ast::{ItemId, Label, Untyped},
             cst::{CstExpr, Field, FieldDef, MatchArm, PackageCollection, Pattern, UntypedCst},
-            csttypes::CstType,
+            csttypes::{CstClosedRow, CstType},
             entry::{FunctionItem, Item},
         },
     },
@@ -166,29 +166,28 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn autoproject(
+    fn autoproject_expr(
         &self,
         expr: <UntypedCst as Syntax>::Expr,
-        index: NodeIndex,
+        node: NodeIndex,
     ) -> <UntypedCst as Syntax>::Expr {
+        if self.should_autoproject(node).is_some() {
+            expr.map(|expr| {
+                CstExpr::FieldAccess(expr, Label(Spanned::default_with(String::from("%return"))))
+            })
+        } else {
+            expr
+        }
+    }
+
+    fn should_autoproject(&self, node: NodeIndex) -> Option<NodeIndex> {
         match self.context {
-            BuilderContext::Autoproject => {
-                if let Some(edge) = self
-                    .graph
-                    .edges_directed(index, petgraph::Direction::Outgoing)
-                    .find(|edge| matches!(edge.weight(), Relation::Return))
-                {
-                    expr.map(|expr| {
-                        CstExpr::FieldAccess(
-                            expr,
-                            Label(Spanned::default_with(String::from("%return"))),
-                        )
-                    })
-                } else {
-                    expr
-                }
-            }
-            BuilderContext::Value => expr,
+            BuilderContext::Autoproject => self
+                .graph
+                .edges_directed(node, petgraph::Direction::Outgoing)
+                .find(|edge| matches!(edge.weight(), Relation::Return))
+                .map(|edge| edge.target()),
+            BuilderContext::Value => None,
         }
     }
 
@@ -248,6 +247,7 @@ impl EnvironmentBuilder<UntypedCst> {
 
         while let Some(node) = queue.pop_front() {
             if predicate(&self.graph[node]) {
+                let node = self.should_autoproject(node).unwrap_or(node);
                 self.graph.add_edge(the_node, node, Relation::Reference);
                 return Some(node);
             }
@@ -255,7 +255,7 @@ impl EnvironmentBuilder<UntypedCst> {
                 let siblings: Vec<_> = self
                     .graph
                     .edges_directed(node, Outgoing)
-                    .filter(|e| matches!(e.weight(), Relation::Parent | Relation::Return))
+                    .filter(|e| matches!(e.weight(), Relation::Parent))
                     .map(|e| e.target())
                     .filter(|&n| n != node)
                     .collect();
@@ -291,12 +291,7 @@ impl EnvironmentBuilder<UntypedCst> {
                     fields: resolved_fields.as_slice().into(),
                 });
 
-                let expr = match self.context {
-                    BuilderContext::Autoproject => {
-                        self.autoproject(expr, self.node_stack.last().copied().unwrap())
-                    }
-                    BuilderContext::Value => expr,
-                };
+                let expr = self.autoproject_expr(expr, self.node_stack.last().copied().unwrap());
                 ControlFlow::Break(expr)
             }
             CstExpr::VariantConstructor { name, value } => {
@@ -331,8 +326,11 @@ impl EnvironmentBuilder<UntypedCst> {
             CstExpr::Bool(b) => ControlFlow::Continue(expr.convert(CstExpr::Bool(b))),
             CstExpr::Unit => ControlFlow::Continue(expr.convert(CstExpr::Unit)),
             CstExpr::Particle(p) => ControlFlow::Continue(expr.convert(CstExpr::Particle(p))),
-            CstExpr::Hole(v) => ControlFlow::Continue(expr.convert(CstExpr::Hole(v))),
-            CstExpr::Item(item_id) => ControlFlow::Continue(expr.convert(CstExpr::Item(item_id))),
+            CstExpr::Hole(v) => ControlFlow::Continue(expr.modify(CstExpr::Hole(v))),
+            CstExpr::Item(item_id) => ControlFlow::Continue(expr.modify(CstExpr::Item(item_id))),
+            CstExpr::Type(ty) => {
+                ControlFlow::Continue(expr.modify(CstExpr::Type(self.resolve_type(ty))))
+            }
             CstExpr::Let(..) => unimplemented!(),
         }
     }
@@ -528,8 +526,25 @@ impl EnvironmentBuilder<UntypedCst> {
                     ty.modify(CstType::Hole)
                 }
             }
-            CstType::Prod(cst_closed_row) => todo!(),
-            CstType::Sum(cst_closed_row) => todo!(),
+            CstType::Prod(row) => ty.modify(CstType::Prod(CstClosedRow {
+                values: row
+                    .values
+                    .iter()
+                    .map(|ty| self.resolve_type(*ty))
+                    .collect::<Vec<_>>()
+                    .leak(),
+                ..row
+            })),
+            CstType::Sum(row) => ty.modify(CstType::Prod(CstClosedRow {
+                values: row
+                    .values
+                    .iter()
+                    .map(|ty| self.resolve_type(*ty))
+                    .collect::<Vec<_>>()
+                    .leak(),
+                ..row
+            })),
+
             CstType::Label(label, inner) => {
                 ty.modify(CstType::Label(label, self.resolve_type(inner)))
             }

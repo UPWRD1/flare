@@ -373,6 +373,9 @@ impl Resolver {
             CstExpr::Unit => expr.convert(Expr::Unit),
             CstExpr::Particle(p) => expr.convert(Expr::Particle(p)),
             CstExpr::Hole(v) => expr.convert(Expr::Hole(v)),
+            CstExpr::Type(t) => expr.convert(Expr::Hole(Untyped(Spanned::default_with(
+                String::from("untyped"),
+            )))),
             CstExpr::Item(item_id) => {
                 self.seen.insert(item_id);
                 expr.convert(Expr::Item(item_id))
