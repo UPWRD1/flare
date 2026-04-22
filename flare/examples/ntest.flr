@@ -1,11 +1,1 @@
-Main: num = {
-    # Option = use Option
-    # Point = type {x: num, y: num}
-    main: num = {
-        x:num = 4
-        y:num = x
-        return y
-        # a: num = b
-        # b: num = a
-    }
-}
+Main: num = 3

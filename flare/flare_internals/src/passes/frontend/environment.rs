@@ -1,4 +1,4 @@
-use std::ops::ControlFlow;
+use std::{cell::OnceCell, collections::VecDeque, ops::ControlFlow};
 
 use internment::Intern;
 
@@ -44,10 +44,10 @@ impl TrieKey for Key {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Element<S: Syntax> {
     name: Spanned<Intern<String>>,
-    value: Option<S::Expr>,
+    value: std::cell::OnceCell<S::Expr>,
     ty: Option<S::Type>,
 }
 
@@ -59,30 +59,26 @@ pub enum Relation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum VarKind {
-    Object(NodeIndex),
-    Atom,
-    Unknown,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 struct Var {
     name: Intern<String>,
-    kind: VarKind,
 }
 
 impl<S: Syntax> Element<S> {
     pub fn new_with_ty(
         name: Spanned<Intern<String>>,
-        value: Option<S::Expr>,
+        value: impl Into<OnceCell<S::Expr>>,
         ty: Option<S::Type>,
     ) -> Self {
-        Self { name, value, ty }
-    }
-    pub fn new_with(name: Spanned<Intern<String>>, value: Option<S::Expr>) -> Self {
         Self {
             name,
-            value,
+            value: value.into(),
+            ty,
+        }
+    }
+    pub fn new_with(name: Spanned<Intern<String>>, value: impl Into<OnceCell<S::Expr>>) -> Self {
+        Self {
+            name,
+            value: value.into(),
             ty: None,
         }
     }
@@ -90,7 +86,7 @@ impl<S: Syntax> Element<S> {
     pub fn new(name: Spanned<Intern<String>>) -> Self {
         Self {
             name,
-            value: None,
+            value: OnceCell::new(),
             ty: None,
         }
     }
@@ -110,7 +106,17 @@ pub struct EnvironmentBuilder<S: Syntax> {
     pub trie: Trie<Key, NodeIndex>,
     path: Vec<Intern<String>>,
     current_node: NodeIndex,
+    context: BuilderContext,
     errors: Vec<CompilerErr>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub enum BuilderContext {
+    #[default]
+    /// return autoprojection enabled
+    Autoproject,
+    /// autoprojection disabled
+    Value,
 }
 
 pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
@@ -129,46 +135,70 @@ impl EnvironmentBuilder<UntypedCst> {
         program.packages.into_iter().for_each(|(p, _)| {
             fields.push(p.root_node);
         });
+        fields.push(Field::Macro(
+            crate::resource::rep::frontend::cst::FieldMacro::Ret(Spanned::default_with(
+                CstExpr::Ident(Untyped(Spanned::default_with(String::from("Main")))),
+            )),
+        ));
         let root_obj: Spanned<Intern<_>> = Spanned::default_with(CstExpr::ProductConstructor {
             fields: fields.as_slice().into(),
         });
-        let proj_main_package = Spanned::default_with(CstExpr::FieldAccess(
-            root_obj,
-            Label(Spanned::default_with(String::from("Main"))),
-        ));
-
-        let proj_main_func: Spanned<Intern<_>> = Spanned::default_with(CstExpr::FieldAccess(
-            proj_main_package,
-            Label(Spanned::default_with(String::from("main"))),
-        ));
         let mut me = Self {
             graph,
             trie,
             current_node: root_node,
+            context: BuilderContext::Autoproject,
             ..Default::default()
         };
-
+        dbg!(root_obj);
         let res = me
-            .enter_context(
-                |me| me.analyze_expr(proj_main_func, &[]),
-                ControlFlow::Break(proj_main_func),
+            .enter_context_root(
+                |me| me.analyze_expr(root_obj, &[]),
+                ControlFlow::Break(root_obj),
                 Spanned::default_with(String::from("Root")),
             )
             .into_value();
+        dbg!(res);
         me.debug();
         Ok(me.lift(res))
+    }
+
+    fn autoproject(
+        &self,
+        expr: <UntypedCst as Syntax>::Expr,
+        index: NodeIndex,
+    ) -> <UntypedCst as Syntax>::Expr {
+        match self.context {
+            BuilderContext::Autoproject => {
+                if let Some(edge) = self
+                    .graph
+                    .edges_directed(index, petgraph::Direction::Outgoing)
+                    .find(|edge| matches!(edge.weight(), Relation::Return))
+                {
+                    expr.convert(CstExpr::FieldAccess(
+                        expr,
+                        Label(Spanned::default_with(String::from("%return"))),
+                    ))
+                } else {
+                    expr
+                }
+            }
+            BuilderContext::Value => expr,
+        }
     }
 
     fn resolve_name(
         &mut self,
         n: <UntypedCst as Syntax>::Name,
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
-        if let Some(index) = self.find_nearest(|node| node.name.0 == n.0) {
-            ControlFlow::Continue(n.convert(CstExpr::Item(ItemId(index.index()))))
+        let expr = if let Some(index) = self.find_nearest(|node| node.name.0 == n.0) {
+            let stage_1 = n.convert(CstExpr::Item(ItemId(index.index())));
+            self.autoproject(stage_1, index)
         } else {
             self.errors.push(errors::not_defined(n));
-            ControlFlow::Continue(n.convert(CstExpr::Hole(Untyped(n))))
-        }
+            n.convert(CstExpr::Hole(Untyped(n)))
+        };
+        ControlFlow::Continue(expr)
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
@@ -196,7 +226,9 @@ impl EnvironmentBuilder<UntypedCst> {
         value: ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr>,
         name: <UntypedCst as Syntax>::Name,
     ) -> T {
-        let value = value.continue_value();
+        let value = value
+            .continue_value()
+            .map_or_else(OnceCell::new, std::convert::Into::into);
         let old_node = self.current_node;
         let old_path = self.path.clone();
         self.path.push(name.0);
@@ -211,6 +243,21 @@ impl EnvironmentBuilder<UntypedCst> {
         self.path = old_path;
 
         out
+    }
+
+    fn enter_context_root<T>(
+        &mut self,
+        mut f: impl FnMut(&mut Self) -> T,
+        value: ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr>,
+        name: <UntypedCst as Syntax>::Name,
+    ) -> T {
+        let value = value.continue_value();
+        self.path.push(name.0);
+
+        self.trie
+            .insert(Key::from(self.path.clone()), self.current_node);
+
+        f(self)
     }
 
     fn find_nearest<F>(&mut self, predicate: F) -> Option<petgraph::graph::NodeIndex>
@@ -265,38 +312,26 @@ impl EnvironmentBuilder<UntypedCst> {
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Var],
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
-        dbg!(self.current_node);
+        dbg!(&self.context);
         match *expr.0 {
             CstExpr::Ident(u) => {
                 if let Some(var) = vars.iter().rev().find(|n| *n.name == *u.0.0) {
-                    match var.kind {
-                        VarKind::Object(node_index)
-                            if let Some(edge) = self
-                                .graph
-                                .edges_directed(node_index, petgraph::Direction::Outgoing)
-                                .find(|edge| matches!(edge.weight(), Relation::Return)) =>
-                        {
-                            ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(
-                                expr,
-                                Label(Spanned::default_with(String::from("%return"))),
-                            )))
-                        }
-                        VarKind::Object(_) | VarKind::Atom => ControlFlow::Continue(expr),
-                        VarKind::Unknown => todo!(),
-                    }
+                    ControlFlow::Continue(expr)
                 } else {
                     self.resolve_name(u.0)
                 }
             }
             CstExpr::ProductConstructor { fields } => {
                 // Phase 1: register all sibling nodes before resolving any of them.
-                let fields = self.pre_register_fields(fields.to_vec(), vars);
+                let fields = self.pre_register_fields(fields.to_vec());
                 // Phase 2: now resolve expressions, with all siblings visible.
                 let resolved_fields = self.resolve_fields(&fields, vars);
 
-                ControlFlow::Break(expr.modify(CstExpr::ProductConstructor {
+                let expr = expr.modify(CstExpr::ProductConstructor {
                     fields: resolved_fields.as_slice().into(),
-                }))
+                });
+
+                ControlFlow::Break(expr)
             }
             CstExpr::VariantConstructor { name, value } => {
                 let value = value.map(|value| self.analyze_expr(value, vars).into_value());
@@ -336,11 +371,7 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn pre_register_fields(
-        &mut self,
-        fields: Vec<Field<UntypedCst>>,
-        vars: &[Var],
-    ) -> Vec<Field<UntypedCst>> {
+    fn pre_register_fields(&mut self, fields: Vec<Field<UntypedCst>>) -> Vec<Field<UntypedCst>> {
         fields
             .into_iter()
             .filter_map(|field| {
@@ -355,9 +386,11 @@ impl EnvironmentBuilder<UntypedCst> {
                         let new_node = if let Some(&existing) = self.trie.get(&key) {
                             existing
                         } else {
-                            let n = self
-                                .graph
-                                .add_node(Element::new_with_ty(field.name, None, field.ty)); // value filled in phase 2
+                            let n = self.graph.add_node(Element::new_with_ty(
+                                field.name,
+                                OnceCell::new(),
+                                field.ty,
+                            )); // value filled in phase 2
                             self.graph.add_edge(old_node, n, Relation::Parent);
                             self.trie.insert(key, n);
                             n
@@ -367,7 +400,7 @@ impl EnvironmentBuilder<UntypedCst> {
                         // are also pre-registered before any resolution happens.
                         self.current_node = new_node;
                         if let CstExpr::ProductConstructor { fields } = *field.value.0 {
-                            self.pre_register_fields(fields.to_vec(), vars);
+                            self.pre_register_fields(fields.to_vec());
                         }
 
                         self.current_node = old_node;
@@ -381,7 +414,7 @@ impl EnvironmentBuilder<UntypedCst> {
                             todo!()
                         }
                         crate::resource::rep::frontend::cst::FieldMacro::Ret(v) => {
-                            Some(self.add_ret_macro(v, vars))
+                            Some(self.add_ret_macro(v))
                         }
                     },
                 }
@@ -389,11 +422,7 @@ impl EnvironmentBuilder<UntypedCst> {
             .collect()
     }
 
-    fn add_ret_macro(
-        &mut self,
-        expr: <UntypedCst as Syntax>::Expr,
-        vars: &[Var],
-    ) -> Field<UntypedCst> {
+    fn add_ret_macro(&mut self, expr: <UntypedCst as Syntax>::Expr) -> Field<UntypedCst> {
         let name = Spanned::default_with(String::from("%return"));
 
         let old_node = self.current_node;
@@ -405,14 +434,14 @@ impl EnvironmentBuilder<UntypedCst> {
         let new_node = if let Some(&existing) = self.trie.get(&key) {
             existing
         } else {
-            let n = self.graph.add_node(Element::new_with(name, None)); // value filled in phase 2
+            let n = self.graph.add_node(Element::new(name)); // value filled in phase 2
             self.graph.add_edge(old_node, n, Relation::Return);
             self.trie.insert(key, n);
             n
         };
 
         if let CstExpr::ProductConstructor { fields } = *expr.0 {
-            self.pre_register_fields(fields.to_vec(), vars);
+            self.pre_register_fields(fields.to_vec());
         }
 
         self.current_node = new_node;
@@ -450,7 +479,7 @@ impl EnvironmentBuilder<UntypedCst> {
                         let value = self.analyze_expr(field.value, vars).into_value();
 
                         // Patch the value into the already-existing node.
-                        self.graph[node_index].value = Some(value);
+                        self.graph[node_index].value.set(value);
 
                         self.current_node = old_node;
                         self.path.pop();
@@ -474,10 +503,7 @@ impl EnvironmentBuilder<UntypedCst> {
         let bindings = pat.0.bindings();
         // Extend vars with bindings
         let mut branch_vars: Vec<Var> = vars.to_vec();
-        branch_vars.extend(bindings.iter().map(|v| Var {
-            name: v.0.0,
-            kind: VarKind::Unknown,
-        }));
+        branch_vars.extend(bindings.iter().map(|v| Var { name: v.0.0 }));
         let body = self.analyze_expr(body, &branch_vars).into_value();
         MatchArm { pat, body }
     }
@@ -490,14 +516,7 @@ impl EnvironmentBuilder<UntypedCst> {
         vars: &[Var],
     ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
     {
-        let new_vars = &[
-            vars,
-            &[Var {
-                name: arg.0.0,
-                kind: VarKind::Unknown,
-            }],
-        ]
-        .concat();
+        let new_vars = &[vars, &[Var { name: arg.0.0 }]].concat();
         let body = self.analyze_expr(body, new_vars).into_value();
         ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
     }
@@ -511,11 +530,14 @@ impl EnvironmentBuilder<UntypedCst> {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {
             panic!("Not a field access")
         };
+        let old_context = self.context;
+        self.context = BuilderContext::Value;
         let l = self.analyze_expr(l, vars).into_value();
+        self.context = old_context;
         ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(l, r)))
     }
 
-    fn lift(self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
+    fn lift(mut self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
         let mut map: FxHashMap<NodeIndex, Item<UntypedCst>> = FxHashMap::default();
         let nodes_with_references: Vec<_> = self
             .graph
@@ -531,12 +553,12 @@ impl EnvironmentBuilder<UntypedCst> {
             .collect();
 
         for node in nodes_with_references {
-            let element = &self.graph[node];
+            let element = &mut self.graph[node];
             let item = Item {
                 kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
                     name: element.name,
                     sig: element.ty.expect("Recursive definition requires type"),
-                    body: element.value.expect("Definition requires body"),
+                    body: element.value.take().expect("Definition requires body"),
                 }),
             };
             map.insert(node, item);
@@ -547,12 +569,12 @@ impl EnvironmentBuilder<UntypedCst> {
             .node_indices()
             .find(|n| *self.graph[*n].name.0 == "main")
             .unwrap();
-        let element = &self.graph[main_node];
+        let element = &mut self.graph[main_node];
         let main_item = Item {
             kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
                 name: element.name,
                 sig: element.ty.expect("Recursive definition requires type"),
-                body: element.value.expect("Definition requires body"),
+                body: element.value.take().expect("Definition requires body"),
             }),
         };
         map.insert(main_node, main_item);

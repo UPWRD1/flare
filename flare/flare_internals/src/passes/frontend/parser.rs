@@ -433,6 +433,8 @@ impl<'src> Translate<'src> {
 
     fn add_return_macro(&mut self, node: Node<'src>) -> Field<UntypedCst> {
         let path = self.collapse_current_path();
+        let mut cursor = node.walk();
+        dbg!(node.children(&mut cursor).collect::<Vec<_>>());
         let expr_node = node.child(1).unwrap();
         let expr = self.lower_expr(expr_node);
         let the_macro = FieldMacro::Ret(expr);
