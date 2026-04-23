@@ -11,7 +11,7 @@ use radix_trie::{Trie, TrieKey};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::resource::{
-    errors::{CompResult, CompilerErr, ErrorCollection},
+    errors::{self, CompResult, CompilerErr, ErrorCollection},
     rep::{
         common::{Spanned, Syntax},
         frontend::{
@@ -238,28 +238,63 @@ impl EnvironmentBuilder<UntypedCst> {
     where
         F: Fn(&Element<UntypedCst>) -> bool,
     {
-        use petgraph::Direction::Outgoing;
-        let mut queue = std::collections::VecDeque::new();
-        let mut visited = FxHashSet::default();
+        #[derive(Debug, PartialEq, Eq, Hash)]
+        enum VisitKind {
+            Sibling(NodeIndex),
+            Parent(NodeIndex),
+            Start(NodeIndex),
+        }
+        use VisitKind::{Parent, Sibling, Start};
+        use petgraph::Direction::{Incoming, Outgoing};
+        use std::collections::VecDeque;
+        let mut queue: VecDeque<VisitKind> = VecDeque::new();
+        // let mut visited: FxHashSet<VisitKind> = FxHashSet::default();
         let the_node = self.node_stack.last().copied()?;
-        queue.extend(self.node_stack.iter().rev().collect::<Vec<_>>());
-        visited.insert(the_node);
+        queue.push_back(Start(the_node));
+        // queue.extend(self.node_stack.iter().rev().collect::<Vec<_>>());
 
         while let Some(node) = queue.pop_front() {
-            if predicate(&self.graph[node]) {
-                let node = self.should_autoproject(node).unwrap_or(node);
-                self.graph.add_edge(the_node, node, Relation::Reference);
-                return Some(node);
+            match node {
+                Sibling(node) | Parent(node) | Start(node) => {
+                    if predicate(&self.graph[node]) {
+                        let node = self.should_autoproject(node).unwrap_or(node);
+                        self.graph.add_edge(the_node, node, Relation::Reference);
+                        return Some(node);
+                    }
+                }
             }
-            if !visited.contains(&node) {
-                let siblings: Vec<_> = self
-                    .graph
-                    .edges_directed(node, Outgoing)
-                    .filter(|e| matches!(e.weight(), Relation::Parent))
-                    .map(|e| e.target())
-                    .filter(|&n| n != node)
-                    .collect();
-                queue.extend(siblings);
+            match node {
+                Sibling(node) => (),
+                Parent(node) => {
+                    if let Some(parent_parent) = self
+                        .graph
+                        .edges_directed(node, Incoming)
+                        .filter(|e| matches!(e.weight(), Relation::Parent | Relation::Return))
+                        .map(|e| e.source())
+                        .next()
+                    {
+                        queue.push_back(Parent(parent_parent));
+                    }
+
+                    let siblings: Vec<_> = self
+                        .graph
+                        .edges_directed(node, Outgoing)
+                        .filter(|e| matches!(e.weight(), Relation::Parent))
+                        .map(|e| e.target())
+                        .filter(|&n| n != node)
+                        .map(Sibling)
+                        .collect();
+                    queue.extend(siblings);
+                }
+                Start(node) => {
+                    let parent = self
+                        .graph
+                        .edges_directed(node, Incoming)
+                        .filter(|e| matches!(e.weight(), Relation::Parent | Relation::Return))
+                        .map(|e| e.source())
+                        .next()?;
+                    queue.push_back(Parent(parent));
+                }
             }
         }
 
@@ -272,13 +307,14 @@ impl EnvironmentBuilder<UntypedCst> {
         vars: &[Var],
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
         match *expr.0 {
-            CstExpr::Ident(u) => {
-                if let Some(var) = vars.iter().rev().find(|n| *n.name == *u.0.0) {
+            CstExpr::Ident(name) => {
+                if let Some(var) = vars.iter().rev().find(|n| *n.name == *name.0.0) {
                     ControlFlow::Continue(expr)
-                } else if let Some(index) = self.resolve_name(u.0) {
+                } else if let Some(index) = self.resolve_name(name.0) {
                     ControlFlow::Continue(expr.modify(CstExpr::Item(ItemId(index.index()))))
                 } else {
-                    ControlFlow::Continue(expr.modify(CstExpr::Hole(u)))
+                    self.errors.push(errors::not_defined(name.0));
+                    ControlFlow::Continue(expr.modify(CstExpr::Hole(name)))
                 }
             }
             CstExpr::ProductConstructor { fields } => {
@@ -523,6 +559,7 @@ impl EnvironmentBuilder<UntypedCst> {
                     let id = ItemId(index.index());
                     ty.modify(CstType::Item(id, generics))
                 } else {
+                    self.errors.push(errors::not_defined(name));
                     ty.modify(CstType::Hole)
                 }
             }

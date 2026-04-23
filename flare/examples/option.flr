@@ -7,8 +7,8 @@ Option[?T] = {
 
     unwrap_or option default : Option[?T] -> ?T -> ?T =
         match option
-            as |Some x1| then x1
-            as |None| then default
+            as | Some x1 | then x1
+            as | None | then default
         end
           
     is_some x : Option[?T] -> bool =
@@ -19,12 +19,10 @@ Option[?T] = {
 
     map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
             match o 
-                # |Some v| then Some (f(v)), #this is ok
-                as |Some v| then {
+                as | Some v | then {
                     v = f(v)
-                    res = Some v
-                }.res
-           
-                as |None| then None
+                    return Some v
+                }
+                as | None | then None
             end
 }
