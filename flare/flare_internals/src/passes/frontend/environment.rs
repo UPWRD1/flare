@@ -267,7 +267,7 @@ impl EnvironmentBuilder<UntypedCst> {
                     if let Some(parent_parent) = self
                         .graph
                         .edges_directed(node, Incoming)
-                        .filter(|e| matches!(e.weight(), Relation::Parent | Relation::Return))
+                        .filter(|e| matches!(e.weight(), Relation::Parent))
                         .map(|e| e.source())
                         .next()
                     {
