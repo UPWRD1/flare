@@ -3,24 +3,11 @@ Main = {
         x = 3
         y = 4
     }
-    return x
-  #   Point = type {x: num, y: num}
 
-  #   safe_slope : Point -> Point -> Option[num] = fn p1 p2 => {
-		# denominator = p2.x - p1.x 
-		# return match denominator
-  #           as 0 then None
-  #           as _ then {
-		#         numerator = p2.y - p1.x  
-		#         return numerator / denominator
-  #           }
-  #   }
-    
-  #   main = {
-		# p1 = {x = 3, y = 4}
-		# p2 = {x = 3, y = 6} 
-		# return safe_slope p1 p2 :: unwrap_or 3
-  #   }
-    
-  #   return main
+    factorial = fn g => match g
+        as 0 then 1
+        as 1 then 1
+        as v then v + (factorial v - 1)
+
+    return A.x + A.y
 }

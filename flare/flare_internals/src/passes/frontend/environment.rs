@@ -248,23 +248,21 @@ impl EnvironmentBuilder<UntypedCst> {
         use petgraph::Direction::{Incoming, Outgoing};
         use std::collections::VecDeque;
         let mut queue: VecDeque<VisitKind> = VecDeque::new();
-        // let mut visited: FxHashSet<VisitKind> = FxHashSet::default();
         let the_node = self.node_stack.last().copied()?;
         queue.push_back(Start(the_node));
-        // queue.extend(self.node_stack.iter().rev().collect::<Vec<_>>());
 
         while let Some(node) = queue.pop_front() {
-            match node {
-                Sibling(node) | Parent(node) | Start(node) => {
-                    if predicate(&self.graph[node]) {
-                        let node = self.should_autoproject(node).unwrap_or(node);
-                        self.graph.add_edge(the_node, node, Relation::Reference);
-                        return Some(node);
-                    }
-                }
+            let node_idx = match node {
+                Sibling(n) | Parent(n) | Start(n) => n,
+            };
+            if predicate(&self.graph[node_idx]) {
+                let node_idx = self.should_autoproject(node_idx).unwrap_or(node_idx);
+                self.graph.add_edge(the_node, node_idx, Relation::Reference);
+                return Some(node_idx);
             }
+
             match node {
-                Sibling(node) => (),
+                Sibling(_) => (),
                 Parent(node) => {
                     if let Some(parent_parent) = self
                         .graph
@@ -276,28 +274,28 @@ impl EnvironmentBuilder<UntypedCst> {
                         queue.push_back(Parent(parent_parent));
                     }
 
-                    let siblings: Vec<_> = self
-                        .graph
-                        .edges_directed(node, Outgoing)
-                        .filter(|e| matches!(e.weight(), Relation::Parent))
-                        .map(|e| e.target())
-                        .filter(|&n| n != node)
-                        .map(Sibling)
-                        .collect();
-                    queue.extend(siblings);
+                    queue.extend(
+                        self.graph
+                            .edges_directed(node, Outgoing)
+                            .filter(|e| matches!(e.weight(), Relation::Parent))
+                            .map(|e| e.target())
+                            .filter(|&n| n != node_idx)
+                            .map(Sibling),
+                    );
                 }
                 Start(node) => {
                     let parent = self
                         .graph
                         .edges_directed(node, Incoming)
-                        .filter(|e| matches!(e.weight(), Relation::Parent | Relation::Return))
-                        .map(|e| e.source())
-                        .next()?;
+                        .find_map(|e| {
+                            matches!(e.weight(), Relation::Parent | Relation::Return)
+                                .then(|| e.source())
+                        })
+                        .expect("Should not be root node");
                     queue.push_back(Parent(parent));
                 }
             }
         }
-
         None
     }
 
