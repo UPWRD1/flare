@@ -8,7 +8,7 @@ use petgraph::{
     visit::EdgeRef as _,
 };
 use radix_trie::{Trie, TrieKey};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use crate::resource::{
     errors::{self, CompResult, CompilerErr, ErrorCollection},
@@ -51,7 +51,7 @@ pub struct Element<S: Syntax> {
     ty: Option<S::Type>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Relation {
     Reference,
     Parent,
@@ -158,9 +158,10 @@ impl EnvironmentBuilder<UntypedCst> {
             )
             .into_value();
         dbg!(res);
-        me.debug();
         if me.errors.is_empty() {
-            Ok(me.lift(res))
+            let env_map = me.lift(res);
+            dbg!(&env_map);
+            Ok(env_map)
         } else {
             Err(ErrorCollection::new(me.errors).into())
         }
@@ -257,6 +258,13 @@ impl EnvironmentBuilder<UntypedCst> {
             };
             if predicate(&self.graph[node_idx]) {
                 let node_idx = self.should_autoproject(node_idx).unwrap_or(node_idx);
+                if let Some(edge) = self.graph.find_edge(the_node, node_idx) {
+                    match self.graph.edge_weight(edge) {
+                        Some(Relation::Parent) => (),
+                        Some(_) => return Some(node_idx),
+                        None => unreachable!("Edge must exist to get here"),
+                    }
+                }
                 self.graph.add_edge(the_node, node_idx, Relation::Reference);
                 return Some(node_idx);
             }
@@ -586,7 +594,17 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn lift(self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
+    fn lift(mut self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
+        // use petgraph::algo::bridges::bridges;
+        // let g = self.graph.clone();
+        // let fas = bridges(&g);
+
+        // // Remove edges in feedback arc set from original graph
+        // for edge_id in fas {
+        //     self.graph.remove_edge(edge_id.id());
+        // }
+
+        self.debug();
         self.graph
             .node_indices()
             .filter_map(|node| {

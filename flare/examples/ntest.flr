@@ -1,7 +1,7 @@
 Main = {
     A = {
         x = 3
-        y = 4
+        y = 2
     }
 
     factorial = fn g => match g
@@ -9,5 +9,5 @@ Main = {
         as 1 then 1
         as v then v + (factorial v - 1)
 
-    return A.x + A.y
+    return factorial (A.x + A.y)
 }
