@@ -1,7 +1,7 @@
 Main = {
     A = {
         x = 3
-        y = 2
+        pub y = 2
     }
 
     factorial = fn g => match g

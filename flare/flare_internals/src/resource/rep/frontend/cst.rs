@@ -100,6 +100,7 @@ pub struct FieldDef<S: Syntax> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Field<S: Syntax> {
+    PubDef(FieldDef<S>),
     Def(FieldDef<S>),
     Macro(FieldMacro<S>),
 }

@@ -304,7 +304,7 @@ impl Resolver {
             CstExpr::ProductConstructor { fields } => fields
                 .iter()
                 .map(|field| match *field {
-                    Field::Def(field) => {
+                    Field::Def(field) | Field::PubDef(field) => {
                         let val = self.desugar_cstexpr(field.value);
                         expr.convert(Expr::Label(Label(field.name), val))
                     }

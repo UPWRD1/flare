@@ -26,7 +26,7 @@ rustc-hash = "2.1.1"
 thiserror = "2.0.7"
 tiny_pretty = "0.2.1"
 tree-sitter = "0.26.7"
-tree-sitter-flare = "0.1.6"
+tree-sitter-flare = "0.1.7"
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }

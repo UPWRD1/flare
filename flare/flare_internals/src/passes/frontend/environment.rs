@@ -55,9 +55,14 @@ pub struct Element<S: Syntax> {
 pub enum Relation {
     Reference,
     Parent,
+    PubParent,
     Return,
 }
 
+enum LookupMode {
+    Unqualified,
+    Qualified,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Var {
     name: Intern<String>,
@@ -192,8 +197,17 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn resolve_name(&mut self, n: <UntypedCst as Syntax>::Name) -> Option<NodeIndex> {
-        self.find_nearest(|node| node.name.0 == n.0)
+    fn current_node(&self) -> NodeIndex {
+        self.node_stack.last().copied().unwrap()
+    }
+
+    fn resolve_name(
+        &mut self,
+        n: <UntypedCst as Syntax>::Name,
+        start: NodeIndex,
+        mode: LookupMode,
+    ) -> Option<NodeIndex> {
+        self.find_nearest(|node| node.name.0 == n.0, start, mode)
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
@@ -235,7 +249,12 @@ impl EnvironmentBuilder<UntypedCst> {
         f(self)
     }
 
-    fn find_nearest<F>(&mut self, predicate: F) -> Option<petgraph::graph::NodeIndex>
+    fn find_nearest<F>(
+        &mut self,
+        predicate: F,
+        start: NodeIndex,
+        mode: LookupMode,
+    ) -> Option<petgraph::graph::NodeIndex>
     where
         F: Fn(&Element<UntypedCst>) -> bool,
     {
@@ -249,8 +268,32 @@ impl EnvironmentBuilder<UntypedCst> {
         use petgraph::Direction::{Incoming, Outgoing};
         use std::collections::VecDeque;
         let mut queue: VecDeque<VisitKind> = VecDeque::new();
-        let the_node = self.node_stack.last().copied()?;
-        queue.push_back(Start(the_node));
+        queue.push_back(Start(start));
+
+        let parent = self
+            .graph
+            .edges_directed(start, Incoming)
+            .find_map(|e| {
+                matches!(
+                    e.weight(),
+                    Relation::Parent | Relation::PubParent | Relation::Return
+                )
+                .then(|| e.source())
+            })
+            .expect("Should not be root node");
+
+        if matches!(mode, LookupMode::Qualified) {
+            queue.push_back(Parent(parent));
+        }
+        // Siblings
+        queue.extend(
+            self.graph
+                .edges_directed(parent, Outgoing)
+                .filter(|e| matches!(e.weight(), Relation::PubParent | Relation::Parent))
+                .map(|e| e.target())
+                .filter(|&n| n != start)
+                .map(Sibling),
+        );
 
         while let Some(node) = queue.pop_front() {
             let node_idx = match node {
@@ -258,14 +301,14 @@ impl EnvironmentBuilder<UntypedCst> {
             };
             if predicate(&self.graph[node_idx]) {
                 let node_idx = self.should_autoproject(node_idx).unwrap_or(node_idx);
-                if let Some(edge) = self.graph.find_edge(the_node, node_idx) {
+                if let Some(edge) = self.graph.find_edge(start, node_idx) {
                     match self.graph.edge_weight(edge) {
-                        Some(Relation::Parent) => (),
+                        Some(Relation::Parent | Relation::PubParent) => (),
                         Some(_) => return Some(node_idx),
                         None => unreachable!("Edge must exist to get here"),
                     }
                 }
-                self.graph.add_edge(the_node, node_idx, Relation::Reference);
+                self.graph.add_edge(start, node_idx, Relation::Reference);
                 return Some(node_idx);
             }
 
@@ -275,33 +318,14 @@ impl EnvironmentBuilder<UntypedCst> {
                     if let Some(parent_parent) = self
                         .graph
                         .edges_directed(node, Incoming)
-                        .filter(|e| matches!(e.weight(), Relation::Parent))
+                        .filter(|e| matches!(e.weight(), Relation::Parent | Relation::PubParent))
                         .map(|e| e.source())
                         .next()
                     {
                         queue.push_back(Parent(parent_parent));
                     }
-
-                    queue.extend(
-                        self.graph
-                            .edges_directed(node, Outgoing)
-                            .filter(|e| matches!(e.weight(), Relation::Parent))
-                            .map(|e| e.target())
-                            .filter(|&n| n != node_idx)
-                            .map(Sibling),
-                    );
                 }
-                Start(node) => {
-                    let parent = self
-                        .graph
-                        .edges_directed(node, Incoming)
-                        .find_map(|e| {
-                            matches!(e.weight(), Relation::Parent | Relation::Return)
-                                .then(|| e.source())
-                        })
-                        .expect("Should not be root node");
-                    queue.push_back(Parent(parent));
-                }
+                Start(node) => (),
             }
         }
         None
@@ -311,12 +335,15 @@ impl EnvironmentBuilder<UntypedCst> {
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Var],
+        mode: LookupMode,
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
         match *expr.0 {
             CstExpr::Ident(name) => {
                 if let Some(var) = vars.iter().rev().find(|n| *n.name == *name.0.0) {
                     ControlFlow::Continue(expr)
-                } else if let Some(index) = self.resolve_name(name.0) {
+                } else if let Some(index) =
+                    self.resolve_name(name.0, self.node_stack.last().copied().unwrap())
+                {
                     ControlFlow::Continue(expr.modify(CstExpr::Item(ItemId(index.index()))))
                 } else {
                     self.errors.push(errors::not_defined(name.0));
@@ -412,6 +439,36 @@ impl EnvironmentBuilder<UntypedCst> {
                         Some(Field::Def(field))
                     }
 
+                    Field::PubDef(field) => {
+                        let node_stack_top = self.node_stack.last().copied().unwrap();
+                        self.path.push(field.name.0);
+                        let key = Key::from(self.path.clone());
+
+                        let new_node = if let Some(&existing) = self.trie.get(&key) {
+                            existing
+                        } else {
+                            let n = self.graph.add_node(Element::new_with_ty(
+                                field.name,
+                                OnceCell::new(),
+                                field.ty,
+                            )); // value filled in phase 2
+                            self.graph.add_edge(node_stack_top, n, Relation::PubParent);
+                            self.trie.insert(key, n);
+                            n
+                        };
+
+                        // Recurse into nested ProductConstructors so deeply-nested fields
+                        // are also pre-registered before any resolution happens.
+                        self.node_stack.push(new_node);
+                        if let CstExpr::ProductConstructor { fields } = *field.value.0 {
+                            self.pre_register_fields(fields.to_vec());
+                        }
+
+                        self.node_stack.pop();
+                        self.path.pop();
+                        Some(Field::Def(field))
+                    }
+
                     Field::Macro(field_macro) => match field_macro {
                         crate::resource::rep::frontend::cst::FieldMacro::Import(_) => todo!(),
                         crate::resource::rep::frontend::cst::FieldMacro::Extend(extend) => {
@@ -469,7 +526,7 @@ impl EnvironmentBuilder<UntypedCst> {
             .iter()
             .map(|field| {
                 match field {
-                    Field::Def(field) => {
+                    Field::Def(field) | Field::PubDef(field) => {
                         // Retrieve the node index that phase 1 already created.
                         self.path.push(field.name.0);
                         let node_index = *self
@@ -539,6 +596,9 @@ impl EnvironmentBuilder<UntypedCst> {
         let old_context = self.context;
         self.context = BuilderContext::Value;
         let l = self.analyze_expr(l, vars).into_value();
+        if let CstExpr::Item(item_id) = *l.0 {
+            self.resolve_name(r.0, NodeIndex::from(item_id.0 as u32));
+        }
         self.context = old_context;
         ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(l, r)))
     }
@@ -561,7 +621,7 @@ impl EnvironmentBuilder<UntypedCst> {
             CstType::GenericFun(spanned, spanned1) => todo!(),
             CstType::GenericApp(spanned, spanned1) => todo!(),
             CstType::User(name, generics) => {
-                if let Some(index) = self.resolve_name(name) {
+                if let Some(index) = self.resolve_name(name, self.current_node()) {
                     let id = ItemId(index.index());
                     ty.modify(CstType::Item(id, generics))
                 } else {
@@ -594,16 +654,7 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn lift(mut self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
-        // use petgraph::algo::bridges::bridges;
-        // let g = self.graph.clone();
-        // let fas = bridges(&g);
-
-        // // Remove edges in feedback arc set from original graph
-        // for edge_id in fas {
-        //     self.graph.remove_edge(edge_id.id());
-        // }
-
+    fn lift(self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
         self.debug();
         self.graph
             .node_indices()

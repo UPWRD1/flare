@@ -42,6 +42,7 @@ pub enum NK {
     SumConstructor,
     BinExpression,
     TypeExpression,
+    PubExpression,
     ParenthesizedExpression,
     // Primaries
     Identifier,
@@ -93,6 +94,7 @@ pub enum FK {
     Data,
     Import,
     Sigil,
+    IsPub,
     // sentinel
     COUNT,
 }
@@ -105,16 +107,17 @@ pub struct LangIds {
 impl LangIds {
     pub fn new(lang: &Language) -> Self {
         use FK::{
-            Arg, Expr, Field, Func, Generics, Import, Left, Name, Operator, Pattern, Right, Sigil,
-            Type, Value,
+            Arg, Expr, Field, Func, Generics, Import, IsPub, Left, Name, Operator, Pattern, Right,
+            Sigil, Type, Value,
         };
         use NK::{
             ArrowType, BinExpression, Boolean, CallExpression, ExtendMacro, FieldAccess,
             FieldAssignment, FieldedConstructor, GenericType, GroupedType, Identifier, Lambda,
             MatchExpression, Number, ParenthesizedExpression, Path, PatternAlias, PatternAtom,
             PatternPath, PatternProduct, PatternVariable, PatternVariant, PrimitiveType,
-            ProductType, PropAccess, PropQualifier, ReturnMacro, SelfType, SourceFile, StringNode,
-            SumConstructor, SumType, TypeExpression, UnitExpr, UseMacro, UserType,
+            ProductType, PropAccess, PropQualifier, PubExpression, ReturnMacro, SelfType,
+            SourceFile, StringNode, SumConstructor, SumType, TypeExpression, UnitExpr, UseMacro,
+            UserType,
         };
         let mut kinds = [0u16; NK::COUNT as usize];
 
@@ -137,6 +140,7 @@ impl LangIds {
         k!(BinExpression, "binary_expression");
         k!(ParenthesizedExpression, "parenthesized_expression");
         k!(TypeExpression, "type_expression");
+        k!(PubExpression, "pub_expression");
         k!(Identifier, "identifier");
         k!(Path, "path");
         k!(Number, "number");
@@ -185,6 +189,7 @@ impl LangIds {
         f!(Operator, "op");
         f!(Generics, "generics");
         f!(Import, "import");
+        f!(IsPub, "is_pub");
         f!(Sigil, "sigil");
         Self { kinds, fields }
     }
@@ -232,11 +237,6 @@ impl<'src> Translate<'src> {
 
         self.si(*node, |_| name)
     }
-
-    // /// Helper: wrap a node's lowered value in its span
-    // fn s<T>(&self, node: Node, f: impl FnOnce(Node) -> T) -> Spanned<T> {
-    //     Spanned(f(node), self.span(node))
-    // }
 
     /// Helper: wrap a node's lowered value in its span
     fn si<T: Sync + Send + std::hash::Hash + Eq>(
@@ -331,6 +331,8 @@ impl<'src> Translate<'src> {
 
                 k if k == self.ids.k(NK::TypeExpression) => self.lower_type_expr(node),
 
+                k if k == self.ids.k(NK::PubExpression) => todo!(),
+
                 _ => {
                     self.error(
                         node,
@@ -360,14 +362,14 @@ impl<'src> Translate<'src> {
     fn lower_record(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
         let mut cursor = node.walk();
         let children = node.children(&mut cursor);
-        // dbg!(&children);
+
         let fields: Vec<Field<UntypedCst>> = children
             .into_iter()
             .filter_map(|child| {
                 if !child.is_named() {
                     return None;
                 }
-                // dbg!(child.to_sexp());
+
                 let k = child.kind_id();
                 match k {
                     k if k == self.ids.k(NK::FieldAssignment) => {
@@ -397,6 +399,8 @@ impl<'src> Translate<'src> {
         };
         self.current_path.push(name);
 
+        let is_pub = self.get_child(node, FK::IsPub).is_some();
+
         let ty = self
             .get_child(node, FK::Type)
             .map(|node| self.lower_type(node));
@@ -417,8 +421,11 @@ impl<'src> Translate<'src> {
                     })
                 })
         };
-
-        Field::Def(FieldDef { name, ty, value })
+        if is_pub {
+            Field::PubDef(FieldDef { name, ty, value })
+        } else {
+            Field::Def(FieldDef { name, ty, value })
+        }
     }
 
     fn collapse_current_path(&self) -> CstExpr<UntypedCst> {
