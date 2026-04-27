@@ -158,7 +158,7 @@ impl Resolver {
             .map(|(idx, item)| (idx, self.convert(&item)))
             .collect();
 
-        converted.retain(|k, v| self.seen.contains(&ItemId(k.index())) || v.ident() == "main");
+        converted.retain(|k, v| self.seen.contains(&ItemId(k.index())) || v.ident() == "Main");
 
         if self.errors.is_empty() {
             Ok(converted)
@@ -244,7 +244,7 @@ impl Resolver {
             }
             CstType::GenericApp(l, r) => {
                 let l = self.analyze_type(l);
-                // let r = self.analyze_type(r);
+
                 if let CstType::GenericFun(param, body) = *l.0 {
                     let subst = subst_generic_type(body, param.0, r.0);
                     // dbg!(subst);
@@ -304,7 +304,7 @@ impl Resolver {
             CstExpr::ProductConstructor { fields } => fields
                 .iter()
                 .map(|field| match *field {
-                    Field::Def(field) | Field::PubDef(field) => {
+                    Field::Def(field) => {
                         let val = self.desugar_cstexpr(field.value);
                         expr.convert(Expr::Label(Label(field.name), val))
                     }

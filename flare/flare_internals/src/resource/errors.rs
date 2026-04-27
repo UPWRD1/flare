@@ -10,12 +10,25 @@ mod templates {
     use std::fmt::Display;
 
     use crate::resource::errors::DynamicErr;
-    use crate::resource::rep::common::Spanned;
+    use crate::resource::rep::common::{FlareSpan, Spanned};
     use crate::*;
     pub fn not_defined(q: Spanned<impl Display>) -> CompilerErr {
         let disp = q;
         DynamicErr::new(format!("Could not find a definition for '{}'", disp.0))
             .label(format!("'{}' not found in scope", disp.0), disp.1)
+            .into()
+    }
+
+    pub fn duplicate_return(attempted_new: FlareSpan, previous: FlareSpan) -> CompilerErr {
+        DynamicErr::new(">1 return in row")
+            .label("Cannot declare return more than once", attempted_new)
+            .extra("return expression declared here previously", previous)
+            .into()
+    }
+
+    pub fn needs_type(span: FlareSpan) -> CompilerErr {
+        DynamicErr::new("Missing type annotation")
+            .label("This definition requires a type annotation", span)
             .into()
     }
 

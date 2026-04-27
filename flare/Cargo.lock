@@ -1115,9 +1115,9 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-flare"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0817efa1972d862153f45d510d2a76cd2cb052b17dabb307b9310303d06f610"
+checksum = "cc4bc2309bcfe82d964ad1d0e308b509105f82481d69ab4c10e9d339c5a66c21"
 dependencies = [
  "cc",
  "tree-sitter-language",

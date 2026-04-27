@@ -93,6 +93,7 @@ pub struct MatchArm<S: Syntax> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FieldDef<S: Syntax> {
     pub name: S::Name,
+    pub is_pub: bool,
     // pub params: Intern<[S::Name]>, // non-empty = syntactic function sugar
     pub ty: Option<S::Type>,                // the annotation, if present
     pub value: Spanned<Intern<CstExpr<S>>>, // absent = abstract / extern decl
@@ -100,7 +101,6 @@ pub struct FieldDef<S: Syntax> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Field<S: Syntax> {
-    PubDef(FieldDef<S>),
     Def(FieldDef<S>),
     Macro(FieldMacro<S>),
 }

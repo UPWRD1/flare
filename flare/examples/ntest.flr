@@ -1,13 +1,22 @@
-Main = {
-    A = {
-        x = 3
-        pub y = 2
-    }
+pub Main: num = 3 #{
+    # A = {
+    #     x = 3
+    #     pub y = 2
+    # }
 
-    factorial = fn g => match g
-        as 0 then 1
-        as 1 then 1
-        as v then v + (factorial v - 1)
+    # factorial = fn g => match g
+    #     as 0 then 1
+    #     as 1 then 1
+    #     as v then v.val
+    # end
 
-    return factorial (A.x + A.y)
-}
+    # v = {val = 3}
+    
+# factorial = fn g => match g
+#         as 0 then 1
+#         as 1 then 1
+#         as v then v + (factorial v - 1)
+
+    # v = A.x + A.y
+    # return factorial (A.x + A.y)
+#}

@@ -66,8 +66,8 @@ pub enum NK {
     ArrowType,
     ProductType,
     SumType,
-    GenericType,
-    UserType,
+    TypeApp,
+    ForAll,
     PrimitiveType,
     SelfType,
     GroupedType,
@@ -90,10 +90,8 @@ pub enum FK {
     Left,
     Right,
     Operator,
-    Generics,
     Data,
     Import,
-    Sigil,
     IsPub,
     // sentinel
     COUNT,
@@ -107,17 +105,17 @@ pub struct LangIds {
 impl LangIds {
     pub fn new(lang: &Language) -> Self {
         use FK::{
-            Arg, Expr, Field, Func, Generics, Import, IsPub, Left, Name, Operator, Pattern, Right,
-            Sigil, Type, Value,
+            Arg, Expr, Field, Func, Import, IsPub, Left, Name, Operator, Pattern, Right, Type,
+            Value,
         };
         use NK::{
             ArrowType, BinExpression, Boolean, CallExpression, ExtendMacro, FieldAccess,
-            FieldAssignment, FieldedConstructor, GenericType, GroupedType, Identifier, Lambda,
+            FieldAssignment, FieldedConstructor, ForAll, GroupedType, Identifier, Lambda,
             MatchExpression, Number, ParenthesizedExpression, Path, PatternAlias, PatternAtom,
             PatternPath, PatternProduct, PatternVariable, PatternVariant, PrimitiveType,
             ProductType, PropAccess, PropQualifier, PubExpression, ReturnMacro, SelfType,
-            SourceFile, StringNode, SumConstructor, SumType, TypeExpression, UnitExpr, UseMacro,
-            UserType,
+            SourceFile, StringNode, SumConstructor, SumType, TypeApp, TypeExpression, UnitExpr,
+            UseMacro,
         };
         let mut kinds = [0u16; NK::COUNT as usize];
 
@@ -159,8 +157,9 @@ impl LangIds {
         k!(ArrowType, "arrow_type");
         k!(ProductType, "product_type");
         k!(SumType, "sum_type");
-        k!(GenericType, "generic_type");
-        k!(UserType, "user_type");
+        k!(PrimitiveType, "primitive_type");
+        k!(ForAll, "all");
+        k!(TypeApp, "type_app");
         k!(PrimitiveType, "primitive_type");
         k!(SelfType, "self_type");
         k!(GroupedType, "grouped_type");
@@ -187,10 +186,8 @@ impl LangIds {
         f!(Left, "left");
         f!(Right, "right");
         f!(Operator, "op");
-        f!(Generics, "generics");
         f!(Import, "import");
         f!(IsPub, "is_pub");
-        f!(Sigil, "sigil");
         Self { kinds, fields }
     }
 
@@ -421,11 +418,12 @@ impl<'src> Translate<'src> {
                     })
                 })
         };
-        if is_pub {
-            Field::PubDef(FieldDef { name, ty, value })
-        } else {
-            Field::Def(FieldDef { name, ty, value })
-        }
+        Field::Def(FieldDef {
+            name,
+            ty,
+            value,
+            is_pub,
+        })
     }
 
     fn collapse_current_path(&self) -> CstExpr<UntypedCst> {
@@ -459,12 +457,9 @@ impl<'src> Translate<'src> {
             let k = node.kind_id();
             match k {
                 k if k == self.ids.k(NK::PrimitiveType) => self.lower_primitive_type(&node),
-                k if k == self.ids.k(NK::UserType) => self.lower_user_type(node),
-                k if k == self.ids.k(NK::GenericType) => {
-                    // ?a — the identifier is the only named child
-                    CstType::Generic(
-                        self.name(&node.child_by_field_id(self.ids.f(FK::Name)).unwrap()),
-                    )
+                k if k == self.ids.k(NK::TypeApp) => todo!(),
+                k if k == self.ids.k(NK::ForAll) => {
+                    todo!()
                 }
                 k if k == self.ids.k(NK::ArrowType) => {
                     let param =
@@ -498,18 +493,6 @@ impl<'src> Translate<'src> {
             "unit" => CstType::Unit,
             _ => panic!("Invalid primitive type: {t}"),
         }
-    }
-
-    fn lower_user_type(&mut self, node: Node<'src>) -> CstType {
-        let name_node = self.get_child(node, FK::Name).unwrap();
-        let name = self.name(&name_node);
-        let generics: Vec<_> = self
-            .get_children_by(node, FK::Generics)
-            .into_iter()
-            .map(|node| self.lower_type(node))
-            .collect();
-        let generics: &[Spanned<Intern<CstType>>] = generics.leak();
-        CstType::User(name, generics)
     }
 
     fn lower_product_type(&mut self, node: Node<'src>) -> CstType {

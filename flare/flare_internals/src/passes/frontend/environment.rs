@@ -13,9 +13,9 @@ use rustc_hash::FxHashMap;
 use crate::resource::{
     errors::{self, CompResult, CompilerErr, ErrorCollection},
     rep::{
-        common::{Spanned, Syntax},
+        common::{FlareSpan, HasSpan, Spanned, Syntax},
         frontend::{
-            ast::{ItemId, Label, Untyped},
+            ast::{ItemId, Untyped},
             cst::{CstExpr, Field, FieldDef, MatchArm, PackageCollection, Pattern, UntypedCst},
             csttypes::{CstClosedRow, CstType},
             entry::{FunctionItem, Item},
@@ -49,50 +49,35 @@ pub struct Element<S: Syntax> {
     name: Spanned<Intern<String>>,
     value: std::cell::OnceCell<S::Expr>,
     ty: Option<S::Type>,
+    is_pub: bool,
+    return_expr: Option<S::Expr>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Relation {
     Reference,
     Parent,
-    PubParent,
-    Return,
 }
 
-enum LookupMode {
-    Unqualified,
-    Qualified,
-}
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Var {
     name: Intern<String>,
 }
 
 impl<S: Syntax> Element<S> {
-    pub fn new_with_ty(
+    pub fn new(
         name: Spanned<Intern<String>>,
         value: impl Into<OnceCell<S::Expr>>,
-        ty: Option<S::Type>,
+        ty: impl Into<Option<S::Type>>,
+        is_pub: bool,
+        return_expr: impl Into<Option<S::Expr>>,
     ) -> Self {
         Self {
             name,
             value: value.into(),
-            ty,
-        }
-    }
-    pub fn new_with(name: Spanned<Intern<String>>, value: impl Into<OnceCell<S::Expr>>) -> Self {
-        Self {
-            name,
-            value: value.into(),
-            ty: None,
-        }
-    }
-
-    pub fn new(name: Spanned<Intern<String>>) -> Self {
-        Self {
-            name,
-            value: OnceCell::new(),
-            ty: None,
+            ty: ty.into(),
+            is_pub,
+            return_expr: return_expr.into(),
         }
     }
 }
@@ -111,17 +96,14 @@ pub struct EnvironmentBuilder<S: Syntax> {
     pub trie: Trie<Key, NodeIndex>,
     path: Vec<Intern<String>>,
     node_stack: Vec<NodeIndex>,
-    context: BuilderContext,
     errors: Vec<CompilerErr>,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub enum BuilderContext {
-    #[default]
-    /// return autoprojection enabled
-    Autoproject,
-    /// autoprojection disabled
+#[derive(Clone, Copy)]
+#[repr(u8)]
+enum Expect {
     Value,
+    Struct,
 }
 
 pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
@@ -133,7 +115,15 @@ impl EnvironmentBuilder<UntypedCst> {
     ///
     pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Environment<UntypedCst>> {
         let mut graph: StableDiGraph<Element<UntypedCst>, Relation> = StableDiGraph::default();
-        let root_node = graph.add_node(Element::new(Spanned::default_with("Root".to_string())));
+        let root_node = graph.add_node(Element::new(
+            Spanned::default_with("Root".to_string()),
+            OnceCell::new(),
+            Spanned::default_with(CstType::Num),
+            true,
+            None, // Spanned::default_with(CstExpr::Ident(Untyped(Spanned::default_with(
+                  //     String::from("Main"),
+                  // )))),
+        ));
         let trie = Trie::new();
         let mut fields: Vec<Field<UntypedCst>> = vec![];
 
@@ -152,48 +142,24 @@ impl EnvironmentBuilder<UntypedCst> {
             graph,
             trie,
             node_stack: vec![root_node],
-            context: BuilderContext::Autoproject,
             ..Default::default()
         };
 
         let res = me
             .enter_context_root(
-                |me| me.analyze_expr(root_obj, &[]),
+                |me| me.analyze_expr(root_obj, &[], Expect::Value),
                 Spanned::default_with(String::from("Root")),
             )
             .into_value();
         dbg!(res);
+        me.debug();
+        let env_map = me.lift(res);
+
         if me.errors.is_empty() {
-            let env_map = me.lift(res);
             dbg!(&env_map);
             Ok(env_map)
         } else {
             Err(ErrorCollection::new(me.errors).into())
-        }
-    }
-
-    fn autoproject_expr(
-        &self,
-        expr: <UntypedCst as Syntax>::Expr,
-        node: NodeIndex,
-    ) -> <UntypedCst as Syntax>::Expr {
-        if self.should_autoproject(node).is_some() {
-            expr.map(|expr| {
-                CstExpr::FieldAccess(expr, Label(Spanned::default_with(String::from("%return"))))
-            })
-        } else {
-            expr
-        }
-    }
-
-    fn should_autoproject(&self, node: NodeIndex) -> Option<NodeIndex> {
-        match self.context {
-            BuilderContext::Autoproject => self
-                .graph
-                .edges_directed(node, petgraph::Direction::Outgoing)
-                .find(|edge| matches!(edge.weight(), Relation::Return))
-                .map(|edge| edge.target()),
-            BuilderContext::Value => None,
         }
     }
 
@@ -205,9 +171,8 @@ impl EnvironmentBuilder<UntypedCst> {
         &mut self,
         n: <UntypedCst as Syntax>::Name,
         start: NodeIndex,
-        mode: LookupMode,
     ) -> Option<NodeIndex> {
-        self.find_nearest(|node| node.name.0 == n.0, start, mode)
+        self.lookup_local(n.0, start)
     }
 
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
@@ -225,9 +190,11 @@ impl EnvironmentBuilder<UntypedCst> {
             &render,
             &|_, (i, e)| {
                 format!(
-                    "label = \"{} = {}; {}\"",
+                    "label = \"{} = {}; pub: {}; ret: {}; {}\"",
                     i.index(),
                     e.name,
+                    e.is_pub,
+                    e.return_expr.is_some(),
                     e.value.get().is_some()
                 )
             },
@@ -249,101 +216,91 @@ impl EnvironmentBuilder<UntypedCst> {
         f(self)
     }
 
-    fn find_nearest<F>(
-        &mut self,
-        predicate: F,
-        start: NodeIndex,
-        mode: LookupMode,
-    ) -> Option<petgraph::graph::NodeIndex>
-    where
-        F: Fn(&Element<UntypedCst>) -> bool,
-    {
-        #[derive(Debug, PartialEq, Eq, Hash)]
-        enum VisitKind {
-            Sibling(NodeIndex),
-            Parent(NodeIndex),
-            Start(NodeIndex),
+    fn maybe_autoproject(&self, node: NodeIndex, span: FlareSpan) -> <UntypedCst as Syntax>::Expr {
+        if let Some(ret) = self.graph[node].return_expr {
+            ret
+        } else {
+            Spanned(CstExpr::Item(ItemId(node.index())).into(), span)
         }
-        use VisitKind::{Parent, Sibling, Start};
-        use petgraph::Direction::{Incoming, Outgoing};
-        use std::collections::VecDeque;
-        let mut queue: VecDeque<VisitKind> = VecDeque::new();
-        queue.push_back(Start(start));
+    }
+    /// Get the children of a node
+    fn children_of(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, Relation)> + '_ {
+        self.graph
+            .edges_directed(node, petgraph::Direction::Outgoing)
+            .map(|e| (e.target(), *e.weight()))
+    }
 
-        let parent = self
-            .graph
-            .edges_directed(start, Incoming)
-            .find_map(|e| {
-                matches!(
-                    e.weight(),
-                    Relation::Parent | Relation::PubParent | Relation::Return
-                )
-                .then(|| e.source())
-            })
-            .expect("Should not be root node");
+    /// Get the parent of a node
+    fn parent_of(&self, node: NodeIndex) -> Option<NodeIndex> {
+        self.graph
+            .edges_directed(node, petgraph::Direction::Incoming)
+            .find(|e| matches!(e.weight(), Relation::Parent))
+            .map(|e| e.source())
+    }
 
-        if matches!(mode, LookupMode::Qualified) {
-            queue.push_back(Parent(parent));
-        }
-        // Siblings
-        queue.extend(
+    fn lookup_local(&mut self, name: Intern<String>, current: NodeIndex) -> Option<NodeIndex> {
+        let parent = self.parent_of(current)?;
+        // Sibling lookup
+        let child = self
+            .children_of(parent)
+            .find(|(child, _)| self.graph[*child].name.0 == name)
+            .map(|(child, _)| child);
+        if let Some(child) = child {
             self.graph
-                .edges_directed(parent, Outgoing)
-                .filter(|e| matches!(e.weight(), Relation::PubParent | Relation::Parent))
-                .map(|e| e.target())
-                .filter(|&n| n != start)
-                .map(Sibling),
-        );
-
-        while let Some(node) = queue.pop_front() {
-            let node_idx = match node {
-                Sibling(n) | Parent(n) | Start(n) => n,
-            };
-            if predicate(&self.graph[node_idx]) {
-                let node_idx = self.should_autoproject(node_idx).unwrap_or(node_idx);
-                if let Some(edge) = self.graph.find_edge(start, node_idx) {
-                    match self.graph.edge_weight(edge) {
-                        Some(Relation::Parent | Relation::PubParent) => (),
-                        Some(_) => return Some(node_idx),
-                        None => unreachable!("Edge must exist to get here"),
-                    }
-                }
-                self.graph.add_edge(start, node_idx, Relation::Reference);
-                return Some(node_idx);
-            }
-
-            match node {
-                Sibling(_) => (),
-                Parent(node) => {
-                    if let Some(parent_parent) = self
-                        .graph
-                        .edges_directed(node, Incoming)
-                        .filter(|e| matches!(e.weight(), Relation::Parent | Relation::PubParent))
-                        .map(|e| e.source())
-                        .next()
-                    {
-                        queue.push_back(Parent(parent_parent));
-                    }
-                }
-                Start(node) => (),
-            }
+                .add_edge(self.current_node(), child, Relation::Reference);
         }
-        None
+        child
+    }
+
+    fn is_same_scope(&self, a: NodeIndex, b: NodeIndex) -> bool {
+        self.parent_of(a) == self.parent_of(b)
+    }
+
+    fn lookup_in(
+        &mut self,
+        base: NodeIndex,
+        name: Intern<String>,
+        // current: NodeIndex,
+    ) -> Option<NodeIndex> {
+        let current = self.current_node();
+        let child = self
+            .children_of(base)
+            .find(|(child, rel)| {
+                let elem = &self.graph[*child];
+                if elem.name.0 != name {
+                    return false;
+                }
+
+                match rel {
+                    Relation::Parent => {
+                        // only allowed if we're inside base's scope or if pub
+                        elem.is_pub || self.is_same_scope(*child, current)
+                    }
+
+                    _ => false,
+                }
+            })
+            .map(|(child, _)| child);
+
+        if let Some(child) = child {
+            self.graph
+                .add_edge(self.current_node(), child, Relation::Reference);
+        }
+        child
     }
 
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Var],
-        mode: LookupMode,
+        expect: Expect,
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
+        let _ = expect;
         match *expr.0 {
             CstExpr::Ident(name) => {
                 if let Some(var) = vars.iter().rev().find(|n| *n.name == *name.0.0) {
                     ControlFlow::Continue(expr)
-                } else if let Some(index) =
-                    self.resolve_name(name.0, self.node_stack.last().copied().unwrap())
-                {
+                } else if let Some(index) = self.lookup_local(name.0.0, self.current_node()) {
                     ControlFlow::Continue(expr.modify(CstExpr::Item(ItemId(index.index()))))
                 } else {
                     self.errors.push(errors::not_defined(name.0));
@@ -360,27 +317,29 @@ impl EnvironmentBuilder<UntypedCst> {
                     fields: resolved_fields.as_slice().into(),
                 });
 
-                let expr = self.autoproject_expr(expr, self.node_stack.last().copied().unwrap());
                 ControlFlow::Break(expr)
             }
             CstExpr::VariantConstructor { name, value } => {
-                let value = value.map(|value| self.analyze_expr(value, vars).into_value());
+                let value =
+                    value.map(|value| self.analyze_expr(value, vars, Expect::Value).into_value());
                 ControlFlow::Continue(expr.modify(CstExpr::VariantConstructor { name, value }))
             }
-            CstExpr::Bin(l, op, r) => {
-                let l = self.analyze_expr(l, vars).into_value();
-                let r = self.analyze_expr(r, vars).into_value();
-                ControlFlow::Continue(expr.modify(CstExpr::Bin(l, op, r)))
-            }
-            CstExpr::Call(func, arg) => {
-                let func = self.analyze_expr(func, vars).into_value();
 
-                let arg = self.analyze_expr(arg, vars).into_value();
+            CstExpr::Call(func, arg) => {
+                let func = self.analyze_expr(func, vars, Expect::Value).into_value();
+
+                let arg = self.analyze_expr(arg, vars, Expect::Struct).into_value();
                 ControlFlow::Continue(expr.convert(CstExpr::Call(func, arg)))
             }
-            CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars),
+
+            CstExpr::Bin(l, op, r) => {
+                let l = self.analyze_expr(l, vars, Expect::Value).into_value();
+                let r = self.analyze_expr(r, vars, Expect::Value).into_value();
+                ControlFlow::Continue(expr.modify(CstExpr::Bin(l, op, r)))
+            }
+            CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars, expect),
             CstExpr::Match(matchee, branches) => {
-                let matchee = self.analyze_expr(matchee, vars).into_value();
+                let matchee = self.analyze_expr(matchee, vars, Expect::Value).into_value();
 
                 let branches: Vec<_> = branches
                     .iter()
@@ -417,42 +376,14 @@ impl EnvironmentBuilder<UntypedCst> {
                         let new_node = if let Some(&existing) = self.trie.get(&key) {
                             existing
                         } else {
-                            let n = self.graph.add_node(Element::new_with_ty(
+                            let n = self.graph.add_node(Element::new(
                                 field.name,
                                 OnceCell::new(),
                                 field.ty,
+                                field.is_pub,
+                                None,
                             )); // value filled in phase 2
                             self.graph.add_edge(node_stack_top, n, Relation::Parent);
-                            self.trie.insert(key, n);
-                            n
-                        };
-
-                        // Recurse into nested ProductConstructors so deeply-nested fields
-                        // are also pre-registered before any resolution happens.
-                        self.node_stack.push(new_node);
-                        if let CstExpr::ProductConstructor { fields } = *field.value.0 {
-                            self.pre_register_fields(fields.to_vec());
-                        }
-
-                        self.node_stack.pop();
-                        self.path.pop();
-                        Some(Field::Def(field))
-                    }
-
-                    Field::PubDef(field) => {
-                        let node_stack_top = self.node_stack.last().copied().unwrap();
-                        self.path.push(field.name.0);
-                        let key = Key::from(self.path.clone());
-
-                        let new_node = if let Some(&existing) = self.trie.get(&key) {
-                            existing
-                        } else {
-                            let n = self.graph.add_node(Element::new_with_ty(
-                                field.name,
-                                OnceCell::new(),
-                                field.ty,
-                            )); // value filled in phase 2
-                            self.graph.add_edge(node_stack_top, n, Relation::PubParent);
                             self.trie.insert(key, n);
                             n
                         };
@@ -475,46 +406,25 @@ impl EnvironmentBuilder<UntypedCst> {
                             todo!()
                         }
                         crate::resource::rep::frontend::cst::FieldMacro::Ret(v) => {
-                            Some(self.add_ret_macro(v))
+                            let node_stack_top = self.node_stack.last().unwrap();
+                            let enclosing =
+                                self.graph.node_weight_mut(*node_stack_top).map(|node| {
+                                    if let Some(spanned) = node.return_expr {
+                                        self.errors.push(errors::duplicate_return(
+                                            v.span(),
+                                            spanned.span(),
+                                        ))
+                                    } else {
+                                        node.return_expr = Some(v)
+                                    }
+                                });
+
+                            None
                         }
                     },
                 }
             })
             .collect()
-    }
-
-    fn add_ret_macro(&mut self, expr: <UntypedCst as Syntax>::Expr) -> Field<UntypedCst> {
-        let name = Spanned::default_with(String::from("%return"));
-
-        let old_node = self.node_stack.last().copied().unwrap();
-
-        self.path.push(name.0);
-        let key = Key::from(self.path.clone());
-
-        let new_node = if let Some(&existing) = self.trie.get(&key) {
-            existing
-        } else {
-            let n = self.graph.add_node(Element::new(name)); // value filled in phase 2
-            self.graph.add_edge(old_node, n, Relation::Return);
-            self.trie.insert(key, n);
-            n
-        };
-
-        if let CstExpr::ProductConstructor { fields } = *expr.0 {
-            self.pre_register_fields(fields.to_vec());
-        }
-
-        self.node_stack.push(new_node);
-
-        let new_field_def = FieldDef {
-            name,
-            ty: None,
-            value: expr,
-        };
-
-        self.node_stack.pop();
-        self.path.pop();
-        Field::Def(new_field_def)
     }
 
     fn resolve_fields(
@@ -526,7 +436,7 @@ impl EnvironmentBuilder<UntypedCst> {
             .iter()
             .map(|field| {
                 match field {
-                    Field::Def(field) | Field::PubDef(field) => {
+                    Field::Def(field) => {
                         // Retrieve the node index that phase 1 already created.
                         self.path.push(field.name.0);
                         let node_index = *self
@@ -538,11 +448,21 @@ impl EnvironmentBuilder<UntypedCst> {
                         self.node_stack.push(node_index);
 
                         // Actual transformations
-                        let value = self.analyze_expr(field.value, vars).into_value();
+                        let value = self
+                            .analyze_expr(field.value, vars, Expect::Value)
+                            .into_value();
                         let f_type = field.ty.map(|ty| self.resolve_type(ty));
+
+                        let ret = self.graph[node_index]
+                            .return_expr
+                            .map(|expr| self.analyze_expr(expr, &[], Expect::Value).into_value());
 
                         // Patch the value into the already-existing node.
                         self.graph[node_index].value.set(value).unwrap();
+
+                        if let Some(el) = self.graph.node_weight_mut(node_index) {
+                            el.return_expr = ret
+                        }
 
                         self.node_stack.pop();
                         self.path.pop();
@@ -567,7 +487,9 @@ impl EnvironmentBuilder<UntypedCst> {
         // Extend vars with bindings
         let mut branch_vars: Vec<Var> = vars.to_vec();
         branch_vars.extend(bindings.iter().map(|v| Var { name: v.0.0 }));
-        let body = self.analyze_expr(body, &branch_vars).into_value();
+        let body = self
+            .analyze_expr(body, &branch_vars, Expect::Value)
+            .into_value();
         MatchArm { pat, body }
     }
 
@@ -580,7 +502,9 @@ impl EnvironmentBuilder<UntypedCst> {
     ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
     {
         let new_vars = &[vars, &[Var { name: arg.0.0 }]].concat();
-        let body = self.analyze_expr(body, new_vars).into_value();
+        let body = self
+            .analyze_expr(body, new_vars, Expect::Value)
+            .into_value();
         ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
     }
 
@@ -588,21 +512,29 @@ impl EnvironmentBuilder<UntypedCst> {
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Var],
-    ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
-    {
+        expect: Expect,
+    ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
         let CstExpr::FieldAccess(l, r) = *expr.0 else {
-            panic!("Not a field access")
+            unreachable!()
         };
-        let old_context = self.context;
-        self.context = BuilderContext::Value;
-        let l = self.analyze_expr(l, vars).into_value();
-        if let CstExpr::Item(item_id) = *l.0 {
-            self.resolve_name(r.0, NodeIndex::from(item_id.0 as u32));
-        }
-        self.context = old_context;
-        ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(l, r)))
-    }
 
+        let base = self.analyze_expr(l, vars, Expect::Struct).into_value();
+
+        if let CstExpr::Item(item_id) = *base.0 {
+            let base = NodeIndex::from(item_id.0 as u32);
+
+            if let Some(target) = self.lookup_in(base, r.0.0) {
+                return ControlFlow::Continue(match expect {
+                    Expect::Value => self.maybe_autoproject(target, expr.span()),
+                    Expect::Struct => expr.convert(CstExpr::Item(ItemId(target.index()))),
+                });
+            } else {
+                self.errors.push(errors::not_defined(r.0));
+            }
+        }
+
+        ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(base, r)))
+    }
     fn resolve_type(&mut self, ty: <UntypedCst as Syntax>::Type) -> <UntypedCst as Syntax>::Type {
         match *ty.0 {
             CstType::Generic(_)
@@ -654,13 +586,16 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn lift(self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
+    fn lift(&mut self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
         self.debug();
         self.graph
             .node_indices()
             .filter_map(|node| {
                 let element = &self.graph[node];
-                let ty = element.ty?;
+                let ty = element.ty.or_else(|| {
+                    self.errors.push(errors::needs_type(element.name.span()));
+                    None
+                })?;
                 let body = *element.value.get()?;
                 let item = Item {
                     kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
