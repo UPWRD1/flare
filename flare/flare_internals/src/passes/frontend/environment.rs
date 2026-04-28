@@ -120,9 +120,9 @@ impl EnvironmentBuilder<UntypedCst> {
             OnceCell::new(),
             Spanned::default_with(CstType::Num),
             true,
-            None, // Spanned::default_with(CstExpr::Ident(Untyped(Spanned::default_with(
-                  //     String::from("Main"),
-                  // )))),
+            Spanned::default_with(CstExpr::Ident(Untyped(Spanned::default_with(
+                String::from("Main"),
+            )))),
         ));
         let trie = Trie::new();
         let mut fields: Vec<Field<UntypedCst>> = vec![];
@@ -349,15 +349,15 @@ impl EnvironmentBuilder<UntypedCst> {
                 ControlFlow::Continue(expr.modify(CstExpr::Match(matchee, branches.leak())))
             }
             CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
-            CstExpr::Number(n) => ControlFlow::Continue(expr.convert(CstExpr::Number(n))),
-            CstExpr::String(s) => ControlFlow::Continue(expr.convert(CstExpr::String(s))),
-            CstExpr::Bool(b) => ControlFlow::Continue(expr.convert(CstExpr::Bool(b))),
-            CstExpr::Unit => ControlFlow::Continue(expr.convert(CstExpr::Unit)),
-            CstExpr::Particle(p) => ControlFlow::Continue(expr.convert(CstExpr::Particle(p))),
-            CstExpr::Hole(v) => ControlFlow::Continue(expr.modify(CstExpr::Hole(v))),
-            CstExpr::Item(item_id) => ControlFlow::Continue(expr.modify(CstExpr::Item(item_id))),
+            CstExpr::Number(_)
+            | CstExpr::String(_)
+            | CstExpr::Bool(_)
+            | CstExpr::Unit
+            | CstExpr::Particle(_)
+            | CstExpr::Hole(_)
+            | CstExpr::Item(_) => ControlFlow::Continue(expr),
             CstExpr::Type(ty) => {
-                ControlFlow::Continue(expr.modify(CstExpr::Type(self.resolve_type(ty))))
+                ControlFlow::Continue(expr.modify(CstExpr::Type(self.resolve_type(ty, vars))))
             }
             CstExpr::Let(..) => unimplemented!(),
         }
@@ -388,14 +388,6 @@ impl EnvironmentBuilder<UntypedCst> {
                             n
                         };
 
-                        // Recurse into nested ProductConstructors so deeply-nested fields
-                        // are also pre-registered before any resolution happens.
-                        self.node_stack.push(new_node);
-                        if let CstExpr::ProductConstructor { fields } = *field.value.0 {
-                            self.pre_register_fields(fields.to_vec());
-                        }
-
-                        self.node_stack.pop();
                         self.path.pop();
                         Some(Field::Def(field))
                     }
@@ -407,17 +399,16 @@ impl EnvironmentBuilder<UntypedCst> {
                         }
                         crate::resource::rep::frontend::cst::FieldMacro::Ret(v) => {
                             let node_stack_top = self.node_stack.last().unwrap();
-                            let enclosing =
-                                self.graph.node_weight_mut(*node_stack_top).map(|node| {
-                                    if let Some(spanned) = node.return_expr {
-                                        self.errors.push(errors::duplicate_return(
-                                            v.span(),
-                                            spanned.span(),
-                                        ))
-                                    } else {
-                                        node.return_expr = Some(v)
-                                    }
-                                });
+                            let weight = self.graph.node_weight_mut(*node_stack_top);
+                            dbg!(&weight);
+                            let enclosing = weight.map(|node| {
+                                // if let Some(spanned) = node.return_expr {
+                                //     self.errors
+                                //         .push(errors::duplicate_return(v.span(), spanned.span()))
+                                // } else {
+                                node.return_expr = Some(v)
+                                // }
+                            });
 
                             None
                         }
@@ -451,7 +442,7 @@ impl EnvironmentBuilder<UntypedCst> {
                         let value = self
                             .analyze_expr(field.value, vars, Expect::Value)
                             .into_value();
-                        let f_type = field.ty.map(|ty| self.resolve_type(ty));
+                        let f_type = field.ty.map(|ty| self.resolve_type(ty, vars));
 
                         let ret = self.graph[node_index]
                             .return_expr
@@ -535,7 +526,11 @@ impl EnvironmentBuilder<UntypedCst> {
 
         ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(base, r)))
     }
-    fn resolve_type(&mut self, ty: <UntypedCst as Syntax>::Type) -> <UntypedCst as Syntax>::Type {
+    fn resolve_type(
+        &mut self,
+        ty: <UntypedCst as Syntax>::Type,
+        vars: &[Var],
+    ) -> <UntypedCst as Syntax>::Type {
         match *ty.0 {
             CstType::Generic(_)
             | CstType::Particle(_)
@@ -545,17 +540,26 @@ impl EnvironmentBuilder<UntypedCst> {
             | CstType::String
             | CstType::Hole => ty,
             CstType::Func(l, r) => {
-                let l = self.resolve_type(l);
-                let r = self.resolve_type(r);
+                let l = self.resolve_type(l, vars);
+                let r = self.resolve_type(r, vars);
                 ty.modify(CstType::Func(l, r))
             }
-            CstType::Item(item_id, spanneds) => todo!(),
+            CstType::Item(item_id) => todo!(),
             CstType::GenericFun(spanned, spanned1) => todo!(),
-            CstType::GenericApp(spanned, spanned1) => todo!(),
-            CstType::User(name, generics) => {
-                if let Some(index) = self.resolve_name(name, self.current_node()) {
+            CstType::GenericApp(tyfun, arg) => {
+                let tyfun = self.resolve_type(tyfun, vars);
+                let arg = self.resolve_type(arg, vars);
+                ty.modify(CstType::GenericApp(tyfun, arg))
+            }
+            CstType::ForAll(t, within) => todo!(),
+            CstType::User(name) => {
+                if let Some(var) = vars.iter().rev().find(|n| *n.name == *name.0) {
+                    todo!()
+                } else if let Some(index) = self.resolve_name(name, self.current_node()) {
+                    let value = self.graph[index].value.get().unwrap();
+                    dbg!(value);
                     let id = ItemId(index.index());
-                    ty.modify(CstType::Item(id, generics))
+                    ty.modify(CstType::Item(id))
                 } else {
                     self.errors.push(errors::not_defined(name));
                     ty.modify(CstType::Hole)
@@ -565,7 +569,7 @@ impl EnvironmentBuilder<UntypedCst> {
                 values: row
                     .values
                     .iter()
-                    .map(|ty| self.resolve_type(*ty))
+                    .map(|ty| self.resolve_type(*ty, vars))
                     .collect::<Vec<_>>()
                     .leak(),
                 ..row
@@ -574,38 +578,51 @@ impl EnvironmentBuilder<UntypedCst> {
                 values: row
                     .values
                     .iter()
-                    .map(|ty| self.resolve_type(*ty))
+                    .map(|ty| self.resolve_type(*ty, vars))
                     .collect::<Vec<_>>()
                     .leak(),
                 ..row
             })),
 
             CstType::Label(label, inner) => {
-                ty.modify(CstType::Label(label, self.resolve_type(inner)))
+                ty.modify(CstType::Label(label, self.resolve_type(inner, vars)))
             }
         }
     }
 
-    fn lift(&mut self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
-        self.debug();
-        self.graph
-            .node_indices()
-            .filter_map(|node| {
-                let element = &self.graph[node];
-                let ty = element.ty.or_else(|| {
-                    self.errors.push(errors::needs_type(element.name.span()));
+    fn lift(&self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
+        let dep = self.graph.filter_map(
+            |_, n| Some(n),
+            |_, e| {
+                if let Relation::Reference = e {
+                    Some(e)
+                } else {
                     None
-                })?;
-                let body = *element.value.get()?;
-                let item = Item {
-                    kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
-                        name: element.name,
-                        sig: ty,
-                        body,
-                    }),
-                };
-                Some((node, item))
-            })
-            .collect()
+                }
+            },
+        );
+        let out = petgraph::algo::tarjan_scc(&self.graph);
+        dbg!(out);
+        todo!();
+        // self.debug();
+        // self.graph
+        //     .node_indices()
+        //     .filter_map(|node| {
+        //         let element = &self.graph[node];
+        //         let ty = element.ty.or_else(|| {
+        //             self.errors.push(errors::needs_type(element.name.span()));
+        //             None
+        //         })?;
+        //         let body = *element.value.get()?;
+        //         let item = Item {
+        //             kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
+        //                 name: element.name,
+        //                 sig: ty,
+        //                 body,
+        //             }),
+        //         };
+        //         Some((node, item))
+        //     })
+        //     .collect()
     }
 }

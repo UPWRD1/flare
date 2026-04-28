@@ -18,10 +18,11 @@ pub enum CstType {
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
     // Package(Spanned<Intern<String>>),
-    Item(ItemId, &'static [Spanned<Intern<Self>>]),
+    Item(ItemId),
     GenericFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    ForAll(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     GenericApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    User(Spanned<Intern<String>>, &'static [Spanned<Intern<Self>>]),
+    User(Spanned<Intern<String>>),
     Prod(CstClosedRow),
     Sum(CstClosedRow),
     Label(Label, Spanned<Intern<Self>>),

@@ -1,23 +1,23 @@
-Option[?T] = {
-    return type |Some ?T, None|
+Option T = {
+    return type |Some T, None|
 
-    Some x : ?T -> Option[?T] = |Some x|
+    Some x : T -> Option T = |Some x|
 
-    None:  Option[?T] = |None|
+    None: Option T = |None|
 
-    unwrap_or option default : Option[?T] -> ?T -> ?T =
+    unwrap_or option default : Option T -> T -> T =
         match option
             as | Some x1 | then x1
             as | None | then default
         end
           
-    is_some x : Option[?T] -> bool =
+    is_some x : Option T -> bool =
         match x 
             as | Some _v| then true
             as | None | then false
         end
 
-    map o f : Option[?T] -> (?T -> ?U) -> Option[?U] =
+    map o f : all U => Option T -> (T -> U) -> Option U =
             match o 
                 as | Some v | then {
                     v = f(v)

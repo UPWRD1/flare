@@ -111,12 +111,12 @@ impl TypeFixer {
                 })),
             )),
             CstType::Label(l, t) => t.convert(Type::Label(l, self.helper(t))),
-            CstType::User(t, g) => {
-                unreachable!("Encountered user type {}[{g:?}] after environment", t.0)
+            CstType::User(t) => {
+                unreachable!("Encountered user type {} after environment", t.0)
             }
 
-            CstType::Item(t, g) => {
-                unreachable!("Encountered item type {}[{g:?}] after resolution", t.0)
+            CstType::Item(t) => {
+                unreachable!("Encountered item type {} after resolution", t.0)
             }
 
             CstType::GenericApp(l, r) => {
@@ -126,9 +126,12 @@ impl TypeFixer {
                 panic!()
             }
             CstType::GenericFun(l, r) => {
-                // panic!("Should have been resolved");
+                panic!("Should have been resolved");
                 // let l = self.helper(l);
-                self.helper(r)
+                // self.helper(r)
+            }
+            CstType::ForAll(t, within) => {
+                panic!("Should have been resolved");
             }
             CstType::Particle(p) => t.convert(Type::Particle(p)),
             CstType::Unit => t.convert(Type::Unit),
@@ -208,7 +211,7 @@ impl Resolver {
                 // dbg!(new_t);
                 t.modify(CstType::Label(l, new_t))
             }
-            CstType::Item(id, instanced_generics) => {
+            CstType::Item(id) => {
                 todo!()
             }
             CstType::Prod(r) => {
@@ -255,10 +258,12 @@ impl Resolver {
                 }
             }
             CstType::GenericFun(l, r) => {
-                let l = self.analyze_type(l);
                 let r = self.analyze_type(r);
 
                 t.convert(CstType::GenericFun(l, r))
+            }
+            CstType::ForAll(t, within) => {
+                todo!()
             }
             CstType::Generic(_)
             | CstType::Particle(_)
@@ -311,7 +316,7 @@ impl Resolver {
                     Field::Macro(field_macro) => todo!(),
                 })
                 .reduce(|l, r| expr.convert(Expr::Concat(l, r)))
-                .unwrap(),
+                .expect("Empty Product Constructor"),
             CstExpr::VariantConstructor { name, value } => {
                 let value = if let Some(value) = value {
                     self.desugar_cstexpr(value)

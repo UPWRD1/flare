@@ -158,7 +158,7 @@ impl LangIds {
         k!(ProductType, "product_type");
         k!(SumType, "sum_type");
         k!(PrimitiveType, "primitive_type");
-        k!(ForAll, "all");
+        k!(ForAll, "forall");
         k!(TypeApp, "type_app");
         k!(PrimitiveType, "primitive_type");
         k!(SelfType, "self_type");
@@ -456,11 +456,11 @@ impl<'src> Translate<'src> {
         let ty = {
             let k = node.kind_id();
             match k {
-                k if k == self.ids.k(NK::PrimitiveType) => self.lower_primitive_type(&node),
-                k if k == self.ids.k(NK::TypeApp) => todo!(),
-                k if k == self.ids.k(NK::ForAll) => {
-                    todo!()
-                }
+                k if k == self.ids.k(NK::PrimitiveType) => self.lower_primitive_type(node),
+                k if k == self.ids.k(NK::Identifier) => self.lower_user_type(node),
+                k if k == self.ids.k(NK::TypeApp) => self.lower_type_app(node),
+                k if k == self.ids.k(NK::ForAll) => self.lower_type_forall(node),
+
                 k if k == self.ids.k(NK::ArrowType) => {
                     let param =
                         self.lower_type(node.child_by_field_id(self.ids.f(FK::Left)).unwrap());
@@ -476,7 +476,10 @@ impl<'src> Translate<'src> {
                     *self.lower_type(node.named_child(0).unwrap()).0
                 }
                 _ => {
-                    self.error(node, "Unknown type node");
+                    self.error(
+                        node,
+                        &format!("Unknown/unexpected node {} in type position", node.kind(),),
+                    );
                     CstType::Hole
                 }
             }
@@ -484,8 +487,8 @@ impl<'src> Translate<'src> {
         self.si(node, |node| ty)
     }
 
-    fn lower_primitive_type(&self, node: &Node<'src>) -> CstType {
-        let t = self.raw_name(node);
+    fn lower_primitive_type(&self, node: Node<'src>) -> CstType {
+        let t = self.raw_name(&node);
         match t {
             "num" => CstType::Num,
             "bool" => CstType::Bool,
@@ -493,6 +496,40 @@ impl<'src> Translate<'src> {
             "unit" => CstType::Unit,
             _ => panic!("Invalid primitive type: {t}"),
         }
+    }
+
+    fn lower_user_type(&self, node: Node<'src>) -> CstType {
+        let name = self.name(&node);
+        CstType::User(name)
+    }
+
+    fn lower_type_app(&mut self, node: Node<'src>) -> CstType {
+        let l = node.child(0).unwrap();
+        let r = node.child(1).unwrap();
+        let lty = self.lower_type(l);
+        let rty = self.lower_type(r);
+        CstType::GenericApp(lty, rty)
+    }
+
+    fn lower_type_forall(&mut self, node: Node<'src>) -> CstType {
+        let args = self.get_children_by(node, FK::Arg);
+
+        let value_ty = self
+            .get_child(node, FK::Expr)
+            .map(|node| self.lower_type(node))
+            .unwrap();
+
+        // Desugar function sugar immediately
+        let final_ty = if args.is_empty() {
+            panic!("Invalid lambda: No args")
+        } else {
+            args.into_iter()
+                .map(|n| self.lower_type(n))
+                .fold(value_ty, |body, arg_type| {
+                    value_ty.map_inner(|value| CstType::GenericFun(arg_type, body))
+                })
+        };
+        *final_ty.0
     }
 
     fn lower_product_type(&mut self, node: Node<'src>) -> CstType {
@@ -558,7 +595,7 @@ impl<'src> Translate<'src> {
 
         // Desugar function sugar immediately
         let value = if args.is_empty() {
-            value
+            panic!("Invalid lambda: No args")
         } else {
             args.into_iter()
                 .map(|n| (n, self.raw_name(&n)))
