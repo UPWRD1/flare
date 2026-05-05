@@ -6,7 +6,7 @@ use tiny_pretty::Doc;
 
 use crate::resource::{
     pretty::{DocExt, Render},
-    rep::backend::lir::{AppType, Item, LIR, Var},
+    rep::backend::lir::{AppType, Item, LIR, LIRLit, Var},
 };
 
 impl Render for Var {
@@ -19,10 +19,13 @@ impl Render for LIR {
     fn render(self) -> Doc<'static> {
         match self {
             Self::Var(var) => Doc::text(format!("v{}", var.id.0)),
-            Self::Int(i) => Doc::text(format!("{i}i")),
-            Self::Str(s) => Doc::text(format!("\"{s}\"s")),
-            Self::Unit => Doc::text("unit".to_string()),
-            Self::Float(f) => Doc::text(format!("{f}f")),
+            Self::Lit(lit) => match lit {
+                LIRLit::Int(i) => Doc::text(format!("{i}i")),
+                LIRLit::Str(s) => Doc::text(format!("\"{s}\"s")),
+                LIRLit::Unit => Doc::text("unit".to_string()),
+                LIRLit::Float(f) => Doc::text(format!("{f}f")),
+                LIRLit::Bool(b) => Doc::text(format!("{b}b")),
+            },
             Self::ClosureBuild(_, item_id, vars) => Doc::text(format!("#{}", item_id.0)).append(
                 Doc::list(
                     vars.iter()

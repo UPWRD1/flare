@@ -6,7 +6,7 @@ use tiny_pretty::Doc;
 use crate::resource::{
     pretty::{DocExt, INC, Render},
     rep::midend::{
-        ir::{Branch, IR, Var},
+        ir::{Branch, IR, IRLit, Var},
         irtype::{IRType, Row, TyApp},
     },
 };
@@ -50,10 +50,13 @@ impl Render for IR {
         // dbg!(level);
         match self {
             Self::Var(var) => var.render_n(),
-            Self::Num(ordered_float) => Doc::text(format!("{ordered_float}")),
-            Self::Str(intern) => Doc::text(format!("\"{intern}\"")),
-            Self::Bool(b) => Doc::text(format!("{b}")),
-            Self::Unit => Doc::text("unit"),
+            Self::Lit(lit) => match lit {
+                IRLit::Num(ordered_float) => Doc::text(format!("{ordered_float}")),
+                IRLit::Str(intern) => Doc::text(format!("\"{intern}\"")),
+                IRLit::Bool(b) => Doc::text(format!("{b}")),
+                IRLit::Unit => Doc::text("unit"),
+                IRLit::Particle(p) => Doc::text(format!("@{p}")),
+            },
             Self::Fun(v, b) => {
                 let mut vars = vec![v.clone()];
                 let ir = b.clone().collect_fun_vars(&mut vars);
@@ -195,7 +198,6 @@ impl Render for IR {
                 .text("in")
                 .space()
                 .render(t),
-            Self::Particle(p) => Doc::text(format!("@{p}")),
             Self::Item(t, id) => Doc::text(format!("#{}:", id.0)).render(t),
             // .append(Doc::space())
             // .append(t.render()),

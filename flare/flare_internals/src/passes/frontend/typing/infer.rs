@@ -8,7 +8,7 @@ use crate::{
     },
     resource::rep::{
         common::Spanned,
-        frontend::ast::{BinOp, Direction, Expr, Untyped},
+        frontend::ast::{AstLiteral, BinOp, Direction, Expr, Untyped},
     },
 };
 
@@ -21,32 +21,17 @@ impl Solver<'_> {
         // dbg!(&env);
         let id = ast.1;
         match *ast.0 {
-            Expr::Number(n) => (
-                GenOut::new(vec![], ast.convert(Expr::Number(n))),
-                ast.convert(Type::Num),
-            ),
+            Expr::Lit(lit) => {
+                let ty = match lit {
+                    AstLiteral::Number(_) => ast.convert(Type::Num),
+                    AstLiteral::String(_) => ast.convert(Type::String),
+                    AstLiteral::Bool(_) => ast.convert(Type::Bool),
+                    AstLiteral::Unit => ast.convert(Type::Unit),
+                    AstLiteral::Particle(p) => ast.convert(Type::Particle(p)),
+                };
+                (GenOut::lit(lit, id), ty)
+            }
 
-            // Expr::Number(n) => (
-            //                 GenOut::new(vec![], ast.convert(Expr::Number(n))),
-            //                 ast.convert(Type::Num),
-            //             ),
-            Expr::String(s) => (
-                GenOut::new(vec![], ast.convert(Expr::String(s))),
-                ast.convert(Type::String),
-            ),
-            Expr::Bool(v) => (
-                GenOut::new(vec![], ast.convert(Expr::Bool(v))),
-                ast.convert(Type::Bool),
-            ),
-            Expr::Particle(p) => (
-                GenOut::new(vec![], ast.convert(Expr::Particle(p))),
-                ast.convert(Type::Particle(p)),
-            ),
-
-            Expr::Unit => (
-                GenOut::new(vec![], ast.convert(Expr::Unit)),
-                ast.convert(Type::Unit),
-            ),
             Expr::Ident(v) => {
                 // dbg!(v.0.0);
                 // dbg!(env.keys().collect::<Vec<_>>());
@@ -74,17 +59,6 @@ impl Solver<'_> {
             }
 
             Expr::Call(fun, arg) => {
-                // let (arg_out, arg_ty) = self.infer(env.clone(), arg);
-                // let ret_ty: Spanned<Intern<Type>> = fun.convert(Type::Unifier(self.fresh_ty_var()));
-                // let fun_ty = ast.convert(Type::Func(arg_ty, ret_ty));
-                // let mut fun_out = self.check(env, fun, fun_ty);
-                // fun_out.constraints.extend(arg_out.constraints);
-                // (
-                //     fun_out.with_typed_ast(|fun_ast| {
-                //         ast.convert(Expr::Call(fun_ast, arg_out.typed_ast))
-                //     }),
-                //     ret_ty,
-                // )
                 let fun_id = fun.id();
                 let (fun_out, supposed_fun_ty) = self.infer(env.clone(), fun);
                 let mut constraint = fun_out.constraints;

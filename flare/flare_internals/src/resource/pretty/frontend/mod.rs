@@ -10,7 +10,7 @@ use crate::{
         pretty::{DocExt, Render},
         rep::{
             common::{Spanned, Variable},
-            frontend::ast::{BinOp, Expr, Label, Untyped},
+            frontend::ast::{AstLiteral, BinOp, Expr, Label, Untyped},
         },
     },
 };
@@ -103,11 +103,13 @@ impl<V: Variable + Render> Render for Spanned<Intern<Expr<V>>> {
     fn render(self) -> tiny_pretty::Doc<'static> {
         match *self.0 {
             Expr::Ident(v) => v.render(),
-            Expr::Number(n) => Doc::text(format!("{n}")),
-            Expr::String(s) => Doc::text(format!("\"{}\"", s.0)),
-            Expr::Bool(b) => Doc::text(format!("{b}")),
-            Expr::Unit => Doc::text("Unit"),
-            Expr::Particle(p) => Doc::text(format!("@{}", p.0)),
+            Expr::Lit(l) => match l {
+                AstLiteral::Number(n) => Doc::text(format!("{n}")),
+                AstLiteral::String(s) => Doc::text(format!("\"{}\"", s.0)),
+                AstLiteral::Bool(b) => Doc::text(format!("{b}")),
+                AstLiteral::Unit => Doc::text("Unit"),
+                AstLiteral::Particle(p) => Doc::text(format!("@{}", p.0)),
+            },
             Expr::Hole(_) => Doc::text("HOLE"),
             Expr::Item(item_id) => Doc::text(format!("#{}", item_id.0)),
             Expr::Concat(l, r) => l.render().text(" <> ").render(r).brackets(),

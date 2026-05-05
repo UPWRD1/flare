@@ -59,17 +59,22 @@ pub enum Param {
     Val(Var),
 }
 
-/// Layer 1 Intermediate Representation.
-/// Used after evidence generation for simplification and monomorphization
 #[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
-pub enum IR {
-    Var(Var),
+pub enum IRLit {
     Num(OrderedFloat<f32>),
     Str(Intern<String>),
     Bool(bool),
     #[default]
     Unit,
     Particle(Intern<String>),
+}
+
+/// Layer 1 Intermediate Representation.
+/// Used after evidence generation for simplification and monomorphization
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum IR {
+    Var(Var),
+    Lit(IRLit),
 
     Fun(Var, Box<Self>),
     App(Box<Self>, Box<Self>),
@@ -89,6 +94,12 @@ pub enum IR {
 
     Item(IRType, ItemId),
     Extern(Intern<String>, IRType),
+}
+
+impl Default for IR {
+    fn default() -> Self {
+        Self::Lit(IRLit::default())
+    }
 }
 
 #[allow(clippy::should_implement_trait)]
@@ -250,19 +261,13 @@ impl IR {
 
         match self {
             Self::Var(v) => v.ty.clone(),
-            Self::Num(_) => IRType::Num,
-            // Self::Num(n) => IRType::Num({
-            //     // dbg!(n.fract());
-            //     if n.fract() == 0.0 {
-            //         Specifier::Int
-            //     } else {
-            //         Specifier::Float
-            //     }
-            // }),
-            Self::Str(_) => IRType::Str,
-            Self::Bool(_) => IRType::Bool,
-            Self::Unit => IRType::Unit,
-            Self::Particle(p) => IRType::Particle(*p),
+            Self::Lit(lit) => match lit {
+                IRLit::Num(_) => IRType::Num,
+                IRLit::Str(_) => IRType::Str,
+                IRLit::Bool(_) => IRType::Bool,
+                IRLit::Unit => IRType::Unit,
+                IRLit::Particle(p) => IRType::Particle(*p),
+            },
 
             Self::Fun(arg, body) => IRType::fun(arg.ty.clone(), body.type_of()),
             Self::App(fun, arg) => type_of_app(fun, arg),
@@ -332,12 +337,7 @@ impl IR {
             }
         }
         match self {
-            Self::Var(_)
-            | Self::Num(_)
-            | Self::Str(_)
-            | Self::Bool(_)
-            | Self::Unit
-            | Self::Particle(_) => 0,
+            Self::Var(_) | Self::Lit(_) => 0,
             Self::Bin(l, _, r) => l.size() + r.size(),
 
             Self::Fun(_, body) => 10 + body.size(),
@@ -356,15 +356,7 @@ impl IR {
     }
 
     pub fn is_trivial(&self) -> bool {
-        matches!(
-            self,
-            Self::Var(_)
-                | Self::Num(_)
-                | Self::Str(_)
-                | Self::Unit
-                | Self::Bool(_)
-                | Self::Particle(_)
-        )
+        matches!(self, Self::Var(_) | Self::Lit(_))
     }
     pub fn is_value(&self) -> bool {
         match self {
@@ -378,13 +370,7 @@ impl IR {
             Self::App(_, _) | Self::Case(..) => false,
             Self::Field(ir, _) => ir.is_value(),
             Self::Fun(..) => true,
-            Self::Var(_)
-            | Self::Num(_)
-            | Self::Str(_)
-            | Self::Unit
-            | Self::Bool(_)
-            | Self::Particle(_)
-            | Self::Tag(_, _, _) => true,
+            Self::Var(_) | Self::Lit(_) | Self::Tag(_, _, _) => true,
             Self::Item(_, _) | Self::Extern(_, _) => true,
             Self::If(..) => false,
         }
@@ -423,7 +409,7 @@ impl IR {
 
     pub fn children(self) -> Vec<Self> {
         match self {
-            IR::Var(_) | IR::Num(_) | IR::Str(_) | IR::Bool(_) | IR::Unit | IR::Particle(_) => {
+            IR::Var(_) | IR::Lit(_) => {
                 vec![]
             }
             IR::Fun(_, ir) => vec![*ir],
@@ -463,14 +449,7 @@ impl<'a> Iterator for IrIterator<'a> {
             // Push child nodes onto the stack (e.g., for depth-first traversal)
             // Note: the order of pushing determines the traversal order
             match node {
-                IR::Var(_)
-                | IR::Num(_)
-                | IR::Str(_)
-                | IR::Bool(_)
-                | IR::Unit
-                | IR::Particle(_)
-                | IR::Item(_, _)
-                | IR::Extern(_, _) => {
+                IR::Var(_) | IR::Lit(_) | IR::Item(_, _) | IR::Extern(_, _) => {
 
                     // Do nothing
                 }

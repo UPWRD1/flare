@@ -317,13 +317,7 @@ fn rewrite(ir: IR, id_map: &FxHashMap<Monomorph, ItemId>) -> IR {
         IR::Bin(l, op, r) => IR::bin(rewrite(*l, id_map), op, rewrite(*r, id_map)),
 
         // Leaves with no Item references.
-        IR::Extern(_, _)
-        | IR::Num(_)
-        | IR::Str(_)
-        | IR::Bool(_)
-        | IR::Unit
-        | IR::Particle(_)
-        | IR::Var(_) => ir,
+        IR::Extern(_, _) | IR::Lit(_) | IR::Var(_) => ir,
     }
 }
 

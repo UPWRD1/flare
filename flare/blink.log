@@ -1,0 +1,2 @@
+I2026-05-04T17:06:24.026928:blink/loader.c:301:55569 target/debug/flarec: can't emulate: not ELF, not APE, and not a .bin file
+I2026-05-04T17:06:45.912084:blink/loader.c:301:55593 target/debug/flarec: can't emulate: not ELF, not APE, and not a .bin file

@@ -17,14 +17,19 @@ pub struct Var {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub enum LIR {
-    Var(Var),
-
+pub enum LIRLit {
     Int(i32),
+    Bool(bool),
     Str(Intern<String>),
     #[default]
     Unit,
     Float(OrderedFloat<f32>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LIR {
+    Var(Var),
+    Lit(LIRLit),
 
     ClosureBuild(LIRType, ir::ItemId, Vec<Var>),
     Apply(Box<Self>, Box<Self>),
@@ -44,6 +49,12 @@ pub enum LIR {
 
     BinOp(Box<Self>, BinOp, Box<Self>),
     If(Box<Self>, Box<Self>, Box<Self>),
+}
+
+impl Default for LIR {
+    fn default() -> Self {
+        Self::Lit(LIRLit::default())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -100,7 +111,7 @@ impl LIR {
             Self::Var(var) => {
                 free.insert(*var);
             }
-            Self::Int(_) | Self::Float(_) | Self::Unit | Self::Str(_) => {}
+            Self::Lit(_) => {}
             Self::ClosureBuild(_, _, vars) => {
                 for var in vars {
                     free.insert(*var);
@@ -154,12 +165,7 @@ impl LIR {
                     *var = *new_var;
                 }
             }
-            Self::Int(_)
-            | Self::Float(_)
-            | Self::Unit
-            | Self::Str(_)
-            | Self::Item(..)
-            | Self::Extern(..) => {}
+            Self::Lit(_) | Self::Item(..) | Self::Extern(..) => {}
             Self::ClosureBuild(_, _, vars) => {
                 for var in vars.iter_mut() {
                     if let Some(new_var) = subst.get(var) {
@@ -215,16 +221,17 @@ impl LIR {
     pub fn type_of(&self) -> LIRType {
         match self {
             LIR::Var(var) => var.ty,
-            LIR::Int(_) => LIRType::Int,
-            LIR::Str(_) => LIRType::String,
-            LIR::Unit => LIRType::Unit,
-            LIR::Float(_) => LIRType::Float,
-            // LIR::ClosureBuild(t, _, t) => *t,
+            LIR::Lit(lit) => match lit {
+                LIRLit::Int(_) => LIRType::Int,
+                LIRLit::Bool(_) => LIRType::Bool,
+                LIRLit::Str(_) => LIRType::String,
+                LIRLit::Unit => LIRType::Unit,
+                LIRLit::Float(_) => LIRType::Float,
+            },
             LIR::ClosureBuild(f, _, env) => {
                 let env_tys: Vec<_> = env.iter().map(|v| v.ty).collect();
                 LIRType::ClosureEnv((*f).into(), env_tys.as_slice().into())
             }
-            // LIR::Apply(func, _) => func.type_of(),
             LIR::Apply(func, _) | LIR::BulkApply(func, _) => match func.type_of() {
                 LIRType::Closure(_, ret) => *ret,
                 LIRType::ClosureEnv(f, _) => match *f {

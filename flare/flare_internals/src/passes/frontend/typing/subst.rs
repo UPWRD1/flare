@@ -160,11 +160,7 @@ impl Solver<'_> {
                 .substitute_ty(v.1)
                 .map(|ty| unsub_ast.convert(Expr::Ident(Typed(v.0, ty)))),
 
-            Expr::Number(i) => SubstOut::new(unsub_ast.convert(Expr::Number(i))),
-            Expr::String(s) => SubstOut::new(unsub_ast.convert(Expr::String(s))),
-            Expr::Bool(b) => SubstOut::new(unsub_ast.convert(Expr::Bool(b))),
-            Expr::Unit => SubstOut::new(unsub_ast.convert(Expr::Unit)),
-            Expr::Particle(p) => SubstOut::new(unsub_ast.convert(Expr::Particle(p))),
+            Expr::Lit(l) => SubstOut::new(unsub_ast.convert(Expr::Lit(l))),
 
             Expr::Bin(l, op, r) => self
                 .substitute_ast(l)

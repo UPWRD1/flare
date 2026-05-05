@@ -24,7 +24,7 @@ use crate::{
     passes::backend::{lir::ClosureConvertOut, target::Target as FlareTarget},
     resource::rep::{
         backend::{
-            lir::{Item, LIR, Var},
+            lir::{Item, LIR, LIRLit, Var},
             types::LIRType,
         },
         frontend::ast::BinOp,
@@ -315,13 +315,16 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                     panic!("Undefined var {var:?}")
                 }
             }
-            LIR::Int(i) => self.context.i32_type().const_int(i as u64, false).into(),
-            LIR::Str(s) => self.context.const_string(s.as_bytes(), false).into(),
-            LIR::Unit => self.context.i8_type().const_int(0u64, false).into(),
-            LIR::Float(f) => {
-                let float_type = self.context.f32_type();
-                float_type.const_float(f64::from(f.0)).into()
-            }
+            LIR::Lit(lit) => match lit {
+                LIRLit::Int(i) => self.context.i32_type().const_int(i as u64, false).into(),
+                LIRLit::Str(s) => self.context.const_string(s.as_bytes(), false).into(),
+                LIRLit::Unit => self.context.i8_type().const_int(0u64, false).into(),
+                LIRLit::Float(f) => {
+                    let float_type = self.context.f32_type();
+                    float_type.const_float(f64::from(f.0)).into()
+                }
+                LIRLit::Bool(b) => self.context.bool_type().const_int(b as u64, false).into(),
+            },
             LIR::ClosureBuild(fun_ty, id, ref vars) => {
                 self.codegen_closure(&ir, out_slot, id, vars)
             }

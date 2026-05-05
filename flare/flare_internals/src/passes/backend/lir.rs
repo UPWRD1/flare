@@ -5,7 +5,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::resource::rep::{
     backend::{
-        lir::{Item, LIR, Var},
+        lir::{Item, LIR, LIRLit, Var},
         types::LIRType,
     },
     midend::{
@@ -35,18 +35,15 @@ struct ClosureConvert {
 impl ClosureConvert {
     fn convert(&mut self, ir: ir::IR, env: &im::HashMap<ir::Var, Var, FxBuildHasher>) -> LIR {
         match ir {
-            ir::IR::Num(n) => {
-                // if n.fract() == 0.0 {
-                //     let n = n.0 as i32;
-                //     LIR::Int(n)
-                // } else {
-                LIR::Float(n)
-                // }
-            }
-            ir::IR::Str(s) => LIR::Str(s),
-            ir::IR::Unit => LIR::Unit,
+            ir::IR::Lit(l) => LIR::Lit(match l {
+                ir::IRLit::Num(n) => LIRLit::Float(n),
+                ir::IRLit::Str(s) => LIRLit::Str(s),
+                ir::IRLit::Bool(b) => LIRLit::Bool(b),
+                ir::IRLit::Unit => LIRLit::Unit,
+                ir::IRLit::Particle(p) => LIRLit::Str(p),
+            }),
+
             ir::IR::Var(var) => LIR::Var(env[&var]),
-            ir::IR::Particle(p) => LIR::Str(p),
 
             ir::IR::Local(var, defn, body) => {
                 // dbg!(&var, env);
@@ -143,7 +140,6 @@ impl ClosureConvert {
                 self.convert(*t, env),
                 self.convert(*e, env),
             ),
-            ir::IR::Bool(_) => todo!(),
         }
     }
 

@@ -145,15 +145,15 @@ impl EnvironmentBuilder<UntypedCst> {
             ..Default::default()
         };
 
-        let res = me
-            .enter_context_root(
-                |me| me.analyze_expr(root_obj, &[], Expect::Value),
-                Spanned::default_with(String::from("Root")),
-            )
-            .into_value();
-        dbg!(res);
-        me.debug();
-        let env_map = me.lift(res);
+        // let res = me
+        //     .enter_context_root(
+        //         |me| me.analyze_expr(root_obj, &[], Expect::Value),
+        //         Spanned::default_with(String::from("Root")),
+        //     )
+        //     .into_value();
+        // dbg!(res);
+        // me.debug();
+        let env_map = me.lift();
 
         if me.errors.is_empty() {
             dbg!(&env_map);
@@ -590,39 +590,38 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn lift(&self, main_expr: <UntypedCst as Syntax>::Expr) -> Environment<UntypedCst> {
-        let dep = self.graph.filter_map(
-            |_, n| Some(n),
-            |_, e| {
-                if let Relation::Reference = e {
-                    Some(e)
-                } else {
-                    None
-                }
-            },
-        );
-        let out = petgraph::algo::tarjan_scc(&self.graph);
-        dbg!(out);
-        todo!();
-        // self.debug();
-        // self.graph
-        //     .node_indices()
-        //     .filter_map(|node| {
-        //         let element = &self.graph[node];
-        //         let ty = element.ty.or_else(|| {
-        //             self.errors.push(errors::needs_type(element.name.span()));
+    fn lift(&mut self) -> Environment<UntypedCst> {
+        // let dep = self.graph.filter_map(
+        //     |_, n| Some(n),
+        //     |_, e| {
+        //         if let Relation::Reference = e {
+        //             Some(e)
+        //         } else {
         //             None
-        //         })?;
-        //         let body = *element.value.get()?;
-        //         let item = Item {
-        //             kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
-        //                 name: element.name,
-        //                 sig: ty,
-        //                 body,
-        //             }),
-        //         };
-        //         Some((node, item))
-        //     })
-        //     .collect()
+        //         }
+        //     },
+        // );
+        // let out = petgraph::algo::tarjan_scc(&self.graph);
+        // dbg!(out);
+        // self.debug();
+        self.graph
+            .node_indices()
+            .filter_map(|node| {
+                let element = &self.graph[node];
+                let ty = element.ty.or_else(|| {
+                    self.errors.push(errors::needs_type(element.name.span()));
+                    None
+                })?;
+                let body = *element.value.get()?;
+                let item = Item {
+                    kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
+                        name: element.name,
+                        sig: ty,
+                        body,
+                    }),
+                };
+                Some((node, item))
+            })
+            .collect()
     }
 }

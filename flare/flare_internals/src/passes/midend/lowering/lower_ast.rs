@@ -12,7 +12,7 @@ use crate::{
         common::{FlareSpan, Spanned},
         frontend::ast::{self, Direction, Expr},
         midend::{
-            ir::{IR, ItemId, Var, VarId},
+            ir::{IR, IRLit, ItemId, Var, VarId},
             irtype::{IRType, Kind, Row, TyApp, TypeVar},
         },
     },
@@ -422,12 +422,13 @@ impl<'source> LowerAst<'source> {
                 self.var_supply.supply_for(var.0.0),
                 self.types.lower_ty(*ty.0),
             )),
-            Expr::Number(n) => IR::Num(n),
-            Expr::String(n) => IR::Str(n.0),
-            Expr::Bool(b) => IR::Bool(b),
-            Expr::Unit => IR::Unit,
-
-            Expr::Particle(p) => IR::Particle(p.0),
+            Expr::Lit(lit) => IR::Lit(match lit {
+                ast::AstLiteral::Number(n) => IRLit::Num(n),
+                ast::AstLiteral::String(s) => IRLit::Str(s.0),
+                ast::AstLiteral::Bool(b) => IRLit::Bool(b),
+                ast::AstLiteral::Unit => IRLit::Unit,
+                ast::AstLiteral::Particle(p) => IRLit::Particle(p.0),
+            }),
             Expr::Lambda(Typed(var, ty), body) => {
                 let ir_ty = self.types.lower_ty(*ty.0);
                 let ir_var = self.var_supply.supply_for(var.0.0);

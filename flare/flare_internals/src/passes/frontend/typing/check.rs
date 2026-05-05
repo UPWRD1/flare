@@ -7,8 +7,8 @@ use crate::{
         rows::{Row, RowCombination},
     },
     resource::rep::{
-        common::Spanned,
-        frontend::ast::{Direction, Expr, Untyped},
+        common::{Spanned, Syntax},
+        frontend::ast::{AstLiteral, Direction, Expr, Untyped, UntypedAst},
     },
 };
 
@@ -19,31 +19,25 @@ impl Solver<'_> {
         the_ast: Spanned<Intern<Expr<Untyped>>>,
         ty: impl Into<Spanned<Intern<Type>>>,
     ) -> GenOut {
-        // dbg!(&env);
         let the_ty = ty.into();
         let id = the_ast.id();
 
-        // dbg!(the_ast, the_ty);
-        // dbg!(&self.tables.row_unification_table);
         match (*the_ast.0, *the_ty.0) {
             // Primitives
-            // (Expr::Number(n), Type::Num) => {
-            //     GenOut::new(vec![], Spanned(Expr::Number(n).into(), id))
-            // }
-            (Expr::String(s), Type::String) => {
-                GenOut::new(vec![], Spanned(Expr::String(s).into(), id))
+            (Expr::Lit(lit), ty) => {
+                let lit = match (lit, ty) {
+                    (AstLiteral::Number(_), Type::Num)
+                    | (AstLiteral::String(_), Type::String)
+                    | (AstLiteral::Bool(_), Type::Bool)
+                    | (AstLiteral::Unit, Type::Unit) => GenOut::lit(lit, id),
+                    (AstLiteral::Particle(p), Type::Particle(q)) if p.0 == q.0 => {
+                        GenOut::lit(lit, id)
+                    }
+                    _ => self.begin_inference(env, the_ast, the_ty, id),
+                };
+                todo!()
             }
-            (Expr::Bool(b), Type::Bool) => GenOut::new(vec![], Spanned(Expr::Bool(b).into(), id)),
 
-            (Expr::Unit, Type::Unit) => GenOut::new(vec![], Spanned(Expr::Unit.into(), id)),
-
-            // Lambdas
-            // (Expr::Lambda(arg, body), Type::Func(arg_ty, ret_ty)) => {
-            //     let env = env.update(arg.0.0, arg_ty);
-            //     self.check(env, body, ret_ty).with_typed_ast(|body| {
-            //         Spanned(Expr::Lambda(Typed(arg, arg_ty), body).into(), id)
-            //     })
-            // }
             (Expr::Lambda(arg, body), ty) => {
                 let mut constraints = vec![];
                 let (arg_ty, ret_ty) = if let Type::Func(arg, ret) = ty {
@@ -299,19 +293,27 @@ impl Solver<'_> {
             }
 
             // Wildcard
-            (_, _) => {
-                // dbg!(the_ast, the_ty);
-                let (mut out, actual_ty) = self.infer(env, the_ast);
-                // dbg!(actual_ty);
-                {
-                    out.constraints.push(Constraint::TypeEqual(
-                        Provenance::ExpectedUnify(id, the_ty.1),
-                        the_ty,
-                        actual_ty,
-                    ));
-                    out
-                }
-            }
+            (_, _) => self.begin_inference(env, the_ast, the_ty, id),
+        }
+    }
+
+    fn begin_inference(
+        &mut self,
+        env: im::HashMap<Intern<String>, Spanned<Intern<Type>>, FxBuildHasher>,
+        the_ast: <UntypedAst as Syntax>::Expr,
+        the_ty: Spanned<Intern<Type>>,
+        span: crate::resource::rep::common::FlareSpan,
+    ) -> GenOut {
+        // dbg!(the_ast, the_ty);
+        let (mut out, actual_ty) = self.infer(env, the_ast);
+        // dbg!(actual_ty);
+        {
+            out.constraints.push(Constraint::TypeEqual(
+                Provenance::ExpectedUnify(span, the_ty.1),
+                the_ty,
+                actual_ty,
+            ));
+            out
         }
     }
 }

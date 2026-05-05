@@ -82,21 +82,25 @@ pub enum Kind {
     Package,
 }
 
-/// Type representing an Expression.
-/// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum Expr<V>
-where
-    V: Variable,
-{
-    Ident(V),
-    // Param(V),
+pub enum AstLiteral {
     Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Bool(bool),
     #[default]
     Unit,
     Particle(Spanned<Intern<String>>),
+}
+
+/// Type representing an Expression.
+/// You will typically encounter ```Expr<V>``` as a ```Spanned<Expr<V>>```, which is decorated with a span for diagnostic information.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Expr<V>
+where
+    V: Variable,
+{
+    Ident(V),
+    Lit(AstLiteral),
     Hole(V),
 
     Item(ItemId),
@@ -105,25 +109,54 @@ where
     Project(Direction, Spanned<Intern<Self>>),
     Inject(Direction, Spanned<Intern<Self>>),
     Branch(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-
     Label(Label, Spanned<Intern<Self>>),
     Unlabel(Spanned<Intern<Self>>, Label),
 
-    // ProductConstructor {
-    // fields: Intern<[(Label, Spanned<Intern<Self>>)]>,
-    // },
     Bin(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
 
     Access(Spanned<Intern<Self>>, Label),
 
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    Lambda(V, Spanned<Intern<Self>>),
+    Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     If(
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
         Spanned<Intern<Self>>,
     ),
-    Lambda(V, Spanned<Intern<Self>>),
-    Let(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    // Pi(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+
+    // Sigma(V, Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    // Sort,
+    // Fst(Spanned<Intern<Self>>),
+    // Snd(Spanned<Intern<Self>>),
+
+    // Meta(Spanned<Intern<String>>),
+}
+
+impl<V: Variable> Default for Expr<V> {
+    fn default() -> Self {
+        Self::Lit(AstLiteral::default())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Universe<V: Variable> {
+    Const(u32),
+    ScopedVar(V),
+    Meta(u32),
+    Add(Intern<Self>, u32),
+    Max(Intern<Self>, Intern<Self>),
+    IMax(Intern<Self>, Intern<Self>),
+}
+
+/// Universe level constraints for polymorphism
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UniverseConstraint<V: Variable> {
+    /// u ≤ v
+    LessEq(Universe<V>, Universe<V>),
+    /// u = v
+    Equal(Universe<V>, Universe<V>),
 }
 
 /// Trait for entities that have Names. Implementing this trait is preferred
@@ -131,20 +164,14 @@ where
 /// implements its own name getter is `QualifierFragment`, since it doesn't
 /// carry span information (since it is statically created within the compiler)
 pub trait Named<V: Variable>: std::fmt::Debug {
-    // #[clippy::deny()]
     /// Internal get_name that returns a name or `None`. Users should implement this function, but shouldn't call it.
     fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>>;
 
-    fn name(&self) -> CompResult<Spanned<Intern<Expr<V>>>>
-// where
-        // Self: std::fmt::Debug,
-    {
+    fn name(&self) -> CompResult<Spanned<Intern<Expr<V>>>> {
         let n = self.get_name();
         match n {
             Some(d) => Ok(d),
             None => todo!("Cannot get name, {self:?}"),
-            // None => DynamicErr::new(format!("Cannot get name of {:?}", self))
-            // .label("here", self.to_owned()),
         }
     }
 }
@@ -152,7 +179,6 @@ impl<V: Variable> Named<V> for Spanned<Intern<Expr<V>>> {
     fn get_name(&self) -> Option<Spanned<Intern<Expr<V>>>> {
         match *self.0 {
             Expr::Ident(_) => Some(*self),
-            // Expr::Access(expr) => expr.name().ok(),
             Expr::Call(func, _) => func.name().ok(),
             _ => None,
         }
