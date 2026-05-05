@@ -23,7 +23,7 @@ use crate::{
         errors::{CompResult, CompilerErr, DynamicErr},
         rep::{
             common::{FlareSpan, HasSpan, Spanned, Variable},
-            frontend::ast::{AstLiteral, Expr, ItemId, Kind, Label, Untyped},
+            frontend::ast::{Expr, ExprLit, ItemId, Kind, Label, Untyped},
         },
     },
 };
@@ -142,7 +142,7 @@ impl GenOut {
             // env,
         }
     }
-    fn lit(lit: AstLiteral, span: FlareSpan) -> Self {
+    fn lit(lit: ExprLit, span: FlareSpan) -> Self {
         Self::new(vec![], Spanned(Expr::Lit(lit).into(), span))
     }
 

@@ -5,7 +5,7 @@ use crate::resource::{
     rep::{
         common::{FlareSpan, Spanned, Syntax},
         frontend::{
-            ast::{BinOp, Label, Untyped},
+            ast::{BinOp, ExprLit, Label, Untyped},
             cst::{
                 CstExpr, Field, FieldDef, FieldMacro, MatchArm, Package, PackageCollection,
                 Pattern, UntypedCst,
@@ -316,15 +316,19 @@ impl<'src> Translate<'src> {
                 k if k == self.ids.k(NK::Number) => {
                     let text = self.raw_name(&node);
                     if let Ok(v) = text.parse::<f32>() {
-                        CstExpr::Number(OrderedFloat::from(v))
+                        CstExpr::Lit(ExprLit::Number(OrderedFloat::from(v)))
                     } else {
                         self.error(node, "malformed number literal");
                         CstExpr::Hole(Untyped(self.si(node, |_| text.to_string())))
                     }
                 }
-                k if k == self.ids.k(NK::StringNode) => CstExpr::String(self.name(&node)),
-                k if k == self.ids.k(NK::Boolean) => CstExpr::Bool(self.raw_name(&node) == "true"),
-                k if k == self.ids.k(NK::UnitExpr) => CstExpr::Unit,
+                k if k == self.ids.k(NK::StringNode) => {
+                    CstExpr::Lit(ExprLit::String(self.name(&node)))
+                }
+                k if k == self.ids.k(NK::Boolean) => {
+                    CstExpr::Lit(ExprLit::Bool(self.raw_name(&node) == "true"))
+                }
+                k if k == self.ids.k(NK::UnitExpr) => CstExpr::Lit(ExprLit::Unit),
 
                 k if k == self.ids.k(NK::TypeExpression) => self.lower_type_expr(node),
 
@@ -657,7 +661,9 @@ impl<'src> Translate<'src> {
                         .named_children(&mut node.walk())
                         // skip the variant_name child, take the rest as payload
                         .nth(1)
-                        .map_or(self.si(node, |_| Pattern::Unit), |n| self.lower_pattern(n));
+                        .map_or(self.si(node, |_| Pattern::Lit(ExprLit::Unit)), |n| {
+                            self.lower_pattern(n)
+                        });
                     Pattern::Variant(label, payload)
 
                     // Pattern::Variant { tag, payload }
@@ -684,9 +690,9 @@ impl<'src> Translate<'src> {
                             .unwrap()
                             .parse()
                             .unwrap();
-                        Pattern::Number(v)
+                        Pattern::Lit(ExprLit::Number(v))
                     } else {
-                        Pattern::String(self.name(&inner))
+                        Pattern::Lit(ExprLit::String(self.name(&inner)))
                     }
                 }
                 _ => {

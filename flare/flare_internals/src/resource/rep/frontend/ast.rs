@@ -83,7 +83,7 @@ pub enum Kind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum AstLiteral {
+pub enum ExprLit {
     Number(ordered_float::OrderedFloat<f32>),
     String(Spanned<Intern<String>>),
     Bool(bool),
@@ -100,7 +100,7 @@ where
     V: Variable,
 {
     Ident(V),
-    Lit(AstLiteral),
+    Lit(ExprLit),
     Hole(V),
 
     Item(ItemId),
@@ -136,7 +136,7 @@ where
 
 impl<V: Variable> Default for Expr<V> {
     fn default() -> Self {
-        Self::Lit(AstLiteral::default())
+        Self::Lit(ExprLit::default())
     }
 }
 

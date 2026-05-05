@@ -349,13 +349,7 @@ impl EnvironmentBuilder<UntypedCst> {
                 ControlFlow::Continue(expr.modify(CstExpr::Match(matchee, branches.leak())))
             }
             CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
-            CstExpr::Number(_)
-            | CstExpr::String(_)
-            | CstExpr::Bool(_)
-            | CstExpr::Unit
-            | CstExpr::Particle(_)
-            | CstExpr::Hole(_)
-            | CstExpr::Item(_) => ControlFlow::Continue(expr),
+            CstExpr::Lit(_) | CstExpr::Hole(_) | CstExpr::Item(_) => ControlFlow::Continue(expr),
             CstExpr::Type(ty) => {
                 ControlFlow::Continue(expr.modify(CstExpr::Type(self.resolve_type(ty, vars))))
             }

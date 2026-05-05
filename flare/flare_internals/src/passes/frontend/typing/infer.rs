@@ -8,7 +8,7 @@ use crate::{
     },
     resource::rep::{
         common::Spanned,
-        frontend::ast::{AstLiteral, BinOp, Direction, Expr, Untyped},
+        frontend::ast::{ExprLit, BinOp, Direction, Expr, Untyped},
     },
 };
 
@@ -23,11 +23,11 @@ impl Solver<'_> {
         match *ast.0 {
             Expr::Lit(lit) => {
                 let ty = match lit {
-                    AstLiteral::Number(_) => ast.convert(Type::Num),
-                    AstLiteral::String(_) => ast.convert(Type::String),
-                    AstLiteral::Bool(_) => ast.convert(Type::Bool),
-                    AstLiteral::Unit => ast.convert(Type::Unit),
-                    AstLiteral::Particle(p) => ast.convert(Type::Particle(p)),
+                    ExprLit::Number(_) => ast.convert(Type::Num),
+                    ExprLit::String(_) => ast.convert(Type::String),
+                    ExprLit::Bool(_) => ast.convert(Type::Bool),
+                    ExprLit::Unit => ast.convert(Type::Unit),
+                    ExprLit::Particle(p) => ast.convert(Type::Particle(p)),
                 };
                 (GenOut::lit(lit, id), ty)
             }

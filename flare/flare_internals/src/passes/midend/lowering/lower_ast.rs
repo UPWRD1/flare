@@ -423,11 +423,11 @@ impl<'source> LowerAst<'source> {
                 self.types.lower_ty(*ty.0),
             )),
             Expr::Lit(lit) => IR::Lit(match lit {
-                ast::AstLiteral::Number(n) => IRLit::Num(n),
-                ast::AstLiteral::String(s) => IRLit::Str(s.0),
-                ast::AstLiteral::Bool(b) => IRLit::Bool(b),
-                ast::AstLiteral::Unit => IRLit::Unit,
-                ast::AstLiteral::Particle(p) => IRLit::Particle(p.0),
+                ast::ExprLit::Number(n) => IRLit::Num(n),
+                ast::ExprLit::String(s) => IRLit::Str(s.0),
+                ast::ExprLit::Bool(b) => IRLit::Bool(b),
+                ast::ExprLit::Unit => IRLit::Unit,
+                ast::ExprLit::Particle(p) => IRLit::Particle(p.0),
             }),
             Expr::Lambda(Typed(var, ty), body) => {
                 let ir_ty = self.types.lower_ty(*ty.0);

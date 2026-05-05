@@ -15,9 +15,7 @@ use crate::{
         rep::{
             common::{FlareSpan, Spanned, Syntax},
             frontend::{
-                ast::{
-                    AstLiteral, BinOp, Direction, Expr, ItemId, Kind, Label, Untyped, UntypedAst,
-                },
+                ast::{BinOp, Direction, Expr, ExprLit, ItemId, Kind, Label, Untyped, UntypedAst},
                 cst::{CstExpr, Field, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind},
@@ -323,7 +321,7 @@ impl Resolver {
                 let value = if let Some(value) = value {
                     self.desugar_cstexpr(value)
                 } else {
-                    name.convert(Expr::Lit(AstLiteral::Unit))
+                    name.convert(Expr::Lit(ExprLit::Unit))
                 };
 
                 let label = expr.convert(Expr::Label(Label(name), value));
@@ -374,11 +372,7 @@ impl Resolver {
                 println!("let-tree {t}");
                 t
             }
-            CstExpr::Number(n) => expr.convert(Expr::Lit(AstLiteral::Number(n))),
-            CstExpr::String(s) => expr.convert(Expr::Lit(AstLiteral::String(s))),
-            CstExpr::Bool(b) => expr.convert(Expr::Lit(AstLiteral::Bool(b))),
-            CstExpr::Unit => expr.convert(Expr::Lit(AstLiteral::Unit)),
-            CstExpr::Particle(p) => expr.convert(Expr::Lit(AstLiteral::Particle(p))),
+            CstExpr::Lit(lit) => expr.convert(Expr::Lit(lit)),
             CstExpr::Hole(v) => expr.convert(Expr::Hole(v)),
             CstExpr::Type(t) => expr.convert(Expr::Hole(Untyped(Spanned::default_with(
                 String::from("untyped"),
@@ -416,8 +410,7 @@ impl Resolver {
     ) -> Spanned<Intern<Expr<Untyped>>> {
         match sigelem {
             SigElem::Label(label) => unimplemented!("use translate_sigelem_pat"),
-            SigElem::Num(f) => Spanned(Expr::Lit(AstLiteral::Number(f)).into(), matchee_span),
-            SigElem::String(intern) => todo!(),
+            SigElem::Lit(lit) => Spanned(Expr::Lit(lit).into(), matchee_span),
         }
     }
 

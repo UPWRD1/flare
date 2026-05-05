@@ -10,7 +10,7 @@ use crate::{
         pretty::{DocExt, Render},
         rep::{
             common::{Spanned, Variable},
-            frontend::ast::{AstLiteral, BinOp, Expr, Label, Untyped},
+            frontend::ast::{BinOp, Expr, ExprLit, Label, Untyped},
         },
     },
 };
@@ -104,11 +104,11 @@ impl<V: Variable + Render> Render for Spanned<Intern<Expr<V>>> {
         match *self.0 {
             Expr::Ident(v) => v.render(),
             Expr::Lit(l) => match l {
-                AstLiteral::Number(n) => Doc::text(format!("{n}")),
-                AstLiteral::String(s) => Doc::text(format!("\"{}\"", s.0)),
-                AstLiteral::Bool(b) => Doc::text(format!("{b}")),
-                AstLiteral::Unit => Doc::text("Unit"),
-                AstLiteral::Particle(p) => Doc::text(format!("@{}", p.0)),
+                ExprLit::Number(n) => Doc::text(format!("{n}")),
+                ExprLit::String(s) => Doc::text(format!("\"{}\"", s.0)),
+                ExprLit::Bool(b) => Doc::text(format!("{b}")),
+                ExprLit::Unit => Doc::text("Unit"),
+                ExprLit::Particle(p) => Doc::text(format!("@{}", p.0)),
             },
             Expr::Hole(_) => Doc::text("HOLE"),
             Expr::Item(item_id) => Doc::text(format!("#{}", item_id.0)),

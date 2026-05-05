@@ -3,7 +3,7 @@ use internment::Intern;
 use crate::resource::rep::{
     common::{Spanned, Syntax},
     frontend::{
-        ast::{BinOp, ItemId, Label, Untyped},
+        ast::{BinOp, ExprLit, ItemId, Label, Untyped},
         csttypes::CstType,
         files::FileID,
     },
@@ -20,11 +20,7 @@ pub enum Pattern<S: Syntax> {
     Var(S::Variable),
 
     // Literal patterns: match exact values
-    Number(ordered_float::OrderedFloat<f32>),
-    String(Spanned<Intern<String>>),
-    Particle(Spanned<Intern<String>>),
-    Bool(bool),
-    Unit,
+    Lit(ExprLit),
 
     // Constructor pattern: matches labeled variant
     // Pattern::Ctor(label, inner_pattern)
@@ -61,11 +57,7 @@ impl<S: Syntax> Pattern<S> {
             match p {
                 Pattern::Hole(_) | Pattern::Any => (),
                 Pattern::Var(v) => vars.push(*v),
-                Pattern::Number(_)
-                | Pattern::String(_)
-                | Pattern::Particle(_)
-                | Pattern::Bool(_)
-                | Pattern::Unit => (),
+                Pattern::Lit(_) => (),
                 Pattern::Variant(_, subpat) => bindings(&subpat.0, vars),
                 Pattern::Record { fields, open: _ } => {
                     fields.iter().for_each(|(_, f)| bindings(&f.0, vars))
@@ -105,16 +97,10 @@ pub enum Field<S: Syntax> {
     Macro(FieldMacro<S>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CstExpr<S: Syntax> {
     Ident(S::Variable),
-    Number(ordered_float::OrderedFloat<f32>),
-    String(Spanned<Intern<String>>),
-    Bool(bool),
-    #[default]
-    Unit,
-    Particle(Spanned<Intern<String>>),
-
+    Lit(ExprLit),
     Hole(S::Variable),
 
     Item(ItemId),
@@ -145,6 +131,12 @@ pub enum CstExpr<S: Syntax> {
         Spanned<Intern<Self>>,
     ),
     Type(S::Type),
+}
+
+impl<S: Syntax> Default for CstExpr<S> {
+    fn default() -> Self {
+        Self::Lit(ExprLit::default())
+    }
 }
 
 #[derive(Debug, PartialEq)]

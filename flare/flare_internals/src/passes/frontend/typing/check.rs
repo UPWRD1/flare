@@ -8,7 +8,7 @@ use crate::{
     },
     resource::rep::{
         common::{Spanned, Syntax},
-        frontend::ast::{AstLiteral, Direction, Expr, Untyped, UntypedAst},
+        frontend::ast::{Direction, Expr, ExprLit, Untyped, UntypedAst},
     },
 };
 
@@ -26,13 +26,11 @@ impl Solver<'_> {
             // Primitives
             (Expr::Lit(lit), ty) => {
                 let lit = match (lit, ty) {
-                    (AstLiteral::Number(_), Type::Num)
-                    | (AstLiteral::String(_), Type::String)
-                    | (AstLiteral::Bool(_), Type::Bool)
-                    | (AstLiteral::Unit, Type::Unit) => GenOut::lit(lit, id),
-                    (AstLiteral::Particle(p), Type::Particle(q)) if p.0 == q.0 => {
-                        GenOut::lit(lit, id)
-                    }
+                    (ExprLit::Number(_), Type::Num)
+                    | (ExprLit::String(_), Type::String)
+                    | (ExprLit::Bool(_), Type::Bool)
+                    | (ExprLit::Unit, Type::Unit) => GenOut::lit(lit, id),
+                    (ExprLit::Particle(p), Type::Particle(q)) if p.0 == q.0 => GenOut::lit(lit, id),
                     _ => self.begin_inference(env, the_ast, the_ty, id),
                 };
                 todo!()
