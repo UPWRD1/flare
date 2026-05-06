@@ -2,6 +2,7 @@ use std::{cell::OnceCell, ops::ControlFlow};
 
 use internment::Intern;
 
+use itertools::Itertools;
 use petgraph::{
     prelude::StableDiGraph,
     stable_graph::{EdgeReference, NodeIndex},
@@ -145,12 +146,12 @@ impl EnvironmentBuilder<UntypedCst> {
             ..Default::default()
         };
 
-        // let res = me
-        //     .enter_context_root(
-        //         |me| me.analyze_expr(root_obj, &[], Expect::Value),
-        //         Spanned::default_with(String::from("Root")),
-        //     )
-        //     .into_value();
+        let res = me
+            .enter_context_root(
+                |me| me.analyze_expr(root_obj, &[], Expect::Value),
+                Spanned::default_with(String::from("Root")),
+            )
+            .into_value();
         // dbg!(res);
         // me.debug();
         let env_map = me.lift();
@@ -539,16 +540,20 @@ impl EnvironmentBuilder<UntypedCst> {
                 ty.modify(CstType::Func(l, r))
             }
             CstType::Item(item_id) => todo!(),
-            CstType::GenericFun(spanned, spanned1) => todo!(),
+            CstType::GenericFun(param, body) => {
+                let param = self.resolve_type(param, vars);
+                let body = self.resolve_type(body, vars);
+                ty.modify(CstType::GenericApp(param, body))
+            }
             CstType::GenericApp(tyfun, arg) => {
                 let tyfun = self.resolve_type(tyfun, vars);
                 let arg = self.resolve_type(arg, vars);
                 ty.modify(CstType::GenericApp(tyfun, arg))
             }
-            CstType::ForAll(t, within) => todo!(),
+            CstType::ForAll(t, within) => ty,
             CstType::User(name) => {
                 if let Some(var) = vars.iter().rev().find(|n| *n.name == *name.0) {
-                    todo!()
+                    ty
                 } else if let Some(index) = self.resolve_name(name, self.current_node()) {
                     let value = self.graph[index].value.get().unwrap();
                     dbg!(value);
@@ -595,9 +600,26 @@ impl EnvironmentBuilder<UntypedCst> {
         //         }
         //     },
         // );
-        // let out = petgraph::algo::tarjan_scc(&self.graph);
-        // dbg!(out);
-        // self.debug();
+        let out = petgraph::algo::tarjan_scc(&self.graph);
+        dbg!(&out);
+        let mut out = out.into_iter().rev().peekable();
+
+        self.debug();
+        // while let Some(t) = out.peek() {
+        //     let mut count = 0;
+        //     let next_group = out.peeking_take_while(|t| {
+        //         dbg!(t);
+        //         if t.len() == 1 {
+        //             count += 1;
+        //             true
+        //         } else {
+        //             false
+        //         }
+        //     });
+        //     // dbg!(next_group);
+        // }
+
+        self.debug();
         self.graph
             .node_indices()
             .filter_map(|node| {

@@ -174,7 +174,6 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                     )
                     .into()
             }
-            // LIRType::Closure(_, ret) => self.convert_struct_ty(*ret),
             _ => ty.convert(self),
         }
     }
@@ -194,12 +193,9 @@ impl<'ctx: 'ir, 'ir> LLVMContext<'ctx> {
                 0,
                 BasicMetadataTypeEnum::PointerType(sret_pointer.into_pointer_type()),
             );
-            // dbg!(ret);
             (void_ty.fn_type(&args, false), PassMode::Sret(sret_ty))
         } else {
             let ret_ty = self.convert_aggregate_ty(ret);
-
-            // dbg!(ret, ret_ty);
             (
                 ret_ty.fn_type(
                     &args

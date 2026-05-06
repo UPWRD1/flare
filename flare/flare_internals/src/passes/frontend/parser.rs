@@ -529,8 +529,8 @@ impl<'src> Translate<'src> {
         } else {
             args.into_iter()
                 .map(|n| self.lower_type(n))
-                .fold(value_ty, |body, arg_type| {
-                    value_ty.map_inner(|value| CstType::GenericFun(arg_type, body))
+                .fold(value_ty, |body, arg_name| {
+                    value_ty.map_inner(|value| CstType::ForAll(arg_name, body))
                 })
         };
         *final_ty.0
