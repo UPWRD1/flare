@@ -5,7 +5,7 @@ use itertools::Itertools;
 use tiny_pretty::Doc;
 
 use crate::{
-    passes::frontend::typing::{Row, Type, Typed},
+    passes::frontend::typing::{PrimitiveType, Row, Type, Typed},
     resource::{
         pretty::{DocExt, Render},
         rep::{
@@ -83,11 +83,13 @@ impl Render for Spanned<Intern<Type>> {
     fn render(self) -> Doc<'static> {
         match *self.0 {
             Type::Var(v) => Doc::text(format!("?{}", v.0)),
-            Type::Num => Doc::text("num"),
-            Type::Unit => Doc::text("unit"),
-            Type::String => Doc::text("str"),
-            Type::Bool => Doc::text("bool"),
-            Type::Particle(p) => Doc::text(format!("@{}", p.0)),
+            Type::Primitive(p) => match p {
+                PrimitiveType::Num => Doc::text("num"),
+                PrimitiveType::Str => Doc::text("str"),
+                PrimitiveType::Bool => Doc::text("bool"),
+                PrimitiveType::Unit => Doc::text("unit"),
+                PrimitiveType::Particle(p) => Doc::text(format!("@{}", p.0)),
+            },
             Type::Func(l, r) => l
                 .render()
                 .append(Doc::space().append(Doc::text("->").append(Doc::space())))

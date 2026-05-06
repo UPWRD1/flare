@@ -267,9 +267,13 @@ fn convert(ir: ir::IR, id: ItemId, conversion: &mut ClosureConvert) -> ClosureCo
 
 fn lower_ty(ty: &IRType) -> LIRType {
     match ty {
-        IRType::Num => LIRType::Float,
-        IRType::Str | IRType::Particle(_) => LIRType::String,
-        IRType::Unit => LIRType::Unit,
+        IRType::Primitive(p) => match p {
+            irtype::IRPrimitiveType::Num => LIRType::Float,
+            irtype::IRPrimitiveType::Str => LIRType::String,
+            irtype::IRPrimitiveType::Bool => LIRType::Bool,
+            irtype::IRPrimitiveType::Unit => LIRType::Unit,
+            irtype::IRPrimitiveType::Particle(intern) => LIRType::String,
+        },
         IRType::Fun(arg, ret) => {
             // dbg!(ty);
             // todo!()
@@ -291,7 +295,6 @@ fn lower_ty(ty: &IRType) -> LIRType {
         }
         IRType::Prod(r) => LIRType::Struct(lower_row(r)),
         IRType::Sum(r) => LIRType::Union(lower_row(r)),
-        IRType::Bool => LIRType::Bool,
         IRType::Volatile(irtype) => todo!(),
     }
 }

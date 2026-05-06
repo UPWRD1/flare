@@ -44,19 +44,24 @@ pub enum Polarity {
     Coinductive, // must be productive
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum PrimitiveType {
+    Num,
+    Str,
+    Bool,
+    #[default]
+    Unit,
+    Particle(Spanned<Intern<String>>),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type {
     Unifier(TyUniVar),
     Var(TypeVar),
 
     Recursive(TyUniVar, Polarity, Spanned<Intern<Self>>),
 
-    Particle(Spanned<Intern<String>>),
-    #[default]
-    Unit,
-    Num,
-    Bool,
-    String,
+    Primitive(PrimitiveType),
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
     TypeFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
@@ -65,6 +70,12 @@ pub enum Type {
     Label(Label, Spanned<Intern<Self>>),
 
     Hole,
+}
+
+impl Default for Type {
+    fn default() -> Self {
+        Self::Primitive(PrimitiveType::default())
+    }
 }
 
 impl EqUnifyValue for Spanned<Intern<Type>> {}
@@ -106,13 +117,7 @@ impl Type {
                     Ok(())
                 }
             }
-            Self::Num
-            | Self::String
-            | Self::Bool
-            | Self::Unit
-            | Self::Particle(_)
-            | Self::Var(_)
-            | Self::Hole => Ok(()),
+            Self::Primitive(_) | Self::Var(_) | Self::Hole => Ok(()),
             Self::Func(arg, ret) => {
                 arg.0.occurs_check(var).map_err(|_| *self)?;
                 ret.0.occurs_check(var).map_err(|_| *self)
@@ -149,7 +154,7 @@ impl Type {
     ) -> bool {
         match self {
             Self::Unifier(v) => unbound_tys.contains(v),
-            Self::Num | Self::Var(_) => false,
+            Self::Primitive(_) | Self::Var(_) => false,
             Self::Func(arg, ret) => {
                 arg.0.mentions(unbound_tys, unbound_rows)
                     || ret.0.mentions(unbound_tys, unbound_rows)
@@ -206,12 +211,13 @@ impl Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Num => write!(f, "num"),
-            Self::Bool => write!(f, "bool"),
-            Self::String => write!(f, "str"),
-            Self::Unit => write!(f, "unit"),
-            Self::Particle(p) => write!(f, "@{}", p.0),
-
+            Self::Primitive(p) => match p {
+                PrimitiveType::Num => write!(f, "num"),
+                PrimitiveType::Bool => write!(f, "bool"),
+                PrimitiveType::Str => write!(f, "str"),
+                PrimitiveType::Unit => write!(f, "unit"),
+                PrimitiveType::Particle(p) => write!(f, "@{}", p.0),
+            },
             Self::Unifier(u) => write!(f, "%var{}", u.0),
             Self::Var(v) => write!(f, "?{}", v.0),
             Self::Func(l, r) => write!(f, "{} -> {}", l.0, r.0),

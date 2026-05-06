@@ -5,7 +5,7 @@ use ordered_float::OrderedFloat;
 
 use crate::resource::rep::{
     frontend::ast::BinOp,
-    midend::irtype::{IRType, Kind, Row, TyApp},
+    midend::irtype::{IRPrimitiveType, IRType, Kind, Row, TyApp},
 };
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Default)]
@@ -236,7 +236,7 @@ impl IR {
         }
 
         fn type_of_if(cond: &IR, then: &IR, other: &IR) -> IRType {
-            if cond.type_of() != IRType::Bool {
+            if cond.type_of() != IRType::Primitive(IRPrimitiveType::Bool) {
                 unreachable!("Cannot evaluate if expression with a non-bool condition")
             }
             let then_ty = then.type_of();
@@ -262,11 +262,11 @@ impl IR {
         match self {
             Self::Var(v) => v.ty.clone(),
             Self::Lit(lit) => match lit {
-                IRLit::Num(_) => IRType::Num,
-                IRLit::Str(_) => IRType::Str,
-                IRLit::Bool(_) => IRType::Bool,
-                IRLit::Unit => IRType::Unit,
-                IRLit::Particle(p) => IRType::Particle(*p),
+                IRLit::Num(_) => IRType::Primitive(IRPrimitiveType::Num),
+                IRLit::Str(_) => IRType::Primitive(IRPrimitiveType::Str),
+                IRLit::Bool(_) => IRType::Primitive(IRPrimitiveType::Bool),
+                IRLit::Unit => IRType::Primitive(IRPrimitiveType::Unit),
+                IRLit::Particle(p) => IRType::Primitive(IRPrimitiveType::Particle(*p)),
             },
 
             Self::Fun(arg, body) => IRType::fun(arg.ty.clone(), body.type_of()),
@@ -301,7 +301,7 @@ impl IR {
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                 let lty = l.type_of();
                 let rty = r.type_of();
-                if lty != rty || !matches!(lty, IRType::Num) {
+                if lty != rty || !matches!(lty, IRType::Primitive(IRPrimitiveType::Num)) {
                     unreachable!(
                         "Expected number type in arithmatic operation while generating IR, found: {}\n {}",
                         lty, rty,
@@ -312,10 +312,10 @@ impl IR {
             BinOp::And | BinOp::Or => {
                 let lty = l.type_of();
                 let rty = r.type_of();
-                if lty != rty || lty != IRType::Bool {
+                if lty != rty || lty != IRType::Primitive(IRPrimitiveType::Bool) {
                     unreachable!("Expected number type in arithmatic operation while generating IR",)
                 }
-                IRType::Bool
+                IRType::Primitive(IRPrimitiveType::Bool)
             }
             BinOp::Eq | BinOp::Neq | BinOp::Lt | BinOp::Lte | BinOp::Gt | BinOp::Gte => {
                 let lty = l.type_of();
@@ -323,7 +323,7 @@ impl IR {
                 if lty != rty {
                     unreachable!("Expected comparison operands to be equal",)
                 }
-                IRType::Bool
+                IRType::Primitive(IRPrimitiveType::Bool)
             }
         }
     }
@@ -346,7 +346,7 @@ impl IR {
                 ir.size()
             }
             Self::Local(var, defn, body) => {
-                defn.size() + body.size() + (if var.ty.is_cheap_alloc() { 0 } else { 10 })
+                defn.size() + body.size() + (if var.ty.is_primitive() { 0 } else { 10 })
             }
             Self::If(c, t, o) => c.size().max(t.size().max(o.size())),
             Self::Tuple(v) => v.iter().map(Self::size).sum::<usize>(),

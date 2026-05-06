@@ -23,15 +23,18 @@ pub enum Specifier {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash, Default)]
-pub enum IRType {
-    // Num(Specifier),
+pub enum IRPrimitiveType {
     Num,
-    #[default]
-    Unit,
     Str,
     Bool,
+    #[default]
+    Unit,
     Particle(Intern<String>),
+}
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
+pub enum IRType {
+    Primitive(IRPrimitiveType),
     Var(TypeVar),
 
     Fun(Box<Self>, Box<Self>),
@@ -43,14 +46,17 @@ pub enum IRType {
     Volatile(Box<Self>),
 }
 
+impl Default for IRType {
+    fn default() -> Self {
+        Self::Primitive(IRPrimitiveType::default())
+    }
+}
+
 impl IRType {
     #[must_use]
-    pub fn is_cheap_alloc(&self) -> bool {
+    pub fn is_primitive(&self) -> bool {
         // Technically, unit is zero-sized, so it doesn't alloc
-        matches!(
-            self,
-            Self::Num | Self::Bool | Self::Str | Self::Unit | Self::Particle(_)
-        )
+        matches!(self, Self::Primitive(_))
     }
 
     pub fn into_ret_ty(self) -> Self {
@@ -63,7 +69,7 @@ impl IRType {
 
     pub fn is_scalar(&self) -> bool {
         match self {
-            IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => true,
+            IRType::Primitive(_) => true,
             IRType::Prod(_) | IRType::Sum(_) => true,
             IRType::Var(_) => false,
             IRType::Fun(..) => false,
@@ -128,7 +134,7 @@ impl TyApp {
     }
     pub fn is_cheap_alloc(&self) -> bool {
         match self {
-            Self::Ty(t) => t.is_cheap_alloc(),
+            Self::Ty(t) => t.is_primitive(),
             Self::Row(_) => false,
         }
     }

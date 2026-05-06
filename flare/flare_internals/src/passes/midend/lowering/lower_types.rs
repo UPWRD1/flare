@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     passes::frontend::typing::{self, Evidence},
-    resource::rep::midend::irtype::{IRType, Kind, Row, TypeVar},
+    resource::rep::midend::irtype::{IRPrimitiveType, IRType, Kind, Row, TypeVar},
 };
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -47,12 +47,15 @@ impl LowerTypes {
 
     pub fn lower_ty(&self, ty: typing::Type) -> IRType {
         match ty {
-            typing::Type::Num => IRType::Num,
-            typing::Type::String => IRType::Str,
-            typing::Type::Unit => IRType::Unit,
-            typing::Type::Bool => IRType::Bool,
-
-            typing::Type::Particle(p) => IRType::Particle(p.0),
+            typing::Type::Primitive(p) => match p {
+                typing::PrimitiveType::Num => IRType::Primitive(IRPrimitiveType::Num),
+                typing::PrimitiveType::Str => IRType::Primitive(IRPrimitiveType::Str),
+                typing::PrimitiveType::Bool => IRType::Primitive(IRPrimitiveType::Bool),
+                typing::PrimitiveType::Unit => IRType::Primitive(IRPrimitiveType::Unit),
+                typing::PrimitiveType::Particle(p) => {
+                    IRType::Primitive(IRPrimitiveType::Particle(p.0))
+                }
+            },
             typing::Type::Var(v) => IRType::Var(self.env[&AstTypeVar::Ty(v)]),
             typing::Type::Func(arg, ret) => {
                 let arg = self.lower_ty(*arg.0);

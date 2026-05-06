@@ -59,9 +59,7 @@ impl Subst {
 
     pub fn subst_ty(self, haystack: IRType, needle: usize) -> IRType {
         match haystack {
-            IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => {
-                haystack
-            }
+            IRType::Primitive(_) => haystack,
             IRType::Var(type_var) => match type_var.0.cmp(&needle) {
                 Ordering::Equal => self.subst_ty_var(),
                 Ordering::Less => IRType::Var(type_var),
@@ -148,7 +146,7 @@ impl IRType {
 
     pub fn subst_vars(self, f: &impl Fn(TypeVar) -> Self) -> Self {
         match self {
-            Self::Num | Self::Unit | Self::Str | Self::Bool | Self::Particle(_) => self,
+            Self::Primitive(_) => self,
             Self::Var(v) => f(v),
             Self::Fun(l, r) => Self::fun(l.subst_vars(f), r.subst_vars(f)),
             Self::TyFun(kind, t) => Self::ty_fun(kind, t.subst_vars(f)),
@@ -179,7 +177,7 @@ impl IRType {
     pub fn how_many_vars(&self) -> usize {
         fn helper(t: &IRType, cache: &mut FxHashSet<TypeVar>) {
             match t {
-                IRType::Num | IRType::Unit | IRType::Str | IRType::Bool | IRType::Particle(_) => {}
+                IRType::Primitive(_) => {}
                 IRType::Var(v) => {
                     cache.insert(*v);
                 }
@@ -214,7 +212,7 @@ impl IRType {
 
     fn adjust(&mut self, cutoff: usize) {
         match self {
-            Self::Num | Self::Unit | Self::Str | Self::Bool | Self::Particle(_) => {}
+            Self::Primitive(_) => {}
             Self::Var(type_var) => type_var.adjust(cutoff),
             Self::Fun(arg, ret) => {
                 arg.adjust(cutoff);

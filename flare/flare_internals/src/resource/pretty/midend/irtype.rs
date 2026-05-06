@@ -5,17 +5,19 @@ use tiny_pretty::Doc;
 
 use crate::resource::{
     pretty::{DocExt, INC, Render},
-    rep::midend::irtype::{IRType, Row, TyApp},
+    rep::midend::irtype::{IRPrimitiveType, IRType, Row, TyApp},
 };
 
 impl Render for IRType {
     fn render(self) -> Doc<'static> {
         match self {
-            Self::Num => Doc::text("num"),
-            Self::Unit => Doc::text("unit"),
-            Self::Str => Doc::text("str"),
-            Self::Bool => Doc::text("bool"),
-            Self::Particle(intern) => Doc::text(format!("@{intern}")),
+            Self::Primitive(p) => match p {
+                IRPrimitiveType::Num => Doc::text("num"),
+                IRPrimitiveType::Str => Doc::text("str"),
+                IRPrimitiveType::Bool => Doc::text("bool"),
+                IRPrimitiveType::Unit => Doc::text("unit"),
+                IRPrimitiveType::Particle(intern) => Doc::text(format!("@{intern}")),
+            },
             Self::Var(type_var) => Doc::text(format!("?{}", type_var.0)),
             Self::Fun(l, r) => l
                 .render()

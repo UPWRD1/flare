@@ -113,12 +113,7 @@ impl Solver<'_> {
         the_ty: Spanned<Intern<Type>>,
     ) -> SubstOut<Spanned<Intern<Type>>> {
         match *the_ty.0 {
-            Type::Num => SubstOut::new(the_ty.convert(Type::Num)),
-            Type::String => SubstOut::new(the_ty.convert(Type::String)),
-            Type::Bool => SubstOut::new(the_ty.convert(Type::Bool)),
-            Type::Unit => SubstOut::new(the_ty.convert(Type::Unit)),
-
-            Type::Particle(p) => SubstOut::new(the_ty.convert(Type::Particle(p))),
+            Type::Primitive(p) => SubstOut::new(the_ty),
             Type::Var(v) => SubstOut::new(the_ty.convert(Type::Var(v))),
             Type::Unifier(v) => {
                 let root = self.tables.unification_table.find(v);

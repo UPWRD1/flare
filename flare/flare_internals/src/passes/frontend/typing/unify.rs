@@ -28,12 +28,7 @@ pub struct UnificationFailure;
 impl Solver<'_> {
     pub fn normalize_ty(&mut self, ty: Spanned<Intern<Type>>) -> Spanned<Intern<Type>> {
         match *ty.0 {
-            Type::Num
-            | Type::String
-            | Type::Bool
-            | Type::Unit
-            | Type::Particle(_)
-            | Type::Var(_) => ty,
+            Type::Primitive(_) | Type::Var(_) => ty,
             Type::Func(arg, ret) => {
                 let arg = self.normalize_ty(arg);
                 let ret = self.normalize_ty(ret);
@@ -90,12 +85,7 @@ impl Solver<'_> {
         let right = self.normalize_ty(unnorm_right);
         // dbg!(left, right);
         match (*left.0, *right.0) {
-            (Type::Num, Type::Num)
-            | (Type::String, Type::String)
-            | (Type::Bool, Type::Bool)
-            | (Type::Unit, Type::Unit) => Ok(()),
-            (Type::Particle(p), Type::Particle(q)) if p == q => Ok(()),
-
+            (Type::Primitive(p), Type::Primitive(q)) if p == q => Ok(()),
             (Type::Var(a), Type::Var(b)) if a.0 == b.0 => Ok(()),
             (Type::Func(a_arg, a_ret), Type::Func(b_arg, b_ret)) => {
                 self.unify_ty_ty(a_arg, b_arg)?;

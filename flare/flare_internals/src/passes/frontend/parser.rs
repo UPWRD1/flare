@@ -1,17 +1,20 @@
 use std::{marker::PhantomData, num::NonZero};
 
-use crate::resource::{
-    errors::{CompResult, DynamicErr, ErrorCollection},
-    rep::{
-        common::{FlareSpan, Spanned, Syntax},
-        frontend::{
-            ast::{BinOp, ExprLit, Label, Untyped},
-            cst::{
-                CstExpr, Field, FieldDef, FieldMacro, MatchArm, Package, PackageCollection,
-                Pattern, UntypedCst,
+use crate::{
+    passes::frontend::typing::PrimitiveType,
+    resource::{
+        errors::{CompResult, DynamicErr, ErrorCollection},
+        rep::{
+            common::{FlareSpan, Spanned, Syntax},
+            frontend::{
+                ast::{BinOp, ExprLit, Label, Untyped},
+                cst::{
+                    CstExpr, Field, FieldDef, FieldMacro, MatchArm, Package, PackageCollection,
+                    Pattern, UntypedCst,
+                },
+                csttypes::{CstClosedRow, CstType},
+                files::FileSource,
             },
-            csttypes::{CstClosedRow, CstType},
-            files::FileSource,
         },
     },
 };
@@ -493,13 +496,13 @@ impl<'src> Translate<'src> {
 
     fn lower_primitive_type(&self, node: Node<'src>) -> CstType {
         let t = self.raw_name(&node);
-        match t {
-            "num" => CstType::Num,
-            "bool" => CstType::Bool,
-            "str" => CstType::String,
-            "unit" => CstType::Unit,
+        CstType::Primitive(match t {
+            "num" => PrimitiveType::Num,
+            "bool" => PrimitiveType::Bool,
+            "str" => PrimitiveType::Str,
+            "unit" => PrimitiveType::Unit,
             _ => panic!("Invalid primitive type: {t}"),
-        }
+        })
     }
 
     fn lower_user_type(&self, node: Node<'src>) -> CstType {

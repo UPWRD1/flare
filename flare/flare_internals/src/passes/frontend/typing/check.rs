@@ -3,7 +3,7 @@ use rustc_hash::FxBuildHasher;
 
 use crate::{
     passes::frontend::typing::{
-        Constraint, GenOut, Provenance, Solver, Type, Typed,
+        Constraint, GenOut, PrimitiveType, Provenance, Solver, Type, Typed,
         rows::{Row, RowCombination},
     },
     resource::rep::{
@@ -24,13 +24,15 @@ impl Solver<'_> {
 
         match (*the_ast.0, *the_ty.0) {
             // Primitives
-            (Expr::Lit(lit), ty) => {
+            (Expr::Lit(lit), Type::Primitive(ty)) => {
                 let lit = match (lit, ty) {
-                    (ExprLit::Number(_), Type::Num)
-                    | (ExprLit::String(_), Type::String)
-                    | (ExprLit::Bool(_), Type::Bool)
-                    | (ExprLit::Unit, Type::Unit) => GenOut::lit(lit, id),
-                    (ExprLit::Particle(p), Type::Particle(q)) if p.0 == q.0 => GenOut::lit(lit, id),
+                    (ExprLit::Number(_), PrimitiveType::Num)
+                    | (ExprLit::String(_), PrimitiveType::Str)
+                    | (ExprLit::Bool(_), PrimitiveType::Bool)
+                    | (ExprLit::Unit, PrimitiveType::Unit) => GenOut::lit(lit, id),
+                    (ExprLit::Particle(p), PrimitiveType::Particle(q)) if p.0 == q.0 => {
+                        GenOut::lit(lit, id)
+                    }
                     _ => self.begin_inference(env, the_ast, the_ty, id),
                 };
                 todo!()
@@ -62,7 +64,11 @@ impl Solver<'_> {
             }
             (Expr::If(cond, then, other), _) => {
                 // dbg!(the_ty);
-                let cond = self.check(env.clone(), cond, cond.convert(Type::Bool));
+                let cond = self.check(
+                    env.clone(),
+                    cond,
+                    cond.convert(Type::Primitive(PrimitiveType::Bool)),
+                );
                 let then = self.check(env.clone(), then, the_ty);
                 let other = self.check(env, other, the_ty);
 

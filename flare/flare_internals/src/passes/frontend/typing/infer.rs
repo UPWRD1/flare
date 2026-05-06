@@ -3,12 +3,12 @@ use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
     passes::frontend::typing::{
-        Constraint, Evidence, GenOut, ItemWrapper, Provenance, Row, Solver, Type, Typed,
-        inst::Instantiate,
+        Constraint, Evidence, GenOut, ItemWrapper, PrimitiveType, Provenance, Row, Solver, Type,
+        Typed, inst::Instantiate,
     },
     resource::rep::{
         common::Spanned,
-        frontend::ast::{ExprLit, BinOp, Direction, Expr, Untyped},
+        frontend::ast::{BinOp, Direction, Expr, ExprLit, Untyped},
     },
 };
 
@@ -22,13 +22,13 @@ impl Solver<'_> {
         let id = ast.1;
         match *ast.0 {
             Expr::Lit(lit) => {
-                let ty = match lit {
-                    ExprLit::Number(_) => ast.convert(Type::Num),
-                    ExprLit::String(_) => ast.convert(Type::String),
-                    ExprLit::Bool(_) => ast.convert(Type::Bool),
-                    ExprLit::Unit => ast.convert(Type::Unit),
-                    ExprLit::Particle(p) => ast.convert(Type::Particle(p)),
-                };
+                let ty = ast.convert(Type::Primitive(match lit {
+                    ExprLit::Number(_) => PrimitiveType::Num,
+                    ExprLit::String(_) => PrimitiveType::Str,
+                    ExprLit::Bool(_) => PrimitiveType::Bool,
+                    ExprLit::Unit => PrimitiveType::Unit,
+                    ExprLit::Particle(p) => PrimitiveType::Particle(p),
+                }));
                 (GenOut::lit(lit, id), ty)
             }
 
@@ -107,7 +107,7 @@ impl Solver<'_> {
                 constraints.push(Constraint::TypeEqual(
                     Provenance::ConditionIsBool(c.1),
                     cond_infer,
-                    cond_infer.convert(Type::Bool),
+                    cond_infer.convert(Type::Primitive(PrimitiveType::Bool)),
                 ));
 
                 constraints.push(Constraint::TypeEqual(
@@ -143,7 +143,7 @@ impl Solver<'_> {
             }
             Expr::Bin(left, op, right) => match op {
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                    let num_ty = ast.convert(Type::Num);
+                    let num_ty = ast.convert(Type::Primitive(PrimitiveType::Num));
                     let left_out = self.check(env.clone(), left, num_ty);
                     let right_out = self.check(env, right, num_ty);
 
@@ -177,7 +177,7 @@ impl Solver<'_> {
                             constraints,
                             ast.convert(Expr::Bin(l_out.typed_ast, op, r_out.typed_ast)),
                         ),
-                        ast.convert(Type::Bool),
+                        ast.convert(Type::Primitive(PrimitiveType::Bool)),
                     )
                 }
                 _ => todo!(),

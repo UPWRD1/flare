@@ -133,11 +133,7 @@ impl TypeFixer {
             CstType::ForAll(t, within) => {
                 panic!("Should have been resolved");
             }
-            CstType::Particle(p) => t.convert(Type::Particle(p)),
-            CstType::Unit => t.convert(Type::Unit),
-            CstType::Num => t.convert(Type::Num),
-            CstType::Bool => t.convert(Type::Bool),
-            CstType::String => t.convert(Type::String),
+            CstType::Primitive(p) => t.convert(Type::Primitive(p)),
             CstType::Hole => t.convert(Type::Hole),
         }
     }
@@ -265,13 +261,7 @@ impl Resolver {
             CstType::ForAll(t, within) => {
                 todo!()
             }
-            CstType::Generic(_)
-            | CstType::Particle(_)
-            | CstType::Unit
-            | CstType::Num
-            | CstType::Bool
-            | CstType::String
-            | CstType::Hole => t,
+            CstType::Generic(_) | CstType::Primitive(_) | CstType::Hole => t,
             CstType::User(..) => panic!("Found User type after environment"),
         }
     }

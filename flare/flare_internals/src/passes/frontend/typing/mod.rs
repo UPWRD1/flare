@@ -8,7 +8,7 @@ mod unify;
 
 pub use rows::{ClosedRow, Row, RowVar};
 use rows::{RowCombination, RowUniVar};
-pub use types::{TyUniVar, Type, TypeVar};
+pub use types::{PrimitiveType, TyUniVar, Type, TypeVar};
 
 use std::{collections::BTreeSet, fmt::Display, hash::Hash};
 

@@ -11,15 +11,18 @@ use petgraph::{
 use radix_trie::{Trie, TrieKey};
 use rustc_hash::FxHashMap;
 
-use crate::resource::{
-    errors::{self, CompResult, CompilerErr, ErrorCollection},
-    rep::{
-        common::{FlareSpan, HasSpan, Spanned, Syntax},
-        frontend::{
-            ast::{ItemId, Untyped},
-            cst::{CstExpr, Field, FieldDef, MatchArm, PackageCollection, Pattern, UntypedCst},
-            csttypes::{CstClosedRow, CstType},
-            entry::{FunctionItem, Item},
+use crate::{
+    passes::frontend::typing::PrimitiveType,
+    resource::{
+        errors::{self, CompResult, CompilerErr, ErrorCollection},
+        rep::{
+            common::{FlareSpan, HasSpan, Spanned, Syntax},
+            frontend::{
+                ast::{ItemId, Untyped},
+                cst::{CstExpr, Field, FieldDef, MatchArm, PackageCollection, Pattern, UntypedCst},
+                csttypes::{CstClosedRow, CstType},
+                entry::{FunctionItem, Item},
+            },
         },
     },
 };
@@ -119,7 +122,7 @@ impl EnvironmentBuilder<UntypedCst> {
         let root_node = graph.add_node(Element::new(
             Spanned::default_with("Root".to_string()),
             OnceCell::new(),
-            Spanned::default_with(CstType::Num),
+            Spanned::default_with(CstType::Primitive(PrimitiveType::Num)),
             true,
             Spanned::default_with(CstExpr::Ident(Untyped(Spanned::default_with(
                 String::from("Main"),
@@ -527,13 +530,7 @@ impl EnvironmentBuilder<UntypedCst> {
         vars: &[Var],
     ) -> <UntypedCst as Syntax>::Type {
         match *ty.0 {
-            CstType::Generic(_)
-            | CstType::Particle(_)
-            | CstType::Unit
-            | CstType::Num
-            | CstType::Bool
-            | CstType::String
-            | CstType::Hole => ty,
+            CstType::Generic(_) | CstType::Primitive(_) | CstType::Hole => ty,
             CstType::Func(l, r) => {
                 let l = self.resolve_type(l, vars);
                 let r = self.resolve_type(r, vars);
