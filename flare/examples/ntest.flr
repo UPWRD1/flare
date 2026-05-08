@@ -2,6 +2,11 @@
     x = 3
     y= x
     double x : num -> num = x * 2
+    factorial x : num -> num =
+        match x
+            as 0 then 1
+            as x then x + factorial (x - 1)
+        end
 }
     
   #    A = {  #        x = 3

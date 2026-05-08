@@ -3,7 +3,7 @@ use internment::Intern;
 use petgraph::{
     prelude::StableDiGraph,
     stable_graph::{EdgeReference, NodeIndex},
-    visit::{EdgeRef as _, },
+    visit::EdgeRef as _,
 };
 use rustc_hash::FxHashMap;
 
@@ -13,10 +13,7 @@ use crate::resource::{
         common::{Spanned, Syntax},
         frontend::{
             ast::Untyped,
-            cst::{
-                CstExpr, Field, FieldDef, NodeKind, PackageCollection,  PortKind,
-                UntypedCst,
-            },
+            cst::{CstExpr, Field, FieldDef, NodeKind, PackageCollection, PortKind, UntypedCst},
             csttypes::CstType,
             entry::Item,
         },
@@ -88,7 +85,7 @@ impl EnvironmentBuilder {
             &[
                 Config::EdgeNoLabel,
                 Config::NodeNoLabel,
-                Config::RankDir(petgraph::dot::RankDir::LR),
+                Config::RankDir(petgraph::dot::RankDir::BT),
             ],
             &render,
             &|_, (i, e)| format!("label = \"{} = {};\"", i.index(), e),
@@ -114,7 +111,10 @@ impl EnvironmentBuilder {
         self.graph
             .edges_directed(node, petgraph::Direction::Outgoing)
             .map(|e| (e.target(), *e.weight()))
-            .next().inspect(|p| {dbg!(p);})
+            .next()
+            .inspect(|p| {
+                dbg!(p);
+            })
     }
 
     /// Find a Def node by name among the direct children of `parent_record`.
@@ -130,118 +130,150 @@ impl EnvironmentBuilder {
             )
             .map(|(node, _)| node)
     }
-
     /// Resolve a name from a given node's context.
-    fn resolve_name(
-        &mut self,
-        the_name: Spanned<Intern<String>>,
-        current_node: NodeIndex,
-    ) -> NodeIndex {
-        macro_rules! push_parent_node {
-            ($worklist:ident, $node:ident) => {{
-                let Some((parent, _)) = self.outputs_of($node).filter(|(_, pk)| matches!(pk, PortKind::Input(_))) else {
-            
-                    println!("FAIL: {:?}", $node);
-                        break;
-                };
-                $worklist.push(parent);
-            }};
-        }
-        // Walk up the record containment chain.
-        dbg!(current_node, the_name);
-        let mut worklist = vec![current_node];
-        while let Some(node) = worklist.pop() {
-            dbg!(&worklist, node);
-            match &self.graph[node] {
-                NodeKind::Def { name } => {
-                    if *name == the_name.0 {
-                        return node;
-                    } else {
-                        push_parent_node!(worklist,node)
-                    }
-                }
-                NodeKind::Ref => todo!(),
-                NodeKind::Lam => {
-                    let (binder, _) = self
-                        .find_incoming_of(node, |_, pk| matches!(pk, PortKind::Input(0)))
-                        .unwrap();
-                    dbg!(binder);
-                    if let NodeKind::Def { name } = self.graph[binder]
-                        && name == the_name.0
+    fn resolve_name(&mut self, the_name: Spanned<Intern<String>>) -> NodeIndex {
+        for &scope_node in self.scope.iter().rev() {
+            match &self.graph[scope_node] {
+                NodeKind::Def { name } if *name == the_name.0 => return scope_node,
+
+                NodeKind::Lam | NodeKind::Pi => {
+                    if let Some((binder, _)) =
+                        self.find_incoming_of(scope_node, |_, pk| matches!(pk, PortKind::Input(0)))
+                        && let NodeKind::Def { name } = &self.graph[binder]
+                        && *name == the_name.0
                     {
                         return binder;
                     }
-                    push_parent_node!(worklist, node)
                 }
-                NodeKind::Bin(_) => {
-                    push_parent_node!(worklist, node)
-                }
-                NodeKind::App => todo!(),
-                NodeKind::Record
-                    // if self
-                    //     .find_incoming_of(node, |idx, _| idx == current_node)
-                    //     .is_some() =>
-                    =>
-                {
-                    if let Some((sibling, _)) = self
-                        .incoming_of(node)
-                        .filter(|(idx, _)| *idx != node)
-                        .find(|(idx, edge)| {
-                            let weight = &self.graph[*idx];
-                            
-    matches!(&self.graph[*idx], NodeKind::Def { name: n } if *n == the_name.0)
-                        })
-                    {
-                        return sibling;
-                    } else {
-                        push_parent_node!(worklist, node)
-                       }
-                }
-                // NodeKind::Record => {
-                //     let Some((parent, _)) = self.outputs_of(node) else {
-                //         break;
-                //     };
-                //     worklist.push(parent);
-                //     continue;
-                // }
-                NodeKind::Project { label } => todo!(),
-                NodeKind::Extend { label } => todo!(),
-                NodeKind::Inject { label } => todo!(),
-                NodeKind::Match { labels } => todo!(),
-                NodeKind::Lit(expr_lit) => todo!(),
-                NodeKind::PrimitiveTy(primitive_type) => todo!(),
-                NodeKind::Universe { level } => todo!(),
-                NodeKind::Pi => {
-                    let (domain, _) = self
-                        .find_incoming_of(node, |_, pk| matches!(pk, PortKind::Input(0)))
-                        .unwrap();
 
-                    if let NodeKind::Def { name } = self.graph[domain]
-                        && name == the_name.0
-                    {
-                        return domain;
+                NodeKind::Record => {
+                    if let Some(child) = self.find_child_by_name(scope_node, the_name.0) {
+                        return child;
                     }
-                    push_parent_node!(worklist, node)
                 }
-                NodeKind::RowTy { labels, open } => todo!(),
-                NodeKind::Mu => todo!(),
-                NodeKind::CoreLam { arity } => todo!(),
-                NodeKind::Erased => todo!(),
-                NodeKind::Hole { .. } => todo!(),
+
+                _ => {}
             }
-            continue;
         }
 
         self.errors.push(errors::not_defined(the_name));
         self.graph.add_node(NodeKind::Hole { name: the_name.0 })
     }
 
-    fn analyze_expr(&mut self, expr: Spanned<Intern<CstExpr<UntypedCst>>>, current_node: NodeIndex) -> NodeIndex {
+    // fn resolve_name(
+    //     &mut self,
+    //     the_name: Spanned<Intern<String>>,
+    //     current_node: NodeIndex,
+    // ) -> NodeIndex {
+    //     macro_rules! push_parent_node {
+    //         ($worklist:ident, $node:ident) => {{
+    //             let Some((parent, _)) = self.outputs_of($node).filter(|(_, pk)| matches!(pk, PortKind::Input(_))) else {
+
+    //                 println!("FAIL: {:?}", $node);
+    //                     break;
+    //             };
+    //             $worklist.push(parent);
+    //         }};
+    //     }
+    //     // Walk up the record containment chain.
+    //     dbg!(current_node, the_name);
+    //     let mut worklist = vec![current_node];
+    //     while let Some(node) = worklist.pop() {
+    //         dbg!(&worklist, node);
+    //         match &self.graph[node] {
+    //             NodeKind::Def { name } => {
+    //                 if *name == the_name.0 {
+    //                     return node;
+    //                 } else {
+    //                     push_parent_node!(worklist,node)
+    //                 }
+    //             }
+    //             NodeKind::Ref => todo!(),
+    //             NodeKind::Lam => {
+    //                 let (binder, _) = self
+    //                     .find_incoming_of(node, |_, pk| matches!(pk, PortKind::Input(0)))
+    //                     .unwrap();
+    //                 dbg!(binder);
+    //                 if let NodeKind::Def { name } = self.graph[binder]
+    //                     && name == the_name.0
+    //                 {
+    //                     return binder;
+    //                 }
+    //                 push_parent_node!(worklist, node)
+    //             }
+    //             NodeKind::Bin(_) => {
+    //                 push_parent_node!(worklist, node)
+    //             }
+    //             NodeKind::App => todo!(),
+    //             NodeKind::Record
+    //                 // if self
+    //                 //     .find_incoming_of(node, |idx, _| idx == current_node)
+    //                 //     .is_some() =>
+    //                 =>
+    //             {
+    //                 if let Some((sibling, _)) = self
+    //                     .incoming_of(node)
+    //                     .filter(|(idx, _)| *idx != node)
+    //                     .find(|(idx, edge)| {
+    //                         let weight = &self.graph[*idx];
+
+    // matches!(&self.graph[*idx], NodeKind::Def { name: n } if *n == the_name.0)
+    //                     })
+    //                 {
+    //                     return sibling;
+    //                 } else {
+    //                     push_parent_node!(worklist, node)
+    //                    }
+    //             }
+    //             // NodeKind::Record => {
+    //             //     let Some((parent, _)) = self.outputs_of(node) else {
+    //             //         break;
+    //             //     };
+    //             //     worklist.push(parent);
+    //             //     continue;
+    //             // }
+    //             NodeKind::Project { label } => todo!(),
+    //             NodeKind::Extend { label } => todo!(),
+    //             NodeKind::Inject { label } => todo!(),
+    //             NodeKind::Match { labels } => todo!(),
+    //             NodeKind::Lit(expr_lit) => todo!(),
+    //             NodeKind::PrimitiveTy(primitive_type) => todo!(),
+    //             NodeKind::Universe { level } => todo!(),
+    //             NodeKind::Pi => {
+    //                 let (domain, _) = self
+    //                     .find_incoming_of(node, |_, pk| matches!(pk, PortKind::Input(0)))
+    //                     .unwrap();
+
+    //                 if let NodeKind::Def { name } = self.graph[domain]
+    //                     && name == the_name.0
+    //                 {
+    //                     return domain;
+    //                 }
+    //                 push_parent_node!(worklist, node)
+    //             }
+    //             NodeKind::RowTy { labels, open } => todo!(),
+    //             NodeKind::Mu => todo!(),
+    //             NodeKind::CoreLam { arity } => todo!(),
+    //             NodeKind::Erased => todo!(),
+    //             NodeKind::Hole { .. } => todo!(),
+    //         }
+    //         continue;
+    //     }
+
+    //     self.errors.push(errors::not_defined(the_name));
+    //     self.graph.add_node(NodeKind::Hole { name: the_name.0 })
+    // }
+
+    fn analyze_expr(
+        &mut self,
+        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
+        current_node: NodeIndex,
+    ) -> NodeIndex {
         self.debug();
         self.scope.push(current_node);
-       let out =  match *expr.0 {
+        let out = match *expr.0 {
             CstExpr::Ident(n) => {
-                let v = self.resolve_name(n.0, current_node);
+                let v = self.resolve_name(n.0);
                 let ref_node = self.graph.add_node(NodeKind::Ref);
                 // let Some((def_idx, _)) =
                 //     self.find_input_of(v.index, |_, p| matches!(p, PortKind::Aux(0)))
@@ -263,8 +295,9 @@ impl EnvironmentBuilder {
             CstExpr::VariantConstructor { name, value } => todo!(),
             CstExpr::Bin(l, bin_op, r) => {
                 let bin = self.graph.add_node(NodeKind::Bin(bin_op));
-                
-                let l = self.analyze_expr(l,  bin)  ;              let r = self.analyze_expr(r, bin);
+
+                let l = self.analyze_expr(l, bin);
+                let r = self.analyze_expr(r, bin);
 
                 self.graph.add_edge(l, bin, PortKind::Input(0));
                 self.graph.add_edge(r, bin, PortKind::Input(1));
@@ -335,19 +368,24 @@ impl EnvironmentBuilder {
         }
     }
 
-    fn resolve_type(&mut self, ty: <UntypedCst as Syntax>::Type,current_node: NodeIndex) -> NodeIndex {
-        match *ty.0 {
+    fn resolve_type(
+        &mut self,
+        ty: <UntypedCst as Syntax>::Type,
+        current_node: NodeIndex,
+    ) -> NodeIndex {
+        self.scope.push(current_node);
+        let out = match *ty.0 {
             CstType::Primitive(p) => self.graph.add_node(NodeKind::PrimitiveTy(p)),
             CstType::Func(l, r) => {
                 let pi = self.graph.add_node(NodeKind::Pi);
                 let l = self.resolve_type(l, current_node);
-                let r = self.resolve_type(r,current_node);
+                let r = self.resolve_type(r, current_node);
                 self.graph.add_edge(l, pi, PortKind::Input(0));
                 self.graph.add_edge(r, pi, PortKind::Input(1));
                 pi
             }
             CstType::User(n) => {
-                let v = self.resolve_name(n, current_node);
+                let v = self.resolve_name(n);
                 let ref_node = self.graph.add_node(NodeKind::Ref);
                 // let Some((def_idx, _)) =
                 //     self.find_input_of(v.index, |_, p| matches!(p, PortKind::Aux(0)))
@@ -359,7 +397,9 @@ impl EnvironmentBuilder {
             }
 
             _ => todo!("{ty:?}"),
-        }
+        };
+        self.scope.pop();
+        out
     }
 
     fn lift(&self) -> Environment<UntypedCst> {
