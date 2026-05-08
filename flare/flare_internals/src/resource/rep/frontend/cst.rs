@@ -199,8 +199,8 @@ impl Syntax for UntypedCst {
 
 #[derive(Debug, Clone)]
 pub enum NodeKind {
-    // ── Binding ──────────────────────────────────────────────────────────
-    /// A named definition. Input: its value. Output: itself (for references).
+    /// Input 0: its value.
+    /// Output 0: itself (for references).
     Def {
         name: Intern<String>,
     },
@@ -209,7 +209,6 @@ pub enum NodeKind {
     /// During reduction this edge is simply short-circuited.
     Ref,
 
-    // ── Functions ────────────────────────────────────────────────────────
     /// λ x. body
     /// Input 0: the parameter binding (a Def node for x)
     /// Input 1: the body expression
@@ -224,7 +223,6 @@ pub enum NodeKind {
     /// Output 0: result
     App,
 
-    // ── Records / Rows ───────────────────────────────────────────────────
     /// { ℓ₁ = e₁, ℓ₂ = e₂, … }
     /// Input i: the i-th field value
     /// Output 0: the record
@@ -244,7 +242,6 @@ pub enum NodeKind {
         label: Intern<String>,
     },
 
-    // ── Sums / Variants ──────────────────────────────────────────────────
     /// Tag a value with a label: ℓ(e)
     /// Input 0: payload
     /// Output 0: tagged value
@@ -257,17 +254,21 @@ pub enum NodeKind {
     /// Output 0: the branch node
     Branch,
 
+    /// Input 0: The tagged value
+    /// Output 0: The untagged value
+    Unlabel {
+        label: Intern<String>,
+    },
+
     /// Input 0: condition term
     /// Input 1: "then" arm
     /// Input 2: "else" arm
     If,
 
-    // ── Literals ─────────────────────────────────────────────────────────
     Lit(ExprLit),
 
     PrimitiveTy(PrimitiveType),
 
-    // ── Types (when we want them first-class) ────────────────────────────
     /// ★ — the universe
     Universe {
         level: u32,

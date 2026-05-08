@@ -12,7 +12,7 @@ pub enum CstType {
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
     GenericFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
-    ForAll(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    ForAll(Spanned<Intern<String>>, Spanned<Intern<Self>>),
     GenericApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     User(Spanned<Intern<String>>),
     Prod(CstClosedRow),
@@ -20,6 +20,7 @@ pub enum CstType {
     Label(Label, Spanned<Intern<Self>>),
     Hole,
 }
+
 impl Default for CstType {
     fn default() -> Self {
         Self::Primitive(PrimitiveType::default())

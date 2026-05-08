@@ -1,13 +1,11 @@
 use std::collections::BTreeSet;
 
 use internment::Intern;
-use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     passes::frontend::{
         environment::Environment,
-        matchmatrix::{self, DecisionTree, Occ, SigElem},
         typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeScheme, TypeVar},
     },
     resource::{
@@ -287,170 +285,7 @@ impl Resolver {
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
     ) -> Spanned<Intern<Expr<<UntypedCst as Syntax>::Variable>>> {
-        match *expr.0 {
-            CstExpr::Ident(u) => expr.convert(Expr::Ident(u)),
-            CstExpr::ProductConstructor { fields } => fields
-                .iter()
-                .map(|field| match *field {
-                    Field::Def(field) => {
-                        let val = self.desugar_cstexpr(field.value);
-                        expr.convert(Expr::Label(Label(field.name), val))
-                    }
-                    Field::Macro(field_macro) => todo!(),
-                })
-                .reduce(|l, r| expr.convert(Expr::Concat(l, r)))
-                .expect("Empty Product Constructor"),
-            CstExpr::VariantConstructor { name, value } => {
-                let value = if let Some(value) = value {
-                    self.desugar_cstexpr(value)
-                } else {
-                    name.convert(Expr::Lit(ExprLit::Unit))
-                };
-
-                let label = expr.convert(Expr::Label(Label(name), value));
-                expr.convert(Expr::Inject(Direction::Right, label))
-            }
-            CstExpr::Bin(l, op, r) => {
-                let l = self.desugar_cstexpr(l);
-                let r = self.desugar_cstexpr(r);
-                expr.convert(Expr::Bin(l, op, r))
-            }
-            CstExpr::Call(func, arg) => {
-                let func = self.desugar_cstexpr(func);
-
-                let arg = self.desugar_cstexpr(arg);
-                if let Expr::Item(id) = *func.0 {
-                    todo!(
-                        "This would be a type constructor, but it lowk isn't being used right now"
-                    )
-                }
-                expr.convert(Expr::Call(func, arg))
-            }
-            CstExpr::FieldAccess(l, r) => {
-                let l = self.desugar_cstexpr(l);
-                expr.convert(Expr::Access(l, r))
-            }
-            CstExpr::Match(matchee, branches) => {
-                let (patterns, actions): (Vec<_>, Vec<_>) =
-                    branches.iter().map(|b| (b.pat, b.body)).unzip();
-                let patterns: Vec<_> = patterns.iter().map(|p| *p.0).collect();
-                let decision_tree = matchmatrix::compile(&patterns);
-                decision_tree.print(0);
-                let t = self.translate_decision_tree(matchee, decision_tree, &actions);
-                println!("match-tree: {t}");
-                t
-            }
-            CstExpr::Lambda(arg, body) => {
-                let body = self.desugar_cstexpr(body);
-                expr.convert(Expr::Lambda(arg, body))
-            }
-            CstExpr::Let(pat, body, and_in) => {
-                let (patterns, actions) = (vec![pat], vec![and_in]);
-                let patterns: Vec<_> = patterns.iter().map(|p| *p.0).collect();
-
-                let decision_tree = matchmatrix::compile(&patterns);
-                decision_tree.print(0);
-                let t = self.translate_decision_tree(body, decision_tree, &actions);
-
-                println!("let-tree {t}");
-                t
-            }
-            CstExpr::Lit(lit) => expr.convert(Expr::Lit(lit)),
-            CstExpr::Hole(v) => expr.convert(Expr::Hole(v)),
-            CstExpr::Type(t) => expr.convert(Expr::Hole(Untyped(Spanned::default_with(
-                String::from("untyped"),
-            )))),
-            CstExpr::Item(item_id) => {
-                self.seen.insert(item_id);
-                expr.convert(Expr::Item(item_id))
-            } // CstExpr::Myself => todo!(),
-              // CstExpr::MethodAccess { obj, prop, method } => todo!(),
-        }
-    }
-
-    fn translate_dtree_occ(
-        &mut self,
-        occ: Occ,
-        matchee: Spanned<Intern<CstExpr<UntypedCst>>>,
-    ) -> Spanned<Intern<Expr<Untyped>>> {
-        match occ {
-            Occ::Base => self.desugar_cstexpr(matchee),
-            Occ::Proj(occ, l) => {
-                let subtree = self.translate_dtree_occ(*occ, matchee);
-                matchee.convert(Expr::Access(subtree, l))
-            }
-            Occ::Unwrap(occ, l) => {
-                let subtree = self.translate_dtree_occ(*occ, matchee);
-                matchee.convert(Expr::Unlabel(subtree, l))
-            }
-        }
-    }
-
-    fn translate_sigelem(
-        &self,
-        sigelem: SigElem,
-        matchee_span: FlareSpan,
-    ) -> Spanned<Intern<Expr<Untyped>>> {
-        match sigelem {
-            SigElem::Label(label) => unimplemented!("use translate_sigelem_pat"),
-            SigElem::Lit(lit) => Spanned(Expr::Lit(lit).into(), matchee_span),
-        }
-    }
-
-    fn translate_decision_tree(
-        &mut self,
-        matchee: Spanned<Intern<CstExpr<UntypedCst>>>,
-        tree: DecisionTree,
-
-        actions: &Vec<Spanned<Intern<CstExpr<UntypedCst>>>>,
-    ) -> Spanned<Intern<Expr<Untyped>>> {
-        match tree {
-            DecisionTree::Fail => todo!(),
-            DecisionTree::Leaf(i) => self.desugar_cstexpr(actions[i]),
-            DecisionTree::Switch {
-                occ,
-                cases,
-                default,
-            } => {
-                let case_lambdas = cases
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, (label, subtree))| {
-                        let body = self.translate_decision_tree(matchee, subtree, actions);
-                        let param = Untyped(matchee.convert(i.to_string()));
-                        let arg = matchee.convert(Expr::Ident(param));
-
-                        let unlabeling: Spanned<Intern<Expr<Untyped>>> =
-                            matchee.convert(Expr::Unlabel(arg, label));
-                        body
-                    })
-                    .collect_vec();
-
-                let branches = case_lambdas
-                    .into_iter()
-                    .reduce(|l, r| Spanned(Expr::Branch(l, r).into(), l.1.union(r.1)))
-                    .expect("Branches was empty; match has no arms");
-
-                let matchee = self.translate_dtree_occ(occ, matchee);
-                matchee.convert(Expr::Call(branches, matchee))
-            }
-            DecisionTree::IfEq {
-                occ,
-                lit,
-                then,
-                else_,
-            } => {
-                let occ = self.translate_dtree_occ(occ, matchee);
-                let lit = self.translate_sigelem(lit, matchee.1);
-                let then = self.translate_decision_tree(matchee, *then, actions);
-                let else_ = self.translate_decision_tree(matchee, *else_, actions);
-                matchee.convert(Expr::If(
-                    matchee.convert(Expr::Bin(occ, BinOp::Eq, lit)),
-                    then,
-                    else_,
-                ))
-            }
-        }
+        todo!()
     }
 }
 pub fn subst_generic_type(

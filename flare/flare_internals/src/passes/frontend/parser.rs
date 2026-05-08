@@ -531,7 +531,7 @@ impl<'src> Translate<'src> {
             panic!("Invalid lambda: No args")
         } else {
             args.into_iter()
-                .map(|n| self.lower_type(n))
+                .map(|n| self.name(&n))
                 .fold(value_ty, |body, arg_name| {
                     value_ty.map_inner(|value| CstType::ForAll(arg_name, body))
                 })

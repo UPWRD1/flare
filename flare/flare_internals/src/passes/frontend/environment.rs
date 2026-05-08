@@ -175,11 +175,6 @@ impl EnvironmentBuilder {
             CstExpr::Ident(n) => {
                 let v = self.resolve_name(n.0);
                 let ref_node = self.graph.add_node(NodeKind::Ref);
-                // let Some((def_idx, _)) =
-                //     self.find_input_of(v.index, |_, p| matches!(p, PortKind::Aux(0)))
-                // else {
-                //     panic!("Def has no value")
-                // };
                 self.graph.add_edge(v, ref_node, PortKind::Reference);
                 ref_node
             }
@@ -230,7 +225,7 @@ impl EnvironmentBuilder {
                 lam
             }
             CstExpr::Let(spanned, spanned1, spanned2) => todo!(),
-            CstExpr::Type(_) => todo!(),
+            CstExpr::Type(ty) => self.resolve_type(ty, current_node),
         };
         self.scope.pop();
         out
@@ -300,13 +295,37 @@ impl EnvironmentBuilder {
             CstType::User(n) => {
                 let v = self.resolve_name(n);
                 let ref_node = self.graph.add_node(NodeKind::Ref);
-                // let Some((def_idx, _)) =
-                //     self.find_input_of(v.index, |_, p| matches!(p, PortKind::Aux(0)))
-                // else {
-                //     panic!("Def has no value")
-                // };
                 self.graph.add_edge(v, ref_node, PortKind::Reference);
                 ref_node
+            }
+            CstType::GenericApp(l, r) => {
+                let app = self.graph.add_node(NodeKind::App);
+                let l = self.resolve_type(l, current_node);
+                let r = self.resolve_type(r, current_node);
+                self.graph.add_edge(l, app, PortKind::Input(0));
+                self.graph.add_edge(r, app, PortKind::Input(1));
+                app
+            }
+            CstType::ForAll(binder_ty, body) => {
+                let universe = self.graph.add_node(NodeKind::Universe { level: 0 });
+                let binder_def = self.graph.add_node(NodeKind::Def { name: binder_ty.0 });
+                // Wire binder_def's type as Universe
+                self.graph.add_edge(universe, binder_def, PortKind::Type);
+                let body_node = self.resolve_type(body, current_node);
+                let lam_node = self.graph.add_node(NodeKind::Lam);
+                self.graph
+                    .add_edge(binder_def, lam_node, PortKind::Input(0));
+                self.graph.add_edge(body_node, lam_node, PortKind::Input(1));
+
+                let pi_node = self.graph.add_node(NodeKind::Pi);
+                self.graph.add_edge(universe, pi_node, PortKind::Input(0));
+                self.graph.add_edge(lam_node, pi_node, PortKind::Input(1));
+
+                pi_node
+            }
+            CstType::Sum(c) => {
+                todo!()
+                // let sum_node =self.graph.add_node(NodeKind::)
             }
 
             _ => todo!("{ty:?}"),
@@ -316,16 +335,6 @@ impl EnvironmentBuilder {
     }
 
     fn lift(&self) -> Environment<UntypedCst> {
-        // let dep = self.graph.filter_map(
-        //     |_, n| Some(n),
-        //     |_, e| {
-        //         if let Relation::Reference = e {
-        //             Some(e)
-        //         } else {
-        //             None
-        //         }
-        //     },
-        // );
         let out = petgraph::algo::tarjan_scc(&self.graph);
         dbg!(&out);
         let mut out = out.into_iter().rev().peekable();
@@ -375,21 +384,13 @@ impl EnvironmentBuilder {
                 cases,
                 default,
             } => {
-                let case_lambdas: Vec<NodeIndex> = todo!();
-                //cases
-                // .into_iter()
-                // .enumerate()
-                // .map(|(i, (label, subtree))| {
-                //     let body =
-                //         self.translate_decision_tree(matchee, subtree, actions, current_node);
-                //     let param = Untyped(matchee.convert(i.to_string()));
-                //     let arg = matchee.convert(Expr::Ident(param));
-
-                //     let unlabeling: Spanned<Intern<Expr<Untyped>>> =
-                //         matchee.convert(Expr::Unlabel(arg, label));
-                //     body
-                // })
-                // .collect_vec();
+                let case_lambdas: Vec<NodeIndex> = cases
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, (label, subtree))| {
+                        self.translate_decision_tree(matchee, subtree, actions, current_node)
+                    })
+                    .collect();
 
                 let branches = case_lambdas
                     .into_iter()
