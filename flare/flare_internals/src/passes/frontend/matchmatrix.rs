@@ -415,7 +415,7 @@ fn admits(c: &SigElem, p: &Pattern<UntypedCst>) -> bool {
             Pattern::Any | Pattern::Var(_) => true,
             _ => false,
         },
-        _ => todo!(),
+        _ => todo!("{c:?}, {p:?}"),
     }
 }
 

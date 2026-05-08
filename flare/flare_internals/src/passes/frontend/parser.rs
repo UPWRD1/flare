@@ -687,15 +687,19 @@ impl<'src> Translate<'src> {
                 // }
                 k if k == self.ids.k(NK::PatternAtom) => {
                     let inner = node.named_child(0).unwrap();
-                    if inner.kind_id() == self.ids.k(NK::Number) {
-                        let v = inner
-                            .utf8_text(self.file.source.as_bytes())
-                            .unwrap()
-                            .parse()
-                            .unwrap();
-                        Pattern::Lit(ExprLit::Number(v))
-                    } else {
-                        Pattern::Lit(ExprLit::String(self.name(&inner)))
+                    match inner.kind_id() {
+                        k if k == self.ids.k(NK::Number) => {
+                            let v = inner
+                                .utf8_text(self.file.source.as_bytes())
+                                .unwrap()
+                                .parse()
+                                .unwrap();
+                            Pattern::Lit(ExprLit::Number(v))
+                        }
+                        k if k == self.ids.k(NK::PatternVariable) => {
+                            Pattern::Var(Untyped(self.name(&node.named_child(0).unwrap())))
+                        }
+                        _ => Pattern::Lit(ExprLit::String(self.name(&inner))),
                     }
                 }
                 _ => {

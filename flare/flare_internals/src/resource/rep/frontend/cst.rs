@@ -252,13 +252,15 @@ pub enum NodeKind {
         label: Intern<String>,
     },
 
-    /// match e with | ℓ₁ x → b₁ | ℓ₂ x → b₂
-    /// Input 0: scrutinee
-    /// Input i+1: the i-th branch (a Lam node: payload → result)
-    /// Output 0: result
-    Match {
-        labels: Vec<Intern<String>>,
-    },
+    /// Input 0: left branch
+    /// Input 1: right branch
+    /// Output 0: the branch node
+    Branch,
+
+    /// Input 0: condition term
+    /// Input 1: "then" arm
+    /// Input 2: "else" arm
+    If,
 
     // ── Literals ─────────────────────────────────────────────────────────
     Lit(ExprLit),

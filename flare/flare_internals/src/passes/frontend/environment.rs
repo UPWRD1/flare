@@ -7,15 +7,20 @@ use petgraph::{
 };
 use rustc_hash::FxHashMap;
 
-use crate::resource::{
-    errors::{self, CompResult, CompilerErr, ErrorCollection},
-    rep::{
-        common::{Spanned, Syntax},
-        frontend::{
-            ast::Untyped,
-            cst::{CstExpr, Field, FieldDef, NodeKind, PackageCollection, PortKind, UntypedCst},
-            csttypes::CstType,
-            entry::Item,
+use crate::{
+    passes::frontend::matchmatrix::{self, DecisionTree, Occ, SigElem},
+    resource::{
+        errors::{self, CompResult, CompilerErr, ErrorCollection},
+        rep::{
+            common::{FlareSpan, Spanned, Syntax},
+            frontend::{
+                ast::{BinOp, Untyped},
+                cst::{
+                    CstExpr, Field, FieldDef, NodeKind, PackageCollection, PortKind, UntypedCst,
+                },
+                csttypes::CstType,
+                entry::Item,
+            },
         },
     },
 };
@@ -107,15 +112,15 @@ impl EnvironmentBuilder {
         self.incoming_of(node).find(|(e, w)| pred(*e, *w))
     }
 
-    fn outputs_of(&self, node: NodeIndex) -> Option<(NodeIndex, PortKind)> {
-        self.graph
-            .edges_directed(node, petgraph::Direction::Outgoing)
-            .map(|e| (e.target(), *e.weight()))
-            .next()
-            .inspect(|p| {
-                dbg!(p);
-            })
-    }
+    // fn outputs_of(&self, node: NodeIndex) -> Option<(NodeIndex, PortKind)> {
+    //     self.graph
+    //         .edges_directed(node, petgraph::Direction::Outgoing)
+    //         .map(|e| (e.target(), *e.weight()))
+    //         .next()
+    //         .inspect(|p| {
+    //             dbg!(p);
+    //         })
+    // }
 
     /// Find a Def node by name among the direct children of `parent_record`.
     fn find_child_by_name(
@@ -160,116 +165,11 @@ impl EnvironmentBuilder {
         self.graph.add_node(NodeKind::Hole { name: the_name.0 })
     }
 
-    // fn resolve_name(
-    //     &mut self,
-    //     the_name: Spanned<Intern<String>>,
-    //     current_node: NodeIndex,
-    // ) -> NodeIndex {
-    //     macro_rules! push_parent_node {
-    //         ($worklist:ident, $node:ident) => {{
-    //             let Some((parent, _)) = self.outputs_of($node).filter(|(_, pk)| matches!(pk, PortKind::Input(_))) else {
-
-    //                 println!("FAIL: {:?}", $node);
-    //                     break;
-    //             };
-    //             $worklist.push(parent);
-    //         }};
-    //     }
-    //     // Walk up the record containment chain.
-    //     dbg!(current_node, the_name);
-    //     let mut worklist = vec![current_node];
-    //     while let Some(node) = worklist.pop() {
-    //         dbg!(&worklist, node);
-    //         match &self.graph[node] {
-    //             NodeKind::Def { name } => {
-    //                 if *name == the_name.0 {
-    //                     return node;
-    //                 } else {
-    //                     push_parent_node!(worklist,node)
-    //                 }
-    //             }
-    //             NodeKind::Ref => todo!(),
-    //             NodeKind::Lam => {
-    //                 let (binder, _) = self
-    //                     .find_incoming_of(node, |_, pk| matches!(pk, PortKind::Input(0)))
-    //                     .unwrap();
-    //                 dbg!(binder);
-    //                 if let NodeKind::Def { name } = self.graph[binder]
-    //                     && name == the_name.0
-    //                 {
-    //                     return binder;
-    //                 }
-    //                 push_parent_node!(worklist, node)
-    //             }
-    //             NodeKind::Bin(_) => {
-    //                 push_parent_node!(worklist, node)
-    //             }
-    //             NodeKind::App => todo!(),
-    //             NodeKind::Record
-    //                 // if self
-    //                 //     .find_incoming_of(node, |idx, _| idx == current_node)
-    //                 //     .is_some() =>
-    //                 =>
-    //             {
-    //                 if let Some((sibling, _)) = self
-    //                     .incoming_of(node)
-    //                     .filter(|(idx, _)| *idx != node)
-    //                     .find(|(idx, edge)| {
-    //                         let weight = &self.graph[*idx];
-
-    // matches!(&self.graph[*idx], NodeKind::Def { name: n } if *n == the_name.0)
-    //                     })
-    //                 {
-    //                     return sibling;
-    //                 } else {
-    //                     push_parent_node!(worklist, node)
-    //                    }
-    //             }
-    //             // NodeKind::Record => {
-    //             //     let Some((parent, _)) = self.outputs_of(node) else {
-    //             //         break;
-    //             //     };
-    //             //     worklist.push(parent);
-    //             //     continue;
-    //             // }
-    //             NodeKind::Project { label } => todo!(),
-    //             NodeKind::Extend { label } => todo!(),
-    //             NodeKind::Inject { label } => todo!(),
-    //             NodeKind::Match { labels } => todo!(),
-    //             NodeKind::Lit(expr_lit) => todo!(),
-    //             NodeKind::PrimitiveTy(primitive_type) => todo!(),
-    //             NodeKind::Universe { level } => todo!(),
-    //             NodeKind::Pi => {
-    //                 let (domain, _) = self
-    //                     .find_incoming_of(node, |_, pk| matches!(pk, PortKind::Input(0)))
-    //                     .unwrap();
-
-    //                 if let NodeKind::Def { name } = self.graph[domain]
-    //                     && name == the_name.0
-    //                 {
-    //                     return domain;
-    //                 }
-    //                 push_parent_node!(worklist, node)
-    //             }
-    //             NodeKind::RowTy { labels, open } => todo!(),
-    //             NodeKind::Mu => todo!(),
-    //             NodeKind::CoreLam { arity } => todo!(),
-    //             NodeKind::Erased => todo!(),
-    //             NodeKind::Hole { .. } => todo!(),
-    //         }
-    //         continue;
-    //     }
-
-    //     self.errors.push(errors::not_defined(the_name));
-    //     self.graph.add_node(NodeKind::Hole { name: the_name.0 })
-    // }
-
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         current_node: NodeIndex,
     ) -> NodeIndex {
-        self.debug();
         self.scope.push(current_node);
         let out = match *expr.0 {
             CstExpr::Ident(n) => {
@@ -303,12 +203,25 @@ impl EnvironmentBuilder {
                 self.graph.add_edge(r, bin, PortKind::Input(1));
                 bin
             }
-            CstExpr::Call(spanned, spanned1) => todo!(),
+            CstExpr::Call(l, r) => {
+                let app = self.graph.add_node(NodeKind::App);
+                let l = self.analyze_expr(l, current_node);
+                let r = self.analyze_expr(r, current_node);
+                self.graph.add_edge(l, app, PortKind::Input(0));
+                self.graph.add_edge(r, app, PortKind::Input(1));
+                app
+            }
             CstExpr::FieldAccess(spanned, label) => todo!(),
-            CstExpr::Match(spanned, match_arms) => todo!(),
+            CstExpr::Match(scrutinee, branches) => {
+                let (patterns, actions): (Vec<_>, Vec<_>) =
+                    branches.iter().map(|b| (b.pat, b.body)).unzip();
+                let patterns: Vec<_> = patterns.iter().map(|p| *p.0).collect();
+                let decision_tree = matchmatrix::compile(&patterns);
+                decision_tree.print(0);
+                self.translate_decision_tree(scrutinee, decision_tree, &actions, current_node)
+            }
             CstExpr::Lambda(var, expr) => {
                 let lam = self.graph.add_node(NodeKind::Lam);
-                dbg!(lam);
                 let arg = self.graph.add_node(NodeKind::Def { name: var.0.0 });
                 self.graph.add_edge(arg, lam, PortKind::Input(0));
 
@@ -419,5 +332,101 @@ impl EnvironmentBuilder {
 
         self.debug();
         todo!()
+    }
+
+    fn translate_dtree_occ(
+        &mut self,
+        occ: Occ,
+        scrutinee: Spanned<Intern<CstExpr<UntypedCst>>>,
+        current_node: NodeIndex,
+    ) -> NodeIndex {
+        match occ {
+            Occ::Base => self.analyze_expr(scrutinee, current_node),
+            Occ::Proj(occ, l) => {
+                let subtree = self.translate_dtree_occ(*occ, scrutinee, current_node);
+                todo!()
+            }
+            Occ::Unwrap(occ, l) => {
+                let subtree = self.translate_dtree_occ(*occ, scrutinee, current_node);
+                todo!()
+            }
+        }
+    }
+
+    fn translate_sigelem(&mut self, sigelem: SigElem, matchee_span: FlareSpan) -> NodeIndex {
+        match sigelem {
+            SigElem::Label(label) => unimplemented!("use translate_sigelem_pat"),
+            SigElem::Lit(lit) => self.graph.add_node(NodeKind::Lit(lit)),
+        }
+    }
+
+    fn translate_decision_tree(
+        &mut self,
+        matchee: Spanned<Intern<CstExpr<UntypedCst>>>,
+        tree: DecisionTree,
+        actions: &Vec<Spanned<Intern<CstExpr<UntypedCst>>>>,
+        current_node: NodeIndex,
+    ) -> NodeIndex {
+        match tree {
+            DecisionTree::Fail => todo!(),
+            DecisionTree::Leaf(i) => self.analyze_expr(actions[i], current_node),
+            DecisionTree::Switch {
+                occ,
+                cases,
+                default,
+            } => {
+                let case_lambdas: Vec<NodeIndex> = todo!();
+                //cases
+                // .into_iter()
+                // .enumerate()
+                // .map(|(i, (label, subtree))| {
+                //     let body =
+                //         self.translate_decision_tree(matchee, subtree, actions, current_node);
+                //     let param = Untyped(matchee.convert(i.to_string()));
+                //     let arg = matchee.convert(Expr::Ident(param));
+
+                //     let unlabeling: Spanned<Intern<Expr<Untyped>>> =
+                //         matchee.convert(Expr::Unlabel(arg, label));
+                //     body
+                // })
+                // .collect_vec();
+
+                let branches = case_lambdas
+                    .into_iter()
+                    .reduce(|l, r| {
+                        let branch = self.graph.add_node(NodeKind::Branch);
+                        self.graph.add_edge(l, branch, PortKind::Input(0));
+                        self.graph.add_edge(r, branch, PortKind::Input(1));
+                        branch
+                    })
+                    .expect("Branches was empty; match has no arms");
+
+                let matchee = self.translate_dtree_occ(occ, matchee, current_node);
+                let app = self.graph.add_node(NodeKind::App);
+                self.graph.add_edge(branches, app, PortKind::Input(0));
+                self.graph.add_edge(matchee, app, PortKind::Input(1));
+                app
+            }
+            DecisionTree::IfEq {
+                occ,
+                lit,
+                then,
+                else_,
+            } => {
+                let occ = self.translate_dtree_occ(occ, matchee, current_node);
+                let lit = self.translate_sigelem(lit, matchee.1);
+                let eq = self.graph.add_node(NodeKind::Bin(BinOp::Eq));
+                self.graph.add_edge(occ, eq, PortKind::Input(0));
+                self.graph.add_edge(lit, eq, PortKind::Input(1));
+
+                let then = self.translate_decision_tree(matchee, *then, actions, current_node);
+                let else_ = self.translate_decision_tree(matchee, *else_, actions, current_node);
+                let if_node = self.graph.add_node(NodeKind::If);
+                self.graph.add_edge(eq, if_node, PortKind::Input(0));
+                self.graph.add_edge(then, if_node, PortKind::Input(1));
+                self.graph.add_edge(else_, if_node, PortKind::Input(2));
+                if_node
+            }
+        }
     }
 }
