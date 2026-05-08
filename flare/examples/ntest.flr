@@ -1,26 +1,28 @@
- pub Main =  {
-     A = {
-         x = 3
-         y = 4
-     }
-   
-    Point = type {x: num, y: num}
-
-    safe_slope : Point -> Point -> Option num = fn p1 p2 => {
-		denominator = p2.x - p1.x 
-		return match denominator
-            as 0 then None
-            as _ then {
-		        numerator = p2.y - p1.x  
-		        return numerator / denominator
-            }
-    }
-    
-    main = {
-		p1 = {x = 3, y = 4}
-		p2 = {x = 3, y = 6} 
-		return safe_slope p1 p2 :: unwrap_or 3
-    }
-    
-    return main
+ pub Main: num = {
+    double x : num -> num = x * 2
 }
+    
+  #    A = {  #        x = 3
+  #        y = 4
+  #    }
+   
+  #   Point = type {x: num, y: num}
+
+  #   safe_slope : Point -> Point -> Option num = fn p1 p2 => {
+		# denominator = p2.x - p1.x 
+		# return match denominator
+  #           as 0 then None
+  #           as _ then {
+		#         numerator = p2.y - p1.x  
+		#         return numerator / denominator
+  #           }
+  #   }
+    
+  #   main = {
+		# p1 = {x = 3, y = 4}
+		# p2 = {x = 3, y = 6} 
+		# return safe_slope p1 p2 :: unwrap_or 3
+  #   }
+    
+  #   return main
+

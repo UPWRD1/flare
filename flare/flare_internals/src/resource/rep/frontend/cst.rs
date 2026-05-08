@@ -1,11 +1,17 @@
-use internment::Intern;
+use std::fmt::Display;
 
-use crate::resource::rep::{
-    common::{Spanned, Syntax},
-    frontend::{
-        ast::{BinOp, ExprLit, ItemId, Label, Untyped},
-        csttypes::CstType,
-        files::FileID,
+use internment::Intern;
+use petgraph::stable_graph::NodeIndex;
+
+use crate::{
+    passes::frontend::typing::PrimitiveType,
+    resource::rep::{
+        common::{Spanned, Syntax},
+        frontend::{
+            ast::{BinOp, ExprLit, ItemId, Label, Untyped},
+            csttypes::CstType,
+            files::FileID,
+        },
     },
 };
 
@@ -189,4 +195,134 @@ impl Syntax for UntypedCst {
     type Pattern = Spanned<Intern<Pattern<UntypedCst>>>;
     type Variable = Untyped;
     type Name = Spanned<Intern<String>>;
+}
+
+#[derive(Debug, Clone)]
+pub enum NodeKind {
+    // ── Binding ──────────────────────────────────────────────────────────
+    /// A named definition. Input: its value. Output: itself (for references).
+    Def {
+        name: Intern<String>,
+    },
+
+    /// A reference to a Def. Output: the Def's value.
+    /// During reduction this edge is simply short-circuited.
+    Ref,
+
+    // ── Functions ────────────────────────────────────────────────────────
+    /// λ x. body
+    /// Input 0: the parameter binding (a Def node for x)
+    /// Input 1: the body expression
+    /// Output 0: the lambda value
+    Lam,
+
+    /// f a
+    /// Input 0: function
+    /// Input 1: argument
+    /// Output 0: result
+    App,
+
+    // ── Records / Rows ───────────────────────────────────────────────────
+    /// { ℓ₁ = e₁, ℓ₂ = e₂, … }
+    /// Input i: the i-th field value
+    /// Output 0: the record
+    Record,
+
+    /// e.ℓ
+    /// Input 0: the record
+    /// Output 0: the field value
+    Project {
+        label: Intern<String>,
+    },
+
+    /// e ⊕ { ℓ = e' }
+    /// Input 0: base record, Input 1: extension value
+    /// Output 0: extended record
+    Extend {
+        label: Intern<String>,
+    },
+
+    // ── Sums / Variants ──────────────────────────────────────────────────
+    /// Tag a value with a label: ℓ(e)
+    /// Input 0: payload
+    /// Output 0: tagged value
+    Inject {
+        label: Intern<String>,
+    },
+
+    /// match e with | ℓ₁ x → b₁ | ℓ₂ x → b₂
+    /// Input 0: scrutinee
+    /// Input i+1: the i-th branch (a Lam node: payload → result)
+    /// Output 0: result
+    Match {
+        labels: Vec<Intern<String>>,
+    },
+
+    // ── Literals ─────────────────────────────────────────────────────────
+    Lit(ExprLit),
+
+    PrimitiveTy(PrimitiveType),
+
+    // ── Types (when we want them first-class) ────────────────────────────
+    /// ★ — the universe
+    Universe {
+        level: u32,
+    },
+
+    /// Π (x : A). B
+    /// Input 0: domain type, Input 1: codomain (a Lam over x)
+    /// Output 0: the Pi type (itself a type)
+    Pi,
+
+    /// A row type: { ℓ₁ : T₁, ℓ₂ : T₂ | ρ }
+    RowTy {
+        labels: Vec<Intern<String>>,
+        open: bool,
+    },
+
+    /// μ self. body — recursive type/value
+    /// Input 0: body (a Lam with self bound)
+    /// Output 0: the fixed point
+    Mu,
+
+    // ── Core (post-reduction only) ────────────────────────────────────────
+    /// A fully reduced function item (like your current IR::Fun).
+    /// No inputs during emission; just carried as a node.
+    CoreLam {
+        arity: usize,
+    },
+
+    /// Unreachable / erased node
+    Erased,
+
+    Hole,
+}
+
+impl std::fmt::Display for NodeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                NodeKind::Def { name } => name.to_string(),
+                _ => format!("{:?}", self),
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub kind: NodeKind,
+}
+
+/// An edge connects one output port to one output port.
+/// In an interaction net, edges are symmetric — neither end is "from" or "to".
+/// We use directed edges for clarity: producer → consumer.
+#[derive(Debug, Clone, Copy)]
+pub enum PortKind {
+    Aux(usize),
+    Primary,
+    Reference,
+    Type,
 }

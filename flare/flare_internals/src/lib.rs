@@ -192,7 +192,7 @@ pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
 }
 
 pub fn build(parse: Parse) -> CompResult<Build> {
-    let env = EnvironmentBuilder::<UntypedCst>::build(parse.program)?;
+    let env = EnvironmentBuilder::build(parse.program)?;
     Ok(Build { env })
 }
 

@@ -2,10 +2,7 @@ use internment::Intern;
 
 use crate::{
     passes::frontend::typing::PrimitiveType,
-    resource::rep::{
-        common::Spanned,
-        frontend::ast::{ItemId, Label},
-    },
+    resource::rep::{common::Spanned, frontend::ast::Label},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -14,8 +11,6 @@ pub enum CstType {
     Primitive(PrimitiveType),
     Func(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
 
-    // Package(Spanned<Intern<String>>),
-    Item(ItemId),
     GenericFun(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     ForAll(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     GenericApp(Spanned<Intern<Self>>, Spanned<Intern<Self>>),

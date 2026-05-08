@@ -115,10 +115,6 @@ impl TypeFixer {
                 unreachable!("Encountered user type {} after environment", t.0)
             }
 
-            CstType::Item(t) => {
-                unreachable!("Encountered item type {} after resolution", t.0)
-            }
-
             CstType::GenericApp(l, r) => {
                 // Should have been reduced by analyze_type; attempt recovery
                 // let reduced = self.analyze_type(t); // re-run beta reduction
@@ -206,9 +202,6 @@ impl Resolver {
                 let new_t = self.analyze_type(the_r);
                 // dbg!(new_t);
                 t.modify(CstType::Label(l, new_t))
-            }
-            CstType::Item(id) => {
-                todo!()
             }
             CstType::Prod(r) => {
                 let new_r = CstClosedRow {

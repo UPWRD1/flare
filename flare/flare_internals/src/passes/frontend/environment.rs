@@ -1,90 +1,50 @@
-use std::{cell::OnceCell, ops::ControlFlow};
+use std::ops::ControlFlow;
 
 use internment::Intern;
 
-use itertools::Itertools;
 use petgraph::{
     prelude::StableDiGraph,
     stable_graph::{EdgeReference, NodeIndex},
     visit::EdgeRef as _,
 };
-use radix_trie::{Trie, TrieKey};
 use rustc_hash::FxHashMap;
 
-use crate::{
-    passes::frontend::typing::PrimitiveType,
-    resource::{
-        errors::{self, CompResult, CompilerErr, ErrorCollection},
-        rep::{
-            common::{FlareSpan, HasSpan, Spanned, Syntax},
-            frontend::{
-                ast::{ItemId, Untyped},
-                cst::{CstExpr, Field, FieldDef, MatchArm, PackageCollection, Pattern, UntypedCst},
-                csttypes::{CstClosedRow, CstType},
-                entry::{FunctionItem, Item},
+use crate::resource::{
+    errors::{self, CompResult, CompilerErr, ErrorCollection},
+    rep::{
+        common::{FlareSpan, Spanned, Syntax},
+        frontend::{
+            ast::{ItemId, Label, Untyped},
+            cst::{
+                CstExpr, Field, FieldDef, MatchArm, NodeKind, PackageCollection, Pattern, PortKind,
+                UntypedCst,
             },
+            csttypes::{CstClosedRow, CstType},
+            entry::{FunctionItem, Item},
         },
     },
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Key(Vec<Intern<String>>);
+// #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// pub struct Key(Vec<Intern<String>>);
 
-impl Key {
-    pub fn from<T>(path: T) -> Self
-    where
-        T: Into<Vec<Intern<String>>>,
-    {
-        Self(path.into())
-    }
-}
+// impl Key {
+//     pub fn from<T>(path: T) -> Self
+//     where
+//         T: Into<Vec<Intern<String>>>,
+//     {
+//         Self(path.into())
+//     }
+// }
 
-impl TrieKey for Key {
-    fn encode_bytes(&self) -> Vec<u8> {
-        self.0
-            .iter()
-            .flat_map(|s| s.bytes().collect::<Vec<u8>>())
-            .collect()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Element<S: Syntax> {
-    name: Spanned<Intern<String>>,
-    value: std::cell::OnceCell<S::Expr>,
-    ty: Option<S::Type>,
-    is_pub: bool,
-    return_expr: Option<S::Expr>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Relation {
-    Reference,
-    Parent,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Var {
-    name: Intern<String>,
-}
-
-impl<S: Syntax> Element<S> {
-    pub fn new(
-        name: Spanned<Intern<String>>,
-        value: impl Into<OnceCell<S::Expr>>,
-        ty: impl Into<Option<S::Type>>,
-        is_pub: bool,
-        return_expr: impl Into<Option<S::Expr>>,
-    ) -> Self {
-        Self {
-            name,
-            value: value.into(),
-            ty: ty.into(),
-            is_pub,
-            return_expr: return_expr.into(),
-        }
-    }
-}
+// impl TrieKey for Key {
+//     fn encode_bytes(&self) -> Vec<u8> {
+//         self.0
+//             .iter()
+//             .flat_map(|s| s.bytes().collect::<Vec<u8>>())
+//             .collect()
+//     }
+// }
 
 #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
@@ -95,40 +55,27 @@ impl<S: Syntax> Element<S> {
 /// real reason to clone the environment.
 #[non_exhaustive]
 #[derive(Default)]
-pub struct EnvironmentBuilder<S: Syntax> {
-    pub graph: StableDiGraph<Element<S>, Relation>,
-    pub trie: Trie<Key, NodeIndex>,
-    path: Vec<Intern<String>>,
-    node_stack: Vec<NodeIndex>,
+pub struct EnvironmentBuilder {
+    pub graph: StableDiGraph<NodeKind, PortKind>,
     errors: Vec<CompilerErr>,
 }
 
-#[derive(Clone, Copy)]
-#[repr(u8)]
-enum Expect {
-    Value,
-    Struct,
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Var {
+    name: Intern<String>,
+    index: NodeIndex,
 }
-
 pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
 
-impl EnvironmentBuilder<UntypedCst> {
+impl EnvironmentBuilder {
     /// Build the environment from a given `PackageCollection`
     /// # Errors
     /// - on invalid names,
     ///
     pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Environment<UntypedCst>> {
-        let mut graph: StableDiGraph<Element<UntypedCst>, Relation> = StableDiGraph::default();
-        let root_node = graph.add_node(Element::new(
-            Spanned::default_with("Root".to_string()),
-            OnceCell::new(),
-            Spanned::default_with(CstType::Primitive(PrimitiveType::Num)),
-            true,
-            Spanned::default_with(CstExpr::Ident(Untyped(Spanned::default_with(
-                String::from("Main"),
-            )))),
-        ));
-        let trie = Trie::new();
+        let mut graph: StableDiGraph<NodeKind, PortKind> = StableDiGraph::default();
+        let root_node = graph.add_node(NodeKind::Record {});
+
         let mut fields: Vec<Field<UntypedCst>> = vec![];
 
         program.packages.into_iter().for_each(|(p, _)| {
@@ -144,19 +91,10 @@ impl EnvironmentBuilder<UntypedCst> {
         });
         let mut me = Self {
             graph,
-            trie,
-            node_stack: vec![root_node],
             ..Default::default()
         };
 
-        let res = me
-            .enter_context_root(
-                |me| me.analyze_expr(root_obj, &[], Expect::Value),
-                Spanned::default_with(String::from("Root")),
-            )
-            .into_value();
-        // dbg!(res);
-        // me.debug();
+        me.analyze_expr(root_obj, &[]); // dbg!(res);
         let env_map = me.lift();
 
         if me.errors.is_empty() {
@@ -167,23 +105,11 @@ impl EnvironmentBuilder<UntypedCst> {
         }
     }
 
-    fn current_node(&self) -> NodeIndex {
-        self.node_stack.last().copied().unwrap()
-    }
-
-    fn resolve_name(
-        &mut self,
-        n: <UntypedCst as Syntax>::Name,
-        start: NodeIndex,
-    ) -> Option<NodeIndex> {
-        self.lookup_local(n.0, start)
-    }
-
     #[allow(dead_code, clippy::unwrap_used, clippy::dbg_macro)]
     #[deprecated]
     pub fn debug(&self) {
         use petgraph::dot::Config;
-        let render = |_, v: EdgeReference<'_, Relation>| format!("label = \"{:?}\"", v.weight());
+        let render = |_, v: EdgeReference<'_, _>| format!("label = \"{:?}\"", v.weight());
         let dot = petgraph::dot::Dot::with_attr_getters(
             &self.graph,
             &[
@@ -192,278 +118,131 @@ impl EnvironmentBuilder<UntypedCst> {
                 Config::RankDir(petgraph::dot::RankDir::LR),
             ],
             &render,
-            &|_, (i, e)| {
-                format!(
-                    "label = \"{} = {}; pub: {}; ret: {}; {}\"",
-                    i.index(),
-                    e.name,
-                    e.is_pub,
-                    e.return_expr.is_some(),
-                    e.value.get().is_some()
-                )
-            },
+            &|_, (i, e)| format!("label = \"{} = {};\"", i.index(), e),
         );
         dbg!(dot);
     }
-    fn enter_context_root<T>(
-        &mut self,
-        mut f: impl FnMut(&mut Self) -> T,
-        name: <UntypedCst as Syntax>::Name,
-    ) -> T {
-        self.path.push(name.0);
 
-        self.trie.insert(
-            Key::from(self.path.clone()),
-            *self.node_stack.last().unwrap(),
-        );
-
-        f(self)
-    }
-
-    fn maybe_autoproject(&self, node: NodeIndex, span: FlareSpan) -> <UntypedCst as Syntax>::Expr {
-        if let Some(ret) = self.graph[node].return_expr {
-            ret
-        } else {
-            Spanned(CstExpr::Item(ItemId(node.index())).into(), span)
-        }
-    }
-    /// Get the children of a node
-    fn children_of(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, Relation)> + '_ {
-        self.graph
-            .edges_directed(node, petgraph::Direction::Outgoing)
-            .map(|e| (e.target(), *e.weight()))
-    }
-
-    /// Get the parent of a node
-    fn parent_of(&self, node: NodeIndex) -> Option<NodeIndex> {
+    fn inputs_of(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, PortKind)> + '_ {
         self.graph
             .edges_directed(node, petgraph::Direction::Incoming)
-            .find(|e| matches!(e.weight(), Relation::Parent))
-            .map(|e| e.source())
+            .map(|e| (e.source(), *e.weight()))
     }
 
-    fn lookup_local(&mut self, name: Intern<String>, current: NodeIndex) -> Option<NodeIndex> {
-        let parent = self.parent_of(current)?;
-        // Sibling lookup
-        let child = self
-            .children_of(parent)
-            .find(|(child, _)| self.graph[*child].name.0 == name)
-            .map(|(child, _)| child);
-        if let Some(child) = child {
-            self.graph
-                .add_edge(self.current_node(), child, Relation::Reference);
-        }
-        child
+    fn find_input_of(
+        &self,
+        node: NodeIndex,
+        pred: impl Fn(NodeIndex, PortKind) -> bool,
+    ) -> Option<(NodeIndex, PortKind)> {
+        self.inputs_of(node).find(|(e, w)| pred(*e, *w))
     }
 
-    fn is_same_scope(&self, a: NodeIndex, b: NodeIndex) -> bool {
-        self.parent_of(a) == self.parent_of(b)
-    }
-
-    fn lookup_in(
-        &mut self,
-        base: NodeIndex,
-        name: Intern<String>,
-        // current: NodeIndex,
-    ) -> Option<NodeIndex> {
-        let current = self.current_node();
-        let child = self
-            .children_of(base)
-            .find(|(child, rel)| {
-                let elem = &self.graph[*child];
-                if elem.name.0 != name {
-                    return false;
-                }
-
-                match rel {
-                    Relation::Parent => {
-                        // only allowed if we're inside base's scope or if pub
-                        elem.is_pub || self.is_same_scope(*child, current)
-                    }
-
-                    _ => false,
-                }
-            })
-            .map(|(child, _)| child);
-
-        if let Some(child) = child {
-            self.graph
-                .add_edge(self.current_node(), child, Relation::Reference);
-        }
-        child
+    fn outputs_of(&self, node: NodeIndex) -> (NodeIndex, PortKind) {
+        self.graph
+            .edges_directed(node, petgraph::Direction::Incoming)
+            .map(|e| (e.target(), *e.weight()))
+            .next()
+            .unwrap()
     }
 
     fn analyze_expr(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Var],
-        expect: Expect,
-    ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
-        let _ = expect;
+    ) -> NodeIndex {
         match *expr.0 {
-            CstExpr::Ident(name) => {
-                if let Some(var) = vars.iter().rev().find(|n| *n.name == *name.0.0) {
-                    ControlFlow::Continue(expr)
-                } else if let Some(index) = self.lookup_local(name.0.0, self.current_node()) {
-                    ControlFlow::Continue(expr.modify(CstExpr::Item(ItemId(index.index()))))
+            CstExpr::Ident(n) => {
+                if let Some(v) = vars.iter().find(|v| v.name == n.0.0) {
+                    let ref_node = self.graph.add_node(NodeKind::Ref);
+                    // let Some((def_idx, _)) =
+                    //     self.find_input_of(v.index, |_, p| matches!(p, PortKind::Aux(0)))
+                    // else {
+                    //     panic!("Def has no value")
+                    // };
+                    self.graph.add_edge(v.index, ref_node, PortKind::Reference);
+                    ref_node
                 } else {
-                    self.errors.push(errors::not_defined(name.0));
-                    ControlFlow::Continue(expr.modify(CstExpr::Hole(name)))
+                    self.errors.push(errors::not_defined(n.0));
+                    self.graph.add_node(NodeKind::Hole)
                 }
             }
+            CstExpr::Lit(lit) => self.graph.add_node(NodeKind::Lit(lit)),
+            CstExpr::Hole(_) => todo!(),
+            CstExpr::Item(item_id) => todo!(),
             CstExpr::ProductConstructor { fields } => {
-                // Phase 1: register all sibling nodes before resolving any of them.
                 let fields = self.pre_register_fields(fields.to_vec());
-                // Phase 2: now resolve expressions, with all siblings visible.
-                let resolved_fields = self.resolve_fields(&fields, vars);
-
-                let expr = expr.modify(CstExpr::ProductConstructor {
-                    fields: resolved_fields.as_slice().into(),
-                });
-
-                ControlFlow::Break(expr)
+                let product_node = self.graph.add_node(NodeKind::Record {});
+                self.resolve_fields(fields, vars, product_node);
+                product_node
             }
-            CstExpr::VariantConstructor { name, value } => {
-                let value =
-                    value.map(|value| self.analyze_expr(value, vars, Expect::Value).into_value());
-                ControlFlow::Continue(expr.modify(CstExpr::VariantConstructor { name, value }))
-            }
-
-            CstExpr::Call(func, arg) => {
-                let func = self.analyze_expr(func, vars, Expect::Value).into_value();
-
-                let arg = self.analyze_expr(arg, vars, Expect::Struct).into_value();
-                ControlFlow::Continue(expr.convert(CstExpr::Call(func, arg)))
-            }
-
-            CstExpr::Bin(l, op, r) => {
-                let l = self.analyze_expr(l, vars, Expect::Value).into_value();
-                let r = self.analyze_expr(r, vars, Expect::Value).into_value();
-                ControlFlow::Continue(expr.modify(CstExpr::Bin(l, op, r)))
-            }
-            CstExpr::FieldAccess(..) => self.resolve_field_access(expr, vars, expect),
-            CstExpr::Match(matchee, branches) => {
-                let matchee = self.analyze_expr(matchee, vars, Expect::Value).into_value();
-
-                let branches: Vec<_> = branches
-                    .iter()
-                    .map(|b| self.resolve_branch(b.pat, b.body, vars))
-                    .collect();
-                assert!(!branches.is_empty());
-                ControlFlow::Continue(expr.modify(CstExpr::Match(matchee, branches.leak())))
-            }
-            CstExpr::Lambda(arg, body) => self.resolve_lambda(expr, arg, body, vars),
-            CstExpr::Lit(_) | CstExpr::Hole(_) | CstExpr::Item(_) => ControlFlow::Continue(expr),
-            CstExpr::Type(ty) => {
-                ControlFlow::Continue(expr.modify(CstExpr::Type(self.resolve_type(ty, vars))))
-            }
-            CstExpr::Let(..) => unimplemented!(),
+            CstExpr::VariantConstructor { name, value } => todo!(),
+            CstExpr::Bin(spanned, bin_op, spanned1) => todo!(),
+            CstExpr::Call(spanned, spanned1) => todo!(),
+            CstExpr::FieldAccess(spanned, label) => todo!(),
+            CstExpr::Match(spanned, match_arms) => todo!(),
+            CstExpr::Lambda(_, spanned) => todo!(),
+            CstExpr::Let(spanned, spanned1, spanned2) => todo!(),
+            CstExpr::Type(_) => todo!(),
         }
     }
 
-    fn pre_register_fields(&mut self, fields: Vec<Field<UntypedCst>>) -> Vec<Field<UntypedCst>> {
+    fn pre_register_fields(&self, fields: Vec<Field<UntypedCst>>) -> Vec<FieldDef<UntypedCst>> {
         fields
             .into_iter()
-            .filter_map(|field| {
-                match field {
-                    Field::Def(field) => {
-                        let node_stack_top = self.node_stack.last().copied().unwrap();
-                        self.path.push(field.name.0);
-                        let key = Key::from(self.path.clone());
+            .filter_map(|field| match field {
+                Field::Def(field) => Some(field),
 
-                        let new_node = if let Some(&existing) = self.trie.get(&key) {
-                            existing
-                        } else {
-                            let n = self.graph.add_node(Element::new(
-                                field.name,
-                                OnceCell::new(),
-                                field.ty,
-                                field.is_pub,
-                                None,
-                            )); // value filled in phase 2
-                            self.graph.add_edge(node_stack_top, n, Relation::Parent);
-                            self.trie.insert(key, n);
-                            n
-                        };
-
-                        self.path.pop();
-                        Some(Field::Def(field))
+                Field::Macro(field_macro) => match field_macro {
+                    crate::resource::rep::frontend::cst::FieldMacro::Import(_) => todo!(),
+                    crate::resource::rep::frontend::cst::FieldMacro::Extend(extend) => {
+                        todo!()
                     }
-
-                    Field::Macro(field_macro) => match field_macro {
-                        crate::resource::rep::frontend::cst::FieldMacro::Import(_) => todo!(),
-                        crate::resource::rep::frontend::cst::FieldMacro::Extend(extend) => {
-                            todo!()
-                        }
-                        crate::resource::rep::frontend::cst::FieldMacro::Ret(v) => {
-                            let node_stack_top = self.node_stack.last().unwrap();
-                            let weight = self.graph.node_weight_mut(*node_stack_top);
-                            dbg!(&weight);
-                            let enclosing = weight.map(|node| {
-                                // if let Some(spanned) = node.return_expr {
-                                //     self.errors
-                                //         .push(errors::duplicate_return(v.span(), spanned.span()))
-                                // } else {
-                                node.return_expr = Some(v)
-                                // }
-                            });
-
-                            None
-                        }
-                    },
-                }
+                    crate::resource::rep::frontend::cst::FieldMacro::Ret(value) => Some(FieldDef {
+                        name: value.convert("%return".to_string()),
+                        is_pub: true,
+                        ty: None,
+                        value,
+                    }),
+                },
             })
             .collect()
     }
 
     fn resolve_fields(
         &mut self,
-        fields: &[Field<UntypedCst>],
+        fields: Vec<FieldDef<UntypedCst>>,
         vars: &[Var],
-    ) -> Vec<Field<UntypedCst>> {
-        fields
+        product_node: NodeIndex,
+    ) {
+        let (label_vars, definition_nodes): (Vec<_>, Vec<NodeIndex>) = fields
             .iter()
-            .map(|field| {
-                match field {
-                    Field::Def(field) => {
-                        // Retrieve the node index that phase 1 already created.
-                        self.path.push(field.name.0);
-                        let node_index = *self
-                            .trie
-                            .get(&Key::from(self.path.clone()))
-                            .expect("node must exist after pre-registration");
+            .enumerate()
+            .map(|(position, field)| {
+                let def_index = self.graph.add_node(NodeKind::Def { name: field.name.0 });
+                self.graph
+                    .add_edge(def_index, product_node, PortKind::Aux(position));
 
-                        let old_node = self.node_stack.last().copied().unwrap();
-                        self.node_stack.push(node_index);
-
-                        // Actual transformations
-                        let value = self
-                            .analyze_expr(field.value, vars, Expect::Value)
-                            .into_value();
-                        let f_type = field.ty.map(|ty| self.resolve_type(ty, vars));
-
-                        let ret = self.graph[node_index]
-                            .return_expr
-                            .map(|expr| self.analyze_expr(expr, &[], Expect::Value).into_value());
-
-                        // Patch the value into the already-existing node.
-                        self.graph[node_index].value.set(value).unwrap();
-
-                        if let Some(el) = self.graph.node_weight_mut(node_index) {
-                            el.return_expr = ret
-                        }
-
-                        self.node_stack.pop();
-                        self.path.pop();
-
-                        Field::Def(FieldDef { value, ..*field })
-                    }
-                    Field::Macro(field_macro) => {
-                        panic!("Should have been inserted in pre-registration")
-                    }
-                }
+                if let Some(ty) = field.ty {
+                    let ty_node = self.resolve_type(ty, vars);
+                    self.graph.add_edge(def_index, ty_node, PortKind::Type);
+                };
+                (
+                    Var {
+                        name: field.name.0,
+                        index: def_index,
+                    },
+                    def_index,
+                )
             })
-            .collect()
+            .collect();
+        let new_vars = [vars, &label_vars].concat();
+
+        for (nth, (field, def_node_idx)) in fields.into_iter().zip(definition_nodes).enumerate() {
+            let result_node = self.analyze_expr(field.value, &new_vars);
+            self.graph
+                .add_edge(result_node, def_node_idx, PortKind::Primary);
+        }
+        self.debug();
     }
 
     fn resolve_branch(
@@ -472,14 +251,15 @@ impl EnvironmentBuilder<UntypedCst> {
         body: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Var],
     ) -> MatchArm<UntypedCst> {
-        let bindings = pat.0.bindings();
-        // Extend vars with bindings
-        let mut branch_vars: Vec<Var> = vars.to_vec();
-        branch_vars.extend(bindings.iter().map(|v| Var { name: v.0.0 }));
-        let body = self
-            .analyze_expr(body, &branch_vars, Expect::Value)
-            .into_value();
-        MatchArm { pat, body }
+        todo!()
+        // let bindings = pat.0.bindings();
+        // // Extend vars with bindings
+        // let mut branch_vars: Vec<Var> = vars.to_vec();
+        // branch_vars.extend(bindings.iter().map(|v| Var { name: v.0.0 }));
+        // let body = self
+        //     .analyze_expr(body, &branch_vars, Expect::Value)
+        //     .into_value();
+        // MatchArm { pat, body }
     }
 
     fn resolve_lambda(
@@ -490,103 +270,56 @@ impl EnvironmentBuilder<UntypedCst> {
         vars: &[Var],
     ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
     {
-        let new_vars = &[vars, &[Var { name: arg.0.0 }]].concat();
-        let body = self
-            .analyze_expr(body, new_vars, Expect::Value)
-            .into_value();
-        ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
+        todo!()
+        // let new_vars = &[vars, &[Var { name: arg.0.0 }]].concat();
+        // let body = self
+        //     .analyze_expr(body, new_vars, Expect::Value)
+        //     .into_value();
+        // ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
     }
 
     fn resolve_field_access(
         &mut self,
         expr: Spanned<Intern<CstExpr<UntypedCst>>>,
         vars: &[Var],
-        expect: Expect,
     ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
-        let CstExpr::FieldAccess(l, r) = *expr.0 else {
-            unreachable!()
-        };
+        todo!()
+        // let CstExpr::FieldAccess(l, r) = *expr.0 else {
+        //     unreachable!()
+        // };
 
-        let base = self.analyze_expr(l, vars, Expect::Struct).into_value();
+        // let base = self.analyze_expr(l, vars, Expect::Struct).into_value();
 
-        if let CstExpr::Item(item_id) = *base.0 {
-            let base = NodeIndex::from(item_id.0 as u32);
+        // if let CstExpr::Item(item_id) = *base.0 {
+        //     let base = NodeIndex::from(item_id.0 as u32);
 
-            if let Some(target) = self.lookup_in(base, r.0.0) {
-                return ControlFlow::Continue(match expect {
-                    Expect::Value => self.maybe_autoproject(target, expr.span()),
-                    Expect::Struct => expr.convert(CstExpr::Item(ItemId(target.index()))),
-                });
-            } else {
-                self.errors.push(errors::not_defined(r.0));
-            }
-        }
+        //     if let Some(target) = self.lookup_in(base, r.0.0) {
+        //         return ControlFlow::Continue(match expect {
+        //             Expect::Value => self.maybe_autoproject(target, expr.span()),
+        //             Expect::Struct => expr.convert(CstExpr::Item(ItemId(target.index()))),
+        //         });
+        //     } else {
+        //         self.errors.push(errors::not_defined(r.0));
+        //     }
+        // }
 
-        ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(base, r)))
+        // ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(base, r)))
     }
-    fn resolve_type(
-        &mut self,
-        ty: <UntypedCst as Syntax>::Type,
-        vars: &[Var],
-    ) -> <UntypedCst as Syntax>::Type {
+    fn resolve_type(&mut self, ty: <UntypedCst as Syntax>::Type, vars: &[Var]) -> NodeIndex {
         match *ty.0 {
-            CstType::Generic(_) | CstType::Primitive(_) | CstType::Hole => ty,
+            CstType::Primitive(p) => self.graph.add_node(NodeKind::PrimitiveTy(p)),
             CstType::Func(l, r) => {
+                let pi = self.graph.add_node(NodeKind::Pi);
                 let l = self.resolve_type(l, vars);
                 let r = self.resolve_type(r, vars);
-                ty.modify(CstType::Func(l, r))
+                todo!()
             }
-            CstType::Item(item_id) => todo!(),
-            CstType::GenericFun(param, body) => {
-                let param = self.resolve_type(param, vars);
-                let body = self.resolve_type(body, vars);
-                ty.modify(CstType::GenericApp(param, body))
-            }
-            CstType::GenericApp(tyfun, arg) => {
-                let tyfun = self.resolve_type(tyfun, vars);
-                let arg = self.resolve_type(arg, vars);
-                ty.modify(CstType::GenericApp(tyfun, arg))
-            }
-            CstType::ForAll(t, within) => ty,
-            CstType::User(name) => {
-                if let Some(var) = vars.iter().rev().find(|n| *n.name == *name.0) {
-                    ty
-                } else if let Some(index) = self.resolve_name(name, self.current_node()) {
-                    let value = self.graph[index].value.get().unwrap();
-                    dbg!(value);
-                    let id = ItemId(index.index());
-                    ty.modify(CstType::Item(id))
-                } else {
-                    self.errors.push(errors::not_defined(name));
-                    ty.modify(CstType::Hole)
-                }
-            }
-            CstType::Prod(row) => ty.modify(CstType::Prod(CstClosedRow {
-                values: row
-                    .values
-                    .iter()
-                    .map(|ty| self.resolve_type(*ty, vars))
-                    .collect::<Vec<_>>()
-                    .leak(),
-                ..row
-            })),
-            CstType::Sum(row) => ty.modify(CstType::Prod(CstClosedRow {
-                values: row
-                    .values
-                    .iter()
-                    .map(|ty| self.resolve_type(*ty, vars))
-                    .collect::<Vec<_>>()
-                    .leak(),
-                ..row
-            })),
 
-            CstType::Label(label, inner) => {
-                ty.modify(CstType::Label(label, self.resolve_type(inner, vars)))
-            }
+            _ => todo!("{ty:?}"),
         }
     }
 
-    fn lift(&mut self) -> Environment<UntypedCst> {
+    fn lift(&self) -> Environment<UntypedCst> {
         // let dep = self.graph.filter_map(
         //     |_, n| Some(n),
         //     |_, e| {
@@ -602,39 +335,6 @@ impl EnvironmentBuilder<UntypedCst> {
         let mut out = out.into_iter().rev().peekable();
 
         self.debug();
-        // while let Some(t) = out.peek() {
-        //     let mut count = 0;
-        //     let next_group = out.peeking_take_while(|t| {
-        //         dbg!(t);
-        //         if t.len() == 1 {
-        //             count += 1;
-        //             true
-        //         } else {
-        //             false
-        //         }
-        //     });
-        //     // dbg!(next_group);
-        // }
-
-        self.debug();
-        self.graph
-            .node_indices()
-            .filter_map(|node| {
-                let element = &self.graph[node];
-                let ty = element.ty.or_else(|| {
-                    self.errors.push(errors::needs_type(element.name.span()));
-                    None
-                })?;
-                let body = *element.value.get()?;
-                let item = Item {
-                    kind: crate::resource::rep::frontend::entry::ItemKind::Function(FunctionItem {
-                        name: element.name,
-                        sig: ty,
-                        body,
-                    }),
-                };
-                Some((node, item))
-            })
-            .collect()
+        todo!()
     }
 }
