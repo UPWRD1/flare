@@ -216,6 +216,8 @@ pub enum NodeKind {
     /// Output 0: the lambda value
     Lam,
 
+    Bin(BinOp),
+
     /// f a
     /// Input 0: function
     /// Input 1: argument
@@ -295,7 +297,9 @@ pub enum NodeKind {
     /// Unreachable / erased node
     Erased,
 
-    Hole,
+    Hole {
+        name: Intern<String>,
+    },
 }
 
 impl std::fmt::Display for NodeKind {
@@ -305,6 +309,7 @@ impl std::fmt::Display for NodeKind {
             "{}",
             match self {
                 NodeKind::Def { name } => name.to_string(),
+                Self::Hole { name } => format!("Hole {name}"),
                 _ => format!("{:?}", self),
             }
         )
@@ -321,8 +326,8 @@ pub struct Node {
 /// We use directed edges for clarity: producer → consumer.
 #[derive(Debug, Clone, Copy)]
 pub enum PortKind {
-    Aux(usize),
-    Primary,
+    Input(usize),
+    Output,
     Reference,
     Type,
 }

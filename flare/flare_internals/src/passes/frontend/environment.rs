@@ -1,50 +1,27 @@
-use std::ops::ControlFlow;
-
 use internment::Intern;
 
 use petgraph::{
     prelude::StableDiGraph,
     stable_graph::{EdgeReference, NodeIndex},
-    visit::EdgeRef as _,
+    visit::{EdgeRef as _, },
 };
 use rustc_hash::FxHashMap;
 
 use crate::resource::{
     errors::{self, CompResult, CompilerErr, ErrorCollection},
     rep::{
-        common::{FlareSpan, Spanned, Syntax},
+        common::{Spanned, Syntax},
         frontend::{
-            ast::{ItemId, Label, Untyped},
+            ast::Untyped,
             cst::{
-                CstExpr, Field, FieldDef, MatchArm, NodeKind, PackageCollection, Pattern, PortKind,
+                CstExpr, Field, FieldDef, NodeKind, PackageCollection,  PortKind,
                 UntypedCst,
             },
-            csttypes::{CstClosedRow, CstType},
-            entry::{FunctionItem, Item},
+            csttypes::CstType,
+            entry::Item,
         },
     },
 };
-
-// #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-// pub struct Key(Vec<Intern<String>>);
-
-// impl Key {
-//     pub fn from<T>(path: T) -> Self
-//     where
-//         T: Into<Vec<Intern<String>>>,
-//     {
-//         Self(path.into())
-//     }
-// }
-
-// impl TrieKey for Key {
-//     fn encode_bytes(&self) -> Vec<u8> {
-//         self.0
-//             .iter()
-//             .flat_map(|s| s.bytes().collect::<Vec<u8>>())
-//             .collect()
-//     }
-// }
 
 #[derive(Debug)]
 /// The main environment graph structure. Holds all the objects produced by
@@ -58,13 +35,9 @@ use crate::resource::{
 pub struct EnvironmentBuilder {
     pub graph: StableDiGraph<NodeKind, PortKind>,
     errors: Vec<CompilerErr>,
+    scope: Vec<NodeIndex>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Var {
-    name: Intern<String>,
-    index: NodeIndex,
-}
 pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
 
 impl EnvironmentBuilder {
@@ -94,7 +67,7 @@ impl EnvironmentBuilder {
             ..Default::default()
         };
 
-        me.analyze_expr(root_obj, &[]); // dbg!(res);
+        me.analyze_expr(root_obj, root_node); // dbg!(res);
         let env_map = me.lift();
 
         if me.errors.is_empty() {
@@ -123,67 +96,198 @@ impl EnvironmentBuilder {
         dbg!(dot);
     }
 
-    fn inputs_of(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, PortKind)> + '_ {
+    fn incoming_of(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, PortKind)> + '_ {
         self.graph
             .edges_directed(node, petgraph::Direction::Incoming)
             .map(|e| (e.source(), *e.weight()))
     }
 
-    fn find_input_of(
+    fn find_incoming_of(
         &self,
         node: NodeIndex,
         pred: impl Fn(NodeIndex, PortKind) -> bool,
     ) -> Option<(NodeIndex, PortKind)> {
-        self.inputs_of(node).find(|(e, w)| pred(*e, *w))
+        self.incoming_of(node).find(|(e, w)| pred(*e, *w))
     }
 
-    fn outputs_of(&self, node: NodeIndex) -> (NodeIndex, PortKind) {
+    fn outputs_of(&self, node: NodeIndex) -> Option<(NodeIndex, PortKind)> {
         self.graph
-            .edges_directed(node, petgraph::Direction::Incoming)
+            .edges_directed(node, petgraph::Direction::Outgoing)
             .map(|e| (e.target(), *e.weight()))
-            .next()
-            .unwrap()
+            .next().inspect(|p| {dbg!(p);})
     }
 
-    fn analyze_expr(
+    /// Find a Def node by name among the direct children of `parent_record`.
+    fn find_child_by_name(
+        &self,
+        parent_record: NodeIndex,
+        name: Intern<String>,
+    ) -> Option<NodeIndex> {
+        self.incoming_of(parent_record)
+            .filter(|(_, e)| matches!(e, PortKind::Input(_)))
+            .find(
+                |&(child, _)| matches!(&self.graph[child], NodeKind::Def { name: n } if *n == name),
+            )
+            .map(|(node, _)| node)
+    }
+
+    /// Resolve a name from a given node's context.
+    fn resolve_name(
         &mut self,
-        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[Var],
+        the_name: Spanned<Intern<String>>,
+        current_node: NodeIndex,
     ) -> NodeIndex {
-        match *expr.0 {
-            CstExpr::Ident(n) => {
-                if let Some(v) = vars.iter().find(|v| v.name == n.0.0) {
-                    let ref_node = self.graph.add_node(NodeKind::Ref);
-                    // let Some((def_idx, _)) =
-                    //     self.find_input_of(v.index, |_, p| matches!(p, PortKind::Aux(0)))
-                    // else {
-                    //     panic!("Def has no value")
-                    // };
-                    self.graph.add_edge(v.index, ref_node, PortKind::Reference);
-                    ref_node
-                } else {
-                    self.errors.push(errors::not_defined(n.0));
-                    self.graph.add_node(NodeKind::Hole)
+        macro_rules! push_parent_node {
+            ($worklist:ident, $node:ident) => {{
+                let Some((parent, _)) = self.outputs_of($node).filter(|(_, pk)| matches!(pk, PortKind::Input(_))) else {
+            
+                    println!("FAIL: {:?}", $node);
+                        break;
+                };
+                $worklist.push(parent);
+            }};
+        }
+        // Walk up the record containment chain.
+        dbg!(current_node, the_name);
+        let mut worklist = vec![current_node];
+        while let Some(node) = worklist.pop() {
+            dbg!(&worklist, node);
+            match &self.graph[node] {
+                NodeKind::Def { name } => {
+                    if *name == the_name.0 {
+                        return node;
+                    } else {
+                        push_parent_node!(worklist,node)
+                    }
                 }
+                NodeKind::Ref => todo!(),
+                NodeKind::Lam => {
+                    let (binder, _) = self
+                        .find_incoming_of(node, |_, pk| matches!(pk, PortKind::Input(0)))
+                        .unwrap();
+                    dbg!(binder);
+                    if let NodeKind::Def { name } = self.graph[binder]
+                        && name == the_name.0
+                    {
+                        return binder;
+                    }
+                    push_parent_node!(worklist, node)
+                }
+                NodeKind::Bin(_) => {
+                    push_parent_node!(worklist, node)
+                }
+                NodeKind::App => todo!(),
+                NodeKind::Record
+                    // if self
+                    //     .find_incoming_of(node, |idx, _| idx == current_node)
+                    //     .is_some() =>
+                    =>
+                {
+                    if let Some((sibling, _)) = self
+                        .incoming_of(node)
+                        .filter(|(idx, _)| *idx != node)
+                        .find(|(idx, edge)| {
+                            let weight = &self.graph[*idx];
+                            
+    matches!(&self.graph[*idx], NodeKind::Def { name: n } if *n == the_name.0)
+                        })
+                    {
+                        return sibling;
+                    } else {
+                        push_parent_node!(worklist, node)
+                       }
+                }
+                // NodeKind::Record => {
+                //     let Some((parent, _)) = self.outputs_of(node) else {
+                //         break;
+                //     };
+                //     worklist.push(parent);
+                //     continue;
+                // }
+                NodeKind::Project { label } => todo!(),
+                NodeKind::Extend { label } => todo!(),
+                NodeKind::Inject { label } => todo!(),
+                NodeKind::Match { labels } => todo!(),
+                NodeKind::Lit(expr_lit) => todo!(),
+                NodeKind::PrimitiveTy(primitive_type) => todo!(),
+                NodeKind::Universe { level } => todo!(),
+                NodeKind::Pi => {
+                    let (domain, _) = self
+                        .find_incoming_of(node, |_, pk| matches!(pk, PortKind::Input(0)))
+                        .unwrap();
+
+                    if let NodeKind::Def { name } = self.graph[domain]
+                        && name == the_name.0
+                    {
+                        return domain;
+                    }
+                    push_parent_node!(worklist, node)
+                }
+                NodeKind::RowTy { labels, open } => todo!(),
+                NodeKind::Mu => todo!(),
+                NodeKind::CoreLam { arity } => todo!(),
+                NodeKind::Erased => todo!(),
+                NodeKind::Hole { .. } => todo!(),
+            }
+            continue;
+        }
+
+        self.errors.push(errors::not_defined(the_name));
+        self.graph.add_node(NodeKind::Hole { name: the_name.0 })
+    }
+
+    fn analyze_expr(&mut self, expr: Spanned<Intern<CstExpr<UntypedCst>>>, current_node: NodeIndex) -> NodeIndex {
+        self.debug();
+        self.scope.push(current_node);
+       let out =  match *expr.0 {
+            CstExpr::Ident(n) => {
+                let v = self.resolve_name(n.0, current_node);
+                let ref_node = self.graph.add_node(NodeKind::Ref);
+                // let Some((def_idx, _)) =
+                //     self.find_input_of(v.index, |_, p| matches!(p, PortKind::Aux(0)))
+                // else {
+                //     panic!("Def has no value")
+                // };
+                self.graph.add_edge(v, ref_node, PortKind::Reference);
+                ref_node
             }
             CstExpr::Lit(lit) => self.graph.add_node(NodeKind::Lit(lit)),
             CstExpr::Hole(_) => todo!(),
             CstExpr::Item(item_id) => todo!(),
             CstExpr::ProductConstructor { fields } => {
-                let fields = self.pre_register_fields(fields.to_vec());
                 let product_node = self.graph.add_node(NodeKind::Record {});
-                self.resolve_fields(fields, vars, product_node);
+                let fields = self.pre_register_fields(fields.to_vec());
+                self.resolve_fields(fields, product_node);
                 product_node
             }
             CstExpr::VariantConstructor { name, value } => todo!(),
-            CstExpr::Bin(spanned, bin_op, spanned1) => todo!(),
+            CstExpr::Bin(l, bin_op, r) => {
+                let bin = self.graph.add_node(NodeKind::Bin(bin_op));
+                
+                let l = self.analyze_expr(l,  bin)  ;              let r = self.analyze_expr(r, bin);
+
+                self.graph.add_edge(l, bin, PortKind::Input(0));
+                self.graph.add_edge(r, bin, PortKind::Input(1));
+                bin
+            }
             CstExpr::Call(spanned, spanned1) => todo!(),
             CstExpr::FieldAccess(spanned, label) => todo!(),
             CstExpr::Match(spanned, match_arms) => todo!(),
-            CstExpr::Lambda(_, spanned) => todo!(),
+            CstExpr::Lambda(var, expr) => {
+                let lam = self.graph.add_node(NodeKind::Lam);
+                dbg!(lam);
+                let arg = self.graph.add_node(NodeKind::Def { name: var.0.0 });
+                self.graph.add_edge(arg, lam, PortKind::Input(0));
+
+                let body = self.analyze_expr(expr, lam);
+                self.graph.add_edge(body, lam, PortKind::Input(1));
+                lam
+            }
             CstExpr::Let(spanned, spanned1, spanned2) => todo!(),
             CstExpr::Type(_) => todo!(),
-        }
+        };
+        self.scope.pop();
+        out
     }
 
     fn pre_register_fields(&self, fields: Vec<Field<UntypedCst>>) -> Vec<FieldDef<UntypedCst>> {
@@ -208,111 +312,50 @@ impl EnvironmentBuilder {
             .collect()
     }
 
-    fn resolve_fields(
-        &mut self,
-        fields: Vec<FieldDef<UntypedCst>>,
-        vars: &[Var],
-        product_node: NodeIndex,
-    ) {
-        let (label_vars, definition_nodes): (Vec<_>, Vec<NodeIndex>) = fields
+    fn resolve_fields(&mut self, fields: Vec<FieldDef<UntypedCst>>, product_node: NodeIndex) {
+        let definition_nodes: Vec<NodeIndex> = fields
             .iter()
             .enumerate()
             .map(|(position, field)| {
                 let def_index = self.graph.add_node(NodeKind::Def { name: field.name.0 });
                 self.graph
-                    .add_edge(def_index, product_node, PortKind::Aux(position));
+                    .add_edge(def_index, product_node, PortKind::Input(position));
 
                 if let Some(ty) = field.ty {
-                    let ty_node = self.resolve_type(ty, vars);
+                    let ty_node = self.resolve_type(ty, def_index);
                     self.graph.add_edge(def_index, ty_node, PortKind::Type);
                 };
-                (
-                    Var {
-                        name: field.name.0,
-                        index: def_index,
-                    },
-                    def_index,
-                )
+                def_index
             })
             .collect();
-        let new_vars = [vars, &label_vars].concat();
-
         for (nth, (field, def_node_idx)) in fields.into_iter().zip(definition_nodes).enumerate() {
-            let result_node = self.analyze_expr(field.value, &new_vars);
+            let result_node = self.analyze_expr(field.value, product_node);
             self.graph
-                .add_edge(result_node, def_node_idx, PortKind::Primary);
+                .add_edge(result_node, def_node_idx, PortKind::Output);
         }
-        self.debug();
     }
 
-    fn resolve_branch(
-        &mut self,
-        pat: Spanned<Intern<Pattern<UntypedCst>>>,
-        body: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[Var],
-    ) -> MatchArm<UntypedCst> {
-        todo!()
-        // let bindings = pat.0.bindings();
-        // // Extend vars with bindings
-        // let mut branch_vars: Vec<Var> = vars.to_vec();
-        // branch_vars.extend(bindings.iter().map(|v| Var { name: v.0.0 }));
-        // let body = self
-        //     .analyze_expr(body, &branch_vars, Expect::Value)
-        //     .into_value();
-        // MatchArm { pat, body }
-    }
-
-    fn resolve_lambda(
-        &mut self,
-        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
-        arg: Untyped,
-        body: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[Var],
-    ) -> ControlFlow<Spanned<Intern<CstExpr<UntypedCst>>>, Spanned<Intern<CstExpr<UntypedCst>>>>
-    {
-        todo!()
-        // let new_vars = &[vars, &[Var { name: arg.0.0 }]].concat();
-        // let body = self
-        //     .analyze_expr(body, new_vars, Expect::Value)
-        //     .into_value();
-        // ControlFlow::Continue(expr.convert(CstExpr::Lambda(arg, body)))
-    }
-
-    fn resolve_field_access(
-        &mut self,
-        expr: Spanned<Intern<CstExpr<UntypedCst>>>,
-        vars: &[Var],
-    ) -> ControlFlow<<UntypedCst as Syntax>::Expr, <UntypedCst as Syntax>::Expr> {
-        todo!()
-        // let CstExpr::FieldAccess(l, r) = *expr.0 else {
-        //     unreachable!()
-        // };
-
-        // let base = self.analyze_expr(l, vars, Expect::Struct).into_value();
-
-        // if let CstExpr::Item(item_id) = *base.0 {
-        //     let base = NodeIndex::from(item_id.0 as u32);
-
-        //     if let Some(target) = self.lookup_in(base, r.0.0) {
-        //         return ControlFlow::Continue(match expect {
-        //             Expect::Value => self.maybe_autoproject(target, expr.span()),
-        //             Expect::Struct => expr.convert(CstExpr::Item(ItemId(target.index()))),
-        //         });
-        //     } else {
-        //         self.errors.push(errors::not_defined(r.0));
-        //     }
-        // }
-
-        // ControlFlow::Continue(expr.convert(CstExpr::FieldAccess(base, r)))
-    }
-    fn resolve_type(&mut self, ty: <UntypedCst as Syntax>::Type, vars: &[Var]) -> NodeIndex {
+    fn resolve_type(&mut self, ty: <UntypedCst as Syntax>::Type,current_node: NodeIndex) -> NodeIndex {
         match *ty.0 {
             CstType::Primitive(p) => self.graph.add_node(NodeKind::PrimitiveTy(p)),
             CstType::Func(l, r) => {
                 let pi = self.graph.add_node(NodeKind::Pi);
-                let l = self.resolve_type(l, vars);
-                let r = self.resolve_type(r, vars);
-                todo!()
+                let l = self.resolve_type(l, current_node);
+                let r = self.resolve_type(r,current_node);
+                self.graph.add_edge(l, pi, PortKind::Input(0));
+                self.graph.add_edge(r, pi, PortKind::Input(1));
+                pi
+            }
+            CstType::User(n) => {
+                let v = self.resolve_name(n, current_node);
+                let ref_node = self.graph.add_node(NodeKind::Ref);
+                // let Some((def_idx, _)) =
+                //     self.find_input_of(v.index, |_, p| matches!(p, PortKind::Aux(0)))
+                // else {
+                //     panic!("Def has no value")
+                // };
+                self.graph.add_edge(v, ref_node, PortKind::Reference);
+                ref_node
             }
 
             _ => todo!("{ty:?}"),

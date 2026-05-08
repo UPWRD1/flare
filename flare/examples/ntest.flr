@@ -1,4 +1,6 @@
  pub Main: num = {
+    x = 3
+    y= x
     double x : num -> num = x * 2
 }
     
