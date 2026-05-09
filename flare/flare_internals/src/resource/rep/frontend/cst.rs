@@ -1,7 +1,5 @@
-use std::fmt::Display;
-
 use internment::Intern;
-use petgraph::stable_graph::NodeIndex;
+use itertools::Itertools;
 
 use crate::{
     passes::frontend::typing::PrimitiveType,
@@ -285,6 +283,16 @@ pub enum NodeKind {
         open: bool,
     },
 
+    /// Interpret a row type as a product
+    /// Input 0: A RowTy node
+    /// Output 0: The product type
+    Product,
+
+    /// Interpret a row type as a product
+    /// Input 0: A RowTy node
+    /// Output 0: The product type    
+    Sum,
+
     /// μ self. body — recursive type/value
     /// Input 0: body (a Lam with self bound)
     /// Output 0: the fixed point
@@ -313,6 +321,12 @@ impl std::fmt::Display for NodeKind {
             match self {
                 NodeKind::Def { name } => name.to_string(),
                 Self::Hole { name } => format!("Hole {name}"),
+                Self::RowTy { labels, open } => {
+                    format!("Row {{{}}}", labels.iter().join(", "))
+                }
+                Self::Inject { label } => {
+                    format!("Inject {label}")
+                }
                 _ => format!("{:?}", self),
             }
         )

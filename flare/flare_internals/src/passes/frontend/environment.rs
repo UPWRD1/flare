@@ -187,7 +187,15 @@ impl EnvironmentBuilder {
                 self.resolve_fields(fields, product_node);
                 product_node
             }
-            CstExpr::VariantConstructor { name, value } => todo!(),
+            CstExpr::VariantConstructor { name, value } => {
+                let inject = self.graph.add_node(NodeKind::Inject { label: name.0 });
+
+                if let Some(value) = value {
+                    let val_node = self.analyze_expr(value, current_node);
+                    self.graph.add_edge(val_node, inject, PortKind::Input(0));
+                };
+                inject
+            }
             CstExpr::Bin(l, bin_op, r) => {
                 let bin = self.graph.add_node(NodeKind::Bin(bin_op));
 
@@ -306,15 +314,15 @@ impl EnvironmentBuilder {
                 self.graph.add_edge(r, app, PortKind::Input(1));
                 app
             }
+
             CstType::ForAll(binder_ty, body) => {
                 let universe = self.graph.add_node(NodeKind::Universe { level: 0 });
                 let binder_def = self.graph.add_node(NodeKind::Def { name: binder_ty.0 });
-                // Wire binder_def's type as Universe
-                self.graph.add_edge(universe, binder_def, PortKind::Type);
-                let body_node = self.resolve_type(body, current_node);
+                self.graph.add_edge(binder_def, universe, PortKind::Type);
                 let lam_node = self.graph.add_node(NodeKind::Lam);
                 self.graph
                     .add_edge(binder_def, lam_node, PortKind::Input(0));
+                let body_node = self.resolve_type(body, lam_node);
                 self.graph.add_edge(body_node, lam_node, PortKind::Input(1));
 
                 let pi_node = self.graph.add_node(NodeKind::Pi);
@@ -324,8 +332,17 @@ impl EnvironmentBuilder {
                 pi_node
             }
             CstType::Sum(c) => {
-                todo!()
-                // let sum_node =self.graph.add_node(NodeKind::)
+                let sum_node = self.graph.add_node(NodeKind::Sum);
+                let row_node = self.graph.add_node(NodeKind::RowTy {
+                    labels: c.fields.iter().map(|l| l.0.0).collect(),
+                    open: false,
+                });
+                for (i, ty) in c.values.iter().enumerate() {
+                    let ty = self.resolve_type(*ty, current_node);
+                    self.graph.add_edge(ty, row_node, PortKind::Input(i));
+                }
+
+                sum_node
             }
 
             _ => todo!("{ty:?}"),

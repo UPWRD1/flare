@@ -686,8 +686,24 @@ impl<'src> Translate<'src> {
                 //     }
                 // }
                 k if k == self.ids.k(NK::PatternAtom) => {
+                    dbg!(node.to_sexp());
                     let inner = node.named_child(0).unwrap();
                     match inner.kind_id() {
+                        k if k == self.ids.k(NK::PatternVariant) => {
+                            let tag = self.get_field(&inner, FK::Name).unwrap();
+                            let name = self.name(&tag);
+                            let label = Label(name);
+                            let payload = inner
+                                .named_children(&mut node.walk())
+                                // skip the variant_name child, take the rest as payload
+                                .nth(1)
+                                .map_or(self.si(node, |_| Pattern::Lit(ExprLit::Unit)), |n| {
+                                    self.lower_pattern(n)
+                                });
+                            Pattern::Variant(label, payload)
+
+                            // Pattern::Variant { tag, payload }
+                        }
                         k if k == self.ids.k(NK::Number) => {
                             let v = inner
                                 .utf8_text(self.file.source.as_bytes())
