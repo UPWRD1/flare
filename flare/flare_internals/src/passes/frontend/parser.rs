@@ -55,12 +55,8 @@ pub enum NK {
     Boolean,
     UnitExpr,
     // Patterns
-    PatternProduct,
-    PatternVariable,
-    PatternVariant,
-    PatternPath,
     PatternAlias,
-    PatternAtom,
+    PatternOr,
     // Macros
     UseMacro,
     ReturnMacro,
@@ -96,6 +92,7 @@ pub enum FK {
     Data,
     Import,
     IsPub,
+    Inherit,
     // sentinel
     COUNT,
 }
@@ -114,11 +111,10 @@ impl LangIds {
         use NK::{
             ArrowType, BinExpression, Boolean, CallExpression, ExtendMacro, FieldAccess,
             FieldAssignment, FieldedConstructor, ForAll, GroupedType, Identifier, Lambda,
-            MatchExpression, Number, ParenthesizedExpression, Path, PatternAlias, PatternAtom,
-            PatternPath, PatternProduct, PatternVariable, PatternVariant, PrimitiveType,
-            ProductType, PropAccess, PropQualifier, PubExpression, ReturnMacro, SelfType,
-            SourceFile, StringNode, SumConstructor, SumType, TypeApp, TypeExpression, UnitExpr,
-            UseMacro,
+            MatchExpression, Number, ParenthesizedExpression, Path, PatternAlias, PatternOr,
+            PrimitiveType, ProductType, PropAccess, PropQualifier, PubExpression, ReturnMacro,
+            SelfType, SourceFile, StringNode, SumConstructor, SumType, TypeApp, TypeExpression,
+            UnitExpr, UseMacro,
         };
         let mut kinds = [0u16; NK::COUNT as usize];
 
@@ -148,12 +144,8 @@ impl LangIds {
         k!(StringNode, "string");
         k!(Boolean, "boolean");
         k!(UnitExpr, "unit_expr");
-        k!(PatternProduct, "pattern_product");
-        k!(PatternVariable, "pattern_variable");
-        k!(PatternVariant, "pattern_variant");
-        k!(PatternPath, "pattern_path");
         k!(PatternAlias, "pattern_alias");
-        k!(PatternAtom, "pattern_atom");
+        k!(PatternOr, "pattern_or");
         k!(UseMacro, "use_macro");
         k!(ReturnMacro, "return_macro");
         k!(ExtendMacro, "extend_macro");
@@ -360,7 +352,10 @@ impl<'src> Translate<'src> {
         let name = self.name(&name);
         let value = self.get_child(node, FK::Expr);
         let value = value.map(|value| self.lower_expr(value));
-        CstExpr::VariantConstructor { name, value }
+        CstExpr::VariantConstructor {
+            name: Label(name),
+            value,
+        }
     }
 
     fn lower_record(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
@@ -652,76 +647,15 @@ impl<'src> Translate<'src> {
         let pat = {
             let k = node.kind_id();
             match k {
-                k if k == self.ids.k(NK::PatternVariable) => {
-                    Pattern::Var(Untyped(self.name(&node.named_child(0).unwrap())))
+                k if k == self.ids.k(NK::PatternAlias) => {
+                    let bindee = node.child(0).unwrap();
+                    let bindee = self.lower_pattern(bindee);
+                    let binder = node.child(1).unwrap();
+                    let binder = self.name(&binder);
+                    Pattern::At(Untyped(binder), bindee)
                 }
-                k if k == self.ids.k(NK::PatternProduct) => self.lower_pattern_product(node),
-                k if k == self.ids.k(NK::PatternVariant) => {
-                    let tag = self.get_field(&node, FK::Name).unwrap();
-                    let name = self.name(&tag);
-                    let label = Label(name);
-                    let payload = node
-                        .named_children(&mut node.walk())
-                        // skip the variant_name child, take the rest as payload
-                        .nth(1)
-                        .map_or(self.si(node, |_| Pattern::Lit(ExprLit::Unit)), |n| {
-                            self.lower_pattern(n)
-                        });
-                    Pattern::Variant(label, payload)
-
-                    // Pattern::Variant { tag, payload }
-                }
-                // k if k == self.k_pattern_path => {
-                //     // pattern "." terminal — two named children
-                //     let lhs = self.lower_pattern(node.named_child(0).unwrap());
-                //     let rhs = self.lower_pattern(node.named_child(1).unwrap());
-                //     Pattern::Path(Box::new(lhs), Box::new(rhs))
-                // }
-                // k if k == self.k_pattern_alias => {
-                //     let pat = self.lower_pattern(node.named_child(0).unwrap());
-                //     let name = self.intern(node.named_child(1).unwrap());
-                //     Pattern::Alias {
-                //         pattern: Box::new(pat),
-                //         name,
-                //     }
-                // }
-                k if k == self.ids.k(NK::PatternAtom) => {
-                    dbg!(node.to_sexp());
-                    let inner = node.named_child(0).unwrap();
-                    match inner.kind_id() {
-                        k if k == self.ids.k(NK::PatternVariant) => {
-                            let tag = self.get_field(&inner, FK::Name).unwrap();
-                            let name = self.name(&tag);
-                            let label = Label(name);
-                            let payload = inner
-                                .named_children(&mut node.walk())
-                                // skip the variant_name child, take the rest as payload
-                                .nth(1)
-                                .map_or(self.si(node, |_| Pattern::Lit(ExprLit::Unit)), |n| {
-                                    self.lower_pattern(n)
-                                });
-                            Pattern::Variant(label, payload)
-
-                            // Pattern::Variant { tag, payload }
-                        }
-                        k if k == self.ids.k(NK::Number) => {
-                            let v = inner
-                                .utf8_text(self.file.source.as_bytes())
-                                .unwrap()
-                                .parse()
-                                .unwrap();
-                            Pattern::Lit(ExprLit::Number(v))
-                        }
-                        k if k == self.ids.k(NK::PatternVariable) => {
-                            Pattern::Var(Untyped(self.name(&node.named_child(0).unwrap())))
-                        }
-                        _ => Pattern::Lit(ExprLit::String(self.name(&inner))),
-                    }
-                }
-                _ => {
-                    self.error(node, "unexpected pattern node");
-                    Pattern::Hole(Untyped(self.name(&node)))
-                }
+                k if k == self.ids.k(NK::PatternOr) => todo!(),
+                _ => *(Into::<Spanned<Intern<Pattern<UntypedCst>>>>::into(self.lower_expr(node))).0,
             }
         };
         self.si(node, |_| pat)

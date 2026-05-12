@@ -13,66 +13,28 @@ Variables are useful for storing intermediate values and improving readability. 
 ## Example
 
 ```ruby
-let double_every_word s = 
-	let split = String.split s in
-	let doubled = split.flat_map fn x => 
-		let repeated = (Factory.repeater x) in 
-			repeated.take(2) 
-	String.from doubled
+double_every_word s = {
+	split = String.split s
+	doubled = split.flat_map fn x => {
+		repeated = (Stream.repeat x)
+		return repeated.take(2) 
+		}
+	return String.from doubled
+}
 
 ```
 
 ## Refactoring
 
 ```ruby
-let double_every_word s = 
-	let split = String.split s in
-	String.from split.flat_map fn x => 
-			(Factory.repeater x).take 2 
+double_every_word s = {
+	split = String.split s
+	return String.from split.flat_map fn x => 
+			(Stream.repeat x).take 2 
+}
 ```
 
 By reducing unnecessary variables, we increase readability and highlight the *behavior* of the system over the *actions*.
-
-# If-if-if-if
-
-## Problem
-
-`if` expressions are a simple way to express control flow. However, chained `if` expressions may be better-expressed by a `match` expression.
-
-## Example
-
-```ruby
-let inspect n = 
-	if n < 0 then
-		IO.out "Less than 0"
-	else 
-		if n == 0 then
-			IO.out "Equals zero"
-		else 
-			if 5 > n >= 1 then 
-				IO.out "Small number"
-			else 
-				if n > 5 
-					IO.out "Big Number"
-					do_something_not_otherwise()
-				else
-					IO.out "Biggest Number"
-
-```
-
-## Refactoring
-
-```ruby
-let inspect n = 
-	IO.out match n
-		| ..0  then "Less than 0"
-		| 0    then "Equals zero"
-		| 1..5 then "Small number"
-		| 5=.. then "Big Number"
-		else "Weird Number"
-```
-
-Not only is the example code overly verbose, it has an error! If `n` equals `5`, it will be marked as a "Weird number". The refactor fixes this, ensures behavioral consistency, and reduces repetition.
 
 ---
 
@@ -85,24 +47,26 @@ A disorganized datatype structures data in strange ways.
 ## Example
 
 ```ruby
-struct DB[?T] =
-	users: Map[int, {str, UserPrefs[?T]],
-	is_loggedin: Map[int, bool],
+DB T = type {
+	users: Map int {name: str, prefs: (UserPrefs T)}
+	is_logged_in: Map int bool
 	# ...
 ```
 
 ## Refactoring
 
 ```ruby
-type UserID = int
+UserID = type num
 
-struct UserData[?T] = 
-	username: str,
-	prefs: UserPrefs[?T],
-	is_loggedin: bool
+UserData T = type {
+	name: str
+	prefs: UserPrefs T
+	is_logged_in: bool
+}
 
-struct DB[?T] = 
-	users: Map[UserID, Userdata[?T]]
+DB T = { 
+	users: Map UserID (Userdata T)
+}
 ```
 
 We give the magic `int` a meaningful name: `UserId`. Then, we move `is_loggedin` from a separate map to the user data itself.
@@ -118,28 +82,31 @@ By convention, the *subject* of the operation goes before any parameters that co
 ## Example
 
 ```ruby
-package Ops = 
-	let my_operation num l : int -> Vec[int] -> Vec[int] =
-		Iter.map l fn x => x + num
+Ops = {
+	add_each val l : num -> Seq num -> Seq num =
+		Stream.map l fn x => x + val
+}
 
-package Main = 
-	let main =
-		let my_list = Vec.from {1, 2, 3} in
-		my_operation = Ops.add_ 3 my_list
+Main = {
+	my_list = Vec.from 1..3
+	return Ops.add_each 3 my_list # 4 5 6
+}
 ```
 
 ## Refactoring
 
 ```ruby
-package Ops = 
-	let add_each l num : Vec[int] -> int -> Vec[int] =
-		Iter.map l fn x => x + num
+Ops = {
+	add_each val l : num -> Seq num -> Seq num =
+		Stream.map l fn x => x + val
+}
 
-package Main = 
-	let main =
-		let my_list = Vec.from {1, 2, 3} in
-		my_operation = Ops.add_each my_list 3 # {4, 5, 6}
+Main = {
+	my_list = Vec.from 1..3
+	return Ops.add_each my_list 3 # 4 5 6
+}
 ```
+
 
 By reducing unnecessary variables, we increase readability and highlight the *behavior* of the system over the *actions*.
 
@@ -154,17 +121,19 @@ Modules and types are `UpperCamelCase`, identifiers are `lower_snake_case`
 ## Example
 
 ```ruby
-let frobnicate b =
-	let mYsuperCool_thing = Lib_01_a.MysteryFunctionASDF {"hello", "world"} in
-	SystemIOHandler.out mYsuperCool_thing.Do_it b
+frobnicate b = {
+	mYsuperCool_thing = Lib_01_a.MysteryFunctionASDF {"hello", "world"}
+	return SystemIOHandler.out mYsuperCool_thing.Do_it b
+}
 ```
 
 ## Refactoring
 
 ```ruby
-let print_times times =
-	let repeater = Iter.Repeat {"hello", "world"} in
-	IO.out repeater.repeat times
+print_times times = {
+	repeater = Stream.Repeater {"hello", "world"}
+	IO.out repeater.take times
+}
 ```
 
 Don't use the incorrect casing convention, and use good, self-explanatory names.

@@ -180,7 +180,7 @@ impl EnvironmentBuilder {
             }
             CstExpr::Lit(lit) => self.graph.add_node(NodeKind::Lit(lit)),
             CstExpr::Hole(_) => todo!(),
-            CstExpr::Item(item_id) => todo!(),
+
             CstExpr::ProductConstructor { fields } => {
                 let product_node = self.graph.add_node(NodeKind::Record {});
                 let fields = self.pre_register_fields(fields.to_vec());
@@ -188,7 +188,7 @@ impl EnvironmentBuilder {
                 product_node
             }
             CstExpr::VariantConstructor { name, value } => {
-                let inject = self.graph.add_node(NodeKind::Inject { label: name.0 });
+                let inject = self.graph.add_node(NodeKind::Inject { label: name.0.0 });
 
                 if let Some(value) = value {
                     let val_node = self.analyze_expr(value, current_node);
@@ -244,6 +244,12 @@ impl EnvironmentBuilder {
             .into_iter()
             .filter_map(|field| match field {
                 Field::Def(field) => Some(field),
+                Field::Inherit { name, is_pub } => Some(FieldDef {
+                    name: name.0,
+                    is_pub,
+                    ty: None,
+                    value: name.0.convert(CstExpr::Ident(Untyped(name.0))),
+                }),
 
                 Field::Macro(field_macro) => match field_macro {
                     crate::resource::rep::frontend::cst::FieldMacro::Import(_) => todo!(),
@@ -343,6 +349,20 @@ impl EnvironmentBuilder {
                 }
 
                 sum_node
+            }
+
+            CstType::Prod(c) => {
+                let product_node = self.graph.add_node(NodeKind::Product);
+                let row_node = self.graph.add_node(NodeKind::RowTy {
+                    labels: c.fields.iter().map(|l| l.0.0).collect(),
+                    open: false,
+                });
+                for (i, ty) in c.values.iter().enumerate() {
+                    let ty = self.resolve_type(*ty, current_node);
+                    self.graph.add_edge(ty, row_node, PortKind::Input(i));
+                }
+
+                product_node
             }
 
             _ => todo!("{ty:?}"),

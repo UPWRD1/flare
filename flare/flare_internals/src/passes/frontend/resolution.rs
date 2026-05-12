@@ -13,8 +13,8 @@ use crate::{
         rep::{
             common::{FlareSpan, Spanned, Syntax},
             frontend::{
-                ast::{BinOp, Direction, Expr, ExprLit, ItemId, Kind, Label, Untyped, UntypedAst},
-                cst::{CstExpr, Field, UntypedCst},
+                ast::{Expr, ItemId, Kind, UntypedAst},
+                cst::{CstExpr, UntypedCst},
                 csttypes::{CstClosedRow, CstType},
                 entry::{FunctionItem, Item, ItemKind},
             },

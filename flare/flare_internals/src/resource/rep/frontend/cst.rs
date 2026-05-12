@@ -6,7 +6,7 @@ use crate::{
     resource::rep::{
         common::{Spanned, Syntax},
         frontend::{
-            ast::{BinOp, ExprLit, ItemId, Label, Untyped},
+            ast::{BinOp, ExprLit, Label, Untyped},
             csttypes::CstType,
             files::FileID,
         },
@@ -18,30 +18,38 @@ use crate::{
 pub enum Pattern<S: Syntax> {
     Hole(S::Variable),
 
-    Any,
-
-    // Variable pattern: matches anything, binds to variable
-    Var(S::Variable),
-
-    // Literal patterns: match exact values
+    Ident(S::Variable),
     Lit(ExprLit),
 
-    // Constructor pattern: matches labeled variant
-    // Pattern::Ctor(label, inner_pattern)
-    // Examples: Some(x), None, Ok(y), Err(msg)
-    Variant(Label, Spanned<Intern<Self>>),
-
-    // Record pattern: matches record fields
-    // Pattern::Record(fields, is_open)
-    // Closed: {x, y} matches exactly x and y fields
-    // Open: {x, y, ..} matches at least x and y fields
-    Record {
-        fields: &'static [(Label, Spanned<Intern<Self>>)],
-        open: bool, // true for {x, ..}, false for {x}
+    ProductConstructor {
+        fields: Intern<[Field<S>]>,
     },
 
-    // Tuple pattern: matches fixed-size products
-    Tuple(&'static [Spanned<Intern<Self>>]),
+    VariantConstructor {
+        name: Label,
+        value: Option<Spanned<Intern<Self>>>,
+    },
+
+    Bin(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
+
+    Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
+    FieldAccess(Spanned<Intern<Self>>, Label),
+    // Myself,
+    // MethodAccess {
+    //     obj: Spanned<Intern<Self>>,
+    //     prop: Option<Spanned<Intern<String>>>,
+    //     method: Spanned<Intern<Self>>,
+    // },
+    Match(Spanned<Intern<Self>>, &'static [MatchArm<S>]),
+    Lambda(S::Variable, Spanned<Intern<Self>>),
+    Let(
+        Spanned<Intern<Pattern<S>>>,
+        Spanned<Intern<Self>>,
+        Spanned<Intern<Self>>,
+    ),
+    Type(S::Type),
+
+    Any,
 
     // At pattern: matches and binds to variable
     // x @ Some(y) matches Some variant, binds whole to x, inner to y
@@ -55,26 +63,58 @@ pub enum Pattern<S: Syntax> {
     // x when x > 0
     Guard(Spanned<Intern<Self>>, Spanned<Intern<CstExpr<S>>>),
 }
+
+impl<S: Syntax> From<Spanned<Intern<CstExpr<S>>>> for Spanned<Intern<Pattern<S>>> {
+    fn from(value: Spanned<Intern<CstExpr<S>>>) -> Self {
+        value.map_inner(|value| match *value {
+            CstExpr::Ident(i) => Pattern::Ident(i),
+            CstExpr::Lit(l) => Pattern::Lit(l),
+            CstExpr::Hole(h) => Pattern::Hole(h),
+            CstExpr::ProductConstructor { fields } => Pattern::ProductConstructor { fields },
+            CstExpr::VariantConstructor { name, value } => Pattern::VariantConstructor {
+                name,
+                value: value.map(|v| v.into()),
+            },
+
+            CstExpr::Bin(spanned, bin_op, spanned1) => todo!(),
+            CstExpr::Call(spanned, spanned1) => todo!(),
+            CstExpr::FieldAccess(spanned, label) => todo!(),
+            CstExpr::Match(spanned, match_arms) => todo!(),
+            CstExpr::Lambda(_, spanned) => todo!(),
+            CstExpr::Let(spanned, spanned1, spanned2) => todo!(),
+            CstExpr::Type(_) => todo!(),
+        })
+    }
+}
+
 impl<S: Syntax> Pattern<S> {
     pub fn bindings(&self) -> Vec<S::Variable> {
-        fn bindings<S: Syntax>(p: &Pattern<S>, vars: &mut Vec<S::Variable>) {
-            match p {
-                Pattern::Hole(_) | Pattern::Any => (),
-                Pattern::Var(v) => vars.push(*v),
-                Pattern::Lit(_) => (),
-                Pattern::Variant(_, subpat) => bindings(&subpat.0, vars),
-                Pattern::Record { fields, open: _ } => {
-                    fields.iter().for_each(|(_, f)| bindings(&f.0, vars))
-                }
-                Pattern::Tuple(fields) => fields.iter().for_each(|f| bindings(&f.0, vars)),
-                Pattern::At(v, _) => vars.push(*v),
-                Pattern::Or(_) => todo!(),
-                Pattern::Guard(_, _) => todo!(),
-            }
-        }
         let mut v = vec![];
-        bindings(self, &mut v);
+        self.bindings_impl(&mut v);
         v
+    }
+    fn bindings_impl(&self, vars: &mut Vec<<S as Syntax>::Variable>) {
+        match self {
+            Pattern::Hole(_) | Pattern::Any => (),
+
+            Pattern::At(v, _) => vars.push(*v),
+            Pattern::Or(_) => todo!(),
+            Pattern::Guard(_, _) => todo!(),
+            _ => todo!(),
+        }
+    }
+
+    pub fn is_refutable(&self) -> bool {
+        match self {
+            Pattern::Or(v) if (v.iter().any(|p| p.is_refutable())) => true,
+            Pattern::Hole(_) | Pattern::Ident(_) => false,
+
+            _ => false,
+        }
+    }
+
+    pub fn is_irrefutable(&self) -> bool {
+        !self.is_refutable()
     }
 }
 
@@ -99,6 +139,7 @@ pub struct FieldDef<S: Syntax> {
 pub enum Field<S: Syntax> {
     Def(FieldDef<S>),
     Macro(FieldMacro<S>),
+    Inherit { name: Label, is_pub: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -107,13 +148,11 @@ pub enum CstExpr<S: Syntax> {
     Lit(ExprLit),
     Hole(S::Variable),
 
-    Item(ItemId),
-
     ProductConstructor {
         fields: Intern<[Field<S>]>,
     },
     VariantConstructor {
-        name: S::Name,
+        name: Label,
         value: Option<Spanned<Intern<Self>>>,
     },
 

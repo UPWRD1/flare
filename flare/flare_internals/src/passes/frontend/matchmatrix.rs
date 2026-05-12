@@ -1,8 +1,8 @@
 use crate::resource::rep::{
     common::{Spanned, Syntax},
     frontend::{
-        ast::{ExprLit, Label},
-        cst::{CstExpr, Pattern, UntypedCst},
+        ast::{ExprLit, Label, Untyped},
+        cst::{CstExpr, Field, Pattern, UntypedCst},
     },
 };
 /// WARNING
@@ -47,32 +47,14 @@ impl<S: Syntax> Pattern<S> {
         Self::Any
     }
 
-    pub fn is_refutable(&self) -> bool {
-        matches!(self, Self::Variant(_, _) | Self::Lit(_))
-    }
-
-    pub fn is_irrefutable(&self) -> bool {
-        !self.is_refutable()
-    }
-
     pub fn is_wildcard(&self) -> bool {
-        matches!(self, Self::Any | Self::Var(_))
+        matches!(self, Self::Any | Self::Ident(_))
     }
 
     pub fn show(&self) -> String {
         match &self {
             Self::Any => "_".to_string(),
-            Self::Var(x) => x.to_string(),
-            Self::Variant(c, p) => format!("{} {}", c.0.0, p.0.show()),
-            Self::Tuple(ps) => {
-                let parts: Vec<_> = ps.iter().map(|p| p.0.show()).collect();
-                format!("({})", parts.join(","))
-            }
-            Self::Lit(lit) => match lit {
-                ExprLit::Number(n) => n.to_string(),
-                ExprLit::String(s) => format!("\"{}\"", s.0),
-                _ => todo!(),
-            },
+
             _ => todo!(),
         }
     }
@@ -182,10 +164,6 @@ impl Matrix {
 //     },
 // }
 
-pub enum Lit {
-    Number,
-}
-
 #[derive(Debug, Clone)]
 pub enum DecisionTree {
     Fail,
@@ -245,12 +223,16 @@ impl DecisionTree {
 
 fn occurrences_of(p: &Pattern<UntypedCst>, base: &Occ) -> Vec<(Occ, Pattern<UntypedCst>)> {
     match &p {
-        Pattern::Tuple(sub_ps) => sub_ps
+        Pattern::ProductConstructor { fields } => fields
             .iter()
             .enumerate()
-            .map(|(i, sub_p)| {
-                let occ = Occ::Proj(Box::new(base.clone()), Label(sub_p.convert(i.to_string())));
-                (occ, *sub_p.0)
+            .map(|(i, sub_p)| match sub_p {
+                Field::Def(field_def) => todo!(),
+                Field::Macro(field_macro) => todo!(),
+                Field::Inherit { name, is_pub } => {
+                    let occ = Occ::Proj(Box::new(base.clone()), *name);
+                    (occ, Pattern::Ident(Untyped(name.0)))
+                }
             })
             .collect(),
         // Pattern::Record { fields, open }
@@ -288,7 +270,7 @@ pub fn preprocess(base: &Occ, ps: &[Pattern<UntypedCst>], res: impl Fn(usize) ->
         let map: HashMap<_, _> = pairs.into_iter().collect();
         let row: Vec<Pattern<_>> = header
             .iter()
-            .map(|occ| map.get(occ).copied().unwrap_or_else(Pattern::wildcard))
+            .map(|occ| map.get(occ).copied().unwrap_or(Pattern::Any))
             .collect();
         matrix.rows.push((row, res(i)));
     }
@@ -347,7 +329,7 @@ fn specialise_label(matrix: &Matrix, label: Label) -> Matrix {
 
     for (row, idx) in &matrix.rows {
         let head = &row[0];
-        if matches!(head, Pattern::Variant(label, _)) {
+        if matches!(head, Pattern::VariantConstructor { name, value }) {
             let unwrapped = unwrap_payload(*head);
             patterns.push(unwrapped);
             indices.push(*idx);
@@ -391,7 +373,11 @@ fn specialise_default(matrix: &Matrix) -> Matrix {
 /// Sets `ty_out` to the payload's type on the first call.
 fn unwrap_payload(p: Pattern<UntypedCst>) -> Pattern<UntypedCst> {
     match p {
-        Pattern::Variant(_, inner) => *inner.0,
+        Pattern::VariantConstructor { name, value } => {
+            *value
+                .unwrap_or(name.0.convert(Pattern::Lit(ExprLit::Unit)))
+                .0
+        }
         Pattern::Lit(_) => Pattern::Any,
         _ => p,
     }
@@ -406,13 +392,13 @@ fn unwrap_payload(p: Pattern<UntypedCst>) -> Pattern<UntypedCst> {
 fn admits(c: &SigElem, p: &Pattern<UntypedCst>) -> bool {
     match c {
         SigElem::Label(c) => match &p {
-            Pattern::Variant(c2, _) => c == c2,
-            Pattern::Any | Pattern::Var(_) => true,
+            Pattern::VariantConstructor { name: c2, .. } => c == c2,
+            Pattern::Any | Pattern::Ident(_) => true,
             _ => false,
         },
         SigElem::Lit(ExprLit::Number(n)) => match &p {
             Pattern::Lit(ExprLit::Number(n2)) => n == n2,
-            Pattern::Any | Pattern::Var(_) => true,
+            Pattern::Any | Pattern::Ident(_) => true,
             _ => false,
         },
         _ => todo!("{c:?}, {p:?}"),
@@ -421,8 +407,8 @@ fn admits(c: &SigElem, p: &Pattern<UntypedCst>) -> bool {
 
 fn admits_label(c: &Label, p: &Pattern<UntypedCst>) -> bool {
     match &p {
-        Pattern::Variant(c2, _) => c == c2,
-        Pattern::Any | Pattern::Var(_) => true,
+        Pattern::VariantConstructor { name: c2, .. } => c == c2,
+        Pattern::Any | Pattern::Ident(_) => true,
         _ => false,
     }
 }
@@ -447,7 +433,7 @@ impl SigElem {
 fn collect_signature(ps: &[Pattern<UntypedCst>]) -> HashSet<SigElem> {
     ps.iter()
         .filter_map(|p| match &p {
-            Pattern::Variant(c, p) => Some(SigElem::Label(*c)),
+            Pattern::VariantConstructor { name, value } => Some(SigElem::Label(*name)),
             Pattern::Lit(f) => Some(SigElem::Lit(*f)),
             _ => None,
         })

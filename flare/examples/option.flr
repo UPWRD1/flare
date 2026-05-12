@@ -1,9 +1,9 @@
 Option T = {
     return type |Some T, None|
 
-    Some x : T -> Option T = |Some x|
+    pub Some x : T -> Option T = |Some x|
 
-    None: Option T = |None|
+    pub None: Option T = |None|
 
     unwrap_or option default : Option T -> T -> T =
         match option
@@ -11,14 +11,14 @@ Option T = {
             as | None | then default
         end
           
-    is_some x : Option T -> bool =
-        match x 
+    is_some option : Option T -> bool =
+        match option 
             as | Some _v| then true
             as | None | then false
         end
 
-    map o f : all U => Option T -> (T -> U) -> Option U =
-            match o 
+    map option f : all U => Option T -> (T -> U) -> Option U =
+            match option
                 as | Some v | then {
                     v = f(v)
                     return Some v
