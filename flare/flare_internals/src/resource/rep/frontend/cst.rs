@@ -30,23 +30,8 @@ pub enum Pattern<S: Syntax> {
         value: Option<Spanned<Intern<Self>>>,
     },
 
-    Bin(Spanned<Intern<Self>>, BinOp, Spanned<Intern<Self>>),
-
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     FieldAccess(Spanned<Intern<Self>>, Label),
-    // Myself,
-    // MethodAccess {
-    //     obj: Spanned<Intern<Self>>,
-    //     prop: Option<Spanned<Intern<String>>>,
-    //     method: Spanned<Intern<Self>>,
-    // },
-    Match(Spanned<Intern<Self>>, &'static [MatchArm<S>]),
-    Lambda(S::Variable, Spanned<Intern<Self>>),
-    Let(
-        Spanned<Intern<Pattern<S>>>,
-        Spanned<Intern<Self>>,
-        Spanned<Intern<Self>>,
-    ),
     Type(S::Type),
 
     Any,
@@ -81,7 +66,6 @@ impl<S: Syntax> From<Spanned<Intern<CstExpr<S>>>> for Spanned<Intern<Pattern<S>>
             CstExpr::FieldAccess(spanned, label) => todo!(),
             CstExpr::Match(spanned, match_arms) => todo!(),
             CstExpr::Lambda(_, spanned) => todo!(),
-            CstExpr::Let(spanned, spanned1, spanned2) => todo!(),
             CstExpr::Type(_) => todo!(),
         })
     }
@@ -105,16 +89,28 @@ impl<S: Syntax> Pattern<S> {
     }
 
     pub fn is_refutable(&self) -> bool {
-        match self {
-            Pattern::Or(v) if (v.iter().any(|p| p.is_refutable())) => true,
-            Pattern::Hole(_) | Pattern::Ident(_) => false,
-
-            _ => false,
-        }
+        !self.is_irrefutable()
     }
 
     pub fn is_irrefutable(&self) -> bool {
-        !self.is_refutable()
+        match self {
+            Pattern::Or(v) if (v.iter().all(|p| p.is_irrefutable())) => true,
+            Pattern::ProductConstructor { fields }
+                if fields
+                    .iter()
+                    .flat_map(|f| match f {
+                        Field::Def(field_def) => todo!(),
+                        Field::Macro(field_macro) => panic!("Invalid pattern"),
+                        Field::Inherit { name, is_pub } => Some(true),
+                    })
+                    .all(|o| o) =>
+            {
+                true
+            }
+            Pattern::Hole(_) | Pattern::Ident(_) | Pattern::Any => true,
+
+            _ => false,
+        }
     }
 }
 
@@ -160,19 +156,8 @@ pub enum CstExpr<S: Syntax> {
 
     Call(Spanned<Intern<Self>>, Spanned<Intern<Self>>),
     FieldAccess(Spanned<Intern<Self>>, Label),
-    // Myself,
-    // MethodAccess {
-    //     obj: Spanned<Intern<Self>>,
-    //     prop: Option<Spanned<Intern<String>>>,
-    //     method: Spanned<Intern<Self>>,
-    // },
     Match(Spanned<Intern<Self>>, &'static [MatchArm<S>]),
     Lambda(S::Variable, Spanned<Intern<Self>>),
-    Let(
-        Spanned<Intern<Pattern<S>>>,
-        Spanned<Intern<Self>>,
-        Spanned<Intern<Self>>,
-    ),
     Type(S::Type),
 }
 

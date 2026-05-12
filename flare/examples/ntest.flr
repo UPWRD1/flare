@@ -9,9 +9,9 @@
             as x then x + factorial (x - 1)
         end
 
-    pub Functor T = type {
-         map: all U => Functor T -> (T -> U) -> Functor U
-    }
+    # pub Functor T = type {
+         # map: all U => Functor T -> (T -> U) -> Functor U
+    # }
 
     
 }

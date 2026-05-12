@@ -231,7 +231,8 @@ fn occurrences_of(p: &Pattern<UntypedCst>, base: &Occ) -> Vec<(Occ, Pattern<Unty
                 Field::Macro(field_macro) => todo!(),
                 Field::Inherit { name, is_pub } => {
                     let occ = Occ::Proj(Box::new(base.clone()), *name);
-                    (occ, Pattern::Ident(Untyped(name.0)))
+                    (occ, Pattern::Ident(Untyped(name.0.convert(i.to_string()))))
+                    // (occ, Pattern::Ident(Untyped(name.0)))
                 }
             })
             .collect(),
@@ -329,11 +330,14 @@ fn specialise_label(matrix: &Matrix, label: Label) -> Matrix {
 
     for (row, idx) in &matrix.rows {
         let head = &row[0];
-        if matches!(head, Pattern::VariantConstructor { name, value }) {
-            let unwrapped = unwrap_payload(*head);
-            patterns.push(unwrapped);
-            indices.push(*idx);
-            remainders.push(row[1..].to_vec());
+        match head {
+            Pattern::VariantConstructor { name, value } if (*name == label) => {
+                let unwrapped = unwrap_payload(*head);
+                patterns.push(unwrapped);
+                indices.push(*idx);
+                remainders.push(row[1..].to_vec());
+            }
+            _ => {}
         }
     }
 
