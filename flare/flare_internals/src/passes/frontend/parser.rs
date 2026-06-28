@@ -105,8 +105,8 @@ pub struct LangIds {
 impl LangIds {
     pub fn new(lang: &Language) -> Self {
         use FK::{
-            Arg, Expr, Field, Func, Import, IsPub, Left, Name, Operator, Pattern, Right, Type,
-            Value,
+            Arg, Expr, Field, Func, Import, Inherit, IsPub, Left, Name, Operator, Pattern, Right,
+            Type, Value,
         };
         use NK::{
             ArrowType, BinExpression, Boolean, CallExpression, ExtendMacro, FieldAccess,
@@ -181,6 +181,7 @@ impl LangIds {
         f!(Left, "left");
         f!(Right, "right");
         f!(Operator, "op");
+        f!(Inherit, "inherit");
         f!(Import, "import");
         f!(IsPub, "is_pub");
         Self { kinds, fields }
@@ -368,12 +369,12 @@ impl<'src> Translate<'src> {
                 if !child.is_named() {
                     return None;
                 }
-
                 let k = child.kind_id();
                 match k {
                     k if k == self.ids.k(NK::FieldAssignment) => {
                         Some(self.translate_field_assignment(child))
                     }
+                    k if k == self.ids.k(NK::Identifier) => Some(self.translate_inherit(child)),
                     k if k == self.ids.k(NK::UseMacro) => Some(self.add_use_macro(child)),
                     k if k == self.ids.k(NK::ReturnMacro) => Some(self.add_return_macro(child)),
                     _ => {
@@ -428,6 +429,12 @@ impl<'src> Translate<'src> {
         })
     }
 
+    fn translate_inherit(&mut self, node: Node<'src>) -> Field<UntypedCst> {
+        // Get name
+        let name = self.name(&node);
+        self.current_path.push(name);
+        Field::Inherit(Label(name))
+    }
     fn collapse_current_path(&self) -> CstExpr<UntypedCst> {
         let first = *self.current_path.last().unwrap();
         let init = first.convert(CstExpr::Ident(Untyped(first)));

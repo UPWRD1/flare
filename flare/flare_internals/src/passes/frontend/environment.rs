@@ -112,16 +112,6 @@ impl EnvironmentBuilder {
         self.incoming_of(node).find(|(e, w)| pred(*e, *w))
     }
 
-    // fn outputs_of(&self, node: NodeIndex) -> Option<(NodeIndex, PortKind)> {
-    //     self.graph
-    //         .edges_directed(node, petgraph::Direction::Outgoing)
-    //         .map(|e| (e.target(), *e.weight()))
-    //         .next()
-    //         .inspect(|p| {
-    //             dbg!(p);
-    //         })
-    // }
-
     /// Find a Def node by name among the direct children of `parent_record`.
     fn find_child_by_name(
         &self,
@@ -244,9 +234,9 @@ impl EnvironmentBuilder {
             .into_iter()
             .filter_map(|field| match field {
                 Field::Def(field) => Some(field),
-                Field::Inherit { name, is_pub } => Some(FieldDef {
+                Field::Inherit(name) => Some(FieldDef {
                     name: name.0,
-                    is_pub,
+                    is_pub: false,
                     ty: None,
                     value: name.0.convert(CstExpr::Ident(Untyped(name.0))),
                 }),
@@ -373,7 +363,7 @@ impl EnvironmentBuilder {
 
     fn lift(&self) -> Environment<UntypedCst> {
         let out = petgraph::algo::tarjan_scc(&self.graph);
-        dbg!(&out);
+        // dbg!(&out);
         let mut out = out.into_iter().rev().peekable();
 
         self.debug();
@@ -392,9 +382,12 @@ impl EnvironmentBuilder {
                 let subtree = self.translate_dtree_occ(*occ, scrutinee, current_node);
                 todo!()
             }
-            Occ::Unwrap(occ, l) => {
+            Occ::Unwrap(occ, l, name) => {
                 let subtree = self.translate_dtree_occ(*occ, scrutinee, current_node);
-                todo!()
+
+                let unlabel = self.graph.add_node(NodeKind::Unlabel { label: l.0.0 });
+                self.graph.add_edge(subtree, unlabel, PortKind::Input(0));
+                unlabel
             }
         }
     }
@@ -403,6 +396,7 @@ impl EnvironmentBuilder {
         match sigelem {
             SigElem::Label(label) => unimplemented!("use translate_sigelem_pat"),
             SigElem::Lit(lit) => self.graph.add_node(NodeKind::Lit(lit)),
+            SigElem::Var(v) => self.graph.add_node(NodeKind::Def { name: v.0.0 }),
         }
     }
 
@@ -414,7 +408,7 @@ impl EnvironmentBuilder {
         current_node: NodeIndex,
     ) -> NodeIndex {
         match tree {
-            DecisionTree::Fail => todo!(),
+            DecisionTree::Fail => self.graph.add_node(NodeKind::Absurd),
             DecisionTree::Leaf(i) => self.analyze_expr(actions[i], current_node),
             DecisionTree::Switch {
                 occ,

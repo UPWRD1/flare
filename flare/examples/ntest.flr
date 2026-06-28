@@ -9,6 +9,16 @@
             as x then x + factorial (x - 1)
         end
 
+    sum_fields x : {a: num, b: num} -> {a: num, b: num}=
+        match x
+            as {a, b} then {a, b}
+        end
+    
+    ident_match x : all T => T -> T =
+        match x
+            as v then v
+        end
+
     # pub Functor T = type {
          # map: all U => Functor T -> (T -> U) -> Functor U
     # }

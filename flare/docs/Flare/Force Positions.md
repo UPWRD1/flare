@@ -15,7 +15,7 @@ Main = {
 	maybe_not x : all T => T -> Option T = Option.Some x
 	
 	# Explicit forcing
-	maybe_not x : all T => T -> ~Option T = Option.Some x	
+	maybe_not x : all T => T -> Option T = Option.Some x	
 }
 
 ```

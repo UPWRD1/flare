@@ -101,7 +101,7 @@ impl<S: Syntax> Pattern<S> {
                     .flat_map(|f| match f {
                         Field::Def(field_def) => todo!(),
                         Field::Macro(field_macro) => panic!("Invalid pattern"),
-                        Field::Inherit { name, is_pub } => Some(true),
+                        Field::Inherit(name) => Some(true),
                     })
                     .all(|o| o) =>
             {
@@ -135,7 +135,7 @@ pub struct FieldDef<S: Syntax> {
 pub enum Field<S: Syntax> {
     Def(FieldDef<S>),
     Macro(FieldMacro<S>),
-    Inherit { name: Label, is_pub: bool },
+    Inherit(Label),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -335,6 +335,8 @@ pub enum NodeKind {
     Hole {
         name: Intern<String>,
     },
+
+    Absurd,
 }
 
 impl std::fmt::Display for NodeKind {
@@ -350,6 +352,9 @@ impl std::fmt::Display for NodeKind {
                 }
                 Self::Inject { label } => {
                     format!("Inject {label}")
+                }
+                Self::Unlabel { label } => {
+                    format!("Unlabel {label}")
                 }
                 _ => format!("{:?}", self),
             }
