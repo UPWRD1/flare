@@ -66,7 +66,6 @@ impl<S: Syntax> From<Spanned<Intern<CstExpr<S>>>> for Spanned<Intern<Pattern<S>>
             CstExpr::FieldAccess(spanned, label) => todo!(),
             CstExpr::Match(spanned, match_arms) => todo!(),
             CstExpr::Lambda(_, spanned) => todo!(),
-            CstExpr::Type(_) => todo!(),
         })
     }
 }
@@ -158,7 +157,7 @@ pub enum CstExpr<S: Syntax> {
     FieldAccess(Spanned<Intern<Self>>, Label),
     Match(Spanned<Intern<Self>>, &'static [MatchArm<S>]),
     Lambda(S::Variable, Spanned<Intern<Self>>),
-    Type(S::Type),
+    // Type(S::Type),
 }
 
 impl<S: Syntax> Default for CstExpr<S> {

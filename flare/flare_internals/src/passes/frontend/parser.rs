@@ -326,8 +326,6 @@ impl<'src> Translate<'src> {
                 }
                 k if k == self.ids.k(NK::UnitExpr) => CstExpr::Lit(ExprLit::Unit),
 
-                k if k == self.ids.k(NK::TypeExpression) => self.lower_type_expr(node),
-
                 k if k == self.ids.k(NK::PubExpression) => todo!(),
 
                 _ => {
@@ -340,12 +338,6 @@ impl<'src> Translate<'src> {
             }
         };
         self.si(node, |_| expr)
-    }
-
-    fn lower_type_expr(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {
-        let the_type = node.child(1).unwrap();
-        let the_type = self.lower_type(the_type);
-        CstExpr::Type(the_type)
     }
 
     fn lower_variant(&mut self, node: Node<'src>) -> CstExpr<UntypedCst> {

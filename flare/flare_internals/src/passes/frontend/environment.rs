@@ -222,8 +222,6 @@ impl EnvironmentBuilder {
                 self.graph.add_edge(body, lam, PortKind::Input(1));
                 lam
             }
-            // CstExpr::Let(spanned, spanned1, spanned2) => todo!(),
-            CstExpr::Type(ty) => self.resolve_type(ty, current_node),
         };
         self.scope.pop();
         out

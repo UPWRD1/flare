@@ -1,5 +1,5 @@
 Option T = {
-    return type |Some T, None|
+    # type |Some T, None|
 
     pub Some x : T -> Option T = |Some x|
 
