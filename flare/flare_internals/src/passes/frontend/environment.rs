@@ -34,20 +34,20 @@ use crate::{
 /// real reason to clone the environment.
 #[non_exhaustive]
 #[derive(Default)]
-pub struct EnvironmentBuilder {
+pub struct Environment {
     pub graph: StableDiGraph<NodeKind, PortKind>,
     errors: Vec<CompilerErr>,
     scope: Vec<NodeIndex>,
 }
 
-pub type Environment<S> = FxHashMap<NodeIndex, Item<S>>;
+pub type EnvironmentMap<S> = FxHashMap<NodeIndex, Item<S>>;
 
-impl EnvironmentBuilder {
+impl Environment {
     /// Build the environment from a given `PackageCollection`
     /// # Errors
     /// - on invalid names,
     ///
-    pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Environment<UntypedCst>> {
+    pub fn build(program: PackageCollection<UntypedCst>) -> CompResult<Self> {
         let mut graph: StableDiGraph<NodeKind, PortKind> = StableDiGraph::default();
         let root_node = graph.add_node(NodeKind::Record {});
 
@@ -69,12 +69,10 @@ impl EnvironmentBuilder {
             ..Default::default()
         };
 
-        me.analyze_expr(root_obj, root_node); // dbg!(res);
-        let env_map = me.lift();
-
+        me.analyze_expr(root_obj, root_node);
+        me.debug();
         if me.errors.is_empty() {
-            dbg!(&env_map);
-            Ok(env_map)
+            Ok(me)
         } else {
             Err(ErrorCollection::new(me.errors).into())
         }
@@ -164,9 +162,10 @@ impl EnvironmentBuilder {
         let out = match *expr.0 {
             CstExpr::Ident(n) => {
                 let v = self.resolve_name(n.0);
-                let ref_node = self.graph.add_node(NodeKind::Ref);
-                self.graph.add_edge(v, ref_node, PortKind::Reference);
-                ref_node
+                // let ref_node = self.graph.add_node(NodeKind::Ref);
+                // self.graph.add_edge(v, ref_node, PortKind::Reference);
+                // ref_node
+                v
             }
             CstExpr::Lit(lit) => self.graph.add_node(NodeKind::Lit(lit)),
             CstExpr::Hole(_) => todo!(),
@@ -296,9 +295,10 @@ impl EnvironmentBuilder {
             }
             CstType::User(n) => {
                 let v = self.resolve_name(n);
-                let ref_node = self.graph.add_node(NodeKind::Ref);
-                self.graph.add_edge(v, ref_node, PortKind::Reference);
-                ref_node
+                // let ref_node = self.graph.add_node(NodeKind::Ref);
+                // self.graph.add_edge(v, ref_node, PortKind::Reference);
+                // ref_node
+                v
             }
             CstType::GenericApp(l, r) => {
                 let app = self.graph.add_node(NodeKind::App);
@@ -357,15 +357,6 @@ impl EnvironmentBuilder {
         };
         self.scope.pop();
         out
-    }
-
-    fn lift(&self) -> Environment<UntypedCst> {
-        let out = petgraph::algo::tarjan_scc(&self.graph);
-        // dbg!(&out);
-        let mut out = out.into_iter().rev().peekable();
-
-        self.debug();
-        todo!()
     }
 
     fn translate_dtree_occ(

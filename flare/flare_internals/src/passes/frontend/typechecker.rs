@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     passes::frontend::{
-        environment::Environment,
+        environment::EnvironmentMap,
         typing::{ItemSource, Solver, TypeScheme, TypesOutput},
     },
     resource::{
@@ -19,11 +19,11 @@ use crate::{
 pub struct Typechecker {
     // item_order: &'static [NodeIndex],
     context: ItemSource,
-    env: Environment<UntypedAst>,
+    env: EnvironmentMap<UntypedAst>,
 }
 
 impl Typechecker {
-    pub fn new(env: Environment<UntypedAst>) -> Self {
+    pub fn new(env: EnvironmentMap<UntypedAst>) -> Self {
         Self {
             // item_order,
             env,
@@ -129,7 +129,7 @@ impl Typechecker {
             .collect()
     }
 
-    pub fn finish(self) -> Environment<UntypedAst> {
+    pub fn finish(self) -> EnvironmentMap<UntypedAst> {
         self.env
     }
 }

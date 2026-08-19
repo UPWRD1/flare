@@ -5,11 +5,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     passes::frontend::{
-        environment::Environment,
+        environment::{Environment, EnvironmentMap},
         typing::{ClosedRow, Evidence, Row, RowVar, Type, TypeScheme, TypeVar},
     },
     resource::{
-        errors::{CompResult, CompilerErr, DynamicErr, ErrorCollection},
+        errors::{CompResult, DynamicErr, ErrorCollection},
         rep::{
             common::{FlareSpan, Spanned, Syntax},
             frontend::{
@@ -38,8 +38,7 @@ use crate::{
 /// even if it would be more efficient to use a single pass over the environment.
 #[derive(Default)]
 pub struct Resolver {
-    env: Environment<UntypedCst>,
-    errors: Vec<CompilerErr>,
+    env: Environment,
     pub seen: FxHashSet<ItemId>,
 }
 
@@ -134,30 +133,15 @@ impl TypeFixer {
 }
 
 impl Resolver {
-    pub fn new(env: Environment<UntypedCst>) -> Self {
+    pub fn new(env: Environment) -> Self {
         Self {
             env,
-            errors: Vec::new(),
             seen: FxHashSet::default(),
         }
     }
 
-    pub fn analyze(mut self) -> CompResult<Environment<UntypedAst>> {
-        let err_no_main = DynamicErr::new("Could not find a main function")
-            .label("not found in any packages", FlareSpan::default());
-
-        let mut converted: FxHashMap<_, _> = std::mem::take(&mut self.env)
-            .into_iter()
-            .map(|(idx, item)| (idx, self.convert(&item)))
-            .collect();
-
-        converted.retain(|k, v| self.seen.contains(&ItemId(k.index())) || v.ident() == "Main");
-
-        if self.errors.is_empty() {
-            Ok(converted)
-        } else {
-            Err(ErrorCollection::new(self.errors).into())
-        }
+    pub fn analyze(mut self) -> CompResult<EnvironmentMap<UntypedAst>> {
+        todo!()
     }
 
     fn convert_func(&mut self, the_func: FunctionItem<UntypedCst>) -> FunctionItem<UntypedAst> {

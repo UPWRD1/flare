@@ -72,13 +72,12 @@ use crate::{
             target::{Generator, Target},
         },
         frontend::{
-            environment::{Environment, EnvironmentBuilder},
+            environment::{Environment, EnvironmentMap},
             parser,
             resolution::Resolver,
             typechecker::Typechecker,
             typing::{ItemSource, TypesOutput},
         },
-        //backend::{flatten::Flattener, gen::Generator},
         midend::{lowering::Lowerer, monomorph, reduce, simplify},
     },
     resource::{
@@ -106,11 +105,11 @@ pub struct Parse {
 }
 
 pub struct Build {
-    env: Environment<UntypedCst>,
+    env: Environment,
 }
 #[derive(Debug)]
 pub struct Resolve {
-    env: Environment<UntypedAst>,
+    env: EnvironmentMap<UntypedAst>,
 }
 #[derive(Debug)]
 pub struct Typecheck {
@@ -192,14 +191,15 @@ pub fn parse(filectx: &FileCtx) -> CompResult<Parse> {
 }
 
 pub fn build(parse: Parse) -> CompResult<Build> {
-    let env = EnvironmentBuilder::build(parse.program)?;
+    let env = Environment::build(parse.program)?;
     Ok(Build { env })
 }
 
 pub fn resolve(build: Build) -> CompResult<Resolve> {
-    let resolver = Resolver::new(build.env);
-    let env = resolver.analyze()?;
-    Ok(Resolve { env })
+    todo!()
+    // let resolver = Resolver::new(build.env);
+    // let env = resolver.analyze()?;
+    // Ok(Resolve { env })
 }
 
 pub fn typecheck(resolve: Resolve) -> CompResult<Typecheck> {
