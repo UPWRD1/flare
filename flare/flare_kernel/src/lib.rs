@@ -45,18 +45,21 @@ pub enum Term {
     Lit(i64),
     Lam(String, Box<Term>),
     App(Box<Term>, Box<Term>),
-    Let(String, Box<Term>, Box<Term>),
     RecordEmpty,
-    RecordExtend(Label, Box<Term>, Box<Term>),
+    RecordExtend {
+        new_label: Label,
+        definition: Box<Term>,
+        rest: Box<Term>,
+    },
     RecordSelect(Box<Term>, Label),
     RecordRestrict(Box<Term>, Label),
     Variant(Label, Box<Term>),
     // branches: (label, bound var, body); default: (bound var, body)
-    Case(
-        Box<Term>,
-        Vec<(Label, String, Term)>,
-        Option<(String, Box<Term>)>,
-    ),
+    Case {
+        scrutinee: Box<Term>,
+        branches: Vec<(Label, String, Term)>,
+        default: Option<(String, Box<Term>)>,
+    },
     // fold/unfold carry the mu-type explicitly: bidirectional typing avoids
     // having to guess which recursive type a term is meant to inhabit.
     Fold(Type, Box<Term>),
@@ -449,15 +452,12 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
             )?;
             Ok(ret_ty)
         }
-        Term::Let(x, e1, e2) => {
-            let t1 = infer(store, env, e1)?;
-            let scheme = generalize(store, env, &t1);
-            let mut env2 = env.clone();
-            env2.insert(x.clone(), scheme);
-            infer(store, &env2, e2)
-        }
         Term::RecordEmpty => Ok(Type::Record(Rc::new(Row::Empty))),
-        Term::RecordExtend(l, e, rest) => {
+        Term::RecordExtend {
+            new_label: l,
+            definition: e,
+            rest,
+        } => {
             let t_e = infer(store, env, e)?;
             let t_rest = infer(store, env, rest)?;
             let rho = store.fresh_row();
@@ -507,7 +507,11 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
                 Rc::new(rho),
             ))))
         }
-        Term::Case(scrutinee, branches, default) => {
+        Term::Case {
+            scrutinee,
+            branches,
+            default,
+        } => {
             let t_scrutinee = infer(store, env, scrutinee)?;
             let result_ty = store.fresh_type();
             let scrutinee_row_start = store.fresh_row();
@@ -546,15 +550,15 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
             )?;
             Ok(result_ty)
         }
-        Term::Fold(mu_ty, e) => {
-            let inner = match mu_ty {
+        Term::Fold(mu_type, term) => {
+            let inner_type = match mu_type {
                 Type::Mu(i) => (**i).clone(),
-                _ => return Err(TypeError::NotAMu(format!("{:?}", mu_ty))),
+                _ => return Err(TypeError::NotAMu(format!("{:?}", mu_type))),
             };
-            let expected = subst_selfref(&inner, mu_ty);
-            let t_e = infer(store, env, e)?;
-            unify_type(store, &t_e, &expected)?;
-            Ok(mu_ty.clone())
+            let expected_type = subst_selfref(&inner_type, mu_type);
+            let term_type = infer(store, env, term)?;
+            unify_type(store, &term_type, &expected_type)?;
+            Ok(mu_type.clone())
         }
         Term::Unfold(mu_ty, e) => {
             let inner = match mu_ty {
@@ -683,13 +687,12 @@ mod eval {
                     _ => panic!("apply of a non-function"),
                 }
             }
-            Term::Let(x, e1, e2) => {
-                let v1 = eval(env, e1);
-                let env2 = env.extend(x.clone(), v1);
-                eval(&env2, e2)
-            }
             Term::RecordEmpty => Value::Record(vec![]),
-            Term::RecordExtend(l, e, rest) => {
+            Term::RecordExtend {
+                new_label: l,
+                definition: e,
+                rest,
+            } => {
                 let v = eval(env, e);
                 let vrest = eval(env, rest);
                 match vrest {
@@ -722,7 +725,11 @@ mod eval {
                 }
             }
             Term::Variant(l, e) => Value::Variant(l.clone(), Box::new(eval(env, e))),
-            Term::Case(scrut, branches, default) => {
+            Term::Case {
+                scrutinee: scrut,
+                branches,
+                default,
+            } => {
                 let v = eval(env, scrut);
                 match v {
                     Value::Variant(l, inner) => {

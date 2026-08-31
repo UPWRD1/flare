@@ -46,15 +46,15 @@ fn rec_int_list() {
         list_ty.clone(),
         Box::new(Term::Variant(
             "Cons".into(),
-            Box::new(Term::RecordExtend(
-                "head".into(),
-                Box::new(Term::Lit(1)),
-                Box::new(Term::RecordExtend(
-                    "tail".into(),
-                    Box::new(nil_term),
-                    Box::new(Term::RecordEmpty),
-                )),
-            )),
+            Box::new(Term::RecordExtend {
+                new_label: "head".into(),
+                definition: Box::new(Term::Lit(1)),
+                rest: Box::new(Term::RecordExtend {
+                    new_label: "tail".into(),
+                    definition: Box::new(nil_term),
+                    rest: Box::new(Term::RecordEmpty),
+                }),
+            }),
         )),
     );
     run(
@@ -65,15 +65,15 @@ fn rec_int_list() {
     );
 
     // Unfold one layer and pull the head back out.
-    let head_term = Term::Case(
-        Box::new(Term::Unfold(list_ty.clone(), Box::new(cons1.clone()))),
-        vec![(
+    let head_term = Term::Case {
+        scrutinee: Box::new(Term::Unfold(list_ty.clone(), Box::new(cons1.clone()))),
+        branches: vec![(
             "Cons".into(),
             "c".into(),
             Term::RecordSelect(Box::new(Term::Var("c".into())), "head".into()),
         )],
-        Some(("_other".into(), Box::new(Term::Lit(-1)))),
-    );
+        default: Some(("_other".into(), Box::new(Term::Lit(-1)))),
+    };
     run(
         &mut store,
         &env,
@@ -88,14 +88,14 @@ fn closed_sum_row() {
     let mut store = Store::default();
     let env: Env = HashMap::new();
     let scrut = Term::Variant("Left".into(), Box::new(Term::Lit(10)));
-    let case_term = Term::Case(
-        Box::new(scrut),
-        vec![
+    let case_term = Term::Case {
+        scrutinee: Box::new(scrut),
+        branches: vec![
             ("Left".into(), "n".into(), Term::Var("n".into())),
             ("Right".into(), "n".into(), Term::Var("n".into())),
         ],
-        None,
-    );
+        default: None,
+    };
     run(
         &mut store,
         &env,
@@ -119,43 +119,43 @@ fn row_polymorphic_field_proj() {
             "x".into(),
         )),
     );
-    let rec1 = Term::RecordExtend(
-        "x".into(),
-        Box::new(Term::Lit(1)),
-        Box::new(Term::RecordExtend(
-            "y".into(),
-            Box::new(Term::Lit(2)),
-            Box::new(Term::RecordEmpty),
-        )),
-    );
-    let rec2 = Term::RecordExtend(
-        "x".into(),
-        Box::new(Term::Lit(3)),
-        Box::new(Term::RecordExtend(
-            "z".into(),
-            Box::new(Term::Lit(4)),
-            Box::new(Term::RecordEmpty),
-        )),
-    );
-    let prog1 = Term::Let(
-        "get_x".into(),
-        Box::new(get_x),
-        Box::new(Term::RecordExtend(
-            "a".into(),
-            Box::new(Term::App(
+    let rec1 = Term::RecordExtend {
+        new_label: "x".into(),
+        definition: Box::new(Term::Lit(1)),
+        rest: Box::new(Term::RecordExtend {
+            new_label: "y".into(),
+            definition: Box::new(Term::Lit(2)),
+            rest: Box::new(Term::RecordEmpty),
+        }),
+    };
+    let rec2 = Term::RecordExtend {
+        new_label: "x".into(),
+        definition: Box::new(Term::Lit(3)),
+        rest: Box::new(Term::RecordExtend {
+            new_label: "z".into(),
+            definition: Box::new(Term::Lit(4)),
+            rest: Box::new(Term::RecordEmpty),
+        }),
+    };
+    let prog1 = Term::RecordExtend {
+        new_label: "get_x".into(),
+        definition: Box::new(get_x),
+        rest: Box::new(Term::RecordExtend {
+            new_label: "a".into(),
+            definition: Box::new(Term::App(
                 Box::new(Term::Var("get_x".into())),
                 Box::new(rec1),
             )),
-            Box::new(Term::RecordExtend(
-                "b".into(),
-                Box::new(Term::App(
+            rest: Box::new(Term::RecordExtend {
+                new_label: "b".into(),
+                definition: Box::new(Term::App(
                     Box::new(Term::Var("get_x".into())),
                     Box::new(rec2),
                 )),
-                Box::new(Term::RecordEmpty),
-            )),
-        )),
-    );
+                rest: Box::new(Term::RecordEmpty),
+            }),
+        }),
+    };
     run(
         &mut store,
         &env,
