@@ -116,51 +116,6 @@ impl Store {
     }
 }
 
-// ---------------------------------------------------------------------
-// Occurs checks (separately for type vars and row vars, each of which can
-// appear inside the other's structure)
-// ---------------------------------------------------------------------
-
-fn occurs_type_in_type(store: &Store, v: u32, t: &Type) -> bool {
-    match store.walk_type(t) {
-        Type::Var(v2) => v2 == v,
-        Type::Con(_) | Type::SelfRef => false,
-        Type::Arrow(a, b) => occurs_type_in_type(store, v, &a) || occurs_type_in_type(store, v, &b),
-        Type::Record(r) | Type::Variant(r) => occurs_type_in_row(store, v, &r),
-        Type::Mu(t2) => occurs_type_in_type(store, v, &t2),
-    }
-}
-
-fn occurs_type_in_row(store: &Store, v: u32, r: &Row) -> bool {
-    match store.walk_row(r) {
-        Row::Empty | Row::Var(_) => false,
-        Row::Extend(_, t, rest) => {
-            occurs_type_in_type(store, v, &t) || occurs_type_in_row(store, v, &rest)
-        }
-    }
-}
-fn occurs_row_in_type(store: &Store, v: u32, t: &Type) -> bool {
-    match store.walk_type(t) {
-        Type::Var(_) | Type::Con(_) | Type::SelfRef => false,
-        Type::Arrow(a, b) => occurs_row_in_type(store, v, &a) || occurs_row_in_type(store, v, &b),
-        Type::Record(r) | Type::Variant(r) => occurs_row_in_row(store, v, &r),
-        Type::Mu(t2) => occurs_row_in_type(store, v, &t2),
-    }
-}
-fn occurs_row_in_row(store: &Store, v: u32, r: &Row) -> bool {
-    match store.walk_row(r) {
-        Row::Empty => false,
-        Row::Var(v2) => v2 == v,
-        Row::Extend(_, t, rest) => {
-            occurs_row_in_type(store, v, &t) || occurs_row_in_row(store, v, &rest)
-        }
-    }
-}
-
-// ---------------------------------------------------------------------
-// Unification
-// ---------------------------------------------------------------------
-
 #[derive(Debug)]
 pub enum TypeError {
     Mismatch(String, String),
@@ -169,79 +124,126 @@ pub enum TypeError {
     UnboundVar(String),
     NotAMu(String),
 }
-
-fn unify_type(store: &mut Store, t1: &Type, t2: &Type) -> Result<(), TypeError> {
-    let w1 = store.walk_type(t1);
-    let w2 = store.walk_type(t2);
-    match (w1, w2) {
-        (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
-        (Type::Var(a), t) | (t, Type::Var(a)) => {
-            if occurs_type_in_type(store, a, &t) {
-                return Err(TypeError::OccursCheck);
+impl Store {
+    // ---------------------------------------------------------------------
+    // Unification
+    // ---------------------------------------------------------------------
+    fn unify_type(&mut self, t1: &Type, t2: &Type) -> Result<(), TypeError> {
+        let w1 = self.walk_type(t1);
+        let w2 = self.walk_type(t2);
+        match (w1, w2) {
+            (Type::Var(a), Type::Var(b)) if a == b => Ok(()),
+            (Type::Var(a), t) | (t, Type::Var(a)) => {
+                if self.occurs_type_in_type(a, &t) {
+                    return Err(TypeError::OccursCheck);
+                }
+                self.bind_type(a, t);
+                Ok(())
             }
-            store.bind_type(a, t);
-            Ok(())
+            (Type::Con(a), Type::Con(b)) if a == b => Ok(()),
+            (Type::Arrow(a1, b1), Type::Arrow(a2, b2)) => {
+                self.unify_type(&a1, &a2)?;
+                self.unify_type(&b1, &b2)
+            }
+            (Type::Record(r1), Type::Record(r2)) => self.unify_row(&r1, &r2),
+            (Type::Variant(r1), Type::Variant(r2)) => self.unify_row(&r1, &r2),
+            (Type::Mu(a), Type::Mu(b)) => self.unify_type(&a, &b),
+            (Type::SelfRef, Type::SelfRef) => Ok(()),
+            (a, b) => Err(TypeError::Mismatch(format!("{:?}", a), format!("{:?}", b))),
         }
-        (Type::Con(a), Type::Con(b)) if a == b => Ok(()),
-        (Type::Arrow(a1, b1), Type::Arrow(a2, b2)) => {
-            unify_type(store, &a1, &a2)?;
-            unify_type(store, &b1, &b2)
+    }
+
+    // Remy/Leijen row unification: peel a label off one row and search for it
+    // (possibly rewriting) in the other, threading a fresh row variable through
+    // when the search runs into an unresolved row variable.
+    fn unify_row(&mut self, r1: &Row, r2: &Row) -> Result<(), TypeError> {
+        let w1 = self.walk_row(r1);
+        let w2 = self.walk_row(r2);
+        match (w1, w2) {
+            (Row::Empty, Row::Empty) => Ok(()),
+            (Row::Var(a), Row::Var(b)) if a == b => Ok(()),
+            (Row::Var(a), r) | (r, Row::Var(a)) => {
+                if self.occurs_row_in_row(a, &r) {
+                    return Err(TypeError::OccursCheck);
+                }
+                self.bind_row(a, r);
+                Ok(())
+            }
+            (Row::Extend(l1, t1, rest1), other) => {
+                let (t2, rest2) = self.rewrite_row(&other, &l1)?;
+                self.unify_type(&t1, &t2)?;
+                self.unify_row(&rest1, &rest2)
+            }
+            (Row::Empty, Row::Extend(l, _, _)) => Err(TypeError::MissingLabel(l)),
         }
-        (Type::Record(r1), Type::Record(r2)) => unify_row(store, &r1, &r2),
-        (Type::Variant(r1), Type::Variant(r2)) => unify_row(store, &r1, &r2),
-        (Type::Mu(a), Type::Mu(b)) => unify_type(store, &a, &b),
-        (Type::SelfRef, Type::SelfRef) => Ok(()),
-        (a, b) => Err(TypeError::Mismatch(format!("{:?}", a), format!("{:?}", b))),
+    }
+
+    // Find `label` in `row`, returning its type and the row with that one entry
+    // removed. If we hit an unresolved row variable first, we don't fail: we
+    // commit to that row containing the label, via two fresh variables.
+    fn rewrite_row(&mut self, row: &Row, label: &Label) -> Result<(Type, Row), TypeError> {
+        match self.walk_row(row) {
+            Row::Empty => Err(TypeError::MissingLabel(label.clone())),
+            Row::Extend(l, t, rest) => {
+                if &l == label {
+                    Ok(((*t).clone(), (*rest).clone()))
+                } else {
+                    let (t2, rest2) = self.rewrite_row(&rest, label)?;
+                    Ok((t2, Row::Extend(l, t, Rc::new(rest2))))
+                }
+            }
+            Row::Var(v) => {
+                let beta = self.fresh_type();
+                let rho = self.fresh_row();
+                self.bind_row(
+                    v,
+                    Row::Extend(label.clone(), Rc::new(beta.clone()), Rc::new(rho.clone())),
+                );
+                Ok((beta, rho))
+            }
+        }
     }
 }
 
-// Remy/Leijen row unification: peel a label off one row and search for it
-// (possibly rewriting) in the other, threading a fresh row variable through
-// when the search runs into an unresolved row variable.
-fn unify_row(store: &mut Store, r1: &Row, r2: &Row) -> Result<(), TypeError> {
-    let w1 = store.walk_row(r1);
-    let w2 = store.walk_row(r2);
-    match (w1, w2) {
-        (Row::Empty, Row::Empty) => Ok(()),
-        (Row::Var(a), Row::Var(b)) if a == b => Ok(()),
-        (Row::Var(a), r) | (r, Row::Var(a)) => {
-            if occurs_row_in_row(store, a, &r) {
-                return Err(TypeError::OccursCheck);
-            }
-            store.bind_row(a, r);
-            Ok(())
-        }
-        (Row::Extend(l1, t1, rest1), other) => {
-            let (t2, rest2) = rewrite_row(store, &other, &l1)?;
-            unify_type(store, &t1, &t2)?;
-            unify_row(store, &rest1, &rest2)
-        }
-        (Row::Empty, Row::Extend(l, _, _)) => Err(TypeError::MissingLabel(l)),
-    }
-}
+impl Store {
+    // ---------------------------------------------------------------------
+    // Occurs checks (separately for type vars and row vars, each of which can
+    // appear inside the other's structure)
+    // ---------------------------------------------------------------------
 
-// Find `label` in `row`, returning its type and the row with that one entry
-// removed. If we hit an unresolved row variable first, we don't fail: we
-// commit to that row containing the label, via two fresh variables.
-fn rewrite_row(store: &mut Store, row: &Row, label: &Label) -> Result<(Type, Row), TypeError> {
-    match store.walk_row(row) {
-        Row::Empty => Err(TypeError::MissingLabel(label.clone())),
-        Row::Extend(l, t, rest) => {
-            if &l == label {
-                Ok(((*t).clone(), (*rest).clone()))
-            } else {
-                let (t2, rest2) = rewrite_row(store, &rest, label)?;
-                Ok((t2, Row::Extend(l, t, Rc::new(rest2))))
+    fn occurs_type_in_type(&self, v: u32, t: &Type) -> bool {
+        match self.walk_type(t) {
+            Type::Var(v2) => v2 == v,
+            Type::Con(_) | Type::SelfRef => false,
+            Type::Arrow(a, b) => self.occurs_type_in_type(v, &a) || self.occurs_type_in_type(v, &b),
+            Type::Record(r) | Type::Variant(r) => self.occurs_type_in_row(v, &r),
+            Type::Mu(t2) => self.occurs_type_in_type(v, &t2),
+        }
+    }
+
+    fn occurs_type_in_row(&self, v: u32, r: &Row) -> bool {
+        match self.walk_row(r) {
+            Row::Empty | Row::Var(_) => false,
+            Row::Extend(_, t, rest) => {
+                self.occurs_type_in_type(v, &t) || self.occurs_type_in_row(v, &rest)
             }
         }
-        Row::Var(v) => {
-            let beta = store.fresh_type();
-            let rho = store.fresh_row();
-            store.bind_row(
-                v,
-                Row::Extend(label.clone(), Rc::new(beta.clone()), Rc::new(rho.clone())),
-            );
-            Ok((beta, rho))
+    }
+    fn occurs_row_in_type(&self, v: u32, t: &Type) -> bool {
+        match self.walk_type(t) {
+            Type::Var(_) | Type::Con(_) | Type::SelfRef => false,
+            Type::Arrow(a, b) => self.occurs_row_in_type(v, &a) || self.occurs_row_in_type(v, &b),
+            Type::Record(r) | Type::Variant(r) => self.occurs_row_in_row(v, &r),
+            Type::Mu(t2) => self.occurs_row_in_type(v, &t2),
+        }
+    }
+    fn occurs_row_in_row(&self, v: u32, r: &Row) -> bool {
+        match self.walk_row(r) {
+            Row::Empty => false,
+            Row::Var(v2) => v2 == v,
+            Row::Extend(_, t, rest) => {
+                self.occurs_row_in_type(v, &t) || self.occurs_row_in_row(v, &rest)
+            }
         }
     }
 }
@@ -445,11 +447,7 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
             let f_ty = infer(store, env, f)?;
             let a_ty = infer(store, env, a)?;
             let ret_ty = store.fresh_type();
-            unify_type(
-                store,
-                &f_ty,
-                &Type::Arrow(Rc::new(a_ty), Rc::new(ret_ty.clone())),
-            )?;
+            store.unify_type(&f_ty, &Type::Arrow(Rc::new(a_ty), Rc::new(ret_ty.clone())))?;
             Ok(ret_ty)
         }
         Term::RecordEmpty => Ok(Type::Record(Rc::new(Row::Empty))),
@@ -461,7 +459,7 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
             let t_e = infer(store, env, e)?;
             let t_rest = infer(store, env, rest)?;
             let rho = store.fresh_row();
-            unify_type(store, &t_rest, &Type::Record(Rc::new(rho.clone())))?;
+            store.unify_type(&t_rest, &Type::Record(Rc::new(rho.clone())))?;
             Ok(Type::Record(Rc::new(Row::Extend(
                 l.clone(),
                 Rc::new(t_e),
@@ -472,8 +470,7 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
             let t_e = infer(store, env, e)?;
             let field_ty = store.fresh_type();
             let rho = store.fresh_row();
-            unify_type(
-                store,
+            store.unify_type(
                 &t_e,
                 &Type::Record(Rc::new(Row::Extend(
                     l.clone(),
@@ -487,8 +484,7 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
             let t_e = infer(store, env, e)?;
             let field_ty = store.fresh_type();
             let rho = store.fresh_row();
-            unify_type(
-                store,
+            store.unify_type(
                 &t_e,
                 &Type::Record(Rc::new(Row::Extend(
                     l.clone(),
@@ -519,8 +515,7 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
             for (l, x, body) in branches {
                 let field_ty = store.fresh_type();
                 let next_tail = store.fresh_row();
-                unify_row(
-                    store,
+                store.unify_row(
                     &tail,
                     &Row::Extend(
                         l.clone(),
@@ -531,7 +526,7 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
                 let mut env2 = env.clone();
                 env2.insert(x.clone(), mono(field_ty));
                 let branch_ty = infer(store, &env2, body)?;
-                unify_type(store, &branch_ty, &result_ty)?;
+                store.unify_type(&branch_ty, &result_ty)?;
                 tail = next_tail;
             }
             match default {
@@ -539,15 +534,11 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
                     let mut env2 = env.clone();
                     env2.insert(x.clone(), mono(Type::Variant(Rc::new(tail))));
                     let branch_ty = infer(store, &env2, body)?;
-                    unify_type(store, &branch_ty, &result_ty)?;
+                    store.unify_type(&branch_ty, &result_ty)?;
                 }
-                None => unify_row(store, &tail, &Row::Empty)?,
+                None => store.unify_row(&tail, &Row::Empty)?,
             }
-            unify_type(
-                store,
-                &t_scrutinee,
-                &Type::Variant(Rc::new(scrutinee_row_start)),
-            )?;
+            store.unify_type(&t_scrutinee, &Type::Variant(Rc::new(scrutinee_row_start)))?;
             Ok(result_ty)
         }
         Term::Fold(mu_type, term) => {
@@ -557,7 +548,7 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
             };
             let expected_type = subst_selfref(&inner_type, mu_type);
             let term_type = infer(store, env, term)?;
-            unify_type(store, &term_type, &expected_type)?;
+            store.unify_type(&term_type, &expected_type)?;
             Ok(mu_type.clone())
         }
         Term::Unfold(mu_ty, e) => {
@@ -566,7 +557,7 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
                 _ => return Err(TypeError::NotAMu(format!("{:?}", mu_ty))),
             };
             let t_e = infer(store, env, e)?;
-            unify_type(store, &t_e, mu_ty)?;
+            store.unify_type(&t_e, mu_ty)?;
             Ok(subst_selfref(&inner, mu_ty))
         }
     }
@@ -575,182 +566,13 @@ fn infer(store: &mut Store, env: &Env, term: &Term) -> Result<Type, TypeError> {
 // ---------------------------------------------------------------------
 // Pretty-printing (resolves substitutions on the way out)
 // ---------------------------------------------------------------------
+pub mod pretty;
 
-pub mod pretty {
-    use crate::{Row, Store, Type, eval::Value};
-
-    pub(crate) fn print_type(store: &Store, t: &Type) -> String {
-        match store.walk_type(t) {
-            Type::Var(v) => format!("t{}", v),
-            Type::Con(c) => c,
-            Type::Arrow(a, b) => {
-                format!("({} -> {})", print_type(store, &a), print_type(store, &b))
-            }
-            Type::Record(r) => format!("{{{}}}", print_row(store, &r)),
-            Type::Variant(r) => format!("<{}>", print_row(store, &r)),
-            Type::Mu(inner) => format!("(mu X. {})", print_type(store, &inner)),
-            Type::SelfRef => "X".to_string(),
-        }
-    }
-
-    pub(crate) fn print_row(store: &Store, r: &Row) -> String {
-        let mut fields = vec![];
-        let mut cur = store.walk_row(r);
-        loop {
-            match cur {
-                Row::Empty => break,
-                Row::Var(v) => {
-                    fields.push(format!("..t{}", v));
-                    break;
-                }
-                Row::Extend(l, t, rest) => {
-                    fields.push(format!("{}: {}", l, print_type(store, &t)));
-                    cur = store.walk_row(&rest);
-                }
-            }
-        }
-        fields.join(", ")
-    }
-
-    pub(crate) fn print_value(v: &Value) -> String {
-        match v {
-            Value::Int(n) => n.to_string(),
-            Value::Closure(..) => "<closure>".to_string(),
-            Value::Record(fields) => {
-                let inner: Vec<String> = fields
-                    .iter()
-                    .map(|(l, v)| format!("{}={}", l, print_value(v)))
-                    .collect();
-                format!("{{{}}}", inner.join(", "))
-            }
-            Value::Variant(l, v) => format!("{}({})", l, print_value(v)),
-        }
-    }
-}
 // ---------------------------------------------------------------------
 // Evaluator. fold/unfold are purely compile-time typing devices: they
 // erase to nothing at runtime, exactly as promised for iso-recursive types.
 // ---------------------------------------------------------------------
-
-mod eval {
-
-    use std::rc::Rc;
-
-    use crate::{Label, Term};
-
-    pub(crate) enum VEnv {
-        Empty,
-        Cons(String, Value, Rc<VEnv>),
-    }
-
-    impl VEnv {
-        pub(crate) fn lookup(&self, x: &str) -> Option<Value> {
-            match self {
-                VEnv::Empty => None,
-                VEnv::Cons(y, v, rest) => {
-                    if y == x {
-                        Some(v.clone())
-                    } else {
-                        rest.lookup(x)
-                    }
-                }
-            }
-        }
-        pub(crate) fn extend(self: &Rc<Self>, x: String, v: Value) -> Rc<VEnv> {
-            Rc::new(VEnv::Cons(x, v, self.clone()))
-        }
-    }
-
-    #[derive(Clone)]
-    pub(crate) enum Value {
-        Int(i64),
-        Closure(String, Rc<Term>, Rc<VEnv>),
-        Record(Vec<(Label, Value)>),
-        Variant(Label, Box<Value>),
-    }
-
-    pub(crate) fn eval(env: &Rc<VEnv>, term: &Term) -> Value {
-        match term {
-            Term::Var(x) => env
-                .lookup(x)
-                .unwrap_or_else(|| panic!("unbound var at runtime: {}", x)),
-            Term::Lit(n) => Value::Int(*n),
-            Term::Lam(x, body) => Value::Closure(x.clone(), Rc::new((**body).clone()), env.clone()),
-            Term::App(f, a) => {
-                let fv = eval(env, f);
-                let av = eval(env, a);
-                match fv {
-                    Value::Closure(x, body, cenv) => {
-                        let env2 = cenv.extend(x, av);
-                        eval(&env2, &body)
-                    }
-                    _ => panic!("apply of a non-function"),
-                }
-            }
-            Term::RecordEmpty => Value::Record(vec![]),
-            Term::RecordExtend {
-                new_label: l,
-                definition: e,
-                rest,
-            } => {
-                let v = eval(env, e);
-                let vrest = eval(env, rest);
-                match vrest {
-                    Value::Record(mut fields) => {
-                        fields.push((l.clone(), v));
-                        Value::Record(fields)
-                    }
-                    _ => panic!("extend of a non-record"),
-                }
-            }
-            Term::RecordSelect(e, l) => {
-                let v = eval(env, e);
-                match v {
-                    Value::Record(fields) => fields
-                        .iter()
-                        .rev()
-                        .find(|(fl, _)| fl == l)
-                        .map(|(_, fv)| fv.clone())
-                        .unwrap_or_else(|| panic!("missing field {}", l)),
-                    _ => panic!("select on a non-record"),
-                }
-            }
-            Term::RecordRestrict(e, l) => {
-                let v = eval(env, e);
-                match v {
-                    Value::Record(fields) => {
-                        Value::Record(fields.into_iter().filter(|(fl, _)| fl != l).collect())
-                    }
-                    _ => panic!("restrict of a non-record"),
-                }
-            }
-            Term::Variant(l, e) => Value::Variant(l.clone(), Box::new(eval(env, e))),
-            Term::Case {
-                scrutinee: scrut,
-                branches,
-                default,
-            } => {
-                let v = eval(env, scrut);
-                match v {
-                    Value::Variant(l, inner) => {
-                        if let Some((_, x, body)) = branches.iter().find(|(bl, _, _)| bl == &l) {
-                            let env2 = env.extend(x.clone(), *inner);
-                            eval(&env2, body)
-                        } else if let Some((x, body)) = default {
-                            let env2 = env.extend(x.clone(), Value::Variant(l, inner));
-                            eval(&env2, body)
-                        } else {
-                            panic!("non-exhaustive case on label {}", l)
-                        }
-                    }
-                    _ => panic!("case on a non-variant"),
-                }
-            }
-            Term::Fold(_, e) => eval(env, e),
-            Term::Unfold(_, e) => eval(env, e),
-        }
-    }
-}
+pub mod eval;
 
 // ---------------------------------------------------------------------
 // Demo
