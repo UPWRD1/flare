@@ -20,8 +20,23 @@
               "icon": "lucide-file",
               "title": "Type things?"
             }
+          },
+          {
+            "id": "9d1b4acaa339f843",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Back to Basics.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Back to Basics"
+            }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -41,7 +56,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": false
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "Files"
@@ -181,29 +198,30 @@
       "obsidian-git:Open Git source control": false
     }
   },
-  "active": "06d25712370e0b8c",
+  "active": "9d1b4acaa339f843",
   "lastOpenFiles": [
-    "Type System Ideas.md",
-    "Type Semantics.md",
-    "Type things?.md",
-    "State and Expressions.md",
-    "System Design.md",
+    "Sample.md",
+    "Principles.md",
+    "Packages.md",
+    "Idioms.md",
+    "Memory.md",
+    "Grammar.md",
+    "Calculus of Constructions.md",
+    "Force Positions.md",
     "Toll Example.md",
+    "Type things?.md",
     "Welcome.md",
     "Volatile and FFI.md",
+    "Function syntax.md",
+    "Back to Basics.md",
+    "Type System Ideas.md",
+    "Type Semantics.md",
+    "State and Expressions.md",
+    "System Design.md",
     "Syntax Design.md",
     "Standard Library Features.md",
     "Semantic Design.md",
     "Scoping.md",
-    "Sample.md",
-    "Principles.md",
-    "Packages.md",
-    "Memory.md",
-    "Idioms.md",
-    "Grammar.md",
-    "Function syntax.md",
-    "Force Positions.md",
-    "Calculus of Constructions.md",
     "Antipatterns.md"
   ]
 }
